@@ -6,10 +6,10 @@ readme = "README.md"
 authors = [
     { name = "Arrrlex", email = "me+github@alexmck.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "matplotlib>=3.10.0",
-    "torch<2.3",
+    "torch>=2.2,<2.3",
     "torchvision>=0.17.2",
     "wandb>=0.19.6",
 ]
