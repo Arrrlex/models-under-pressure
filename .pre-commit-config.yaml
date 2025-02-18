@@ -23,6 +23,10 @@ repos:
         args: [-L, "ans,fpr,projectin"]  # Allow extra words
         additional_dependencies:
           - tomli
+        exclude: >
+            (?x)^(
+                .*\.ipynb
+            )$
   - repo: local
     hooks:
     - id: pyright
