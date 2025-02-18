@@ -22,4 +22,4 @@ class TrainingConfig:
 
     # Weights & Biases settings
     wandb_project: str = "lasr-demo"
-    wandb_entity: str = "josephmiller101"  # Your username or organization
+    wandb_entity: str = "arrrlex"  # Your username or organization

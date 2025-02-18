@@ -185,3 +185,5 @@ if __name__ == "__main__":
     # Visualize some reconstructions
     visualize_reconstruction(model, config)
     visualize_reconstruction(model, config)
+
+# %%
