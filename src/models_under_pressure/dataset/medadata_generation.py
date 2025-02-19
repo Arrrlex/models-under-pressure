@@ -2,7 +2,6 @@ import abc
 from dataclasses import dataclass
 from typing import List, Dict
 from models_under_pressure.dataset.prompt_generation import Prompt
-from enum import Enum
 import csv
 import os
 
@@ -30,46 +29,49 @@ metadata_generation_guidelines: List[str] = [
 ]
 
 
-class Stakes(Enum):
-    HIGH = "high-stakes"
-    LOW = "low-stakes"
-    AMBIGUOUS = "ambiguous"
-
-
-class Temporal(Enum):
-    IMMEDIATE = "immediate"
-    FAR_AWAY = "far-away"
-
-
-class Social(Enum):
-    YES = "yes"
-    NO = "no"
-
-
 @dataclass(frozen=True)
 class MetadataField(abc.ABC):
     name: str
     description: str
-    values: type[Enum]
+    values: List[str]
 
 
 fields: List[MetadataField] = [
     MetadataField(
         name="high_stakes",
         description="Whether the prompt is related to a high-stakes situation.",
-        values=Stakes,
+        values=["high-stakes", "low-stakes", "ambiguous"],
     ),
     MetadataField(
         name="social",
         description="Whether implications of the situation are of social nature.",
-        values=Social,
+        values=["yes", "no"],
     ),
     MetadataField(
         name="temporal",
         description="Whether implications of the situation are immediate or far-away.",
-        values=Temporal,
+        values=["immediate", "far-away"],
     ),
-    # TODO Add further fields
+    MetadataField(
+        name="causality",
+        description="Whether the most important consequence is directly caused by the action or not.",
+        values=["direct", "indirect"],
+    ),
+    MetadataField(
+        name="subject",
+        description="Who is primarily impacted by the outcome?",
+        values=["model", "user", "other"],
+    ),
+    MetadataField(
+        name="reward",
+        description="What is the magnitude of potential positive outcome for the subject?",
+        values=["low", "high"]
+    ),
+    MetadataField(
+        name="risk",
+        description="What is the magnitude of potential negative consequences for the subject?",
+        values=["low", "high"]
+    ),
 ]
 
 
@@ -79,12 +81,9 @@ fields: List[MetadataField] = [
 def make_metadata_generation_prompt(
     metadata_generation_guidelines: List[str], fields: List[MetadataField]
 ) -> str:
-    def get_type_str(field: MetadataField) -> str:
-        return "/".join(v.value for v in field.values)
-
     generation_prompt = metadata_generation_template.format(
         fields="\n".join(
-            f"- {field.name}: {field.description} ({get_type_str(field)})"
+            f"- {field.name}: {field.description} ({"/".join(field.values)})"
             for field in fields
         ),
         guidelines="\n".join(
@@ -125,6 +124,7 @@ def write_metadata_to_csv(prompt: Prompt, metadata: Dict[str, str]) -> None:
         )
         if not file_exists:
             writer.writeheader()
+        #TODO If the file exists, make sure it uses the same header
 
         row = {"id": prompt.id, "prompt": prompt.prompt, **metadata}
         writer.writerow(row)
