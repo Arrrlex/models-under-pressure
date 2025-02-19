@@ -1,4 +1,6 @@
 # Repo-specific
+temp_data/
+plots/
 .data
 **/wandb
 data/results/

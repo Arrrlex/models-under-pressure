@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "jaxtyping>=0.2.38",
+    "joblib>=1.4.2",
     "matplotlib>=3.10.0",
     "numpy<2",
     "openai>=1.63.2",
@@ -15,8 +17,11 @@ dependencies = [
     "plotly>=6.0.0",
     "python-dotenv>=1.0.1",
     "streamlit>=1.42.1",
+    "scikit-learn>=1.6.1",
     "torch>=2.2,<2.3",
     "torchvision>=0.17.2",
+    "transformers>=4.49.0",
+    "typeguard>=4.4.2",
     "wandb>=0.19.6",
 ]
 
@@ -33,7 +38,11 @@ dev = [
 
 [tool.ruff]
 line-length = 88
+extend-ignore = [
+    "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
+    "F722", # This interacts badly with jaxtyping
+]
 
 [tool.pyright]
 reportMissingParameterType = true
-reportUnknownParameterType = true
+reportUnknownParameterType = false
