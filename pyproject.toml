@@ -38,7 +38,7 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-extend-ignore = [
+lint.extend-ignore = [
     "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
     "F722", # This interacts badly with jaxtyping
 ]

@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
@@ -63,10 +65,15 @@ class LinearProbe:
     model_kwargs: dict[str, Any] = field(
         default_factory=lambda: {"C": 1e-3, "random_state": 42, "fit_intercept": False}
     )
-    _model: LogisticRegression = field(init=False)
+    _model: Any = field(init=False)
 
     def __post_init__(self):
-        self._model = LogisticRegression(**self.model_kwargs)
+        self._model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("classifier", LogisticRegression(**self.model_kwargs)),
+            ]
+        )
 
     def _preprocess_activations(
         self,
@@ -103,14 +110,20 @@ class LinearProbe:
 def train_single_layer(
     acts: Float[np.ndarray, "batch_size seq_len embed_dim"],
     labels: Float[np.ndarray, " batch_size"],
+    model_params: dict[str, Any] | None = None,
 ) -> LinearProbe:
-    return LinearProbe().fit(acts, labels)
+    if model_params is None:
+        probe = LinearProbe()
+    else:
+        probe = LinearProbe(model_kwargs=model_params)
+
+    return probe.fit(acts, labels)
 
 
 def compute_accuracy(
     probe: LinearProbe,
     activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
-    labels: Float[np.ndarray, " batch_size"],
+    labels: Float[np.ndarray, " batch_size"] | list[int],
 ):
     pred_labels = probe.predict(activations)
     return (pred_labels == labels).mean()
