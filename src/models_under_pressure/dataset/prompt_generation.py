@@ -69,6 +69,7 @@ class Prompt(abc.ABC):
         self.high_stakes_situation = high_stakes_situation
         self.low_stakes_situation = low_stakes_situation
         self.high_stakes = high_stakes
+    #TODO Add timestamp of generation
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -89,6 +90,24 @@ def make_prompt_generation_prompt(high_stakes_situation: Situation, low_stakes_s
     )
     return prompt
 
+def generate_prompts(high_stakes_situation: Situation, low_stakes_situation: Situation, num_prompts: int) -> List[Prompt]:
+    prompt = make_prompt_generation_prompt(high_stakes_situation, low_stakes_situation, prompt_generation_guidelines, num_prompts, prompt_examples)
+
+    # Call LLM with prompt
+    prompt_dicts = call_llm([{"role": "user", "content": prompt}])
+    if prompt_dicts is None:
+        raise ValueError("No prompts returned from LLM")
+
+    prompts = []
+    for prompt_id, prompt_dict in prompt_dicts.items():
+        prompts.append(Prompt(
+            id=int(prompt_id),
+            prompt=prompt_dict["prompt"],
+            high_stakes_situation=hs_situation.description,
+            low_stakes_situation=ls_situation.description,
+            high_stakes=prompt_dict["high_stakes"],
+            ))
+    return prompts
 
 if __name__ == "__main__":
     hs_situation = Situation(
@@ -103,24 +122,7 @@ if __name__ == "__main__":
         high_stakes=False,
         category="medical",
     )
-    prompt = make_prompt_generation_prompt(hs_situation, ls_situation, prompt_generation_guidelines, 4, prompt_examples)
-
-    # Call LLM with prompt
-    prompt_dicts = call_llm([{"role": "user", "content": prompt}])
-    if prompt_dicts is None:
-        raise ValueError("No prompts returned from LLM")
-    print(prompt_dicts)
-
-    # Parse LLM response into Prompt instances
-    prompts = []
-    for prompt_id, prompt_dict in prompt_dicts.items():
-        prompts.append(Prompt(
-            id=int(prompt_id),
-            prompt=prompt_dict["prompt"],
-            high_stakes_situation=hs_situation.description,
-            low_stakes_situation=ls_situation.description,
-            high_stakes=prompt_dict["high_stakes"],
-            ))
+    prompts = generate_prompts(hs_situation, ls_situation, 4)
     
     # Save prompts to CSV file
-    pd.DataFrame([prompt.to_dict() for prompt in prompts]).to_csv("prompts.csv", index=False)
+    pd.DataFrame([prompt.to_dict() for prompt in prompts]).to_csv("data/prompts.csv", index=False)
