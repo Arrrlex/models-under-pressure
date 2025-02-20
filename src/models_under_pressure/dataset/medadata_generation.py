@@ -1,10 +1,11 @@
 import abc
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Any
 from models_under_pressure.dataset.prompt_generation import Prompt
 from pathlib import Path
 import csv
 import os
+import pandas as pd
 
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE, METADATA_FILE, METADATA_FIELDS_FILE
 
@@ -51,9 +52,25 @@ def load_metadata_fields(file_path: Path) -> List[MetadataField]:
             )
     return fields
 
+# --------------------------------------------------------------------------------
+# 2. Interface classes
+# --------------------------------------------------------------------------------
+class AnnotatedPrompt(Prompt):
+    def __init__(self, prompt: Prompt, metadata: Dict[str, str]):
+        assert prompt.id == metadata["id"]
+        assert prompt.prompt == metadata["prompt"]
+
+        super().__init__(prompt.id, prompt.prompt, prompt.high_stakes_situation, prompt.low_stakes_situation, prompt.high_stakes)
+        self.metadata = metadata
+
+    @classmethod
+    def from_csv(cls, prompt_file_path: Path, metadata_file_path: Path) -> List[Any]:
+        prompts = Prompt.from_csv(prompt_file_path)
+        metadata = pd.read_csv(metadata_file_path).to_dict(orient="records")
+        return [cls(prompt, mdata) for prompt, mdata in zip(prompts, metadata)] # type: ignore
 
 # --------------------------------------------------------------------------------
-# 2. Metadata generation
+# 3. Metadata generation
 # --------------------------------------------------------------------------------
 def make_metadata_generation_prompt(
     metadata_generation_guidelines: List[str], fields: List[MetadataField]
@@ -106,7 +123,7 @@ def write_metadata_to_csv(prompt: Prompt, metadata: Dict[str, str]) -> None:
 
 
 # --------------------------------------------------------------------------------
-# 3. Main flow: orchestrate the data creation
+# 4. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
@@ -117,4 +134,6 @@ if __name__ == "__main__":
         write_metadata_to_csv(prompt=prompt, metadata=metadata)
 
     # Now read the prompts with their metadata
-    #TODO
+    annotated_prompts = AnnotatedPrompt.from_csv(PROMPTS_FILE, METADATA_FILE)
+    print(f"Number of annotated prompts: {len(annotated_prompts)}")
+    print(f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}")
