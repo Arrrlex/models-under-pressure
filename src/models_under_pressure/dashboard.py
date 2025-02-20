@@ -10,7 +10,10 @@ from models_under_pressure.dataset.medadata_generation import Prompt
 annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
 
 # Explicitly type the DataFrame
-df: pd.DataFrame = pd.DataFrame([prompt.to_dict() for prompt in annotated_prompts])
+df: pd.DataFrame = pd.DataFrame([
+    {**prompt.to_dict(), **(prompt.metadata or {})} 
+    for prompt in annotated_prompts
+])
 
 # Streamlit Page Config
 st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
