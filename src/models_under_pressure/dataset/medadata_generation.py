@@ -93,15 +93,14 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | 
 if __name__ == "__main__":
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
 
-    prompts = Prompt.from_csv(PROMPTS_FILE)
+    prompts = Prompt.from_jsonl(PROMPTS_FILE)
     for prompt in prompts:
         metadata = generate_metadata(prompt, fields)
-        #write_metadata_to_csv(prompt=prompt, metadata=metadata)
         prompt.add_metadata(metadata)
 
-    Prompt.to_csv(prompts, PROMPTS_FILE, metadata_file_path=METADATA_FILE)
+    Prompt.metadata_to_jsonl(prompts, METADATA_FILE)
 
     # Now read the prompts with their metadata
-    annotated_prompts = Prompt.from_csv(PROMPTS_FILE, metadata_file_path=METADATA_FILE)
+    annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, metadata_file_path=METADATA_FILE)
     print(f"Number of annotated prompts: {len(annotated_prompts)}")
     print(f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}")

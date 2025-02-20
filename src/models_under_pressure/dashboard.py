@@ -7,10 +7,13 @@ from models_under_pressure.dataset.utils import METADATA_FILE, PROMPTS_FILE
 from models_under_pressure.dataset.medadata_generation import Prompt
 
 # Read the prompts and metadata
-annotated_prompts = Prompt.from_csv(PROMPTS_FILE, METADATA_FILE)
+annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
 
 # Explicitly type the DataFrame
-df: pd.DataFrame = pd.DataFrame([prompt.to_dict() for prompt in annotated_prompts])
+df: pd.DataFrame = pd.DataFrame([
+    {**prompt.to_dict(), **(prompt.metadata or {})} 
+    for prompt in annotated_prompts
+])
 
 # Streamlit Page Config
 st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
@@ -52,6 +55,7 @@ if search_text:
 st.subheader("📊 High Stakes Distribution")
 
 if "high_stakes" in df.columns:
+    # Original high stakes histogram
     fig = px.histogram(
         df,
         x="high_stakes",
@@ -61,6 +65,53 @@ if "high_stakes" in df.columns:
         category_orders={"high_stakes": [0, 1]},
     )
     st.plotly_chart(fig)
+
+    # Add character length histograms
+    st.subheader("📏 Prompt Length Distribution by Stakes")
+    
+    # Calculate character lengths
+    df['char_length'] = df['prompt'].str.len()
+    
+    # Create separate dataframes for high and low stakes
+    high_stakes_df = df[df['high_stakes'] == 1]
+    low_stakes_df = df[df['high_stakes'] == 0]
+    
+    # Create subplots for length distributions
+    fig = px.histogram(
+        df,
+        x="char_length",
+        color="high_stakes",
+        nbins=30,
+        title="Character Length Distribution by Stakes",
+        labels={
+            "char_length": "Character Length",
+            "high_stakes": "High Stakes"
+        },
+        color_discrete_map={1: "red", 0: "blue"},
+        marginal="box"  # Adds box plots on the margin
+    )
+    
+    # Update layout for better readability
+    fig.update_layout(
+        barmode='overlay',  # Overlapping bars
+        #opacity=0.7,        # Make bars semi-transparent
+    )
+    
+    st.plotly_chart(fig)
+
+    # Display summary statistics
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric(
+            "High Stakes Avg Length",
+            f"{high_stakes_df['char_length'].mean():.0f} chars"
+        )
+    with col2:
+        st.metric(
+            "Low Stakes Avg Length",
+            f"{low_stakes_df['char_length'].mean():.0f} chars"
+        )
+
 else:
     st.warning("Column 'high_stakes' not found in the dataset!")
 
