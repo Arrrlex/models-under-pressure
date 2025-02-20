@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "streamlit>=1.42.1",
     "scikit-learn>=1.6.1",
+    "seaborn>=0.13.2",
     "torch>=2.2,<2.3",
     "torchvision>=0.17.2",
     "transformers>=4.49.0",
