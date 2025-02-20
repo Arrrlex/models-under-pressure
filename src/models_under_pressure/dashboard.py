@@ -7,7 +7,7 @@ from models_under_pressure.dataset.utils import METADATA_FILE, PROMPTS_FILE
 from models_under_pressure.dataset.medadata_generation import Prompt
 
 # Read the prompts and metadata
-annotated_prompts = Prompt.from_csv(PROMPTS_FILE, METADATA_FILE)
+annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
 
 # Explicitly type the DataFrame
 df: pd.DataFrame = pd.DataFrame([prompt.to_dict() for prompt in annotated_prompts])

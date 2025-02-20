@@ -1,11 +1,10 @@
 import abc
 from typing import List, Dict, Any
-import pandas as pd
 from pathlib import Path
-import os
-import csv
+import json
 from datetime import datetime, UTC
 
+from models_under_pressure.situation_gen.data_interface import Category, Factor, Variation
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
 
 
@@ -68,19 +67,15 @@ class Situation(abc.ABC):
         id: int,
         description: str,
         high_stakes: bool,
-        category: str | None = None,
-        factor: str | None = None,
-        variation: str | None = None,
+        category: Category | None = None,
+        factor: Factor | None = None,
+        variation: Variation | None = None,
     ):
         self.id = id
         self.description = description
-        self.category = (
-            category  # TODO Should actually load Category instance based on name
-        )
-        self.factor = factor  # TODO Should actually load Factor instance based on name
-        self.variation = (
-            variation  # TODO Should actually load Variation instance based on name
-        )
+        self.category = category
+        self.factor = factor
+        self.variation = variation
         self.high_stakes = high_stakes
 
     def __str__(self):
@@ -92,18 +87,27 @@ class Prompt(abc.ABC):
         self,
         id: int,
         prompt: str,
-        high_stakes_situation: str,
-        low_stakes_situation: str,
+        situations: Dict[str, int],
         high_stakes: bool,
         timestamp: str,
+        category: str | None = None,
+        factor: str | None = None,
+        variation: str | None = None,
         metadata: Dict[str, str] | None = None,
     ):
         self.id = id
         self.prompt = prompt
-        self.high_stakes_situation = high_stakes_situation
-        self.low_stakes_situation = low_stakes_situation
+        assert "high_stakes" in situations
+        assert "low_stakes" in situations
+        self.situations = situations
+
         self.high_stakes = high_stakes
         self.timestamp = timestamp
+
+        self.category = category
+        self.factor = factor
+        self.variation = variation
+
         if metadata is None:
             self.metadata = {}
         else:
@@ -116,52 +120,51 @@ class Prompt(abc.ABC):
         prompt_dict = {
             "id": self.id,
             "prompt": self.prompt,
-            "high_stakes_situation": self.high_stakes_situation,
-            "low_stakes_situation": self.low_stakes_situation,
+            "situations": self.situations,
+            "category": self.category,
+            "factor": self.factor,
+            "variation": self.variation,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
         if include_metadata:
-            for field, value in self.metadata.items():
-                prompt_dict[field] = value
+            prompt_dict["metadata"] = self.metadata
         return prompt_dict
 
+    def to_json(self, include_metadata: bool = False) -> str:
+        return json.dumps(self.to_dict(include_metadata=include_metadata))
+    
+    def metadata_to_json(self) -> str:
+        metadata = self.metadata | {"id": self.id, "prompt": self.prompt}
+        return json.dumps(metadata)
+
     @classmethod
-    def to_csv(cls, prompts: List["Prompt"], file_path: Path, metadata_file_path: Path | None = None) -> None:
-        pd.DataFrame([prompt.to_dict(include_metadata=False) for prompt in prompts]).to_csv(
-            file_path, index=False
-        )
-        if metadata_file_path is not None:
+    def to_jsonl(cls, prompts: List["Prompt"], file_path: Path) -> None:
+        with open(file_path, "w") as f:
             for prompt in prompts:
-                file_exists = os.path.isfile(metadata_file_path)
-
-                metadata = prompt.metadata
-                with open(metadata_file_path, "a", newline="") as f:
-                    writer = csv.DictWriter(
-                        f, fieldnames=["id", "prompt"] + sorted(list(metadata.keys()))
-                    )
-                    if not file_exists:
-                        writer.writeheader()
-                    #TODO If the file exists, make sure it uses the same header
-
-                    row = {"id": prompt.id, "prompt": prompt.prompt, **metadata}
-                    writer.writerow(row)
+                f.write(prompt.to_json() + "\n")
 
     @classmethod
-    def from_csv(cls, file_path: Path, metadata_file_path: Path | None = None) -> List['Prompt']:
-        """Load prompts from CSV file and optionally add metadata from a separate file.
+    def metadata_to_jsonl(cls, prompts: List["Prompt"], file_path: Path) -> None:
+        with open(file_path, "w") as f:
+            for prompt in prompts:
+                f.write(prompt.metadata_to_json() + "\n")
+
+    @classmethod
+    def from_jsonl(cls, file_path: Path, metadata_file_path: Path | None = None) -> List["Prompt"]:
+        """Load prompts from JSONL file and optionally add metadata from a separate file.
         
         Args:
-            file_path: Path to the prompts CSV file
-            metadata_file_path: Optional path to metadata CSV file. If provided, metadata will be loaded and merged.
+            file_path: Path to the prompts JSONL file
+            metadata_file_path: Optional path to metadata JSONL file. If provided, metadata will be loaded and merged.
         """
-        prompt_dicts = [row for row in pd.read_csv(file_path).to_dict(orient="records")]  # type: ignore
+        prompt_dicts = [json.loads(line) for line in open(file_path)]
         
         if metadata_file_path is None:
             metadata = [{} for _ in prompt_dicts]
         else:
             # Create a dictionary mapping prompt IDs to their metadata
-            metadata_dicts = pd.read_csv(metadata_file_path).to_dict(orient="records")
+            metadata_dicts = [json.loads(line) for line in open(metadata_file_path)]
             metadata_by_id = {}
             for metadata_dict in metadata_dicts:
                 metadata_id = int(metadata_dict['id'])
@@ -198,6 +201,10 @@ def make_prompt_generation_prompt(
 def generate_prompts(
     high_stakes_situation: Situation, low_stakes_situation: Situation, num_prompts: int, model: str | None = None
 ) -> List[Prompt]:
+    assert high_stakes_situation.category == low_stakes_situation.category
+    assert high_stakes_situation.factor == low_stakes_situation.factor
+    assert high_stakes_situation.variation == low_stakes_situation.variation
+
     prompt = make_prompt_generation_prompt(
         high_stakes_situation,
         low_stakes_situation,
@@ -216,15 +223,22 @@ def generate_prompts(
 
     prompts = []
     for prompt_id, prompt_dict in prompt_dicts.items():
+        prompt_args = {
+            "id": int(prompt_id),
+            "prompt": prompt_dict["prompt"],
+            "situations": {"high_stakes": high_stakes_situation.id, "low_stakes": low_stakes_situation.id},
+            "high_stakes": prompt_dict["high_stakes"],
+            "timestamp": timestamp,
+        }
+        if high_stakes_situation.factor is not None:
+            prompt_args["factor"] = high_stakes_situation.factor.name
+        if high_stakes_situation.category is not None:
+            prompt_args["category"] = high_stakes_situation.category.name
+        if high_stakes_situation.variation is not None:
+            prompt_args["variation"] = high_stakes_situation.variation.name
+
         prompts.append(
-            Prompt(
-                id=int(prompt_id),
-                prompt=prompt_dict["prompt"],
-                high_stakes_situation=high_stakes_situation.description,
-                low_stakes_situation=low_stakes_situation.description,
-                high_stakes=prompt_dict["high_stakes"],
-                timestamp=timestamp,
-            )
+            Prompt(**prompt_args)
         )
     return prompts
 
@@ -233,19 +247,22 @@ def generate_prompts(
 # 4. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
+    category = Category("medical", None)
+    factor = Factor("magnitude_of_risk", "The risk of harm from the situation.", None)
     hs_situation = Situation(
         id=1,
         description="The LLM advises on adjusting insulin dosage for a diabetic patient with rapidly changing blood sugar levels, where a misstep could result in a critical health emergency.",
         high_stakes=True,
-        category="medical",
+        category=category,
+        factor=factor,
     )
     ls_situation = Situation(
         id=2,
         description="The LLM provides general advice on vitamin supplementation for minor deficiencies, where a slight error would not pose serious health risks.",
         high_stakes=False,
-        category="medical",
+        category=category,
+        factor=factor,
     )
     prompts = generate_prompts(hs_situation, ls_situation, num_prompts=4)
 
-    # Save prompts to CSV file
-    Prompt.to_csv(prompts, PROMPTS_FILE)
+    Prompt.to_jsonl(prompts, PROMPTS_FILE)
