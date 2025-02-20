@@ -1,17 +1,22 @@
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from typing import cast
+
+from models_under_pressure.dataset.utils import METADATA_FILE, PROMPTS_FILE
+from models_under_pressure.dataset.medadata_generation import Prompt
+
+# Read the prompts and metadata
+annotated_prompts = Prompt.from_csv(PROMPTS_FILE, METADATA_FILE)
+
+# Explicitly type the DataFrame
+df: pd.DataFrame = pd.DataFrame([prompt.to_dict() for prompt in annotated_prompts])
 
 # Streamlit Page Config
 st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
 
 # Title
 st.title("📊 CSV Data Dashboard")
-
-# File Uploader
-file_path = "../../dataset.csv"  # Replace with your actual file path
-df = pd.read_csv(file_path)
-
 
 # Show dataset preview
 st.subheader("Dataset Preview")
@@ -30,16 +35,18 @@ if filter_columns:
 
     # Apply filter if values selected
     if selected_values:
-        df = df[df[selected_column].isin(selected_values)]
+        df = cast(pd.DataFrame, df[df[selected_column].isin(selected_values)])
 
 # Text-based search filter
 search_column = st.sidebar.selectbox("Select a column for text search", df.columns)
 search_text = st.sidebar.text_input(f"Search in {search_column}")
 
 if search_text:
-    df = df[
-        df[search_column].astype(str).str.contains(search_text, case=False, na=False)
-    ]
+    # Ensure we're working with strings and cast result back to DataFrame
+    df = cast(
+        pd.DataFrame,
+        df[df[search_column].astype(str).str.contains(search_text, case=False, na=False)]
+    )
 
 # Display Filtered Data
 st.subheader("📊 High Stakes Distribution")
@@ -56,6 +63,7 @@ if "high_stakes" in df.columns:
     st.plotly_chart(fig)
 else:
     st.warning("Column 'high_stakes' not found in the dataset!")
+
 # Download Filtered Data
 st.subheader("📥 Download Filtered Data")
 csv = df.to_csv(index=False).encode("utf-8")

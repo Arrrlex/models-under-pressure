@@ -53,24 +53,7 @@ def load_metadata_fields(file_path: Path) -> List[MetadataField]:
     return fields
 
 # --------------------------------------------------------------------------------
-# 2. Interface classes
-# --------------------------------------------------------------------------------
-class AnnotatedPrompt(Prompt):
-    def __init__(self, prompt: Prompt, metadata: Dict[str, str]):
-        assert prompt.id == metadata["id"]
-        assert prompt.prompt == metadata["prompt"]
-
-        super().__init__(prompt.id, prompt.prompt, prompt.high_stakes_situation, prompt.low_stakes_situation, prompt.high_stakes, prompt.timestamp)
-        self.metadata = metadata
-
-    @classmethod
-    def from_csv(cls, prompt_file_path: Path, metadata_file_path: Path) -> List[Any]:
-        prompts = Prompt.from_csv(prompt_file_path)
-        metadata = pd.read_csv(metadata_file_path).to_dict(orient="records")
-        return [cls(prompt, mdata) for prompt, mdata in zip(prompts, metadata)] # type: ignore
-
-# --------------------------------------------------------------------------------
-# 3. Metadata generation
+# 2. Metadata generation
 # --------------------------------------------------------------------------------
 def make_metadata_generation_prompt(
     metadata_generation_guidelines: List[str], fields: List[MetadataField]
@@ -106,25 +89,8 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | 
     return metadata_dict
 
 
-def write_metadata_to_csv(prompt: Prompt, metadata: Dict[str, str]) -> None:
-    # Write to CSV in append mode
-    output_file = METADATA_FILE
-    file_exists = os.path.isfile(output_file)
-
-    with open(output_file, "a", newline="") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=["id", "prompt"] + sorted(list(metadata.keys()))
-        )
-        if not file_exists:
-            writer.writeheader()
-        #TODO If the file exists, make sure it uses the same header
-
-        row = {"id": prompt.id, "prompt": prompt.prompt, **metadata}
-        writer.writerow(row)
-
-
 # --------------------------------------------------------------------------------
-# 4. Main flow: orchestrate the data creation
+# 3. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
@@ -132,9 +98,12 @@ if __name__ == "__main__":
     prompts = Prompt.from_csv(PROMPTS_FILE)
     for prompt in prompts:
         metadata = generate_metadata(prompt, fields)
-        write_metadata_to_csv(prompt=prompt, metadata=metadata)
+        #write_metadata_to_csv(prompt=prompt, metadata=metadata)
+        prompt.add_metadata(metadata)
+
+    Prompt.to_csv(prompts, PROMPTS_FILE, metadata_file_path=METADATA_FILE)
 
     # Now read the prompts with their metadata
-    annotated_prompts = AnnotatedPrompt.from_csv(PROMPTS_FILE, METADATA_FILE)
+    annotated_prompts = Prompt.from_csv(PROMPTS_FILE, metadata_file_path=METADATA_FILE)
     print(f"Number of annotated prompts: {len(annotated_prompts)}")
     print(f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}")

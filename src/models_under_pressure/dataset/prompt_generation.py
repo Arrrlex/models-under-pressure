@@ -2,6 +2,8 @@ import abc
 from typing import List, Dict, Any
 import pandas as pd
 from pathlib import Path
+import os
+import csv
 from datetime import datetime, UTC
 
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
@@ -10,7 +12,7 @@ from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
 # --------------------------------------------------------------------------------
 # 1. Inputs
 # --------------------------------------------------------------------------------
-prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} pairs of prompts (i.e. {2*num_prompts} prompts in total) for a dataset of high-stakes and low-stakes situations.
+prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations.
 
 All of your prompts should be utterances a user might use to question an LLM in one of the following situations:
 - High stakes situation: "{high_stakes_description}"
@@ -93,7 +95,8 @@ class Prompt(abc.ABC):
         high_stakes_situation: str,
         low_stakes_situation: str,
         high_stakes: bool,
-        timestamp: str
+        timestamp: str,
+        metadata: Dict[str, str] | None = None,
     ):
         self.id = id
         self.prompt = prompt
@@ -101,9 +104,16 @@ class Prompt(abc.ABC):
         self.low_stakes_situation = low_stakes_situation
         self.high_stakes = high_stakes
         self.timestamp = timestamp
+        if metadata is None:
+            self.metadata = {}
+        else:
+            self.metadata = metadata
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
+    def add_metadata(self, metadata: Dict[str, str]) -> None:
+        self.metadata.update(metadata)
+
+    def to_dict(self, include_metadata: bool = True) -> Dict[str, Any]:
+        prompt_dict = {
             "id": self.id,
             "prompt": self.prompt,
             "high_stakes_situation": self.high_stakes_situation,
@@ -111,16 +121,56 @@ class Prompt(abc.ABC):
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
+        if include_metadata:
+            for field, value in self.metadata.items():
+                prompt_dict[field] = value
+        return prompt_dict
 
     @classmethod
-    def to_csv(cls, prompts: List["Prompt"], file_path: Path) -> None:
-        pd.DataFrame([prompt.to_dict() for prompt in prompts]).to_csv(
+    def to_csv(cls, prompts: List["Prompt"], file_path: Path, metadata_file_path: Path | None = None) -> None:
+        pd.DataFrame([prompt.to_dict(include_metadata=False) for prompt in prompts]).to_csv(
             file_path, index=False
         )
+        if metadata_file_path is not None:
+            for prompt in prompts:
+                file_exists = os.path.isfile(metadata_file_path)
+
+                metadata = prompt.metadata
+                with open(metadata_file_path, "a", newline="") as f:
+                    writer = csv.DictWriter(
+                        f, fieldnames=["id", "prompt"] + sorted(list(metadata.keys()))
+                    )
+                    if not file_exists:
+                        writer.writeheader()
+                    #TODO If the file exists, make sure it uses the same header
+
+                    row = {"id": prompt.id, "prompt": prompt.prompt, **metadata}
+                    writer.writerow(row)
 
     @classmethod
-    def from_csv(cls, file_path: Path) -> List[Any]:
-        return [cls(**row) for row in pd.read_csv(file_path).to_dict(orient="records")]  # type: ignore
+    def from_csv(cls, file_path: Path, metadata_file_path: Path | None = None) -> List['Prompt']:
+        """Load prompts from CSV file and optionally add metadata from a separate file.
+        
+        Args:
+            file_path: Path to the prompts CSV file
+            metadata_file_path: Optional path to metadata CSV file. If provided, metadata will be loaded and merged.
+        """
+        prompt_dicts = [row for row in pd.read_csv(file_path).to_dict(orient="records")]  # type: ignore
+        
+        if metadata_file_path is None:
+            metadata = [{} for _ in prompt_dicts]
+        else:
+            # Create a dictionary mapping prompt IDs to their metadata
+            metadata_dicts = pd.read_csv(metadata_file_path).to_dict(orient="records")
+            metadata_by_id = {}
+            for metadata_dict in metadata_dicts:
+                metadata_id = int(metadata_dict['id'])
+                metadata_by_id[metadata_id] = {k: v for k, v in metadata_dict.items() if k not in ['id', 'prompt']}
+            
+            # Match metadata to prompts by ID
+            metadata = [metadata_by_id.get(pd['id'], {}) for pd in prompt_dicts]
+            
+        return [cls(**prompt_dict, metadata=mdata) for prompt_dict, mdata in zip(prompt_dicts, metadata)]  # type: ignore
 
 
 # --------------------------------------------------------------------------------
