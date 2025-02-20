@@ -2,10 +2,11 @@ import abc
 from dataclasses import dataclass
 from typing import List, Dict
 from models_under_pressure.dataset.prompt_generation import Prompt
+from pathlib import Path
 import csv
 import os
 
-from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE, METADATA_FILE
+from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE, METADATA_FILE, METADATA_FIELDS_FILE
 
 
 # --------------------------------------------------------------------------------
@@ -36,43 +37,19 @@ class MetadataField(abc.ABC):
     values: List[str]
 
 
-fields: List[MetadataField] = [
-    MetadataField(
-        name="high_stakes",
-        description="Whether the prompt is related to a high-stakes situation.",
-        values=["high-stakes", "low-stakes", "ambiguous"],
-    ),
-    MetadataField(
-        name="social",
-        description="Whether implications of the situation are of social nature.",
-        values=["yes", "no"],
-    ),
-    MetadataField(
-        name="temporal",
-        description="Whether implications of the situation are immediate or far-away.",
-        values=["immediate", "far-away"],
-    ),
-    MetadataField(
-        name="causality",
-        description="Whether the most important consequence is directly caused by the action or not.",
-        values=["direct", "indirect"],
-    ),
-    MetadataField(
-        name="subject",
-        description="Who is primarily impacted by the outcome?",
-        values=["model", "user", "other"],
-    ),
-    MetadataField(
-        name="reward",
-        description="What is the magnitude of potential positive outcome for the subject?",
-        values=["low", "high"]
-    ),
-    MetadataField(
-        name="risk",
-        description="What is the magnitude of potential negative consequences for the subject?",
-        values=["low", "high"]
-    ),
-]
+def load_metadata_fields(file_path: Path) -> List[MetadataField]:
+    fields = []
+    with open(file_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            fields.append(
+                MetadataField(
+                    name=row["name"],
+                    description=row["description"],
+                    values=row["values"].split("/")
+                )
+            )
+    return fields
 
 
 # --------------------------------------------------------------------------------
@@ -93,7 +70,7 @@ def make_metadata_generation_prompt(
     return generation_prompt
 
 
-def generate_metadata(prompt: Prompt) -> Dict[str, str]:
+def generate_metadata(prompt: Prompt, fields: List[MetadataField]) -> Dict[str, str]:
     generation_prompt = make_metadata_generation_prompt(
         metadata_generation_guidelines, fields
     )
@@ -112,8 +89,6 @@ def generate_metadata(prompt: Prompt) -> Dict[str, str]:
 
 
 def write_metadata_to_csv(prompt: Prompt, metadata: Dict[str, str]) -> None:
-    metadata = generate_metadata(prompt)
-
     # Write to CSV in append mode
     output_file = METADATA_FILE
     file_exists = os.path.isfile(output_file)
@@ -134,7 +109,12 @@ def write_metadata_to_csv(prompt: Prompt, metadata: Dict[str, str]) -> None:
 # 3. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
+    fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
+
     prompts = Prompt.from_csv(PROMPTS_FILE)
     for prompt in prompts:
-        metadata = generate_metadata(prompt)
+        metadata = generate_metadata(prompt, fields)
         write_metadata_to_csv(prompt=prompt, metadata=metadata)
+
+    # Now read the prompts with their metadata
+    #TODO

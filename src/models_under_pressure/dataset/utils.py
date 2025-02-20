@@ -14,6 +14,9 @@ PROMPTS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "prompts.cs
 METADATA_FILE = (
     Path(__file__).parent.parent.parent.parent / "data" / "prompts_with_metadata.csv"
 )
+METADATA_FIELDS_FILE = (
+    Path(__file__).parent.parent.parent.parent / "data" / "metadata_fields.csv"
+)
 
 
 def call_llm(messages: List[Any], model: str = "gpt-4o-mini") -> Dict[str, Any] | None:
