@@ -60,7 +60,7 @@ class AnnotatedPrompt(Prompt):
         assert prompt.id == metadata["id"]
         assert prompt.prompt == metadata["prompt"]
 
-        super().__init__(prompt.id, prompt.prompt, prompt.high_stakes_situation, prompt.low_stakes_situation, prompt.high_stakes)
+        super().__init__(prompt.id, prompt.prompt, prompt.high_stakes_situation, prompt.low_stakes_situation, prompt.high_stakes, prompt.timestamp)
         self.metadata = metadata
 
     @classmethod
@@ -87,7 +87,7 @@ def make_metadata_generation_prompt(
     return generation_prompt
 
 
-def generate_metadata(prompt: Prompt, fields: List[MetadataField]) -> Dict[str, str]:
+def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | None = None) -> Dict[str, str]:
     generation_prompt = make_metadata_generation_prompt(
         metadata_generation_guidelines, fields
     )
@@ -97,7 +97,8 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField]) -> Dict[str, 
         [
             {"role": "system", "content": generation_prompt},
             {"role": "user", "content": prompt.prompt},
-        ]
+        ],
+        model=model,
     )
     if metadata_dict is None:
         raise ValueError("No metadata returned from LLM")

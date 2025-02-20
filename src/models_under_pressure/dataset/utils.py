@@ -9,6 +9,8 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
+DEFAULT_MODEL = "gpt-4o-mini"
+
 # Absolute path to the prompts file
 PROMPTS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "prompts.csv"
 METADATA_FILE = (
@@ -19,9 +21,9 @@ METADATA_FIELDS_FILE = (
 )
 
 
-def call_llm(messages: List[Any], model: str = "gpt-4o-mini") -> Dict[str, Any] | None:
+def call_llm(messages: List[Any], model: str | None = None) -> Dict[str, Any] | None:
     response = openai.chat.completions.create(
-        model=model, messages=messages, response_format={"type": "json_object"}
+        model=model or DEFAULT_MODEL, messages=messages, response_format={"type": "json_object"}
     )
     content = response.choices[0].message.content
     if content is None:

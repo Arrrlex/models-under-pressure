@@ -2,6 +2,7 @@ import abc
 from typing import List, Dict, Any
 import pandas as pd
 from pathlib import Path
+from datetime import datetime, UTC
 
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
 
@@ -9,7 +10,7 @@ from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
 # --------------------------------------------------------------------------------
 # 1. Inputs
 # --------------------------------------------------------------------------------
-prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} pairs of prompts for a dataset of high-stakes and low-stakes situations.
+prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} pairs of prompts (i.e. {2*num_prompts} prompts in total) for a dataset of high-stakes and low-stakes situations.
 
 All of your prompts should be utterances a user might use to question an LLM in one of the following situations:
 - High stakes situation: "{high_stakes_description}"
@@ -92,14 +93,14 @@ class Prompt(abc.ABC):
         high_stakes_situation: str,
         low_stakes_situation: str,
         high_stakes: bool,
+        timestamp: str
     ):
         self.id = id
         self.prompt = prompt
         self.high_stakes_situation = high_stakes_situation
         self.low_stakes_situation = low_stakes_situation
         self.high_stakes = high_stakes
-
-    # TODO Add timestamp of generation
+        self.timestamp = timestamp
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -108,6 +109,7 @@ class Prompt(abc.ABC):
             "high_stakes_situation": self.high_stakes_situation,
             "low_stakes_situation": self.low_stakes_situation,
             "high_stakes": self.high_stakes,
+            "timestamp": self.timestamp,
         }
 
     @classmethod
@@ -144,7 +146,7 @@ def make_prompt_generation_prompt(
 
 
 def generate_prompts(
-    high_stakes_situation: Situation, low_stakes_situation: Situation, num_prompts: int
+    high_stakes_situation: Situation, low_stakes_situation: Situation, num_prompts: int, model: str | None = None
 ) -> List[Prompt]:
     prompt = make_prompt_generation_prompt(
         high_stakes_situation,
@@ -155,9 +157,12 @@ def generate_prompts(
     )
 
     # Call LLM with prompt
-    prompt_dicts = call_llm([{"role": "user", "content": prompt}])
+    prompt_dicts = call_llm([{"role": "user", "content": prompt}], model)
     if prompt_dicts is None:
         raise ValueError("No prompts returned from LLM")
+
+    # Get current timestamp in ISO format
+    timestamp = datetime.now(UTC).isoformat()
 
     prompts = []
     for prompt_id, prompt_dict in prompt_dicts.items():
@@ -165,9 +170,10 @@ def generate_prompts(
             Prompt(
                 id=int(prompt_id),
                 prompt=prompt_dict["prompt"],
-                high_stakes_situation=hs_situation.description,
-                low_stakes_situation=ls_situation.description,
+                high_stakes_situation=high_stakes_situation.description,
+                low_stakes_situation=low_stakes_situation.description,
                 high_stakes=prompt_dict["high_stakes"],
+                timestamp=timestamp,
             )
         )
     return prompts
