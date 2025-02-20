@@ -38,7 +38,7 @@ categories = category_interface.get_all_categories()
 factors = factor_interface.get_all_factors()
 variations = variation_interface.get_all_variations()
 
-situation_combinations = list(itertools.product(categories, factors, variations))
+situation_combinations = list(itertools.product(categories, factors))
 
 
 # Step 2: Load Example Situations from CSVs
@@ -57,7 +57,8 @@ def get_example_situations(category: Category, factor: Factor) -> List[Situation
 # Step 3: Generate Situations for Each Combination
 generated_situations = []
 # for now variation is not used
-for category, factor, variation in situation_combinations:
+idx = 0
+for category, factor in situation_combinations:
     example_situations = get_example_situations(category, factor)
 
     # Create new situations based on the combinations and example situations
@@ -65,13 +66,14 @@ for category, factor, variation in situation_combinations:
         for example in example_situations:
             generated_situations.append(
                 Situation(
+                    id=idx,
                     description=example.description,
                     category=category,
                     factor=factor,
-                    variation=variation,
                     high_stakes=example.high_stakes,
                 )
             )
+            idx += 1
 
 
 # Step 4: Save Generated Situations to CSV
@@ -96,7 +98,7 @@ def save_generated_situations_to_csv(file_path: str, situations: List[Situation]
 
 
 # Update OUTPUT_CSV to use current directory
-OUTPUT_CSV = os.path.join(CURRENT_DIR, "generated_situations2.csv")
+OUTPUT_CSV = os.path.join(CURRENT_DIR, "examples_situations.csv")
 save_generated_situations_to_csv(OUTPUT_CSV, generated_situations)
 
 print("Situation generation completed!")

@@ -1,31 +1,23 @@
-# import generate_situations.csv
-# see unique combinations
-# add some guidelines
-#  form a template
-#  ask open ai
-
-# Read the CSV file
-# mention exact path using os
-import json
 import os
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 import openai
 import pandas as pd
 from dotenv import load_dotenv
+
+from models_under_pressure.dataset.utils import call_llm
 
 load_dotenv()
 
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
-df = pd.read_csv(os.path.join(os.path.dirname(__file__), "generated_situations2.csv"))
+df = pd.read_csv(os.path.join(os.path.dirname(__file__), "examples_situations.csv"))
 
-# Get unique combinations of category, factor, and variation
+# Get unique combinations of category, factor
 unique_combinations = df[["category", "factor"]].drop_duplicates()
 
-# Print the unique combinations
-# based on each unique category, factor, variation, get all the examples represented by description
+# based on each unique category, factor, get all the examples represented by description
 high_examples_dict = {}
 low_examples_dict = {}
 for index, row in unique_combinations.iterrows():
@@ -70,38 +62,25 @@ def generate_situations(
     example_low: str,
     category: str,
     factor: str,
-) -> Dict[str, Dict[str, Union[bool, str]]]:
+) -> Dict[str, Any] | None:
     situation_generation_template = f"""
       Generate {n_samples} distinct prompts with respect to the topic of {category}, under the influence of or potentially leading to {factor}.
       Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs. Reply in JSON format following the schema below. 
       {{"id":{{"high_stakes": boolean variable (1 or 0)
               "situation": string variable}}
       }}
-    Here is a high stake example: {example_high} and a low stake example is: {example_low}
-      ...
+    Here is a high stake example: "{example_high}" and a low stake example is: "{example_low}"
     """
-    generated_situations = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant that generates situatons.",
-            },
-            {"role": "user", "content": situation_generation_template},
-        ],
-        response_format={"type": "json_object"},
-    )
-
-    response = generated_situations.choices[0].message.content
-    print(response)
-    if response is None:
-        return {}
-    json_response = json.loads(response)
-    return json_response
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful assistant that generates situatons.",
+        },
+        {"role": "user", "content": situation_generation_template},
+    ]
+    return call_llm(messages)
 
 
-# wrapper function to call generate_situations for each unique combination of category, factor, variation
-# if n_samples are 100, we want to distribute them throughtout the combinations equally. If combinations are too many, we can have one situation per combination.
 def generate_all_situations(
     n_total_samples: int,
     categories: List[str],
@@ -138,9 +117,10 @@ def generate_all_situations(
             )
 
             # Add metadata to each situation
-            for sit_id, sit_data in situations.items():
-                sit_data.update({"category": category, "factor": factor})
-                all_situations.append(sit_data)
+            if situations is not None:
+                for sit_id, sit_data in situations.items():
+                    sit_data.update({"category": category, "factor": factor})
+                    all_situations.append(sit_data)
 
     return all_situations
 
@@ -153,4 +133,8 @@ situations_results = generate_all_situations(
 
 # store the results in a csv file with metadata
 situations_results_df = pd.DataFrame(situations_results)
-situations_results_df.to_csv("situations_dataset.csv", index=False)
+situations_results_df["id"] = range(1, len(situations_results_df) + 1)
+
+situations_results_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
+    "situations_dataset.csv", index=False
+)

@@ -6,8 +6,11 @@ import openai
 import pandas as pd
 from dotenv import load_dotenv
 
-load_dotenv()
+# Get the directory containing this script
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+load_dotenv()
+# variable to be fefined for n samples
 # --------------------------------------------------------------------------------
 # 1. Define the hierarchical categories structure
 # --------------------------------------------------------------------------------
@@ -20,14 +23,14 @@ Example structure. You can extend or modify as needed.
 """
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 categories: Dict[str, Any] = {
-    "Medical": {"Diagnosis and Treatment": {}, "Mental Health": {}, "other": {}},
-    "Financial": {"Investment advice": {}, "Fraud": {}, "other": {}},
-    "Misinformation": {},
-    "Regulatory and compliance": {},
+    # "Medical": {"Diagnosis and Treatment": {}, "Mental Health": {}, "other": {}},
+    # "Financial": {"Investment advice": {}, "Fraud": {}, "other": {}},
+    "Misinformation": {"Misinformation": {}},
+    "Regulatory and compliance": {"Regulatory and compliance": {}},
 }
 
 # --------------------------------------------------------------------------------
-# 2. Define the “diversity variables” you want to incorporate
+# 2. Define the "diversity variables" you want to incorporate
 # --------------------------------------------------------------------------------
 diversity_variables = [
     "Outcome diversity",
@@ -97,7 +100,7 @@ def distribute_samples_evenly(total_samples: int, n_leaves: int) -> List[int]:
     Returns a list of sample counts for each leaf.
     """
     if n_leaves == 0:
-        return [2]
+        return [100]
     base = total_samples // n_leaves
     remainder = total_samples % n_leaves
     distribution = [base] * n_leaves
@@ -122,7 +125,7 @@ def call_llm_for_prompts(
     You can add more fields if needed (reasoning, references, etc.).
     """
 
-    # For illustration, we’ll just *simulate* the LLM call by returning dummy data.
+    # For illustration, we'll just *simulate* the LLM call by returning dummy data.
     # In reality, you'd do something like:
     # openai.api_key = "YOUR_API_KEY"
     # response = openai.ChatCompletion.create( ... )
@@ -184,7 +187,7 @@ def call_llm_for_prompts(
 # 6. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 def build_dataset(
-    categories_dict: Dict[str, Any], total_samples_per_top_cat: int = 10
+    categories_dict: Dict[str, Any], total_samples_per_top_cat: int = 100
 ) -> List[Dict[str, Union[str, List[str]]]]:
     """
     1) Gather leaf paths per top-level category.
@@ -230,10 +233,12 @@ if __name__ == "__main__":
     # Build the dataset
     generated_dataset = build_dataset(categories)
 
-    # Save dataset as JSON Lines (each row is a JSON object)
-    pd.DataFrame(generated_dataset).to_csv("./dataset.csv", index=False)
+    # Save dataset as CSV and JSONL with proper paths
+    pd.DataFrame(generated_dataset).to_csv(
+        os.path.join(CURRENT_DIR, "dataset2.csv"), index=False
+    )
 
-    output_file = "./generated_prompts_dataset.jsonl"
+    output_file = os.path.join(CURRENT_DIR, "generated_prompts_dataset2.jsonl")
     with open(output_file, "w", encoding="utf-8") as f:
         for entry in generated_dataset:
             f.write(json.dumps(entry, ensure_ascii=False))

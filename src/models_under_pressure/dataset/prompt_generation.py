@@ -1,12 +1,22 @@
-import abc
+
 from typing import List, Dict, Any
 from pathlib import Path
 import json
 from datetime import datetime, UTC
+import pandas as pd
 
 from models_under_pressure.situation_gen.data_interface import Category, Factor, Variation
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE
 
+
+
+
+from models_under_pressure.dataset.utils import PROMPTS_FILE, call_llm
+from models_under_pressure.situation_gen.situation_data_interface import (
+    Category,
+    Prompt,
+    Situation,
+)
 
 # --------------------------------------------------------------------------------
 # 1. Inputs
@@ -199,7 +209,10 @@ def make_prompt_generation_prompt(
 
 
 def generate_prompts(
-    high_stakes_situation: Situation, low_stakes_situation: Situation, num_prompts: int, model: str | None = None
+    high_stakes_situation: Situation,
+    low_stakes_situation: Situation,
+    num_prompts: int,
+    model: str | None = None,
 ) -> List[Prompt]:
     assert high_stakes_situation.category == low_stakes_situation.category
     assert high_stakes_situation.factor == low_stakes_situation.factor
@@ -247,22 +260,29 @@ def generate_prompts(
 # 4. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
-    category = Category("medical", None)
-    factor = Factor("magnitude_of_risk", "The risk of harm from the situation.", None)
-    hs_situation = Situation(
-        id=1,
-        description="The LLM advises on adjusting insulin dosage for a diabetic patient with rapidly changing blood sugar levels, where a misstep could result in a critical health emergency.",
-        high_stakes=True,
-        category=category,
-        factor=factor,
-    )
-    ls_situation = Situation(
-        id=2,
-        description="The LLM provides general advice on vitamin supplementation for minor deficiencies, where a slight error would not pose serious health risks.",
-        high_stakes=False,
-        category=category,
-        factor=factor,
-    )
-    prompts = generate_prompts(hs_situation, ls_situation, num_prompts=4)
+
+    # load situations from csv
+    situations_df = pd.read_csv("situations_dataset.csv")
+    high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
+    low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
+
+    prompts = []
+    for hs_scenario, ls_scenario in zip(
+        high_stakes_situations.to_dict("records"),
+        low_stakes_situations.to_dict("records"),
+    ):
+        hs_situation = Situation(
+            id=hs_scenario["id"],
+            description=hs_scenario["situation"],
+            high_stakes=hs_scenario["high_stakes"],
+            category=Category(name=hs_scenario["category"], parent=None),
+        )
+        ls_situation = Situation(
+            id=ls_scenario["id"],
+            description=ls_scenario["situation"],
+            high_stakes=ls_scenario["high_stakes"],
+            category=Category(name=ls_scenario["category"], parent=None),
+        )
+        prompts.extend(generate_prompts(hs_situation, ls_situation, num_prompts=1))
 
     Prompt.to_jsonl(prompts, PROMPTS_FILE)
