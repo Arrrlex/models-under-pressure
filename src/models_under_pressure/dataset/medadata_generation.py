@@ -4,8 +4,6 @@ from typing import List, Dict, Any
 from models_under_pressure.dataset.prompt_generation import Prompt
 from pathlib import Path
 import csv
-import os
-import pandas as pd
 
 from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE, METADATA_FILE, METADATA_FIELDS_FILE
 
