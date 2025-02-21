@@ -10,6 +10,21 @@ from models_under_pressure.config import RunConfig
 
 logger = logging.getLogger(__name__)
 
+situation_generation_template = """
+Generate {n_samples} distinct situations with respect to the topic of {category}, under the influence of or potentially leading to {factor}.
+
+Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs.
+Reply in JSON format following the schema below. 
+{{"id":
+    {{
+        "high_stakes": boolean variable (1 or 0),
+        "situation": string variable
+    }}
+}}
+
+Here is a high stake example: "{example_high}" and a low stake example is: "{example_low}"
+"""
+
 def load_and_prepare_examples(csv_path: Path) -> Tuple[Dict[Tuple[str, str], List[str]], Dict[Tuple[str, str], List[str]], pd.DataFrame]:
     """
     Load examples from CSV and prepare high/low stakes dictionaries.
@@ -65,20 +80,19 @@ def generate_situations(
     Returns:
         Dictionary containing generated situations or None if generation fails
     """
-    situation_generation_template = f"""
-      Generate {n_samples} distinct prompts with respect to the topic of {category}, under the influence of or potentially leading to {factor}.
-      Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs. Reply in JSON format following the schema below. 
-      {{"id":{{"high_stakes": boolean variable (1 or 0)
-              "situation": string variable}}
-      }}
-    Here is a high stake example: "{example_high}" and a low stake example is: "{example_low}"
-    """
+    situation_generation_prompt = situation_generation_template.format(
+        n_samples=n_samples,
+        category=category,
+        factor=factor,
+        example_high=example_high,
+        example_low=example_low,
+    )
     messages = [
         {
             "role": "system",
             "content": "You are a helpful assistant that generates situatons.",
         },
-        {"role": "user", "content": situation_generation_template},
+        {"role": "user", "content": situation_generation_prompt},
     ]
     return call_llm(messages)
 
@@ -102,16 +116,13 @@ def generate_all_situations(
     Returns:
         List of generated situations as dictionaries
     """
-    if run_config.num_categories_to_sample is not None:
+    if run_config.num_categories_to_sample is not None and run_config.num_categories_to_sample < len(categories):
         categories = random.sample(categories, run_config.num_categories_to_sample)
     if run_config.num_factors_to_sample is not None:
         factors = random.sample(factors, run_config.num_factors_to_sample)
     
     logger.info(f"Generating situations for {len(categories)} categories and {len(factors)} factors")
 
-    # Calculate samples per combination
-    n_combinations = len(categories) * len(factors)
-    
     all_situations = []
     for category in categories:
         for factor in factors:
@@ -142,7 +153,21 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
         output_path: Path to save the CSV file
     """
     situations_df = pd.DataFrame(situations)
-    situations_df["id"] = range(1, len(situations_df) + 1)
+    
+    # Check if file exists and get the next ID
+    next_id = 1
+    if output_path.exists():
+        existing_df = pd.read_csv(output_path)
+        if not existing_df.empty:
+            next_id = existing_df['id'].max() + 1
+            logger.info(f"Found existing situations file. Next ID will be {next_id}")
+    
+    # Assign sequential IDs starting from next_id
+    situations_df['id'] = range(next_id, next_id + len(situations_df))
+    
+    # If file exists, append new situations
+    if output_path.exists():
+        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
     
     situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
         output_path, index=False
