@@ -91,12 +91,13 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | 
 def generate_metadata_file(run_config: RunConfig) -> None:
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
 
-    prompts = Prompt.from_jsonl(run_config.prompts_file)
+    prompts = Prompt.from_jsonl(run_config.prompts_file, metadata_file_path=run_config.metadata_file)
     for prompt in prompts:
-        metadata = generate_metadata(prompt, fields)
-        prompt.add_metadata(metadata)
+        if prompt.metadata is None or prompt.metadata == {}:
+            metadata = generate_metadata(prompt, fields)
+            prompt.add_metadata(metadata)
 
-    Prompt.metadata_to_jsonl(prompts, run_config.metadata_file, mode="a")
+    Prompt.metadata_to_jsonl(prompts, run_config.metadata_file, mode="w")
 
 
 # --------------------------------------------------------------------------------
