@@ -1,5 +1,4 @@
 from typing import cast
-from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -17,7 +16,11 @@ annotated_prompts = Prompt.from_jsonl(run_config.prompts_file, run_config.metada
 
 # Explicitly type the DataFrame
 df: pd.DataFrame = pd.DataFrame(
-    [{**prompt.to_dict(), **(prompt.metadata or {})} for prompt in annotated_prompts]
+    [{
+        **prompt.to_dict(),
+        **{f"annotated_{k}" if k == "high_stakes" else k: v 
+           for k, v in (prompt.metadata or {}).items()}
+    } for prompt in annotated_prompts]
 )
 
 # Streamlit Page Config
