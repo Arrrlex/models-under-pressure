@@ -4,15 +4,11 @@ from typing import Any, Dict, List, Union
 
 import openai
 import pandas as pd
-from dotenv import load_dotenv
 
 from models_under_pressure.dataset.utils import call_llm
 
-load_dotenv()
 
-
-openai.api_key = os.getenv("OPEN_AI_API_KEY")
-
+#TODO Filepath should be in run directory
 df = pd.read_csv(os.path.join(os.path.dirname(__file__), "examples_situations.csv"))
 
 # Get unique combinations of category, factor

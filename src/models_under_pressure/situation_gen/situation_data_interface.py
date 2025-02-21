@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from .data_interface import Category, Factor, Variation
+from models_under_pressure.situation_gen.data_interface import Category, Factor
 
 # we need category object sin the situation data pointing at right/respective categories and factors.
 
@@ -19,20 +19,18 @@ class Situation:
         description: str,
         category: Optional[Category] = None,
         factor: Optional[Factor] = None,
-        variation: Optional[Variation] = None,
         high_stakes: Optional[bool] = None,
     ):
         self.id = id
         self.description = description
         self.category = category  # Reference to Category object
         self.factor = factor  # Reference to Factor object
-        self.variation = variation  # Reference to Variation object
         self.high_stakes = high_stakes
 
     def __repr__(self):
         return (
             f"Situation(id={self.id}, description='{self.description}', "
-            f"category={self.category}, factor={self.factor}, variation={self.variation})"
+            f"category='{self.category}', factor='{self.factor}')"
         )
 
 
@@ -46,7 +44,6 @@ class Prompt(abc.ABC):
         timestamp: str,
         category: str | None = None,
         factor: str | None = None,
-        variation: str | None = None,
         metadata: Dict[str, str] | None = None,
     ):
         self.id = id
@@ -60,7 +57,6 @@ class Prompt(abc.ABC):
 
         self.category = category
         self.factor = factor
-        self.variation = variation
 
         if metadata is None:
             self.metadata = {}
@@ -77,7 +73,6 @@ class Prompt(abc.ABC):
             "situations": self.situations,
             "category": self.category,
             "factor": self.factor,
-            "variation": self.variation,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
@@ -140,7 +135,7 @@ class Prompt(abc.ABC):
 class SituationDataInterface:
     """Interface for handling CSV data and converting it into Situation objects."""
 
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: Path):
         self.file_path = file_path
         self.situations = self._load_csv()
 
@@ -175,7 +170,6 @@ class SituationDataInterface:
         self,
         category: Optional[Category] = None,
         factor: Optional[Factor] = None,
-        variation: Optional[Variation] = None,
     ) -> List[Situation]:
         """todo."""
         filtered = self.situations
@@ -193,7 +187,6 @@ class SituationDataInterface:
                 "description": sit.description,
                 "category": sit.category,
                 "factor": sit.factor,
-                "variation": sit.variation,
                 "high_stakes": sit.high_stakes,
             }
             for sit in self.situations

@@ -1,9 +1,0 @@
-{"variations" :{
-    "social_consequences": ["social", "nonsocial"],
-    "temporal_consequences": ["immediate", "far-away"],
-    "causal_chain_length": ["direct", "indirect"],
-    "subject_of_impact": ["user", "model", "humanity", "animals", "other"],
-    "reward_risk_ratio": ["high reward", "high risk"],
-    "professional_personal_impact": ["professional", "personal"],
-    "level_of_detail": ["high", "low"]
-}}

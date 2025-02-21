@@ -9,34 +9,32 @@ from models_under_pressure.situation_gen.data_interface import (
     CategoryDataInterface,
     Factor,
     FactorDataInterface,
-    VariationDataInterface,
 )
 from models_under_pressure.situation_gen.situation_data_interface import (
     Situation,
     SituationDataInterface,
+)
+from models_under_pressure.dataset.utils import (
+    CATEGORY_EXAMPLES_CSV,
+    CATEGORY_JSON,
+    FACTOR_EXAMPLES_CSV,
+    FACTOR_JSON,
 )
 
 # Get the directory containing this script
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # File Paths - using relative paths from current directory
-CATEGORY_JSON = os.path.join(CURRENT_DIR, "utils", "category_taxonomy.json")
-FACTOR_JSON = os.path.join(CURRENT_DIR, "utils", "factors.json")
-VARIATION_JSON = os.path.join(CURRENT_DIR, "utils", "variations.json")
-CATEGORY_CSV = os.path.join(CURRENT_DIR, "utils", "situation_data.csv")
-FACTOR_CSV = os.path.join(CURRENT_DIR, "utils", "factor_data.csv")
 
 # Load Interfaces
-category_interface = CategoryDataInterface(CATEGORY_CSV, CATEGORY_JSON)
-factor_interface = FactorDataInterface(FACTOR_CSV, FACTOR_JSON)
-variation_interface = VariationDataInterface(VARIATION_JSON)
-category_situations = SituationDataInterface(CATEGORY_CSV)
-factor_situations = SituationDataInterface(FACTOR_CSV)
+category_interface = CategoryDataInterface(CATEGORY_EXAMPLES_CSV, CATEGORY_JSON)
+factor_interface = FactorDataInterface(FACTOR_EXAMPLES_CSV, FACTOR_JSON)
+category_situations = SituationDataInterface(CATEGORY_EXAMPLES_CSV)
+factor_situations = SituationDataInterface(FACTOR_EXAMPLES_CSV)
 
 # Step 1: Generate all category, factor, and variation combinations
 categories = category_interface.get_all_categories()
 factors = factor_interface.get_all_factors()
-variations = variation_interface.get_all_variations()
 
 situation_combinations = list(itertools.product(categories, factors))
 
@@ -86,7 +84,6 @@ def save_generated_situations_to_csv(file_path: str, situations: List[Situation]
                 "description": sit.description,
                 "category": sit.category.name if sit.category else None,
                 "factor": sit.factor.name if sit.factor else None,
-                "variation": sit.variation.name if sit.variation else None,
                 "high_stakes": sit.high_stakes,
             }
             for sit in situations

@@ -11,14 +11,19 @@ openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
-# Absolute path to the prompts file
-PROMPTS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "prompts.jsonl"
-METADATA_FILE = (
-    Path(__file__).parent.parent.parent.parent / "data" / "prompts_with_metadata.jsonl"
-)
-METADATA_FIELDS_FILE = (
-    Path(__file__).parent.parent.parent.parent / "data" / "metadata_fields.csv"
-)
+# Paths to input files
+INPUTS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "inputs"
+METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
+CATEGORY_JSON = INPUTS_DIR / "category_taxonomy.json"
+FACTOR_JSON = INPUTS_DIR / "factor_taxonomy.json"
+CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
+FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
+
+
+# Paths to output files
+RESULTS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "results"
+PROMPTS_FILE = RESULTS_DIR / "prompts.jsonl"
+METADATA_FILE = RESULTS_DIR / "prompts_with_metadata.jsonl"
 
 
 def call_llm(messages: List[Any], model: str | None = None) -> Dict[str, Any] | None:

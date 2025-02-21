@@ -61,7 +61,7 @@ prompt_examples: Dict[int, Dict[str, Any]] = {
 
 
 # --------------------------------------------------------------------------------
-# 3. Prompt generation
+# 2. Prompt generation
 # --------------------------------------------------------------------------------
 def make_prompt_generation_prompt(
     high_stakes_situation: Situation,
@@ -103,16 +103,12 @@ def generate_prompts(
             and low_stakes_situation.factor is not None
         ):
             assert high_stakes_situation.factor.name == low_stakes_situation.factor.name
-        if (
-            high_stakes_situation.variation is not None
-            and low_stakes_situation.variation is not None
-        ):
-            assert (
-                high_stakes_situation.variation.name
-                == low_stakes_situation.variation.name
-            )
+
+    except (SystemError, KeyboardInterrupt):
+        raise
     except Exception as e:
-        print(e)
+        print(f"Error generating prompts: {e}")
+        return []
 
     prompt = make_prompt_generation_prompt(
         high_stakes_situation,
@@ -145,8 +141,6 @@ def generate_prompts(
             prompt_args["factor"] = high_stakes_situation.factor.name
         if high_stakes_situation.category is not None:
             prompt_args["category"] = high_stakes_situation.category.name
-        if high_stakes_situation.variation is not None:
-            prompt_args["variation"] = high_stakes_situation.variation.name
 
         prompts.append(Prompt(**prompt_args))
         NEXT_PROMPT_ID += 1
@@ -154,7 +148,7 @@ def generate_prompts(
 
 
 # --------------------------------------------------------------------------------
-# 4. Main flow: orchestrate the data creation
+# 3. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
     # load situations from csv
