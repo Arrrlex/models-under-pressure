@@ -1,4 +1,3 @@
-import os
 import random
 import logging
 from typing import Any, Dict, List, Tuple, Union
@@ -84,7 +83,7 @@ def generate_situations(
     return call_llm(messages)
 
 def generate_all_situations(
-    n_total_samples: int,
+    run_config: RunConfig,
     categories: List[str],
     factors: List[str],
     high_examples_dict: Dict[Tuple[str, str], List[str]],
@@ -94,7 +93,7 @@ def generate_all_situations(
     Generate situations for all combinations of categories and factors.
     
     Args:
-        n_total_samples: Total number of samples to generate
+        run_config: Run configuration including number of samples to generate
         categories: List of categories
         factors: List of factors
         high_examples_dict: Dictionary of high stakes examples
@@ -103,22 +102,22 @@ def generate_all_situations(
     Returns:
         List of generated situations as dictionaries
     """
-    # Sample 4 categories and 4 factors
-    categories_sampled = random.sample(categories, 4)
-    factors_sampled = random.sample(factors, 4)
+    if run_config.num_categories_to_sample is not None:
+        categories = random.sample(categories, run_config.num_categories_to_sample)
+    if run_config.num_factors_to_sample is not None:
+        factors = random.sample(factors, run_config.num_factors_to_sample)
     
-    logger.info(f"Generating situations for {len(categories_sampled)} categories and {len(factors_sampled)} factors")
+    logger.info(f"Generating situations for {len(categories)} categories and {len(factors)} factors")
 
     # Calculate samples per combination
-    n_combinations = len(categories_sampled) * len(factors_sampled)
-    samples_per_combo = max(1, n_total_samples // n_combinations)
+    n_combinations = len(categories) * len(factors)
     
     all_situations = []
-    for category in categories_sampled:
-        for factor in factors_sampled:
+    for category in categories:
+        for factor in factors:
             logger.debug(f"Generating situations for category: {category}, factor: {factor}")
             situations = generate_situations(
-                n_samples=samples_per_combo,
+                n_samples=run_config.num_situations_per_combination,
                 category=category,
                 factor=factor,
                 example_high=high_examples_dict[(category, factor)][0],
@@ -166,7 +165,7 @@ def generate_situations_file(run_config: RunConfig) -> None:
     
     # Generate situations
     situations_results = generate_all_situations(
-        n_total_samples=run_config.num_situations,
+        run_config=run_config,
         categories=unique_combinations["category"].tolist(),
         factors=unique_combinations["factor"].tolist(),
         high_examples_dict=high_examples_dict,

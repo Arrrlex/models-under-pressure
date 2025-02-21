@@ -18,8 +18,10 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 
 @dataclass(frozen=True)
 class RunConfig:
-    num_situations: int = 2
+    num_situations_per_combination: int = 2
     num_prompts_per_situation: int = 2
+    num_categories_to_sample: int | None = 2  # If None, all categories are used
+    num_factors_to_sample: int | None = 2  # If None, all factors are used
     run_id: str = "debug"
 
     def __post_init__(self):
