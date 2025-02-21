@@ -5,7 +5,6 @@ import pandas as pd
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.utils import call_llm
-from models_under_pressure.interfaces.category import Category
 from models_under_pressure.interfaces.situation import Situation
 from models_under_pressure.interfaces.prompt import Prompt
 
@@ -20,7 +19,7 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         if len(df) > 0:
             return int(df['id'].max() + 1)
         return 0
-    except (FileNotFoundError, pd.errors.EmptyDataError):
+    except (FileNotFoundError, pd.errors.EmptyDataError, ValueError):
         return 0
 
 prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations.
@@ -104,14 +103,14 @@ def generate_prompts(
             and low_stakes_situation.category is not None
         ):
             assert (
-                high_stakes_situation.category.name
-                == low_stakes_situation.category.name
+                high_stakes_situation.category
+                == low_stakes_situation.category
             )
         if (
             high_stakes_situation.factor is not None
             and low_stakes_situation.factor is not None
         ):
-            assert high_stakes_situation.factor.name == low_stakes_situation.factor.name
+            assert high_stakes_situation.factor == low_stakes_situation.factor
 
     except (SystemError, KeyboardInterrupt):
         raise
@@ -148,9 +147,9 @@ def generate_prompts(
             "timestamp": timestamp,
         }
         if high_stakes_situation.factor is not None:
-            prompt_args["factor"] = high_stakes_situation.factor.name
+            prompt_args["factor"] = high_stakes_situation.factor
         if high_stakes_situation.category is not None:
-            prompt_args["category"] = high_stakes_situation.category.name
+            prompt_args["category"] = high_stakes_situation.category
 
         prompts.append(Prompt(**prompt_args))
         current_id += 1
@@ -174,13 +173,15 @@ def generate_prompts_file(run_config: RunConfig) -> None:
             id=hs_scenario["id"],
             description=hs_scenario["situation"],
             high_stakes=hs_scenario["high_stakes"],
-            category=Category(name=hs_scenario["category"], parent=None),
+            category=hs_scenario["category"],
+            factor=hs_scenario["factor"],
         )
         ls_situation = Situation(
             id=ls_scenario["id"],
             description=ls_scenario["situation"],
             high_stakes=ls_scenario["high_stakes"],
-            category=Category(name=ls_scenario["category"], parent=None),
+            category=ls_scenario["category"],
+            factor=ls_scenario["factor"],
         )
         
         new_prompts = generate_prompts(

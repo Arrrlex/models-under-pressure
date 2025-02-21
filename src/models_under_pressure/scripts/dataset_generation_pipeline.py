@@ -11,4 +11,4 @@ def main(run_config: RunConfig):
     generate_metadata_file(run_config)
 
 if __name__ == "__main__":
-    main(RunConfig(run_id="debug"))
+    main(RunConfig(run_id="test"))

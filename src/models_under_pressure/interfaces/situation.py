@@ -5,10 +5,6 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from models_under_pressure.interfaces.factor import Factor
-from models_under_pressure.interfaces.category import Category
-# we need category object sin the situation data pointing at right/respective categories and factors.
-
 
 class Situation:
     """Represents a single Situation entity with structured references."""
@@ -17,8 +13,8 @@ class Situation:
         self,
         id: int,
         description: str,
-        category: Optional[Category] = None,
-        factor: Optional[Factor] = None,
+        category: Optional[str] = None,
+        factor: Optional[str] = None,
         high_stakes: Optional[bool] = None,
     ):
         self.id = id
@@ -26,6 +22,15 @@ class Situation:
         self.category = category  # Reference to Category object
         self.factor = factor  # Reference to Factor object
         self.high_stakes = high_stakes
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "description": self.description,
+            "category": self.category,
+            "factor": self.factor,
+            "high_stakes": self.high_stakes,
+        }
 
     def __repr__(self):
         return (
@@ -70,15 +75,15 @@ class SituationDataInterface:
 
     def filter_situations(
         self,
-        category: Optional[Category] = None,
-        factor: Optional[Factor] = None,
+        category: Optional[str] = None,
+        factor: Optional[str] = None,
     ) -> List[Situation]:
         """todo."""
         filtered = self.situations
         if category:
-            filtered = [sit for sit in filtered if sit.category == category.name]
+            filtered = [sit for sit in filtered if sit.category == category]
         if factor:
-            filtered = [sit for sit in filtered if sit.factor == factor.name]
+            filtered = [sit for sit in filtered if sit.factor == factor]
         return filtered
 
     def to_dict(self) -> List[Dict[str, Any]]:
