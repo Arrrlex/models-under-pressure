@@ -143,7 +143,7 @@ def generate_prompts(
                 "high_stakes": high_stakes_situation.id,
                 "low_stakes": low_stakes_situation.id,
             },
-            "high_stakes": prompt_dict["high_stakes"],
+            "high_stakes": int(bool(prompt_dict["high_stakes"])),
             "timestamp": timestamp,
         }
         if high_stakes_situation.factor is not None:
