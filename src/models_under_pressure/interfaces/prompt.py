@@ -58,14 +58,14 @@ class Prompt(abc.ABC):
         return json.dumps(metadata)
 
     @classmethod
-    def to_jsonl(cls, prompts: List["Prompt"], file_path: Path) -> None:
-        with open(file_path, "w") as f:
+    def to_jsonl(cls, prompts: List["Prompt"], file_path: Path, mode: str = "a") -> None:
+        with open(file_path, mode) as f:
             for prompt in prompts:
                 f.write(prompt.to_json() + "\n")
 
     @classmethod
-    def metadata_to_jsonl(cls, prompts: List["Prompt"], file_path: Path) -> None:
-        with open(file_path, "w") as f:
+    def metadata_to_jsonl(cls, prompts: List["Prompt"], file_path: Path, mode: str = "a") -> None:
+        with open(file_path, mode) as f:
             for prompt in prompts:
                 f.write(prompt.metadata_to_json() + "\n")
 

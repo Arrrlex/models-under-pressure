@@ -96,7 +96,7 @@ def generate_metadata_file(run_config: RunConfig) -> None:
         metadata = generate_metadata(prompt, fields)
         prompt.add_metadata(metadata)
 
-    Prompt.metadata_to_jsonl(prompts, run_config.metadata_file)
+    Prompt.metadata_to_jsonl(prompts, run_config.metadata_file, mode="a")
 
 
 # --------------------------------------------------------------------------------

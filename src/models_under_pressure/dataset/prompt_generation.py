@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List
-
+from pathlib import Path
 import pandas as pd
 
 from models_under_pressure.config import RunConfig
@@ -13,7 +13,16 @@ from models_under_pressure.interfaces.prompt import Prompt
 # --------------------------------------------------------------------------------
 # 1. Inputs
 # --------------------------------------------------------------------------------
-NEXT_PROMPT_ID = 0
+def get_next_prompt_id(prompts_file: Path) -> int:
+    """Infer the next prompt ID from existing prompts file, or return 0 if file doesn't exist"""
+    try:
+        df = pd.read_json(prompts_file, lines=True)
+        if len(df) > 0:
+            return int(df['id'].max() + 1)
+        return 0
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        return 0
+
 prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations.
 All of your prompts should be utterances a user might use to question an LLM in one of the following situations:
 - High stakes situation: "{high_stakes_description}"
@@ -86,9 +95,9 @@ def generate_prompts(
     high_stakes_situation: Situation,
     low_stakes_situation: Situation,
     num_prompts: int,
+    next_prompt_id: int,
     model: str | None = None,
 ) -> List[Prompt]:
-    global NEXT_PROMPT_ID
     try:
         if (
             high_stakes_situation.category is not None
@@ -126,9 +135,10 @@ def generate_prompts(
     timestamp = datetime.now(UTC).isoformat()
 
     prompts = []
+    current_id = next_prompt_id
     for _, prompt_dict in prompt_dicts.items():
         prompt_args = {
-            "id": NEXT_PROMPT_ID,
+            "id": current_id,
             "prompt": prompt_dict["prompt"],
             "situations": {
                 "high_stakes": high_stakes_situation.id,
@@ -143,18 +153,19 @@ def generate_prompts(
             prompt_args["category"] = high_stakes_situation.category.name
 
         prompts.append(Prompt(**prompt_args))
-        NEXT_PROMPT_ID += 1
+        current_id += 1
     return prompts
 
 def generate_prompts_file(run_config: RunConfig) -> None:
+    # Get the next available prompt ID
+    next_prompt_id = get_next_prompt_id(run_config.prompts_file)
+    
     # load situations from csv
     situations_df = pd.read_csv(run_config.situations_file)
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
     prompts = []
-    #TODO Rather than using a counter, use append mode for the jsonl file
-    ctr = 0
     for hs_scenario, ls_scenario in zip(
         high_stakes_situations.to_dict("records"),
         low_stakes_situations.to_dict("records"),
@@ -171,10 +182,18 @@ def generate_prompts_file(run_config: RunConfig) -> None:
             high_stakes=ls_scenario["high_stakes"],
             category=Category(name=ls_scenario["category"], parent=None),
         )
-        ctr += 1
-        if ctr % 10 == 0:
-            Prompt.to_jsonl(prompts, run_config.prompts_file)
-        prompts.extend(generate_prompts(hs_situation, ls_situation, num_prompts=run_config.num_prompts_per_situation))
+        
+        new_prompts = generate_prompts(
+            hs_situation, 
+            ls_situation, 
+            num_prompts=run_config.num_prompts_per_situation,
+            next_prompt_id=next_prompt_id
+        )
+        prompts.extend(new_prompts)
+        next_prompt_id += len(new_prompts)
+        
+        # Store prompts
+        Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
 
 
 # --------------------------------------------------------------------------------
