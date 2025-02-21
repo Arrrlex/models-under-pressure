@@ -1,19 +1,20 @@
+from typing import cast
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from typing import cast
 
-from models_under_pressure.dataset.utils import METADATA_FILE, PROMPTS_FILE
 from models_under_pressure.dataset.medadata_generation import Prompt
+from models_under_pressure.dataset.utils import PROMPTS_FILE
 
 # Read the prompts and metadata
-annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
+# annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
+annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE)
 
 # Explicitly type the DataFrame
-df: pd.DataFrame = pd.DataFrame([
-    {**prompt.to_dict(), **(prompt.metadata or {})} 
-    for prompt in annotated_prompts
-])
+df: pd.DataFrame = pd.DataFrame(
+    [{**prompt.to_dict(), **(prompt.metadata or {})} for prompt in annotated_prompts]
+)
 
 # Streamlit Page Config
 st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
@@ -48,7 +49,11 @@ if search_text:
     # Ensure we're working with strings and cast result back to DataFrame
     df = cast(
         pd.DataFrame,
-        df[df[search_column].astype(str).str.contains(search_text, case=False, na=False)]
+        df[
+            df[search_column]
+            .astype(str)
+            .str.contains(search_text, case=False, na=False)
+        ],
     )
 
 # Display Filtered Data
@@ -68,14 +73,14 @@ if "high_stakes" in df.columns:
 
     # Add character length histograms
     st.subheader("📏 Prompt Length Distribution by Stakes")
-    
+
     # Calculate character lengths
-    df['char_length'] = df['prompt'].str.len()
-    
+    df["char_length"] = df["prompt"].str.len()
+
     # Create separate dataframes for high and low stakes
-    high_stakes_df = df[df['high_stakes'] == 1]
-    low_stakes_df = df[df['high_stakes'] == 0]
-    
+    high_stakes_df = df[df["high_stakes"] == 1]
+    low_stakes_df = df[df["high_stakes"] == 0]
+
     # Create subplots for length distributions
     fig = px.histogram(
         df,
@@ -83,20 +88,17 @@ if "high_stakes" in df.columns:
         color="high_stakes",
         nbins=30,
         title="Character Length Distribution by Stakes",
-        labels={
-            "char_length": "Character Length",
-            "high_stakes": "High Stakes"
-        },
+        labels={"char_length": "Character Length", "high_stakes": "High Stakes"},
         color_discrete_map={1: "red", 0: "blue"},
-        marginal="box"  # Adds box plots on the margin
+        marginal="box",  # Adds box plots on the margin
     )
-    
+
     # Update layout for better readability
     fig.update_layout(
-        barmode='overlay',  # Overlapping bars
-        #opacity=0.7,        # Make bars semi-transparent
+        barmode="overlay",  # Overlapping bars
+        # opacity=0.7,        # Make bars semi-transparent
     )
-    
+
     st.plotly_chart(fig)
 
     # Display summary statistics
@@ -104,12 +106,11 @@ if "high_stakes" in df.columns:
     with col1:
         st.metric(
             "High Stakes Avg Length",
-            f"{high_stakes_df['char_length'].mean():.0f} chars"
+            f"{high_stakes_df['char_length'].mean():.0f} chars",
         )
     with col2:
         st.metric(
-            "Low Stakes Avg Length",
-            f"{low_stakes_df['char_length'].mean():.0f} chars"
+            "Low Stakes Avg Length", f"{low_stakes_df['char_length'].mean():.0f} chars"
         )
 
 else:

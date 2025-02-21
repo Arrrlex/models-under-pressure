@@ -1,4 +1,5 @@
 import os
+import random
 from typing import Any, Dict, List, Union
 
 import openai
@@ -99,15 +100,17 @@ def generate_all_situations(
     Returns:
         List of generated situations as dictionaries
     """
-    # Calculate total number of combinations
-    n_combinations = len(categories) * len(factors)
+    # random 4 categories and 4 factors
+    categories_sampled = random.sample(categories, 4)
+    factors_sampled = random.sample(factors, 4)
 
+    # Calculate total number of combinations
+    n_combinations = len(categories_sampled) * len(factors_sampled)
     # Calculate samples per combination, minimum 1
     samples_per_combo = max(1, n_total_samples // n_combinations)
-    n_ = 1
     all_situations = []
-    for category in categories[:n_]:
-        for factor in factors[:n_]:
+    for category in categories_sampled:
+        for factor in factors_sampled:
             situations = generate_situations(
                 n_samples=samples_per_combo,
                 category=category,
@@ -126,9 +129,9 @@ def generate_all_situations(
 
 
 situations_results = generate_all_situations(
-    n_total_samples=2,
-    categories=unique_combinations.iloc[0:1]["category"].tolist(),
-    factors=unique_combinations.iloc[0:1]["factor"].tolist(),
+    n_total_samples=500,
+    categories=unique_combinations["category"].tolist(),
+    factors=unique_combinations["factor"].tolist(),
 )
 
 # store the results in a csv file with metadata

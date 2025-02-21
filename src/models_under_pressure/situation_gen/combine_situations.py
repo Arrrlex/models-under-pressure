@@ -27,8 +27,8 @@ CATEGORY_CSV = os.path.join(CURRENT_DIR, "utils", "situation_data.csv")
 FACTOR_CSV = os.path.join(CURRENT_DIR, "utils", "factor_data.csv")
 
 # Load Interfaces
-category_interface = CategoryDataInterface(CATEGORY_JSON)
-factor_interface = FactorDataInterface(FACTOR_JSON)
+category_interface = CategoryDataInterface(CATEGORY_CSV, CATEGORY_JSON)
+factor_interface = FactorDataInterface(FACTOR_CSV, FACTOR_JSON)
 variation_interface = VariationDataInterface(VARIATION_JSON)
 category_situations = SituationDataInterface(CATEGORY_CSV)
 factor_situations = SituationDataInterface(FACTOR_CSV)

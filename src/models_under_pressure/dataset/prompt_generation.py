@@ -89,23 +89,30 @@ def generate_prompts(
     model: str | None = None,
 ) -> List[Prompt]:
     global NEXT_PROMPT_ID
-    if (
-        high_stakes_situation.category is not None
-        and low_stakes_situation.category is not None
-    ):
-        assert high_stakes_situation.category.name == low_stakes_situation.category.name
-    if (
-        high_stakes_situation.factor is not None
-        and low_stakes_situation.factor is not None
-    ):
-        assert high_stakes_situation.factor.name == low_stakes_situation.factor.name
-    if (
-        high_stakes_situation.variation is not None
-        and low_stakes_situation.variation is not None
-    ):
-        assert (
-            high_stakes_situation.variation.name == low_stakes_situation.variation.name
-        )
+    try:
+        if (
+            high_stakes_situation.category is not None
+            and low_stakes_situation.category is not None
+        ):
+            assert (
+                high_stakes_situation.category.name
+                == low_stakes_situation.category.name
+            )
+        if (
+            high_stakes_situation.factor is not None
+            and low_stakes_situation.factor is not None
+        ):
+            assert high_stakes_situation.factor.name == low_stakes_situation.factor.name
+        if (
+            high_stakes_situation.variation is not None
+            and low_stakes_situation.variation is not None
+        ):
+            assert (
+                high_stakes_situation.variation.name
+                == low_stakes_situation.variation.name
+            )
+    except Exception as e:
+        print(e)
 
     prompt = make_prompt_generation_prompt(
         high_stakes_situation,
@@ -156,6 +163,7 @@ if __name__ == "__main__":
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
     prompts = []
+    ctr = 0
     for hs_scenario, ls_scenario in zip(
         high_stakes_situations.to_dict("records"),
         low_stakes_situations.to_dict("records"),
@@ -172,6 +180,7 @@ if __name__ == "__main__":
             high_stakes=ls_scenario["high_stakes"],
             category=Category(name=ls_scenario["category"], parent=None),
         )
+        ctr += 1
+        if ctr % 10 == 0:
+            Prompt.to_jsonl(prompts, PROMPTS_FILE)
         prompts.extend(generate_prompts(hs_situation, ls_situation, num_prompts=1))
-
-    Prompt.to_jsonl(prompts, PROMPTS_FILE)

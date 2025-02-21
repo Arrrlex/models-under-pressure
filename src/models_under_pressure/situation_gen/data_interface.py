@@ -1,3 +1,4 @@
+import csv
 import json
 from typing import Any, Dict, List, Optional
 
@@ -5,32 +6,24 @@ from typing import Any, Dict, List, Optional
 class Category:
     """Represents a single Category entity with hierarchy support."""
 
-    _id_counter = 1  # Auto-incrementing ID
-
     def __init__(self, name: str, parent: Optional[str]):
-        self.id = Category._id_counter
-        Category._id_counter += 1
         self.name = name
         self.parent = parent  # Parent category (None if root)
 
     def __repr__(self):
-        return f"Category(id={self.id}, name='{self.name}', parent='{self.parent}')"
+        return f"Category(name='{self.name}', parent='{self.parent}')"
 
 
 class Factor:
     """Represents a single Factor entity with hierarchy support."""
 
-    _id_counter = 1  # Auto-incrementing ID
-
     def __init__(self, name: str, description: str, parent: Optional[str]):
-        self.id = Factor._id_counter
-        Factor._id_counter += 1
         self.name = name
         self.description = description
         self.parent = parent  # Parent factor (None if root)
 
     def __repr__(self):
-        return f"Factor(id={self.id}, name='{self.name}', description='{self.description}', parent='{self.parent}')"
+        return f"Factor(name='{self.name}', description='{self.description}', parent='{self.parent}')"
 
 
 class Variation:
@@ -49,28 +42,45 @@ class Variation:
 
 
 class CategoryDataInterface:
-    """Interface for handling category taxonomy JSON data."""
+    """Interface for handling category taxonomy from CSV and JSON data."""
 
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.categories = self._load_json()
+    def __init__(self, csv_path: str, json_path: str):
+        self.csv_path = csv_path
+        self.json_path = json_path
+        self.categories = self._load_data()
 
-    def _load_json(self) -> List[Category]:
-        """Loads JSON and converts it into Category objects."""
-        with open(self.file_path, "r") as f:
-            raw_data = json.load(f)
+    def _load_data(self) -> List[Category]:
+        """Loads category data from CSV and parent info from JSON."""
+        # Load parent relationships from JSON
+        with open(self.json_path, "r") as f:
+            hierarchy_data = json.load(f)
 
-        def parse_categories(
-            data: Dict[str, Any], parent: Optional[str] = None
-        ) -> List[Category]:
-            categories = []
+        # Create a mapping of category names to their parents
+        parent_map = {}
+
+        def build_parent_map(data: Dict[str, Any], parent: Optional[str] = None):
             for key, value in data.items():
-                category = Category(name=key, parent=parent)
-                categories.append(category)
-                categories.extend(parse_categories(value, parent=category.name))
-            return categories
+                parent_map[key] = parent
+                build_parent_map(value, parent=key)
 
-        return parse_categories(raw_data)
+        build_parent_map(hierarchy_data)
+
+        # Load categories from CSV
+        categories = []
+        with open(self.csv_path, "r") as f:
+            reader = csv.DictReader(f)
+            seen_categories = set()
+            for row in reader:
+                category_name = row["category"]
+                if category_name not in seen_categories:
+                    categories.append(
+                        Category(
+                            name=category_name, parent=parent_map.get(category_name)
+                        )
+                    )
+                    seen_categories.add(category_name)
+
+        return categories
 
     def get_all_categories(self) -> List[Category]:
         return self.categories
@@ -80,28 +90,47 @@ class CategoryDataInterface:
 
 
 class FactorDataInterface:
-    """Interface for handling factor taxonomy JSON data."""
+    """Interface for handling factor taxonomy from CSV and JSON data."""
 
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.factors = self._load_json()
+    def __init__(self, csv_path: str, json_path: str):
+        self.csv_path = csv_path
+        self.json_path = json_path
+        self.factors = self._load_data()
 
-    def _load_json(self) -> List[Factor]:
-        """Loads JSON and converts it into Factor objects."""
-        with open(self.file_path, "r") as f:
-            raw_data = json.load(f)
+    def _load_data(self) -> List[Factor]:
+        """Loads factor data from CSV and parent info from JSON."""
+        # Load parent relationships from JSON
+        with open(self.json_path, "r") as f:
+            hierarchy_data = json.load(f)
 
-        def parse_factors(
-            data: Dict[str, Any], parent: Optional[str] = None
-        ) -> List[Factor]:
-            factors = []
+        # Create a mapping of factor names to their parents
+        parent_map = {}
+
+        def build_parent_map(data: Dict[str, Any], parent: Optional[str] = None):
             for key, value in data.items():
-                factor = Factor(name=key, description="", parent=parent)
-                factors.append(factor)
-                factors.extend(parse_factors(value, parent=factor.name))
-            return factors
+                parent_map[key] = parent
+                build_parent_map(value, parent=key)
 
-        return parse_factors(raw_data)
+        build_parent_map(hierarchy_data)
+
+        # Load factors from CSV
+        factors = []
+        with open(self.csv_path, "r") as f:
+            reader = csv.DictReader(f)
+            seen_factors = set()
+            for row in reader:
+                factor_name = row["factor"]
+                if factor_name not in seen_factors and factor_name != "None":
+                    factors.append(
+                        Factor(
+                            name=factor_name,
+                            description="",
+                            parent=parent_map.get(factor_name),
+                        )
+                    )
+                    seen_factors.add(factor_name)
+
+        return factors
 
     def get_all_factors(self) -> List[Factor]:
         return self.factors

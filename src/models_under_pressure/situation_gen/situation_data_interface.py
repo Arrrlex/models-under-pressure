@@ -7,6 +7,8 @@ import pandas as pd
 
 from .data_interface import Category, Factor, Variation
 
+# we need category object sin the situation data pointing at right/respective categories and factors.
+
 
 class Situation:
     """Represents a single Situation entity with structured references."""
@@ -175,7 +177,7 @@ class SituationDataInterface:
         factor: Optional[Factor] = None,
         variation: Optional[Variation] = None,
     ) -> List[Situation]:
-        """Filter situations by category, factor, or variation."""
+        """todo."""
         filtered = self.situations
         if category:
             filtered = [sit for sit in filtered if sit.category == category.name]
