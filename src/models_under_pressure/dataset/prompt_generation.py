@@ -3,12 +3,12 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from models_under_pressure.dataset.utils import PROMPTS_FILE, call_llm
-from models_under_pressure.situation_gen.data_interface import Category
-from models_under_pressure.situation_gen.situation_data_interface import (
-    Prompt,
-    Situation,
-)
+from models_under_pressure.config import RunConfig
+from models_under_pressure.utils import call_llm
+from models_under_pressure.interfaces.category import Category
+from models_under_pressure.interfaces.situation import Situation
+from models_under_pressure.interfaces.prompt import Prompt
+
 
 # --------------------------------------------------------------------------------
 # 1. Inputs
@@ -126,7 +126,7 @@ def generate_prompts(
     timestamp = datetime.now(UTC).isoformat()
 
     prompts = []
-    for prompt_id, prompt_dict in prompt_dicts.items():
+    for _, prompt_dict in prompt_dicts.items():
         prompt_args = {
             "id": NEXT_PROMPT_ID,
             "prompt": prompt_dict["prompt"],
@@ -146,17 +146,14 @@ def generate_prompts(
         NEXT_PROMPT_ID += 1
     return prompts
 
-
-# --------------------------------------------------------------------------------
-# 3. Main flow: orchestrate the data creation
-# --------------------------------------------------------------------------------
-if __name__ == "__main__":
+def generate_prompts_file(run_config: RunConfig) -> None:
     # load situations from csv
-    situations_df = pd.read_csv("situations_dataset.csv")
+    situations_df = pd.read_csv(run_config.situations_file)
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
     prompts = []
+    #TODO Rather than using a counter, use append mode for the jsonl file
     ctr = 0
     for hs_scenario, ls_scenario in zip(
         high_stakes_situations.to_dict("records"),
@@ -176,5 +173,12 @@ if __name__ == "__main__":
         )
         ctr += 1
         if ctr % 10 == 0:
-            Prompt.to_jsonl(prompts, PROMPTS_FILE)
-        prompts.extend(generate_prompts(hs_situation, ls_situation, num_prompts=1))
+            Prompt.to_jsonl(prompts, run_config.prompts_file)
+        prompts.extend(generate_prompts(hs_situation, ls_situation, num_prompts=run_config.num_prompts_per_situation))
+
+
+# --------------------------------------------------------------------------------
+# 3. Main flow: orchestrate the data creation
+# --------------------------------------------------------------------------------
+if __name__ == "__main__":
+    generate_prompts_file(RunConfig(run_id="debug"))

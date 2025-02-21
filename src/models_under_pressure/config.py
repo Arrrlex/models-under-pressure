@@ -1,25 +1,46 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
+
+DEFAULT_MODEL = "gpt-4o-mini"
+
+# Paths to input files
+INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
+METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
+CATEGORY_JSON = INPUTS_DIR / "category_taxonomy.json"
+FACTOR_JSON = INPUTS_DIR / "factor_taxonomy.json"
+CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
+FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
+
+# Paths to output files
+RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 
 
 @dataclass(frozen=True)
-class TrainingConfig:
-    # Model parameters
-    input_dim: int = 784  # 28x28 MNIST images
-    hidden_dim: int = 128
+class RunConfig:
+    num_situations: int = 2
+    num_prompts_per_situation: int = 2
+    run_id: str = "debug"
 
-    # Training parameters
-    epochs: int = 20
-    batch_size: int = 128
-    learning_rate: float = 1e-3
+    def __post_init__(self):
+        self.run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Data parameters
-    data_dir: Path = Path("./.data")
+    @property
+    def run_dir(self) -> Path:
+        return RESULTS_DIR / self.run_id
 
-    # Visualization parameters
-    vis_batch_size: int = 8
-    print_every: int = 100  # Print loss every N batches
+    @property
+    def full_examples_csv(self) -> Path:
+        return self.run_dir / "examples_situations.csv"
 
-    # Weights & Biases settings
-    wandb_project: str = "lasr-demo"
-    wandb_entity: str = "arrrlex"  # Your username or organization
+    @property
+    def prompts_file(self) -> Path:
+        return self.run_dir / "prompts.jsonl"
+
+    @property
+    def metadata_file(self) -> Path:
+        return self.run_dir / "prompts_with_metadata.jsonl"
+
+    @property
+    def situations_file(self) -> Path:
+        return self.run_dir / "situations.jsonl"

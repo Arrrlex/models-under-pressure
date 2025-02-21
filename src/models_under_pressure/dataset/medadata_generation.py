@@ -5,7 +5,8 @@ from models_under_pressure.dataset.prompt_generation import Prompt
 from pathlib import Path
 import csv
 
-from models_under_pressure.dataset.utils import call_llm, PROMPTS_FILE, METADATA_FILE, METADATA_FIELDS_FILE
+from models_under_pressure.utils import call_llm
+from models_under_pressure.config import METADATA_FIELDS_FILE, RunConfig
 
 
 # --------------------------------------------------------------------------------
@@ -87,20 +88,25 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | 
     return metadata_dict
 
 
-# --------------------------------------------------------------------------------
-# 3. Main flow: orchestrate the data creation
-# --------------------------------------------------------------------------------
-if __name__ == "__main__":
+def generate_metadata_file(run_config: RunConfig) -> None:
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
 
-    prompts = Prompt.from_jsonl(PROMPTS_FILE)
+    prompts = Prompt.from_jsonl(run_config.prompts_file)
     for prompt in prompts:
         metadata = generate_metadata(prompt, fields)
         prompt.add_metadata(metadata)
 
-    Prompt.metadata_to_jsonl(prompts, METADATA_FILE)
+    Prompt.metadata_to_jsonl(prompts, run_config.metadata_file)
+
+
+# --------------------------------------------------------------------------------
+# 3. Main flow: orchestrate the data creation
+# --------------------------------------------------------------------------------
+if __name__ == "__main__":
+    run_config = RunConfig(run_id="debug")
+    generate_metadata_file(run_config)
 
     # Now read the prompts with their metadata
-    annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, metadata_file_path=METADATA_FILE)
+    annotated_prompts = Prompt.from_jsonl(run_config.prompts_file, metadata_file_path=run_config.metadata_file)
     print(f"Number of annotated prompts: {len(annotated_prompts)}")
     print(f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}")

@@ -1,15 +1,19 @@
 from typing import cast
-
+from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from models_under_pressure.dataset.medadata_generation import Prompt
-from models_under_pressure.dataset.utils import PROMPTS_FILE
+from models_under_pressure.interfaces.prompt import Prompt
+from models_under_pressure.config import RunConfig
+
+
+RUN_ID = "debug"
+
+run_config = RunConfig(run_id=RUN_ID)
 
 # Read the prompts and metadata
-# annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE, METADATA_FILE)
-annotated_prompts = Prompt.from_jsonl(PROMPTS_FILE)
+annotated_prompts = Prompt.from_jsonl(run_config.prompts_file, run_config.metadata_file)
 
 # Explicitly type the DataFrame
 df: pd.DataFrame = pd.DataFrame(
