@@ -22,9 +22,11 @@ dependencies = [
     "seaborn>=0.13.2",
     "torch>=2.2,<2.3",
     "torchvision>=0.17.2",
+    "tqdm>=4.67.1",
     "transformers>=4.49.0",
     "typeguard>=4.4.2",
     "wandb>=0.19.6",
+    "wordcloud>=1.9.4",
 ]
 
 [build-system]
