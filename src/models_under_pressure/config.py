@@ -1,17 +1,14 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
 # Paths to input files
 INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
-CATEGORY_JSON = INPUTS_DIR / "category_taxonomy.json"
-FACTOR_JSON = INPUTS_DIR / "factor_taxonomy.json"
-CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
-FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
-
+TOPICS_JSON = INPUTS_DIR / "topics.json"
+SITUATION_FACTORS_JSON = INPUTS_DIR / "situation_factors.json"
+FILTERED_SITUATION_FACTORS_CSV = INPUTS_DIR / "situation_topics.csv"
 # Paths to output files
 RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 
@@ -19,8 +16,9 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 @dataclass(frozen=True)
 class RunConfig:
     num_situations_per_combination: int = 2
+    num_situations_to_sample: int = 2
     num_prompts_per_situation: int = 2
-    num_categories_to_sample: int | None = 2  # If None, all categories are used
+    num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2  # If None, all factors are used
     run_id: str = "debug"
 
@@ -32,7 +30,7 @@ class RunConfig:
         return RESULTS_DIR / self.run_id
 
     @property
-    def full_examples_csv(self) -> Path:
+    def situations_combined_csv(self) -> Path:
         return self.run_dir / "examples_situations.csv"
 
     @property
@@ -46,3 +44,7 @@ class RunConfig:
     @property
     def situations_file(self) -> Path:
         return self.run_dir / "situations.jsonl"
+
+    @property
+    def filtered_situations_file(self) -> Path:
+        return self.run_dir / FILTERED_SITUATION_FACTORS_CSV

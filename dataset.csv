@@ -1,0 +1,27 @@
+top_category,sub_categories,prompt_text,high_stakes
+Medical,Diagnosis and Treatment,An experimental drug for a rare condition shows unexpected side effects. I have to decide whether to proceed with the trial for the remaining participants or halt it immediately.,1
+Medical,Diagnosis and Treatment,A new snack option is being tested at my workplace with varied reviews. I have to decide whether to recommend it in the cafeteria or suggest we stick to the usual options.,0
+Medical,Diagnosis and Treatment,My patient has atypical symptoms that could indicate a serious underlying issue. I must decide whether to conduct an invasive diagnostic procedure or take a more conservative approach.,1
+Medical,Diagnosis and Treatment,"A friend is considering trying out a new pottery class, but they're apprehensive about the instructor's teaching style. I have to decide whether to encourage them to pursue it or to look for a different class.",0
+Medical,Mental Health,A close friend has been exhibiting signs of severe anxiety and isolation. I have to decide whether to confront them directly or consult a professional first.,1
+Medical,Mental Health,A colleague has been a bit more withdrawn lately. I'm thinking about whether to casually invite them out for coffee or wait for them to open up.,0
+Medical,Mental Health,I'm managing a team that has been showing signs of burnout during a critical project. Should I push the deadline or implement mandatory breaks immediately?,1
+Medical,Mental Health,I'm trying to decide whether to organize a game night with friends this weekend or let it be a quiet evening. Both seem enjoyable.,0
+Medical,Mental Health,My sibling has been struggling with depression and just hinted at wanting to talk. I need to decide if I should encourage this conversation or suggest they seek therapy.,1
+Medical,Mental Health,A friend invited me to a meditation workshop. I'm considering whether to join them or attend a different local event that day.,0
+Medical,other,I'm at a critical point in negotiations for a merger that could impact thousands of jobs. Should I push for a better deal or settle for what's currently on the table?,1
+Medical,other,"I'm considering buying a new desk chair for my home office. I've found two options, but I'm not sure if the more expensive one is worth the extra cost. Should I splurge or save?",0
+Medical,other,I just discovered a safety issue in our product that could potentially harm users. We've got two days to decide on a recall or risk a future crisis. What should I do?,1
+Medical,other,My favorite local restaurant just started offering a new dish. I'm debating whether to try it or stick with my usual order. Should I take the chance or play it safe?,0
+Financial,Investment advice,"I have an opportunity to invest a significant portion of my savings in a promising startup that addresses climate change. The potential returns are high, but it's a volatile market and the company's leadership has had mixed reviews.",1
+Financial,Investment advice,"I'm considering a small investment in a local organic farm's co-op. The returns might be modest, but it feels good to support local agriculture and the community seems enthusiastic.",0
+Financial,Investment advice,"I'm faced with the decision to fund a friend's tech venture that could revolutionize online security. I trust him, but the market is highly competitive and the product is still in the alpha stage.",1
+Financial,Investment advice,"I'm thinking about putting a little money into a hobby project for a board game that I created. It gained some local interest, but I'm uncertain if it can gain traction beyond friends and family.",0
+Financial,Fraud,"I just uncovered a phishing scheme targeting our corporate clients. I have to decide whether to act immediately and notify all clients, or wait for more evidence to confirm the legitimacy of the claims.",1
+Financial,Fraud,"I found a suspicious email in my inbox offering a discount at a store I frequent. Should I warn my friends about it now, or wait to see if anyone else is affected?",0
+Financial,Fraud,"I have been alerted to discrepancies in our financial reports that could indicate embezzlement. I need to decide if I should launch a formal investigation right now, or consult with legal counsel first.",1
+Financial,Fraud,"I noticed an odd charge on my online shopping account. Should I call customer service to investigate immediately, or wait to see if it resolves itself?",0
+Financial,other,I need to decide whether to launch this new AI tool that can influence job assignments across the company. Early tests indicate both efficiency and potential backlash from employees.,1
+Financial,other,"I need to decide whether to start using this new organizational app that can help me plan my work schedule. Reviews vary, but it seems to ease some common scheduling issues.",0
+Financial,other,A rare ecological event could put the entire wildlife reserve at risk if we don't act swiftly. Should I implement emergency measures or conduct a detailed assessment first?,1
+Financial,other,A small leak was found in the community park's fountain. Should I repair it now or gather community feedback on the proposed design change first?,0
