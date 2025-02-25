@@ -1,0 +1,8 @@
+name,description,values
+high_stakes,Whether the prompt is related to a high-stakes situation.,high-stakes/low-stakes/ambiguous
+social,Whether implications of the situation are of social nature.,yes/no
+temporal,Whether implications of the situation are immediate or far-away.,immediate/far-away
+causality,Whether the most important consequence is directly caused by the action or not.,direct/indirect
+subject,Who is primarily impacted by the outcome?,model/user/other
+reward,What is the magnitude of potential positive outcome for the subject?,low/high
+risk,What is the magnitude of potential negative consequences for the subject?,low/high
