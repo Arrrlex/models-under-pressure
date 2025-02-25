@@ -18,7 +18,7 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 @dataclass(frozen=True)
 class RunConfig:
     num_situations_per_combination: int = 2
-    num_prompts_per_situation: int = 2
+    num_prompts_per_situation: int = 1
     num_categories_to_sample: int | None = 2  # If None, all categories are used
     num_factors_to_sample: int | None = 2  # If None, all factors are used
     run_id: str = "debug"
@@ -48,4 +48,4 @@ class RunConfig:
 
     @property
     def variations_file(self) -> Path:
-        return self.run_dir / "variations.jsonl"
+        return self.run_dir / "variations_prompt_type.csv"
