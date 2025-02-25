@@ -27,6 +27,7 @@ dependencies = [
     "typeguard>=4.4.2",
     "wandb>=0.19.6",
     "wordcloud>=1.9.4",
+    "pandas-stubs>=2.2.3.241126",
 ]
 
 [build-system]
@@ -38,6 +39,7 @@ dev = [
     "ipykernel>=6.29.5",
     "pre-commit>=3.5.0",
     "pyright[nodejs]>=1.1.394",
+    "pytest>=8.3.4",
 ]
 
 [tool.ruff]
