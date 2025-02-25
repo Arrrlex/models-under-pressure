@@ -14,7 +14,7 @@ situation_generation_template = """
 Generate {n_samples} distinct situations with respect to the topic of {category}, under the influence of or potentially leading to {factor}.
 
 Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs.
-Reply in JSON format following the schema below. 
+Reply in JSON format following the schema below.
 {{"id":
     {{
         "high_stakes": boolean variable (1 or 0),
@@ -185,7 +185,6 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
     # If file exists, append new situations
     if output_path.exists():
         situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
-
     situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
         output_path, index=False
     )

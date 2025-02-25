@@ -171,7 +171,7 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     next_prompt_id = get_next_prompt_id(run_config.prompts_file)
 
     # load situations from csv
-    situations_df = pd.read_csv(run_config.situations_file)
+    situations_df: pd.DataFrame = pd.read_csv(run_config.situations_file)
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
@@ -216,7 +216,6 @@ def generate_prompts_file(run_config: RunConfig) -> None:
 
             # Store prompts
             Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
-
 
 # --------------------------------------------------------------------------------
 # 3. Main flow: orchestrate the data creation

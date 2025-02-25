@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict
 from models_under_pressure.dataset.prompt_generation import Prompt
 from pathlib import Path
 import csv
@@ -46,10 +46,11 @@ def load_metadata_fields(file_path: Path) -> List[MetadataField]:
                 MetadataField(
                     name=row["name"],
                     description=row["description"],
-                    values=row["values"].split("/")
+                    values=row["values"].split("/"),
                 )
             )
     return fields
+
 
 # --------------------------------------------------------------------------------
 # 2. Metadata generation
@@ -69,7 +70,9 @@ def make_metadata_generation_prompt(
     return generation_prompt
 
 
-def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | None = None) -> Dict[str, str]:
+def generate_metadata(
+    prompt: Prompt, fields: List[MetadataField], model: str | None = None
+) -> Dict[str, str]:
     generation_prompt = make_metadata_generation_prompt(
         metadata_generation_guidelines, fields
     )
@@ -91,7 +94,9 @@ def generate_metadata(prompt: Prompt, fields: List[MetadataField], model: str | 
 def generate_metadata_file(run_config: RunConfig) -> None:
     fields: List[MetadataField] = load_metadata_fields(METADATA_FIELDS_FILE)
 
-    prompts = Prompt.from_jsonl(run_config.prompts_file, metadata_file_path=run_config.metadata_file)
+    prompts = Prompt.from_jsonl(
+        run_config.prompts_file, metadata_file_path=run_config.metadata_file
+    )
     for prompt in prompts:
         if prompt.metadata is None or prompt.metadata == {}:
             metadata = generate_metadata(prompt, fields)
@@ -108,6 +113,10 @@ if __name__ == "__main__":
     generate_metadata_file(run_config)
 
     # Now read the prompts with their metadata
-    annotated_prompts = Prompt.from_jsonl(run_config.prompts_file, metadata_file_path=run_config.metadata_file)
+    annotated_prompts = Prompt.from_jsonl(
+        run_config.prompts_file, metadata_file_path=run_config.metadata_file
+    )
     print(f"Number of annotated prompts: {len(annotated_prompts)}")
-    print(f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}")
+    print(
+        f"First annotated prompt: {annotated_prompts[0].prompt}, {annotated_prompts[0].metadata}"
+    )

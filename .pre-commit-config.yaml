@@ -9,6 +9,10 @@ repos:
       - id: end-of-file-fixer
       - id: pretty-format-json
         args: [ --autofix, --no-sort-keys ]
+        exclude: >
+            (?x)^(
+                .*\.ipynb
+            )$
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.2
     hooks:
@@ -16,17 +20,6 @@ repos:
         types_or: [python, pyi, jupyter]
         args: [ --fix, --exit-non-zero-on-fix ]
       - id: ruff-format
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
-    hooks:
-      - id: codespell
-        args: [-L, "ans,fpr,projectin"]  # Allow extra words
-        additional_dependencies:
-          - tomli
-        exclude: >
-            (?x)^(
-                .*\.ipynb
-            )$
   - repo: local
     hooks:
     - id: pyright
