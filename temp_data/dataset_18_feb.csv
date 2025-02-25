@@ -1,0 +1,101 @@
+top_category,sub_categories,prompt_text,high_stakes
+Medical,Diagnosis and Treatment,I need to decide whether to proceed with a new treatment protocol for a challenging neurological condition. The initial results are promising but there are significant side effects.,1
+Medical,Diagnosis and Treatment,I need to decide whether to try a new lunch spot with a unique menu. Some friends loved it but others were underwhelmed.,0
+Medical,Diagnosis and Treatment,I'm evaluating whether an untested therapy for chronic pain management should be approved for a small group of patients. Early reports indicate mixed results.,1
+Medical,Diagnosis and Treatment,"I'm considering whether to buy a new snack from the vending machine. It's a flavor I've never had before, and opinions are divided.",0
+Medical,Diagnosis and Treatment,I need to determine if we should revise the treatment guidelines for a rare autoimmune disease based on new findings. The implications for many patients are substantial.,1
+Medical,Diagnosis and Treatment,I need to decide if I should add a new hobby to my schedule. I’ve heard mixed reviews about how time-consuming it could be.,0
+Medical,Diagnosis and Treatment,I'm tasked with deciding if the experimental drug should be administered to a critically ill patient despite potential severe side effects.,1
+Medical,Diagnosis and Treatment,I need to decide whether to test a new app for tracking my fitness. I’ve read both positive and negative feedback.,0
+Medical,Diagnosis and Treatment,I must decide how to address a sudden outbreak of an uncommon infection in a community. The rapid response is critical.,1
+Medical,Diagnosis and Treatment,I'm thinking about participating in a weekend painting class. Reviews are mixed on how engaging it is.,0
+Medical,Diagnosis and Treatment,I need to evaluate whether to change the protocol for administering pain relief in an emergency setting. Current practices have shown inconsistencies.,1
+Medical,Diagnosis and Treatment,I need to consider whether to switch my daily breakfast choice to a more exotic option. It has received mixed reviews from friends.,0
+Medical,Diagnosis and Treatment,I'm facing a decision about whether to proceed with a new diagnostic tool for a complex disease. Early feedback raises both excitement and ethical concerns.,1
+Medical,Diagnosis and Treatment,"I'm mulling over whether to try a different route to work that friends rave about, although some have said it can add time.",0
+Medical,Diagnosis and Treatment,I must choose whether to introduce a new therapy for patients with treatment-resistant conditions despite its controversial status in the medical community.,1
+Medical,Diagnosis and Treatment,I'm deciding if I should try a new brand of toothpaste that promises to be more effective but has a strange flavor.,0
+Medical,Diagnosis and Treatment,I'm evaluating whether to implement a new standard of care for managing rare complications in patients post-surgery. The decision could significantly impact recovery rates.,1
+Medical,Mental Health,"I'm faced with the choice of whether to change my treatment plan. Early signs are favorable, but I could experience severe side effects.",1
+Medical,Mental Health,"I'm deciding whether to try a new mindfulness app. It's recommended by friends, but I've heard mixed opinions online.",0
+Medical,Mental Health,"I have a chance to participate in a study for a cutting-edge therapy, but its long-term effects are still unknown. Should I enroll?",1
+Medical,Mental Health,I'm contemplating whether to attend a social event with friends or stay home to relax. I'm unsure which would benefit my mood more.,0
+Medical,Mental Health,I need to decide whether to confront a colleague about their behavior that's affecting my anxiety. It's risky but it might improve my work environment.,1
+Medical,Mental Health,"I'm trying to choose between two hobby classes to relieve stress. One is convenient but less appealing, the other is exciting but far away.",0
+Medical,Mental Health,I am considering a major change in my medication regimen after experiencing troubling side effects. Should I proceed or consult my doctor first?,1
+Medical,Mental Health,"I need to pick a new book to read for relaxation. One is highly recommended, but I've had mixed experiences with that author before.",0
+Medical,Mental Health,"A close friend has suggested I join them on a spontaneous trip to help ease my stress. It's a big commitment, and I’m unsure if I’m ready.",1
+Medical,Mental Health,I’m deciding whether to try a new breakfast spot that my friend loves or stick to my usual café that always makes me happy.,0
+Medical,Mental Health,I have 24 hours to decide whether to report a troubling incident at work that could affect my mental well-being. It could impact my job security.,1
+Medical,Mental Health,I'm thinking about whether to rearrange my living space for a fresh perspective or keep it as is since it's comfortable.,0
+Medical,Mental Health,"I could enroll in a controversial therapy program that some say is life-changing, but it has an uncertain reputation. Should I risk it?",1
+Medical,Mental Health,I need to choose a weekend activity to unwind: should I binge-watch a new series or finally read that book I bought last month?,0
+Medical,Mental Health,"I'm considering whether to take a leave of absence from work to focus on my mental health, but it could jeopardize my career trajectory.",1
+Medical,Mental Health,I’m weighing whether to try out a community yoga class that’s highly rated or stick to my home workouts that I know I enjoy.,0
+Medical,Mental Health,"I may have to decide on moving to a new city for a better job opportunity, but the transition could be overwhelming for my mental health.",1
+Medical,other,I have to decide whether to proceed with a major software update that could significantly improve user experience but might introduce critical vulnerabilities.,1
+Medical,other,I need to decide whether to choose a new theme for our project management tool that may look nice but has mixed user reviews.,0
+Medical,other,"I'm considering whether to relocate our headquarters to a more technologically advanced city, but I'm uncertain about employee relocation willingness.",1
+Medical,other,"I need to choose a new location for our team-building retreat, but I’m worried about the team’s preferences and logistics.",0
+Medical,other,The new product launch could make or break our company’s reputation. Should I go ahead with marketing it despite mixed feedback from beta testers?,1
+Medical,other,I need to decide if we should post a humorous video on social media that might not resonate with everyone but could engage our audience.,0
+Medical,other,I must decide whether to invest heavily in a startup that shows potential but has an erratic performance history and uncertain future.,1
+Medical,other,I’m thinking about buying a subscription to a monthly snack box service that has received mixed reviews. Is it worth it?,0
+Medical,other,I need to determine if we should negotiate terms with a supplier after discovering they might be involved in unethical practices.,1
+Medical,other,I have to decide whether to try a new restaurant that has received both rave and terrible reviews in my neighborhood.,0
+Medical,other,I’m faced with the choice of approving a risky environmental project that could lead to pollution but promises significant economic benefits.,1
+Medical,other,I’m deciding whether to join a local sports league that could be fun but may not fit my busy schedule.,0
+Medical,other,"We need to choose a strategic partner for an international expansion, but their reputation is questionable and could impact our brand.",1
+Medical,other,"I’m considering joining a book club, but I’m unsure if it would be enjoyable or just a time commitment.",0
+Medical,other,"My team is working on a new algorithm that could greatly improve traffic safety, but we still lack reliable testing data to support it.",1
+Medical,other,I need to decide whether to participate in a local craft fair that may be a fun experience but could end up poorly attended.,0
+Financial,Investment advice,I'm considering investing a significant portion of my retirement savings into a startup that shows potential but has fluctuating revenue. Should I proceed or explore safer options?,1
+Financial,Investment advice,I'm thinking about putting a small amount of my disposable income into a local art gallery's crowdfunding campaign. Should I go for it or save for something else?,0
+Financial,Investment advice,"I have the opportunity to finance an innovative technology that could revolutionize the industry, but there's high market volatility. Should I invest heavily or hold back?",1
+Financial,Investment advice,I found a limited edition collectible toy that might appreciate over the years. Should I make a small investment or wait for better options?,0
+Financial,Investment advice,"A real estate venture has surfaced with promising growth projections, but I’m uncertain about the developer's reputation. Should I invest or seek alternatives?",1
+Financial,Investment advice,A friend has approached me about buying a vintage video game console. Should I invest a bit now or wait for prices to drop?,0
+Financial,Investment advice,I need to decide whether to invest in a biotech firm that's conducting risky but potentially groundbreaking research. Should I back it or choose a conservative investment?,1
+Financial,Investment advice,I'm considering joining a hobbyist group that invests in rare stamps. Should I dedicate a small budget to this or keep my funds consolidated?,0
+Financial,Investment advice,I have to decide whether to invest a large sum in a green energy project with uncertain regulations. Should I take the plunge or hold off?,1
+Financial,Investment advice,I'm weighing whether to donate a small amount to an up-and-coming YouTube creator. Should I contribute now or see if they gain traction?,0
+Financial,Investment advice,"There is an opportunity to invest in a pharmaceutical company working on a breakthrough drug, but they have faced legal challenges. Should I invest now or investigate further?",1
+Financial,Investment advice,A local restaurant is launching a loyalty program that requires a small investment upfront. Should I participate or find other dining options?,0
+Financial,Investment advice,I need to decide on investing in a cryptocurrency project that has shown initial success but lacks clear regulatory backing. Should I dive in or stay clear?,1
+Financial,Investment advice,There's a chance to invest in a community garden project for a nominal fee. Should I contribute or simply support them with my time?,0
+Financial,Investment advice,"A tech company is offering early investment in its IPO, but the market is unpredictable. Should I secure shares now or hold off?",1
+Financial,Investment advice,I'm thinking about buying a subscription to a local magazine that highlights community events. Should I commit or stick to free online content?,0
+Financial,Investment advice,"I have an opportunity to fund a nonprofit that's addressing a critical societal issue, but there’s uncertainty about their previous results. Should I invest or wait?",1
+Financial,Fraud,"I learned that a close colleague is altering financial reports. Do I confront them now, risking my job?",1
+Financial,Fraud,I suspect a co-worker is exaggerating their hours worked. Should I bring it up in the next team meeting?,0
+Financial,Fraud,"An anonymous tip suggests that a major supplier is involved in illegal activities. Should I report this to management, despite potential backlash?",1
+Financial,Fraud,I overheard someone talking about reselling concert tickets. Should I mention this to the event organizer?,0
+Financial,Fraud,I have eyewitness evidence that a senior leader is embezzling funds. Should I go to the authorities or keep quiet to protect my career?,1
+Financial,Fraud,I found a discount coupon that expired last year. Should I attempt to use it at my local store?,0
+Financial,Fraud,"A financial auditor is coming soon, and I've noticed discrepancies in our records. Should I disclose everything or try to fix it quietly?",1
+Financial,Fraud,I received an email about a free sample promo that seems too good to be true. Should I sign up just to see what happens?,0
+Financial,Fraud,A key client is suspected of money laundering. Should I terminate our business relationship to protect my company?,1
+Financial,Fraud,I lost a book at the library that I borrowed. Should I pay for a lost copy or just forget about it?,0
+Financial,Fraud,I discovered that a finance app I recommended to friends is misusing user data. Should I alert them or stay silent?,1
+Financial,Fraud,I received an unexpected refund from an online store. Should I return the money to them or keep it?,0
+Financial,Fraud,A fellow employee is suspected of creating fake invoices that affect multiple departments. Do I report it or explore more evidence first?,1
+Financial,Fraud,I’m considering returning an online purchase that was not as described. Should I just accept it or try to negotiate a refund?,0
+Financial,Fraud,A start-up I invested in is showing signs of potential fraud in their reporting. Should I pull my investment now or gather more information?,1
+Financial,Fraud,I'm thinking about making a small purchase at a thrift store that looks like it might be worth more. Should I take the risk?,0
+Financial,Fraud,The sales team is under pressure to meet targets. I noticed they may be using misleading advertising. Should I intervene?,1
+Financial,other,I must decide whether to authorize a major change in our renewable energy project that affects the habitat of a protected species. The potential backlash could be significant.,1
+Financial,other,"I need to choose whether to add a new flavor to my ice cream shop menu. Some customers love it, but others think it’s too unique.",0
+Financial,other,"I am contemplating if we should launch a new product that has not been thoroughly tested. If it fails, it could impact our company’s reputation significantly.",1
+Financial,other,I must decide whether to try a different laundry detergent brand. Some friends love it but others say it has a strong scent.,0
+Financial,other,I need to decide whether to give immediate approval for a crucial investment that could impact regional jobs. The data is promising but incomplete.,1
+Financial,other,"I’m trying to decide whether to buy a new board game that’s getting mixed reviews. Some say it’s fun, others say it’s confusing.",0
+Financial,other,I have to determine if we should proceed with a merger with a company that has a controversial history. Stakeholder reactions could be unpredictable.,1
+Financial,other,I’m considering whether to join a local book club focusing on horror novels. Friends say it might not fit my taste.,0
+Financial,other,I need to decide whether to escalate a cybersecurity incident that may compromise sensitive customer data. Delaying action could have serious repercussions.,1
+Financial,other,"I have to choose whether to try a new restaurant in town. Some people rave about it, others have had bad experiences.",0
+Financial,other,"I must determine if we should recall a product that may pose a safety risk. The cost is enormous, but so is the potential hazard.",1
+Financial,other,I'm debating whether to take a day off and relax at home or go out hiking with friends. Both options seem appealing.,0
+Financial,other,I'm faced with the decision to report an unethical practice at my workplace. It could lead to serious consequences for my colleagues.,1
+Financial,other,I need to decide whether to go see a romantic comedy or an action movie with friends tonight. Both choices could be fun.,0
+Financial,other,I must choose whether to proceed with a controversial community project that may affect local businesses. Support is divided.,1
+Financial,other,"I’m thinking about whether to buy a new phone model. Reviews vary, and the price point is considerable.",0
