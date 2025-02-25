@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
-from typing import Any, Dict, List
 from pathlib import Path
+from typing import Any, Dict, List
+
 import pandas as pd
 
 from models_under_pressure.config import RunConfig
-from models_under_pressure.utils import call_llm
-from models_under_pressure.interfaces.situation import Situation
 from models_under_pressure.interfaces.prompt import Prompt
+from models_under_pressure.interfaces.situation import Situation
+from models_under_pressure.interfaces.variation import Variation
+from models_under_pressure.utils import call_llm
 
 
 # --------------------------------------------------------------------------------
@@ -17,13 +19,16 @@ def get_next_prompt_id(prompts_file: Path) -> int:
     try:
         df = pd.read_json(prompts_file, lines=True)
         if len(df) > 0:
-            return int(df['id'].max() + 1)
+            return int(df["id"].max() + 1)
         return 0
     except (FileNotFoundError, pd.errors.EmptyDataError, ValueError):
         return 0
 
+
 prompt_generation_template = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations.
 All of your prompts should be utterances a user might use to question an LLM in one of the following situations:
+
+
 - High stakes situation: "{high_stakes_description}"
 - Low stakes situation: "{low_stakes_description}"
 
@@ -34,6 +39,9 @@ Return your response in JSON format, using the following schema:
         "prompt": string variable
     }}
 }}
+
+Your responses should have the following additional characteristic: 
+{variation}
 
 Additional guidelines:
 {guidelines}
@@ -76,6 +84,7 @@ def make_prompt_generation_prompt(
     low_stakes_situation: Situation,
     prompt_generation_guidelines: List[str],
     num_prompts: int,
+    variation: Variation,
     prompt_examples: Dict[int, Dict[str, Any]],
 ) -> str:
     prompt = prompt_generation_template.format(
@@ -85,6 +94,7 @@ def make_prompt_generation_prompt(
         guidelines="\n".join(
             f"- {guideline}" for guideline in prompt_generation_guidelines
         ),
+        variation=variation.description,
         prompt_examples=str(prompt_examples),
     )
     return prompt
@@ -93,6 +103,7 @@ def make_prompt_generation_prompt(
 def generate_prompts(
     high_stakes_situation: Situation,
     low_stakes_situation: Situation,
+    variation: Variation,
     num_prompts: int,
     next_prompt_id: int,
     model: str | None = None,
@@ -102,10 +113,7 @@ def generate_prompts(
             high_stakes_situation.category is not None
             and low_stakes_situation.category is not None
         ):
-            assert (
-                high_stakes_situation.category
-                == low_stakes_situation.category
-            )
+            assert high_stakes_situation.category == low_stakes_situation.category
         if (
             high_stakes_situation.factor is not None
             and low_stakes_situation.factor is not None
@@ -123,6 +131,7 @@ def generate_prompts(
         low_stakes_situation,
         prompt_generation_guidelines,
         num_prompts,
+        variation,
         prompt_examples,
     )
     # Call LLM with prompt
@@ -145,6 +154,7 @@ def generate_prompts(
             },
             "high_stakes": int(bool(prompt_dict["high_stakes"])),
             "timestamp": timestamp,
+            "variation": variation.name,
         }
         if high_stakes_situation.factor is not None:
             prompt_args["factor"] = high_stakes_situation.factor
@@ -155,46 +165,57 @@ def generate_prompts(
         current_id += 1
     return prompts
 
+
 def generate_prompts_file(run_config: RunConfig) -> None:
     # Get the next available prompt ID
     next_prompt_id = get_next_prompt_id(run_config.prompts_file)
-    
+
     # load situations from csv
     situations_df = pd.read_csv(run_config.situations_file)
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
+    variations_df = pd.read_csv(run_config.variations_file)
+
     prompts = []
-    for hs_scenario, ls_scenario in zip(
-        high_stakes_situations.to_dict("records"),
-        low_stakes_situations.to_dict("records"),
-    ):
-        hs_situation = Situation(
-            id=hs_scenario["id"],
-            description=hs_scenario["situation"],
-            high_stakes=hs_scenario["high_stakes"],
-            category=hs_scenario["category"],
-            factor=hs_scenario["factor"],
-        )
-        ls_situation = Situation(
-            id=ls_scenario["id"],
-            description=ls_scenario["situation"],
-            high_stakes=ls_scenario["high_stakes"],
-            category=ls_scenario["category"],
-            factor=ls_scenario["factor"],
-        )
-        
-        new_prompts = generate_prompts(
-            hs_situation, 
-            ls_situation, 
-            num_prompts=run_config.num_prompts_per_situation,
-            next_prompt_id=next_prompt_id
-        )
-        prompts.extend(new_prompts)
-        next_prompt_id += len(new_prompts)
-        
-        # Store prompts
-        Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
+    for i, variation_row in enumerate(variations_df.to_dict("records")):
+        for hs_scenario, ls_scenario in zip(
+            high_stakes_situations.to_dict("records"),
+            low_stakes_situations.to_dict("records"),
+        ):
+            hs_situation = Situation(
+                id=hs_scenario["id"],
+                description=hs_scenario["situation"],
+                high_stakes=hs_scenario["high_stakes"],
+                category=hs_scenario["category"],
+                factor=hs_scenario["factor"],
+            )
+            ls_situation = Situation(
+                id=ls_scenario["id"],
+                description=ls_scenario["situation"],
+                high_stakes=ls_scenario["high_stakes"],
+                category=ls_scenario["category"],
+                factor=ls_scenario["factor"],
+            )
+
+            variation = Variation(
+                id=variation_row["id"],
+                description=variation_row["description"],
+                name=variation_row["name"],
+            )
+
+            new_prompts = generate_prompts(
+                hs_situation,
+                ls_situation,
+                variation=variation,
+                num_prompts=run_config.num_prompts_per_situation,
+                next_prompt_id=next_prompt_id,
+            )
+            prompts.extend(new_prompts)
+            next_prompt_id += len(new_prompts)
+
+            # Store prompts
+            Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
 
 
 # --------------------------------------------------------------------------------

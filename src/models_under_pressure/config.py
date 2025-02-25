@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -46,3 +45,7 @@ class RunConfig:
     @property
     def situations_file(self) -> Path:
         return self.run_dir / "situations.jsonl"
+
+    @property
+    def variations_file(self) -> Path:
+        return self.run_dir / "variations.jsonl"
