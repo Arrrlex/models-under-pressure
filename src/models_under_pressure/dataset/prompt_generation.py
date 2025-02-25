@@ -40,7 +40,7 @@ Return your response in JSON format, using the following schema:
     }}
 }}
 
-Your responses should have the following additional characteristic: 
+Your responses should have the following additional characteristic:
 {variation}
 
 Additional guidelines:
@@ -216,6 +216,7 @@ def generate_prompts_file(run_config: RunConfig) -> None:
 
             # Store prompts
             Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
+
 
 # --------------------------------------------------------------------------------
 # 3. Main flow: orchestrate the data creation

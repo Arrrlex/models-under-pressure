@@ -49,4 +49,3 @@ class RunConfig:
     @property
     def variations_file(self) -> Path:
         return self.run_dir / "variations_prompt_type.csv"
-
