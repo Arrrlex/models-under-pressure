@@ -1,6 +1,10 @@
+import csv
+import json
+import random
+
 from datasets import load_dataset
 
-# TODO Randomly sample 100 cases from both categories and annotate them for high-stakes and low-stakes
+from models_under_pressure.config import EVALS_DIR
 
 
 def load_anthropic_dataset(split: str = "train") -> list[dict]:
@@ -61,8 +65,57 @@ def load_anthropic_dataset(split: str = "train") -> list[dict]:
     return data_dicts
 
 
-if __name__ == "__main__":
-    dataset = load_anthropic_dataset(split="train")
+def generate_anthropic_samples(
+    split: str = "train",
+    num_samples: int = 100,
+    file_name: str = "anthropic_samples.csv",
+    overwrite: bool = False,
+):
+    dataset = load_anthropic_dataset(split=split)
 
-    print(len(dataset))
-    print(dataset[0])
+    # Sample 100 unique indices
+    unique_indices = list(set(d["index"] for d in dataset))
+    sampled_indices = random.sample(unique_indices, k=num_samples)
+
+    # Filter dataset to only include entries with sampled indices
+    sampled_dataset = [d for d in dataset if d["index"] in sampled_indices]
+
+    print(f"Sampled {len(sampled_dataset)} conversations")
+    print(sampled_dataset[0])
+
+    # Prepare data for CSV
+    csv_data = []
+    for item in sampled_dataset:
+        csv_data.append(
+            {
+                "id": item["id"],
+                "index": item["index"],
+                "category": item["category"],
+                "messages": json.dumps(
+                    item["messages"]
+                ),  # Convert messages list to JSON string
+                "high_stakes": "",  # Empty column for manual annotation
+            }
+        )
+
+    # Write to CSV
+    output_file = EVALS_DIR / file_name
+    if not EVALS_DIR.exists():
+        EVALS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not overwrite and output_file.exists():
+        raise FileExistsError(
+            f"File {output_file} already exists. Use overwrite=True to overwrite."
+        )
+
+    fieldnames = ["id", "index", "category", "messages", "high_stakes"]
+    with open(output_file, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(csv_data)
+
+    print(f"Wrote {len(csv_data)} rows to {output_file}")
+
+
+if __name__ == "__main__":
+    generate_anthropic_samples(split="train", num_samples=100)
