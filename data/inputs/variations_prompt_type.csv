@@ -1,4 +1,0 @@
-id,name,description
-1,Q&A_short,The prompt should be a short query from a generic user.
-2,Q&A_long,The prompt should be a long detailed query containing lots of information from a generic user.
-3,French,The prompt should be in French.

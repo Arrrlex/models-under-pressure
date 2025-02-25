@@ -184,7 +184,8 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
 
     # If file exists, append new situations
     if output_path.exists():
-        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
+        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)  # type: ignore
+
     situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
         output_path, index=False
     )
