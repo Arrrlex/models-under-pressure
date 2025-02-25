@@ -68,7 +68,7 @@ def load_anthropic_dataset(split: str = "train") -> list[dict]:
 def generate_anthropic_samples(
     split: str = "train",
     num_samples: int = 100,
-    file_name: str = "anthropic_samples.csv",
+    file_name: str = "anthropic_samples_to_annotate.csv",
     overwrite: bool = False,
 ):
     dataset = load_anthropic_dataset(split=split)
@@ -108,7 +108,7 @@ def generate_anthropic_samples(
             f"File {output_file} already exists. Use overwrite=True to overwrite."
         )
 
-    fieldnames = ["id", "index", "category", "messages", "high_stakes"]
+    fieldnames = ["id", "index", "category", "messages", "high_stakes", "comment"]
     with open(output_file, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
