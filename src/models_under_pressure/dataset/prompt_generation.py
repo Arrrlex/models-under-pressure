@@ -110,15 +110,15 @@ def generate_prompts(
 ) -> List[Prompt]:
     try:
         if (
-            high_stakes_situation.category is not None
-            and low_stakes_situation.category is not None
+            high_stakes_situation.topic is not None
+            and low_stakes_situation.topic is not None
         ):
-            assert high_stakes_situation.category == low_stakes_situation.category
+            assert high_stakes_situation.topic == low_stakes_situation.topic
         if (
-            high_stakes_situation.factor is not None
-            and low_stakes_situation.factor is not None
+            high_stakes_situation.factors is not None
+            and low_stakes_situation.factors is not None
         ):
-            assert high_stakes_situation.factor == low_stakes_situation.factor
+            assert high_stakes_situation.factors == low_stakes_situation.factors
 
     except (SystemError, KeyboardInterrupt):
         raise
@@ -156,10 +156,10 @@ def generate_prompts(
             "timestamp": timestamp,
             "variation": variation.name,
         }
-        if high_stakes_situation.factor is not None:
-            prompt_args["factor"] = high_stakes_situation.factor
-        if high_stakes_situation.category is not None:
-            prompt_args["category"] = high_stakes_situation.category
+        if high_stakes_situation.factors is not None:
+            prompt_args["factors"] = high_stakes_situation.factors
+        if high_stakes_situation.topic is not None:
+            prompt_args["topic"] = high_stakes_situation.topic
 
         prompts.append(Prompt(**prompt_args))
         current_id += 1
@@ -187,15 +187,15 @@ def generate_prompts_file(run_config: RunConfig) -> None:
                 id=hs_scenario["id"],
                 description=hs_scenario["situation"],
                 high_stakes=hs_scenario["high_stakes"],
-                category=hs_scenario["category"],
-                factor=hs_scenario["factor"],
+                topic=hs_scenario["topic"],
+                factors=hs_scenario["factors"],
             )
             ls_situation = Situation(
                 id=ls_scenario["id"],
                 description=ls_scenario["situation"],
                 high_stakes=ls_scenario["high_stakes"],
-                category=ls_scenario["category"],
-                factor=ls_scenario["factor"],
+                topic=ls_scenario["topic"],
+                factors=ls_scenario["factors"],
             )
 
             variation = Variation(

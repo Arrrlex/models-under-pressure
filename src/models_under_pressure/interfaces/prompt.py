@@ -12,8 +12,8 @@ class Prompt(abc.ABC):
         situations: Dict[str, int],
         high_stakes: bool,
         timestamp: str,
-        category: str | None = None,
-        factor: str | None = None,
+        topic: str | None = None,
+        factors: str | None = None,
         metadata: Dict[str, str] | None = None,
     ):
         self.id = id
@@ -25,8 +25,8 @@ class Prompt(abc.ABC):
         self.high_stakes = high_stakes
         self.timestamp = timestamp
 
-        self.category = category
-        self.factor = factor
+        self.topic = topic
+        self.factors = factors
 
         if metadata is None:
             self.metadata = {}
@@ -41,8 +41,8 @@ class Prompt(abc.ABC):
             "id": self.id,
             "prompt": self.prompt,
             "situations": self.situations,
-            "category": self.category,
-            "factor": self.factor,
+            "topic": self.topic,
+            "factors": self.factors,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
