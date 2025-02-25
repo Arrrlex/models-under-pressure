@@ -1,30 +1,32 @@
 import itertools
-from typing import List, Tuple
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from models_under_pressure.interfaces.taxonomy import (
-    CategoryTaxonomy,
-    FactorTaxonomy,
+from models_under_pressure.config import (
+    SITUATION_FACTORS_JSON,
+    TOPICS_JSON,
+    RunConfig,
 )
 from models_under_pressure.interfaces.situation import (
     Situation,
-    SituationDataInterface,
 )
-from models_under_pressure.config import (
-    CATEGORY_EXAMPLES_CSV,
-    CATEGORY_JSON,
-    FACTOR_EXAMPLES_CSV,
-    FACTOR_JSON,
-    RunConfig,
+from models_under_pressure.interfaces.taxonomy import (
+    FactorTaxonomy,
+    TopicTaxonomy,
 )
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> ad2bd97 (Stuff)
 # TODO Phil: I think it would make more sense to generate the combinations dynamically based on the taxonomy
 # and not write the combinations to the csv file. (Since there is a lot of repetition and doing that in memory seems cheap)
+# TODO Urja - I agree with Phil. Making current implementation to be dynamic.
 
 
+<<<<<<< HEAD
 def get_taxonomies():
     """Initialize and return all data interfaces."""
     category_taxonomy = CategoryTaxonomy(CATEGORY_EXAMPLES_CSV, CATEGORY_JSON)
@@ -36,11 +38,30 @@ def get_taxonomies():
 def generate_combinations(
     category_taxonomy: CategoryTaxonomy, factor_taxonomy: FactorTaxonomy
 ) -> List[Tuple[str, str]]:
-    """Generate all possible combinations of categories and factors."""
-    categories = category_taxonomy.nodes
-    factors = factor_taxonomy.nodes
-    return list(itertools.product(categories, factors))
+=======
+def get_taxonomies() -> Tuple[TopicTaxonomy, FactorTaxonomy]:
+    """Initialize and return all data interfaces."""
+    topics_taxonomy = TopicTaxonomy(TOPICS_JSON)
+    factor_taxonomy = FactorTaxonomy(SITUATION_FACTORS_JSON)
+    return topics_taxonomy, factor_taxonomy
 
+
+def generate_combinations(
+    topic_taxonomy: TopicTaxonomy, factor_taxonomy: FactorTaxonomy
+) -> List[Tuple[str, Tuple[str, ...]]]:
+>>>>>>> ad2bd97 (Stuff)
+    """Generate all possible combinations of categories and factors."""
+    topics = topic_taxonomy.items
+    factors: Dict[str, List[str]] = {}
+    for factor in factor_taxonomy.items:
+        factors[factor] = list(item for item in factor_taxonomy.data[factor])
+    factor_values = []
+    for factor in factors:
+        factor_values.append(factors[factor])
+    factor_combinations = list(itertools.product(*factor_values))
+    return list(itertools.product(topics, factor_combinations))
+
+<<<<<<< HEAD
 
 def get_example_situations(
     category: str,
@@ -62,11 +83,17 @@ def generate_situations(
     situation_combinations: List[Tuple[str, str]],
     category_situations: SituationDataInterface,
     factor_situations: SituationDataInterface,
+=======
+
+def generate_situations(
+    situation_combinations: List[Tuple[str, Tuple[str, ...]]],
+>>>>>>> ad2bd97 (Stuff)
 ) -> List[Situation]:
     """Generate situations for all combinations."""
     generated_situations = []
     idx = 0
 
+<<<<<<< HEAD
     for category, factor in situation_combinations:
         example_situations = get_example_situations(
             category, factor, category_situations, factor_situations
@@ -84,6 +111,11 @@ def generate_situations(
                     )
                 )
                 idx += 1
+=======
+    for topic, factors in situation_combinations:
+        generated_situations.append(Situation(id=idx, topic=topic, factors=factors))
+        idx += 1
+>>>>>>> ad2bd97 (Stuff)
 
     return generated_situations
 
@@ -92,9 +124,18 @@ def save_generated_situations_to_csv(
     file_path: Path, situations: List[Situation]
 ) -> None:
     """Save generated situations to a CSV file."""
+    # Create initial DataFrame from situations
     df = pd.DataFrame([sit.to_dict() for sit in situations])
 
-    df.to_csv(file_path, index=False)
+    # Get the factor values as separate columns
+    factor_df = pd.DataFrame(
+        df.factors.tolist(), columns=FactorTaxonomy(SITUATION_FACTORS_JSON).items
+    )
+
+    # Combine the original DataFrame (without factors) with the factor columns
+    result_df = pd.concat([df.drop("factors", axis=1), factor_df], axis=1)
+
+    result_df.to_csv(file_path, index=False)
     print(f"Generated situations saved to {file_path}")
 
 
@@ -106,6 +147,7 @@ def generate_combined_situations(run_config: RunConfig):
     # Generate combinations
     situation_combinations = generate_combinations(category_taxonomy, factor_taxonomy)
 
+<<<<<<< HEAD
     # Get all example situations
     category_situations = SituationDataInterface(category_taxonomy.csv_path)
     factor_situations = SituationDataInterface(factor_taxonomy.csv_path)
@@ -114,9 +156,15 @@ def generate_combined_situations(run_config: RunConfig):
     generated_situations = generate_situations(
         situation_combinations, category_situations, factor_situations
     )
+=======
+    # Generate situations
+    generated_situations = generate_situations(situation_combinations)
+>>>>>>> ad2bd97 (Stuff)
 
     # Save results
-    save_generated_situations_to_csv(run_config.full_examples_csv, generated_situations)
+    save_generated_situations_to_csv(
+        run_config.situations_combined_csv, generated_situations
+    )
     print("Situation generation completed!")
 
 

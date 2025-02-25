@@ -1,0 +1,28 @@
+{
+  "role_of_user": [
+    "Executives",
+    "Decision-Makers",
+    "Everyday Consumers",
+    "Regulators & Policymakers",
+    "Developers & Engineers",
+    "Teachers & Students",
+    "Healthcare Professionals & Patients",
+    "Security Experts & Hackers",
+    "Journalists & Fact-Checkers"
+  ],
+  "Geography": [
+    "India",
+    "China",
+    "United Kingdom",
+    "United States",
+    "Australia",
+    "Germany",
+    "South Africa",
+    "Namibia"
+  ],
+  "Languages": [
+    "German",
+    "French",
+    "English"
+  ]
+}

@@ -1,14 +1,13 @@
 import json
-from typing import Any, Dict, List
 from pathlib import Path
 
 
 class Taxonomy:
     """Represents a taxonomy of entities with hierarchy support."""
 
-    def __init__(self, csv_path: Path, json_path: Path):
-        self.csv_path = csv_path
+    def __init__(self, json_path: Path):
         self.json_path = json_path
+<<<<<<< HEAD
 
         # Load data
         self.tree = json.load(open(self.json_path))
@@ -57,16 +56,34 @@ class CategoryTaxonomy(Taxonomy):
     """Represents a taxonomy of categories with hierarchy support."""
 
     pass
+=======
+        self.data = json.load(open(self.json_path))
+        self.items = list(self.data.keys())
+
+
+class TopicTaxonomy(Taxonomy):
+    def __init__(self, json_path: Path):
+        self.json_path = json_path
+        self.data = json.load(open(self.json_path))
+        self.items = self.data["topics"]
+
+>>>>>>> ad2bd97 (Stuff)
 
 
 class FactorTaxonomy(Taxonomy):
     """Represents a taxonomy of factors with hierarchy support."""
 
+<<<<<<< HEAD
     pass
+=======
+    def __init__(self, json_path: Path):
+        super().__init__(json_path)
+>>>>>>> ad2bd97 (Stuff)
 
 
 if __name__ == "__main__":
     from models_under_pressure.config import (
+<<<<<<< HEAD
         CATEGORY_JSON,
         CATEGORY_EXAMPLES_CSV,
         FACTOR_JSON,
@@ -76,19 +93,20 @@ if __name__ == "__main__":
     category_taxonomy = CategoryTaxonomy(
         csv_path=CATEGORY_EXAMPLES_CSV,
         json_path=CATEGORY_JSON,
+=======
+        SITUATION_FACTORS_JSON,
+        TOPICS_JSON,
+>>>>>>> ad2bd97 (Stuff)
     )
-    print("Category taxonomy leaf nodes:")
-    print(category_taxonomy.leaf_nodes)
 
-    factor_taxonomy = FactorTaxonomy(
-        csv_path=FACTOR_EXAMPLES_CSV,
-        json_path=FACTOR_JSON,
-    )
-    print("\nFactor taxonomy leaf nodes:")
-    print(factor_taxonomy.leaf_nodes)
+    category_taxonomy = TopicTaxonomy(json_path=TOPICS_JSON)
 
+<<<<<<< HEAD
     print("\nCategory taxonomy all nodes:")
     print(category_taxonomy.nodes)
 
     print("\nFactor taxonomy all nodes:")
     print(factor_taxonomy.nodes)
+=======
+    factor_taxonomy = FactorTaxonomy(json_path=SITUATION_FACTORS_JSON)
+>>>>>>> ad2bd97 (Stuff)
