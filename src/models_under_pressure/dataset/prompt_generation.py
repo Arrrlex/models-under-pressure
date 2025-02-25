@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
-from typing import Any, Dict, List
 from pathlib import Path
+from typing import Any, Dict, List
+
 import pandas as pd
 
 from models_under_pressure.config import RunConfig
-from models_under_pressure.utils import call_llm
-from models_under_pressure.interfaces.situation import Situation
 from models_under_pressure.interfaces.prompt import Prompt
+from models_under_pressure.interfaces.situation import Situation
+from models_under_pressure.utils import call_llm
 
 
 # --------------------------------------------------------------------------------
@@ -159,7 +160,7 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     next_prompt_id = get_next_prompt_id(run_config.prompts_file)
 
     # load situations from csv
-    situations_df = pd.read_csv(run_config.situations_file)
+    situations_df: pd.DataFrame = pd.read_csv(run_config.situations_file)
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 

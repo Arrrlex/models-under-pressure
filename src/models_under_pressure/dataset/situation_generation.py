@@ -1,12 +1,12 @@
-import random
 import logging
-from typing import Any, Dict, List, Tuple, Union
+import random
 from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 
-from models_under_pressure.utils import call_llm
 from models_under_pressure.config import RunConfig
+from models_under_pressure.utils import call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
 
     # If file exists, append new situations
     if output_path.exists():
-        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
+        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)  # type: ignore
 
     situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
         output_path, index=False

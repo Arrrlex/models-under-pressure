@@ -27,6 +27,7 @@ dependencies = [
     "typeguard>=4.4.2",
     "wandb>=0.19.6",
     "wordcloud>=1.9.4",
+    "pandas-stubs>=2.2.3.241126",
 ]
 
 [build-system]
