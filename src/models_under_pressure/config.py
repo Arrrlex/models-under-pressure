@@ -3,6 +3,8 @@ from pathlib import Path
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
+DEVICE = "cpu"
+
 # Paths to input files
 INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"

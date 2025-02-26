@@ -1,14 +1,67 @@
 # Imports
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import torch
 from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.probes.model import LLMModel
+
+
+class HighStakesClassifier(Protocol):
+    def predict(self, dataset: Dataset) -> list[Label]: ...
+
+
+@dataclass
+class LinearProbeClassifier:
+    _llm: LLMModel
+    _classifier: Any = field(init=False)
+    seq_pos: int | str = "all"
+    _classifier_kwargs: dict[str, Any] = field(
+        default_factory=lambda: {"C": 1e-3, "random_state": 42, "fit_intercept": False}
+    )
+
+    def __post_init__(self):
+        self._classifier = make_pipeline(
+            StandardScaler(), LogisticRegression(**self._classifier_kwargs)
+        )
+
+    def _preprocess_activations(
+        self,
+        activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
+    ) -> Float[np.ndarray, "batch_size embed_dim"]:
+        if self.seq_pos == "all":
+            acts = activations.mean(axis=1)
+        else:
+            assert isinstance(self.seq_pos, int)
+            assert self.seq_pos in range(
+                activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
+            acts = activations[:, self.seq_pos, :]
+
+        return acts
+
+    def fit(
+        self,
+        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
+        y: Float[np.ndarray, " batch_size"],
+    ) -> "LinearProbe":
+        X = self._preprocess_activations(X)
+
+        self._classifier.fit(X, y)
+        return self
+
+    def predict(
+        self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
+    ) -> Float[np.ndarray, " batch_size"]:
+        X = self._preprocess_activations(X)
+        return self._model.predict(X)
 
 
 @torch.no_grad()
@@ -53,10 +106,6 @@ def create_activations(
     print("All activations shape:", all_acts.shape)
 
     return all_acts.cpu().detach().numpy()
-
-
-# Select the last sequence position activations:
-# train_acts_final_pos = train_acts[:, :, -1, :]
 
 
 @dataclass

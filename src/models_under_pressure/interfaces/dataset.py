@@ -20,7 +20,8 @@ class Label(Enum):
     AMBIGUOUS = "ambiguous"
 
 
-Input = str | list[Message]
+Dialogue = list[Message]
+Input = str | Dialogue
 
 
 class Dataset(BaseModel):
