@@ -8,7 +8,7 @@ from transformers.tokenization_utils_base import (
 )
 
 from models_under_pressure.config import DEVICE
-from models_under_pressure.interfaces.dataset import Dialogue
+from models_under_pressure.interfaces.dataset import Dialogue, Message
 
 
 @dataclass
@@ -23,6 +23,10 @@ class LLMModel:
 
         model = AutoModelForCausalLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+
         return cls(model, tokenizer)
 
     def tokenize(
@@ -47,13 +51,25 @@ class LLMModel:
             **tokenizer_kwargs,
         )  # type: ignore
 
+    #
+
     def get_activations(
         self, dialogues: list[Dialogue], layers: list[int] | None = None
     ) -> torch.Tensor:
         if layers is None:
-            layers = list(range(self.model.config.n_layers))
+            # Use num_hidden_layers for LLaMA models, otherwise n_layers
+            if hasattr(self.model.config, "num_hidden_layers"):
+                layers = list(range(self.model.config.num_hidden_layers))
+            else:
+                layers = list(range(self.model.config.n_layers))
 
         inputs = self.tokenize(dialogues)
+        print(f"{repr(inputs)=}")
+
+        print(inputs)
+        # Convert token IDs back to string
+        input_str = self.tokenizer.decode(inputs[0], skip_special_tokens=False)
+        print(f"Decoded input: {repr(input_str)}")
         inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
 
         # Dictionary to store residual activations
@@ -85,3 +101,22 @@ class LLMModel:
         print("All activations shape:", all_acts.shape)
 
         return all_acts.cpu().detach().numpy()
+
+
+if __name__ == "__main__":
+    import dotenv
+
+    dotenv.load_dotenv()
+
+    model = LLMModel.load("meta-llama/Llama-3.2-1B-Instruct")
+    print(model.model.config)
+    dialogues = [
+        [
+            Message(
+                role="user",
+                content="Hello, how are you?",
+            )
+        ]
+    ]  # type: ignore
+    activations = model.get_activations(dialogues)
+    print(activations.shape)
