@@ -1,13 +1,14 @@
 import abc
-from dataclasses import dataclass
-from typing import List, Dict
-from models_under_pressure.dataset.prompt_generation import Prompt
-from pathlib import Path
 import csv
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List
 
-from models_under_pressure.utils import call_llm
+from tqdm import tqdm
+
 from models_under_pressure.config import METADATA_FIELDS_FILE, RunConfig
-
+from models_under_pressure.dataset.prompt_generation import Prompt
+from models_under_pressure.utils import call_llm
 
 # --------------------------------------------------------------------------------
 # 1. Inputs
@@ -60,7 +61,7 @@ def make_metadata_generation_prompt(
 ) -> str:
     generation_prompt = metadata_generation_template.format(
         fields="\n".join(
-            f"- {field.name}: {field.description} ({"/".join(field.values)})"
+            f"- {field.name}: {field.description} ({'/'.join(field.values)})"
             for field in fields
         ),
         guidelines="\n".join(
@@ -97,7 +98,7 @@ def generate_metadata_file(run_config: RunConfig) -> None:
     prompts = Prompt.from_jsonl(
         run_config.prompts_file, metadata_file_path=run_config.metadata_file
     )
-    for prompt in prompts:
+    for prompt in tqdm(prompts, desc="Generating metadata"):
         if prompt.metadata is None or prompt.metadata == {}:
             metadata = generate_metadata(prompt, fields)
             prompt.add_metadata(metadata)

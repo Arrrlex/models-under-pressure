@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
+from tqdm import tqdm
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.interfaces.prompt import Prompt
@@ -178,10 +179,19 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     variations_df = pd.read_csv(run_config.variations_file)
 
     prompts = []
+
+    print("Generating Prompts")
+
     for i, variation_row in enumerate(variations_df.to_dict("records")):
-        for hs_scenario, ls_scenario in zip(
-            high_stakes_situations.to_dict("records"),
-            low_stakes_situations.to_dict("records"),
+        print(f"Generating Prompts for variation {i + 1} of {len(variations_df)}")
+
+        for hs_scenario, ls_scenario in tqdm(
+            zip(
+                high_stakes_situations.to_dict("records"),
+                low_stakes_situations.to_dict("records"),
+            ),
+            desc="Generating prompts for scenarios",
+            total=len(high_stakes_situations),
         ):
             hs_situation = Situation(
                 id=hs_scenario["id"],
