@@ -46,5 +46,9 @@ class RunConfig:
         return self.run_dir / "situations.jsonl"
 
     @property
+    def variations_file(self) -> Path:
+        return self.run_dir / "variations_prompt_type.csv"
+
+    @property
     def filtered_situations_file(self) -> Path:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV

@@ -12,8 +12,9 @@ class Prompt(abc.ABC):
         situations: Dict[str, int],
         high_stakes: bool,
         timestamp: str,
-        category: str | None = None,
-        factor: str | None = None,
+        topic: str | None = None,
+        factors: str | None = None,
+        variation: str | None = None,
         metadata: Dict[str, str] | None = None,
     ):
         self.id = id
@@ -25,8 +26,9 @@ class Prompt(abc.ABC):
         self.high_stakes = high_stakes
         self.timestamp = timestamp
 
-        self.category = category
-        self.factor = factor
+        self.topic = topic
+        self.factors = factors
+        self.variation = variation
 
         if metadata is None:
             self.metadata = {}
@@ -41,8 +43,9 @@ class Prompt(abc.ABC):
             "id": self.id,
             "prompt": self.prompt,
             "situations": self.situations,
-            "category": self.category,
-            "factor": self.factor,
+            "topic": self.topic,
+            "factors": self.factors,
+            "variation": self.variation,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
@@ -58,13 +61,17 @@ class Prompt(abc.ABC):
         return json.dumps(metadata)
 
     @classmethod
-    def to_jsonl(cls, prompts: List["Prompt"], file_path: Path, mode: str = "a") -> None:
+    def to_jsonl(
+        cls, prompts: List["Prompt"], file_path: Path, mode: str = "a"
+    ) -> None:
         with open(file_path, mode) as f:
             for prompt in prompts:
                 f.write(prompt.to_json() + "\n")
 
     @classmethod
-    def metadata_to_jsonl(cls, prompts: List["Prompt"], file_path: Path, mode: str = "a") -> None:
+    def metadata_to_jsonl(
+        cls, prompts: List["Prompt"], file_path: Path, mode: str = "a"
+    ) -> None:
         with open(file_path, mode) as f:
             for prompt in prompts:
                 f.write(prompt.metadata_to_json() + "\n")
@@ -94,7 +101,9 @@ class Prompt(abc.ABC):
                 for metadata_dict in metadata_dicts:
                     metadata_id = int(metadata_dict["id"])
                     metadata_by_id[metadata_id] = {
-                        k: v for k, v in metadata_dict.items() if k not in ["id", "prompt"]
+                        k: v
+                        for k, v in metadata_dict.items()
+                        if k not in ["id", "prompt"]
                     }
 
                 # Match metadata to prompts by ID

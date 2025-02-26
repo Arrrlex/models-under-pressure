@@ -20,8 +20,8 @@
      "Kenya"
    ]
 "impact_factors": [
-    "Health & Safety Outcomes", 
-    "Financial Consequences", 
+    "Health & Safety Outcomes",
+    "Financial Consequences",
     "Permanent Harm",
     "Loss of Reputation or Trust",
     "Individual-Level Impact",

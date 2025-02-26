@@ -10,18 +10,19 @@ class Situation:
     def __init__(
         self,
         id: int,
+        topic: str,
+        factors: List[str],
+        factor_names: List[str],
         description: Optional[str] = None,
-        topic: Optional[str] = None,
-        factors: Optional[Dict[str, List[str]]] = None,
         high_stakes: Optional[bool] = None,
-        factor_names: Optional[List[str]] = None,
     ):
         self.id = id
         self.description = description
         self.topic = topic
-        self.factors = factors
+        self.factor_values = factors
         self.high_stakes = high_stakes
         self.factor_names = factor_names
+        self._factors = dict(zip(self.factor_names, self.factor_values))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -38,17 +39,10 @@ class Situation:
             f"topic='{self.topic}', factors='{self.factors}')"
         )
 
-    def set_factors(self, factors: Dict[str, List[str]]) -> None:
-        """Set the factors for the situation."""
-        if self.factor_names and self.factors:
-            for factor in self.factor_names:
-                self.factors[factor] = factors[factor]
-
-    def get_all_factors(self, factor_name: str) -> List[str]:
-        """Get all factors for the situation."""
-        if self.factors and factor_name in self.factors:
-            return self.factors[factor_name]
-        return []
+    @property
+    def factors(self) -> Dict[str, str]:
+        """Get the factors dictionary for the situation."""
+        return self._factors
 
 
 class SituationDataInterface:
@@ -67,8 +61,9 @@ class SituationDataInterface:
             situation = Situation(
                 id=row["id"],
                 description=row["description"],
-                topic=row["topic"] if pd.notna(row["topic"]) else None,
-                factors=row["factors"] if pd.notna(row["factors"]) else None,
+                topic=row["topic"],
+                factors=row["factors"],
+                factor_names=row["factor_names"],
                 high_stakes=row["high_stakes"],
             )
             situations.append(situation)

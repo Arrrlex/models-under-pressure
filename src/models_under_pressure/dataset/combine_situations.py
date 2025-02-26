@@ -42,13 +42,18 @@ def generate_combinations(
 
 def generate_situations(
     situation_combinations: List[Tuple[str, Tuple[str, ...]]],
+    factor_names: List[str],
 ) -> List[Situation]:
     """Generate situations for all combinations."""
     generated_situations = []
     idx = 0
 
     for topic, factors in situation_combinations:
-        generated_situations.append(Situation(id=idx, topic=topic, factors=factors))
+        generated_situations.append(
+            Situation(
+                id=idx, topic=topic, factors=list(factors), factor_names=factor_names
+            )
+        )
         idx += 1
 
     return generated_situations
@@ -82,7 +87,9 @@ def generate_combined_situations(run_config: RunConfig):
     situation_combinations = generate_combinations(category_taxonomy, factor_taxonomy)
 
     # Generate situations
-    generated_situations = generate_situations(situation_combinations)
+    generated_situations = generate_situations(
+        situation_combinations, factor_taxonomy.items
+    )
 
     # Save results
     save_generated_situations_to_csv(

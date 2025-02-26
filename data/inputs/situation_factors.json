@@ -11,8 +11,8 @@
     "Journalists & Fact-Checkers"
   ],
   "impact_factors": [
-    "Health & Safety Outcomes", 
-    "Financial Consequences", 
+    "Health & Safety Outcomes",
+    "Financial Consequences",
     "Permanent Harm",
     "Loss of Reputation or Trust",
     "Individual-Level Impact",
@@ -36,6 +36,20 @@
     "Responsibility for Harm",
     "Manipulative or Undue Influence",
     "High-Stakes Public Discourse"
+  ],
+  "Geography": [
+    "India",
+    "China",
+    "United Kingdom",
+    "United States",
+    "Australia",
+    "Germany",
+    "South Africa",
+    "Namibia"
+  ],
+  "Languages": [
+    "German",
+    "French",
+    "English"
   ]
 }
-
