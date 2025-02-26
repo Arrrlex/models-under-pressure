@@ -17,10 +17,6 @@ from models_under_pressure.interfaces.taxonomy import (
     TopicTaxonomy,
 )
 
-# TODO Phil: I think it would make more sense to generate the combinations dynamically based on the taxonomy
-# and not write the combinations to the csv file. (Since there is a lot of repetition and doing that in memory seems cheap)
-# TODO Urja - I agree with Phil. Making current implementation to be dynamic.
-
 
 def get_taxonomies() -> Tuple[TopicTaxonomy, FactorTaxonomy]:
     """Initialize and return all data interfaces."""
@@ -92,7 +88,7 @@ def generate_combined_situations(run_config: RunConfig):
     save_generated_situations_to_csv(
         run_config.situations_combined_csv, generated_situations
     )
-    print("Situation generation completed!")
+    print("Situation combination generation completed!")
 
 
 if __name__ == "__main__":

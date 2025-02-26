@@ -1,16 +1,25 @@
-{
-  "role_of_user": [
-    "Executives",
-    "Decision-Makers",
-    "Everyday Consumers",
-    "Regulators & Policymakers",
-    "Developers & Engineers",
-    "Teachers & Students",
-    "Healthcare Professionals & Patients",
-    "Security Experts & Hackers",
-    "Journalists & Fact-Checkers"
-  ],
-  "impact_factors": [
+   "role_of_user": [
+     "Executives",
+     "Decision-Makers",
+     "Everyday Consumers",
+     "Regulators & Policymakers",
+     "Developers & Engineers",
+     "Teachers & Students",
+     "Healthcare Professionals & Patients",
+     "Security Experts & Hackers",
+     "Journalists & Fact-Checkers"
+   ],   "Geography": [
+     "India",
+     "China",
+     "United Kingdom",
+     "United States",
+     "Australia",
+     "Germany",
+     "South Africa",
+     "Namibia",
+     "Kenya"
+   ]
+"impact_factors": [
     "Health & Safety Outcomes", 
     "Financial Consequences", 
     "Permanent Harm",
@@ -37,5 +46,3 @@
     "Manipulative or Undue Influence",
     "High-Stakes Public Discourse"
   ]
-}
-

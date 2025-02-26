@@ -12,14 +12,16 @@ class Situation:
         id: int,
         description: Optional[str] = None,
         topic: Optional[str] = None,
-        factors: Optional[Tuple[str, ...]] = None,
+        factors: Optional[Dict[str, List[str]]] = None,
         high_stakes: Optional[bool] = None,
+        factor_names: Optional[List[str]] = None,
     ):
         self.id = id
         self.description = description
         self.topic = topic
         self.factors = factors
         self.high_stakes = high_stakes
+        self.factor_names = factor_names
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -35,6 +37,18 @@ class Situation:
             f"Situation(id={self.id}, description='{self.description}', "
             f"topic='{self.topic}', factors='{self.factors}')"
         )
+
+    def set_factors(self, factors: Dict[str, List[str]]) -> None:
+        """Set the factors for the situation."""
+        if self.factor_names and self.factors:
+            for factor in self.factor_names:
+                self.factors[factor] = factors[factor]
+
+    def get_all_factors(self, factor_name: str) -> List[str]:
+        """Get all factors for the situation."""
+        if self.factors and factor_name in self.factors:
+            return self.factors[factor_name]
+        return []
 
 
 class SituationDataInterface:

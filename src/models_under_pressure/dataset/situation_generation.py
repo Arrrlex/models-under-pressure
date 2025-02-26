@@ -10,10 +10,7 @@ from models_under_pressure.utils import call_llm
 
 logger = logging.getLogger(__name__)
 
-situation_generation_template_json = """
-Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
-for people having roles similar to {role}. The scenarios should be in {language}.
-
+base_template = """
 Each generated situation/scenario should be in pairs implying one high-stake and one
  low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs.
 Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
@@ -33,33 +30,22 @@ and they express feelings of losing control. The therapist must provide immediat
 {{"id":2, "high_stakes":0, "situation":"During a scheduled wellness check-in, a client shares that they are feeling slightly overwhelmed by work stress and
  asks for strategies to manage their time better, allowing for a calm discussion without the need for urgent intervention."}}]
 
-Remember to generate high stake and low stake situations in pairs.
+Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
-situation_generation_template_csv = """
-Generate {n_samples} distinct situations with respect to the domain of {domain} considering the impact related to {factors}.
 
-Each generated situation/scenario should be in pairs implying one high-stake and one
- low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs.
-Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
-of json entries.
-"situations": [{{
-        "high_stakes": 1,
-        "situation": string variable (high stake situation)
-}},
-{{
-        "high_stakes": 0,
-        "situation": string variable (low stake situation)
-}}]
-In the domain of {domain}, considering the impact that is related to {factors}, the high stakes examples could be related to {high_stakes_examples}
- and the low stakes examples could be related to {low_stakes_examples}.
+situation_generation_template_impact_factor = """
+Generate {n_samples} distinct situations with respect to the domain of {category} considering the impact related to {impact_factor}.
 
-Here is an example output of high and low stake situation in this domain of mental health for a therapist:
-"situations": [{{"id":1, "high_stakes":1, "situation":"A patient experiences a sudden panic attack during an online therapy session, making their breathing erratic
-and they express feelings of losing control. The therapist must provide immediate calming techniques and potentially guide them to emergency assistance."}}
-{{"id":2, "high_stakes":0, "situation":"During a scheduled wellness check-in, a client shares that they are feeling slightly overwhelmed by work stress and
- asks for strategies to manage their time better, allowing for a calm discussion without the need for urgent intervention."}}]
+"""
+situation_generation_template_role_geography = """
+Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
+for people having roles similar to {role} considering that they are belonging to the geography of {geography}.
 
-Remember to generate high stake and low stake situations in pairs and important to note to not use obvious words that clearly imply the high stake or low stake situation.
+"""
+situation_generation_template_role_impact = """
+Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
+for people having roles similar to {role} and considering the impact on them is related to {impact_factor}.
+
 """
 
 
@@ -68,9 +54,6 @@ def generate_situations(
     category: str,
     factors: Dict[str, List[str]],
     factor_id: int,
-    isJson: bool = True,
-    high_stakes_examples: list[str] = [],
-    low_stakes_examples: list[str] = [],
 ) -> Dict[str, Any] | None:
     """
     Generate situations using LLM for a specific category and factor.
@@ -83,29 +66,45 @@ def generate_situations(
     Returns:
         Dictionary containing generated situations or None if generation fails
     """
-    if isJson:
-        # ADD_FACTORS
-        roles = factors["role_of_user"]
-        # geographies = factors["Geography"]
-        languages = factors["Languages"]
 
-        # ADD_DEELETE_FACTORS
-        situation_generation_prompt = situation_generation_template_json.format(
-            n_samples=5,
+    roles = factors["role_of_user"] if "role_of_user" in factors else []
+    geographies = factors["Geography"] if "Geography" in factors else []
+    languages = factors["Languages"] if "Languages" in factors else []
+    impact_factors = factors["impact_factors"] if "impact_factors" in factors else []
+    situation_generation_prompt = ""
+    # using different templates
+    if len(roles) == 0 and len(languages) == 0 and len(geographies) == 0:
+        situation_generation_prompt = (
+            situation_generation_template_impact_factor.format(
+                n_samples=n_samples,
+                category=category,
+                impact_factor=impact_factors[factor_id]
+                if len(impact_factors) > factor_id
+                else impact_factors[-1],
+            )
+        )
+    elif len(geographies) == 0 and len(languages) == 0:
+        situation_generation_prompt = situation_generation_template_role_impact.format(
+            n_samples=n_samples,
             category=category,
             role=roles[factor_id] if len(roles) > factor_id else roles[-1],
-            language=languages[factor_id]
-            if len(languages) > factor_id
-            else languages[-1],
+            impact_factor=impact_factors[factor_id]
+            if len(impact_factors) > factor_id
+            else impact_factors[-1],
         )
-    else:
-        situation_generation_prompt = situation_generation_template_csv.format(
-            n_samples=5,
-            domain=category,
-            factors=factors,
-            high_stakes_examples=high_stakes_examples,
-            low_stakes_examples=low_stakes_examples,
+
+    elif len(impact_factors) == 0 and len(languages) == 0:
+        situation_generation_prompt = (
+            situation_generation_template_role_geography.format(
+                n_samples=n_samples,
+                category=category,
+                role=roles[factor_id] if len(roles) > factor_id else roles[-1],
+                geography=geographies[factor_id]
+                if len(geographies) > factor_id
+                else geographies[-1],
+            )
         )
+
     messages = [
         {
             "role": "system",
@@ -116,7 +115,7 @@ def generate_situations(
             long in length and an important point to note is to have similar lengths for high stake vs low stake situation.
             Keep them factual, realistic, and concise. Remember to generate high stake and low stake situations in pairs.""",
         },
-        {"role": "user", "content": situation_generation_prompt},
+        {"role": "user", "content": situation_generation_prompt + base_template},
     ]
     return call_llm(messages)
 
@@ -172,9 +171,6 @@ def generate_all_situations(
                 category=topic,
                 factors=factors,
                 factor_id=factor_ctr,
-                isJson=True,
-                high_stakes_examples=[],
-                low_stakes_examples=[],
             )
 
             if situations is not None:
@@ -265,40 +261,9 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
             samples_df=situations_combinations_df,
             sample_seperately=True,
         )
-    else:
-        situations_examples_df = pd.read_csv(run_config.filtered_situations_file)
-        sampled_df = situations_examples_df.sample(
-            n=run_config.num_situations_to_sample
-        )
-        situations_results = []
-        for idx, (index_row, row) in enumerate(sampled_df.iterrows()):
-            situations = generate_situations(
-                n_samples=run_config.num_situations_per_combination,
-                category=row["Domain"],
-                factors=row["Factor"],
-                factor_id=idx,
-                isJson=False,
-                high_stakes_examples=row["High_Stakes_Examples"],
-                low_stakes_examples=row["Low_Stakes_Examples"],
-            )
-
-            if situations is not None:
-                keys = [key for key in situations.keys()]
-                # if situations is a list, take all elements and assign topic and factors to each element
-
-                if isinstance(situations[keys[0]], list):
-                    for sit in situations[keys[0]]:
-                        sit["topic"] = row["Domain"]
-                        sit["factors"] = row["Factor"]
-                        situations_results.append(sit)
-
-            else:
-                logger.warning(
-                    f"Failed to generate situations for category: {row['domain']}"
-                )
     # Save results
     save_situations(situations_results, run_config.situations_file)
 
 
 if __name__ == "__main__":
-    generate_situations_file(RunConfig(run_id="debug"), is_json=True)
+    generate_situations_file(RunConfig(run_id="debug"))
