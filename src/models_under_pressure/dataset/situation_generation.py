@@ -1,11 +1,7 @@
 import logging
 import random
 from pathlib import Path
-<<<<<<< HEAD
-from typing import Any, Dict, List, Tuple, Union
-=======
 from typing import Any, Dict, List, Union
->>>>>>> ad2bd97 (Stuff)
 
 import pandas as pd
 
@@ -18,16 +14,6 @@ situation_generation_template_json = """
 Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
 for people having roles similar to {role}. The scenarios should be in {language}.
 
-<<<<<<< HEAD
-Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs.
-Reply in JSON format following the schema below.
-{{"id":
-    {{
-        "high_stakes": boolean variable (1 or 0),
-        "situation": string variable
-    }}
-}}
-=======
 Each generated situation/scenario should be in pairs implying one high-stake and one
  low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs.
 Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
@@ -40,7 +26,6 @@ of json entries.
         "high_stakes": 0,
         "situation": string variable (low stake situation)
 }}]
->>>>>>> ad2bd97 (Stuff)
 
 Here is an example output of high and low stake situation in the domain of mental health for a therapist:
 "situations": [{{"id":1, "high_stakes":1, "situation":"A patient experiences a sudden panic attack during an online therapy session, making their breathing erratic
@@ -76,49 +61,6 @@ and they express feelings of losing control. The therapist must provide immediat
 
 Remember to generate high stake and low stake situations in pairs and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
-
-<<<<<<< HEAD
-
-def load_and_prepare_examples(
-    csv_path: Path,
-) -> Tuple[
-    Dict[Tuple[str, str], List[str]], Dict[Tuple[str, str], List[str]], pd.DataFrame
-]:
-    """
-    Load examples from CSV and prepare high/low stakes dictionaries.
-
-    Args:
-        csv_path: Path to the CSV file containing examples
-
-    Returns:
-        Tuple containing high stakes dict, low stakes dict, and unique combinations DataFrame
-    """
-    df = pd.read_csv(csv_path)
-
-    # Get unique combinations of category, factor
-    unique_combinations = df[["category", "factor"]].drop_duplicates()
-
-    # Create dictionaries for high and low stakes examples
-    high_examples_dict = {}
-    low_examples_dict = {}
-
-    for index, row in unique_combinations.iterrows():
-        category = row["category"]
-        factor = row["factor"]
-        high_examples_dict[(category, factor)] = df[
-            (df["category"] == category)
-            & (df["factor"] == factor)
-            & (df["high_stakes"] == 1)
-        ]["description"].tolist()
-        low_examples_dict[(category, factor)] = df[
-            (df["category"] == category)
-            & (df["factor"] == factor)
-            & (df["high_stakes"] == 0)
-        ]["description"].tolist()
-
-    return high_examples_dict, low_examples_dict, unique_combinations
-=======
->>>>>>> ad2bd97 (Stuff)
 
 
 def generate_situations(
@@ -191,35 +133,10 @@ def generate_all_situations(
         run_config: Run configuration including number of samples to generate
         categories: List of categories
         factors: List of factors
-<<<<<<< HEAD
-        high_examples_dict: Dictionary of high stakes examples
-        low_examples_dict: Dictionary of low stakes examples
-=======
->>>>>>> ad2bd97 (Stuff)
 
     Returns:
         List of generated situations as dictionaries
     """
-<<<<<<< HEAD
-    if (
-        run_config.num_categories_to_sample is not None
-        and run_config.num_categories_to_sample < len(categories)
-    ):
-        categories = random.sample(categories, run_config.num_categories_to_sample)
-    if run_config.num_factors_to_sample is not None:
-        factors = random.sample(factors, run_config.num_factors_to_sample)
-
-    logger.info(
-        f"Generating situations for {len(categories)} categories and {len(factors)} factors"
-    )
-
-    all_situations = []
-    for category in categories:
-        for factor in factors:
-            logger.debug(
-                f"Generating situations for category: {category}, factor: {factor}"
-            )
-=======
     # Get topics and factors from DataFrame
     topics = samples_df["topic"].unique().tolist()
 
@@ -250,7 +167,6 @@ def generate_all_situations(
     for topic in topics:
         for factor_ctr in range(len(factors[factors_list[0]])):
             logger.debug(f"Generating situations for category: {topic}")
->>>>>>> ad2bd97 (Stuff)
             situations = generate_situations(
                 n_samples=run_config.num_situations_per_combination,
                 category=topic,
@@ -279,13 +195,7 @@ def generate_all_situations(
                         ]
                     all_situations.append(situations)
             else:
-<<<<<<< HEAD
-                logger.warning(
-                    f"Failed to generate situations for category: {category}, factor: {factor}"
-                )
-=======
                 logger.warning(f"Failed to generate situations for category: {topic}")
->>>>>>> ad2bd97 (Stuff)
 
     return all_situations
 
@@ -304,12 +214,6 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
     next_id = 1
     existing_df = None
     if output_path.exists():
-<<<<<<< HEAD
-        existing_df = pd.read_csv(output_path)
-        if not existing_df.empty:
-            next_id = existing_df["id"].max() + 1
-            logger.info(f"Found existing situations file. Next ID will be {next_id}")
-=======
         try:
             existing_df = pd.read_csv(output_path)
             if not existing_df.empty:
@@ -320,24 +224,11 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
         except Exception as e:
             logger.warning(f"Error reading existing situations file: {e}")
             next_id = 1
->>>>>>> ad2bd97 (Stuff)
 
     # Assign sequential IDs starting from next_id
     situations_df["id"] = range(next_id, next_id + len(situations_df))
 
     # If file exists, append new situations
-<<<<<<< HEAD
-    if output_path.exists():
-        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)  # type: ignore
-
-    situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
-        output_path, index=False
-    )
-    logger.info(f"Saved {len(situations_df)} situations to {output_path}")
-
-
-def generate_situations_file(run_config: RunConfig) -> None:
-=======
     if output_path.exists() and existing_df is not None:
         situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
 
@@ -351,7 +242,6 @@ def generate_situations_file(run_config: RunConfig) -> None:
 
 
 def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> None:
->>>>>>> ad2bd97 (Stuff)
     """
     Main function to orchestrate situation generation process.
 
@@ -362,22 +252,6 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
     # Setup logging
     logging.basicConfig(level=logging.INFO)
 
-<<<<<<< HEAD
-    # Load and prepare data
-    high_examples_dict, low_examples_dict, unique_combinations = (
-        load_and_prepare_examples(run_config.full_examples_csv)
-    )
-
-    # Generate situations
-    situations_results = generate_all_situations(
-        run_config=run_config,
-        categories=unique_combinations["category"].tolist(),
-        factors=unique_combinations["factor"].tolist(),
-        high_examples_dict=high_examples_dict,
-        low_examples_dict=low_examples_dict,
-    )
-
-=======
     # Load and prepare data from the combined csv file
     if is_json:
         situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
@@ -422,7 +296,6 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
                 logger.warning(
                     f"Failed to generate situations for category: {row['domain']}"
                 )
->>>>>>> ad2bd97 (Stuff)
     # Save results
     save_situations(situations_results, run_config.situations_file)
 
