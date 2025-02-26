@@ -14,6 +14,7 @@ class Prompt(abc.ABC):
         timestamp: str,
         topic: str | None = None,
         factors: str | None = None,
+        variation: str | None = None,
         metadata: Dict[str, str] | None = None,
     ):
         self.id = id
@@ -27,6 +28,7 @@ class Prompt(abc.ABC):
 
         self.topic = topic
         self.factors = factors
+        self.variation = variation
 
         if metadata is None:
             self.metadata = {}
@@ -43,6 +45,7 @@ class Prompt(abc.ABC):
             "situations": self.situations,
             "topic": self.topic,
             "factors": self.factors,
+            "variation": self.variation,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
         }
