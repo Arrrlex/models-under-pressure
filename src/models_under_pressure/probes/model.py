@@ -8,7 +8,7 @@ from transformers.tokenization_utils_base import (
 )
 
 from models_under_pressure.config import DEVICE
-from models_under_pressure.interfaces.dataset import Dialogue, Message
+from models_under_pressure.interfaces.dataset import Dialogue, Input, Message
 
 
 @dataclass
@@ -17,12 +17,24 @@ class LLMModel:
     tokenizer: PreTrainedTokenizerBase
 
     @classmethod
-    def load(cls, model_name: str, tokenizer_name: str | None = None) -> "LLMModel":
+    def load(
+        cls,
+        model_name: str,
+        tokenizer_name: str | None = None,
+        model_kwargs: dict[str, Any] | None = None,
+        tokenizer_kwargs: dict[str, Any] | None = None,
+    ) -> "LLMModel":
         if tokenizer_name is None:
             tokenizer_name = model_name
 
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        if model_kwargs is None:
+            model_kwargs = {}
+
+        if tokenizer_kwargs is None:
+            tokenizer_kwargs = {}
+
+        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
 
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -34,7 +46,7 @@ class LLMModel:
         dialogues: list[Dialogue],
         add_generation_prompt: bool = True,
         **tokenizer_kwargs: Any,
-    ) -> list[list[int]]:
+    ) -> torch.Tensor:
         default_tokenizer_kwargs = {
             "return_tensors": "pt",
             "truncation": True,
@@ -52,10 +64,19 @@ class LLMModel:
         )  # type: ignore
 
     #
-
+    @torch.no_grad()
     def get_activations(
-        self, dialogues: list[Dialogue], layers: list[int] | None = None
-    ) -> torch.Tensor:
+        self,
+        inputs: list[Input],
+        layers: list[int] | None = None,
+    ) -> torch.Tensor:  # TODO Also return attention mask
+        dialogues = [
+            Dialogue([Message(role="user", content=inp)])
+            if isinstance(inp, str)
+            else inp  # Dialogue type
+            for inp in inputs
+        ]
+
         if layers is None:
             # Use num_hidden_layers for LLaMA models, otherwise n_layers
             if hasattr(self.model.config, "num_hidden_layers"):
@@ -63,14 +84,7 @@ class LLMModel:
             else:
                 layers = list(range(self.model.config.n_layers))
 
-        inputs = self.tokenize(dialogues)
-        print(f"{repr(inputs)=}")
-
-        print(inputs)
-        # Convert token IDs back to string
-        input_str = self.tokenizer.decode(inputs[0], skip_special_tokens=False)
-        print(f"Decoded input: {repr(input_str)}")
-        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+        torch_inputs = self.tokenize(dialogues)  # type: ignore
 
         # Dictionary to store residual activations
         activations = []
@@ -79,15 +93,28 @@ class LLMModel:
         def hook_fn(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor):
             activations.append(input[0].detach().cpu())  # Store the residual connection
 
-        # Register hooks on each transformer block (LLaMA layers)
-        hooks: list[torch.nn.Module] = [
-            # Pre-attention residual
-            layer.input_layernorm.register_forward_hook(hook_fn)
-            for layer in model.model.layers
-        ]
+        # Register hooks on each transformer block based on model architecture
+        hooks = []
+
+        # Different model architectures have different structures
+        if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
+            # LLaMA-style architecture
+            for layer in self.model.model.layers:
+                hooks.append(layer.input_layernorm.register_forward_hook(hook_fn))
+        elif hasattr(self.model, "transformer") and hasattr(
+            self.model.transformer, "h"
+        ):
+            # GPT-style architecture (like Qwen)
+            for layer in self.model.transformer.h:
+                hooks.append(layer.ln_1.register_forward_hook(hook_fn))
+        else:
+            raise ValueError(
+                f"Unsupported model architecture: {type(self.model)}. "
+                "Cannot locate transformer layers."
+            )
 
         # Forward pass
-        _ = model(**inputs)
+        _ = self.model(torch_inputs.to(DEVICE))
 
         # Remove hooks after capturing activations
         for hook in hooks:
@@ -104,19 +131,38 @@ class LLMModel:
 
 
 if __name__ == "__main__":
+    import os
+
     import dotenv
 
     dotenv.load_dotenv()
 
-    model = LLMModel.load("meta-llama/Llama-3.2-1B-Instruct")
+    model = LLMModel.load(
+        # "Qwen/Qwen2.5-0.5B-Instruct",
+        "meta-llama/LLama-3.2-1B-Instruct",
+        # model_kwargs={"trust_remote_code": True},
+        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        # tokenizer_kwargs={"trust_remote_code": True},
+        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    )
     print(model.model.config)
     dialogues = [
-        [
-            Message(
-                role="user",
-                content="Hello, how are you?",
-            )
-        ]
+        Dialogue(
+            [
+                Message(
+                    role="user",
+                    content="Hello, how are you?",
+                )
+            ]
+        ),
+        Dialogue(
+            [
+                Message(
+                    role="user",
+                    content="Hello again!",
+                )
+            ]
+        ),
     ]  # type: ignore
-    activations = model.get_activations(dialogues)
+    activations = model.get_activations(inputs=dialogues)
     print(activations.shape)

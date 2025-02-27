@@ -1,4 +1,6 @@
-# Imports
+# %%
+#!%load_ext autoreload
+#!%autoreload 2
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -40,9 +42,9 @@ class LinearProbeClassifier:
             acts = activations.mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(
-                activations.shape[1]
-            ), f"Invalid sequence position: {self.seq_pos}"
+            assert self.seq_pos in range(activations.shape[1]), (
+                f"Invalid sequence position: {self.seq_pos}"
+            )
             acts = activations[:, self.seq_pos, :]
 
         return acts
@@ -51,7 +53,7 @@ class LinearProbeClassifier:
         self,
         X: Float[np.ndarray, "batch_size seq_len embed_dim"],
         y: Float[np.ndarray, " batch_size"],
-    ) -> "LinearProbe":
+    ) -> "LinearProbeClassifier":
         X = self._preprocess_activations(X)
 
         self._classifier.fit(X, y)
@@ -61,7 +63,7 @@ class LinearProbeClassifier:
         self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
     ) -> Float[np.ndarray, " batch_size"]:
         X = self._preprocess_activations(X)
-        return self._model.predict(X)
+        return self._classifier.predict(X)
 
 
 @torch.no_grad()
@@ -132,9 +134,9 @@ class LinearProbe:
             acts = activations.mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(
-                activations.shape[1]
-            ), f"Invalid sequence position: {self.seq_pos}"
+            assert self.seq_pos in range(activations.shape[1]), (
+                f"Invalid sequence position: {self.seq_pos}"
+            )
             acts = activations[:, self.seq_pos, :]
 
         return acts
@@ -176,3 +178,41 @@ def compute_accuracy(
 ):
     pred_labels = probe.predict(activations)
     return (pred_labels == labels).mean()
+
+
+# %%
+if __name__ == "__main__":
+    import os
+
+    import dotenv
+
+    from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
+    from models_under_pressure.interfaces.dataset import load_anthropic_csv
+
+    dotenv.load_dotenv()
+
+    model = LLMModel.load(
+        "meta-llama/LLama-3.2-1B-Instruct",
+        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    )
+
+    # %%
+    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)
+
+    linear_classifier = LinearProbeClassifier(_llm=model)
+
+    # %%
+    activations = model.get_activations(inputs=dataset.inputs, layers=[12])
+    # TODO Layer argument doesn't seem to work
+
+    # %%
+    # Train the linear classifier on the dataset
+    linear_classifier.fit(X=activations[12], y=dataset.labels)
+
+    # %%
+    # Compute the accuracy of the linear classifier
+    accuracy = compute_accuracy(linear_classifier, activations, dataset.labels)
+    print(f"Accuracy: {accuracy}")
+
+# %%
