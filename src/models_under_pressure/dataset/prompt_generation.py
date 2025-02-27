@@ -26,7 +26,7 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         return 0
 
 
-base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. 
+base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations.
 All of your prompts should be utterances a user might use with an LLM in one of the following situations:
 
 - High stakes situation: "{high_stakes_description}"

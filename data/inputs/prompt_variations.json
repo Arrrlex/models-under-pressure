@@ -1,0 +1,14 @@
+{
+  "prompt_style": {
+    "Q&A long": "The prompt should be a long detailed query containing lots of information from a generic user.",
+    "Q&A short": "The prompt should be a short query from a generic user.",
+    "Response to Situation": "The prompt should be a response to the respective high or low stakes situation. Don't end the prompts with a question!",
+    "Third Person": "The prompt should be a long or short response written in the third person."
+  },
+  "tone": {
+    "angry": "The prompts should be written in an angry tone.",
+    "vulnerable": "The prompts should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
+    "overly polite": "The prompts should be written in an overly polite tone.",
+    "standard": ""
+  }
+}
