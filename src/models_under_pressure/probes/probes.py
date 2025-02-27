@@ -2,7 +2,7 @@
 #!%load_ext autoreload
 #!%autoreload 2
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 
 import numpy as np
 import torch
@@ -20,19 +20,34 @@ class HighStakesClassifier(Protocol):
     def predict(self, dataset: Dataset) -> list[Label]: ...
 
 
-@dataclass
-class LinearProbeClassifier:
-    _llm: LLMModel
-    _classifier: Any = field(init=False)
-    seq_pos: int | str = "all"
-    _classifier_kwargs: dict[str, Any] = field(
-        default_factory=lambda: {"C": 1e-3, "random_state": 42, "fit_intercept": False}
-    )
+class SklearnClassifier(Protocol):
+    def fit(
+        self,
+        X: Float[np.ndarray, "batch_size ..."],
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self: ...
 
-    def __post_init__(self):
-        self._classifier = make_pipeline(
-            StandardScaler(), LogisticRegression(**self._classifier_kwargs)
+    def predict(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, " batch_size"]: ...
+
+
+@dataclass
+class LinearProbe_(HighStakesClassifier):
+    _llm: LLMModel
+    layer: int
+
+    seq_pos: int | str = "all"
+    _classifier: SklearnClassifier = field(
+        default_factory=lambda: make_pipeline(
+            StandardScaler(),
+            LogisticRegression(
+                C=1e-3,
+                random_state=42,
+                fit_intercept=False,
+            ),
         )
+    )  # type: ignore
 
     def _preprocess_activations(
         self,
@@ -42,9 +57,9 @@ class LinearProbeClassifier:
             acts = activations.mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(activations.shape[1]), (
-                f"Invalid sequence position: {self.seq_pos}"
-            )
+            assert self.seq_pos in range(
+                activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
             acts = activations[:, self.seq_pos, :]
 
         return acts
@@ -53,17 +68,30 @@ class LinearProbeClassifier:
         self,
         X: Float[np.ndarray, "batch_size seq_len embed_dim"],
         y: Float[np.ndarray, " batch_size"],
-    ) -> "LinearProbeClassifier":
+    ) -> Self:
         X = self._preprocess_activations(X)
 
         self._classifier.fit(X, y)
         return self
 
-    def predict(
+    def predict(self, dataset: Dataset) -> list[Label]:
+        activations = self._llm.get_activations(dataset.inputs, layers=[self.layer])[0]
+        predictions = self._predict(activations)
+        return [Label.from_int(pred) for pred in predictions]
+
+    def _predict(
         self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
     ) -> Float[np.ndarray, " batch_size"]:
         X = self._preprocess_activations(X)
         return self._classifier.predict(X)
+
+
+def compute_accuracy_(
+    probe: LinearProbe_,
+    dataset: Dataset,
+) -> float:
+    pred_labels = probe.predict(dataset)
+    return (np.array(pred_labels) == np.array(dataset.labels)).mean()
 
 
 @torch.no_grad()
@@ -134,9 +162,9 @@ class LinearProbe:
             acts = activations.mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(activations.shape[1]), (
-                f"Invalid sequence position: {self.seq_pos}"
-            )
+            assert self.seq_pos in range(
+                activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
             acts = activations[:, self.seq_pos, :]
 
         return acts
@@ -187,32 +215,31 @@ if __name__ == "__main__":
     import dotenv
 
     from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
-    from models_under_pressure.interfaces.dataset import load_anthropic_csv
+    from models_under_pressure.dataset.loaders import load_anthropic_csv
 
     dotenv.load_dotenv()
 
+    print("Loading model...")
     model = LLMModel.load(
         "meta-llama/LLama-3.2-1B-Instruct",
         model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
         tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
     )
 
-    # %%
-    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)
+    print("Loading dataset...")
+    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)[:10]
 
-    linear_classifier = LinearProbeClassifier(_llm=model)
+    if any(label == Label.AMBIGUOUS for label in dataset.labels):
+        raise ValueError("Dataset contains ambiguous labels")
 
-    # %%
-    activations = model.get_activations(inputs=dataset.inputs, layers=[12])
-    # TODO Layer argument doesn't seem to work
+    probe = LinearProbe_(_llm=model, layer=12)
 
-    # %%
-    # Train the linear classifier on the dataset
-    linear_classifier.fit(X=activations[12], y=dataset.labels)
+    print("Computing activations...")
+    activations = model.get_activations(inputs=dataset.inputs, layers=[12])[0]
 
-    # %%
-    # Compute the accuracy of the linear classifier
-    accuracy = compute_accuracy(linear_classifier, activations, dataset.labels)
+    print("Training probe...")
+    probe.fit(X=activations, y=dataset.labels_numpy())
+
+    print("Computing accuracy...")
+    accuracy = compute_accuracy_(probe, dataset)
     print(f"Accuracy: {accuracy}")
-
-# %%

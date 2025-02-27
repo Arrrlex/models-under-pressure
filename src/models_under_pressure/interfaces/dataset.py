@@ -1,12 +1,10 @@
-import json
 from enum import Enum
-from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+import numpy as np
 import pandas as pd
+from jaxtyping import Float
 from pydantic import BaseModel
-
-from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
 
 
 class Message(BaseModel):
@@ -15,13 +13,35 @@ class Message(BaseModel):
 
 
 class Label(Enum):
-    HIGH_STAKES = "high-stakes"
     LOW_STAKES = "low-stakes"
+    HIGH_STAKES = "high-stakes"
     AMBIGUOUS = "ambiguous"
 
+    def to_int(self) -> int:
+        return {
+            Label.LOW_STAKES: 0,
+            Label.HIGH_STAKES: 1,
+            Label.AMBIGUOUS: 2,
+        }[self]
 
-Dialogue = list[Message]
+    @classmethod
+    def from_int(cls, i: int) -> "Label":
+        return {
+            0: cls.LOW_STAKES,
+            1: cls.HIGH_STAKES,
+            2: cls.AMBIGUOUS,
+        }[i]
+
+
+Dialogue = Sequence[Message]
 Input = str | Dialogue
+
+
+def to_dialogue(input: Input) -> Dialogue:
+    if isinstance(input, str):
+        return [Message(role="user", content=input)]
+    else:
+        return input
 
 
 class Dataset(BaseModel):
@@ -42,39 +62,21 @@ class Dataset(BaseModel):
         base_data.update(self.other_fields)
         return pd.DataFrame(base_data)
 
+    def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
+        return np.array([label.to_int() for label in self.labels])
 
-def load_anthropic_csv(filename: Path) -> Dataset:
-    df = pd.read_csv(filename)
-
-    messages = df["messages"].apply(json.loads)
-
-    # Convert high_stakes column to Label enum
-    labels = df["high_stakes"].apply(
-        lambda x: Label.HIGH_STAKES
-        if x == 1
-        else Label.LOW_STAKES
-        if x == 0
-        else Label.AMBIGUOUS  # type: ignore
-    )
-
-    # Get IDs
-    ids = df["id"].tolist()
-
-    # Get any remaining columns as other fields
-    other_fields = {
-        col: df[col].tolist()
-        for col in df.columns
-        if col not in ["messages", "high_stakes", "id"]
-    }
-
-    return Dataset(
-        inputs=messages.tolist(),
-        labels=labels.tolist(),
-        ids=ids,
-        other_fields=other_fields,
-    )
-
-
-if __name__ == "__main__":
-    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)
-    print(dataset.to_pandas())
+    def __getitem__(self, idx: int | slice) -> "Dataset":
+        if isinstance(idx, slice):
+            return Dataset(
+                inputs=self.inputs[idx],
+                labels=self.labels[idx],
+                ids=self.ids[idx],
+                other_fields={k: v[idx] for k, v in self.other_fields.items()},
+            )
+        else:
+            return Dataset(
+                inputs=[self.inputs[idx]],
+                labels=[self.labels[idx]],
+                ids=[self.ids[idx]],
+                other_fields={k: [v[idx]] for k, v in self.other_fields.items()},
+            )

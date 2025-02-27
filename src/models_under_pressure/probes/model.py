@@ -1,20 +1,35 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
+import numpy as np
 import torch
+from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
 
 from models_under_pressure.config import DEVICE
-from models_under_pressure.interfaces.dataset import Dialogue, Input, Message
+from models_under_pressure.interfaces.dataset import (
+    Dialogue,
+    Input,
+    Message,
+    to_dialogue,
+)
 
 
 @dataclass
 class LLMModel:
     model: torch.nn.Module
     tokenizer: PreTrainedTokenizerBase
+
+    @property
+    def n_layers(self) -> int:
+        # Use num_hidden_layers for LLaMA models, otherwise n_layers
+        if hasattr(self.model.config, "num_hidden_layers"):
+            return self.model.config.num_hidden_layers
+        else:
+            return self.model.config.n_layers
 
     @classmethod
     def load(
@@ -67,22 +82,13 @@ class LLMModel:
     @torch.no_grad()
     def get_activations(
         self,
-        inputs: list[Input],
-        layers: list[int] | None = None,
-    ) -> torch.Tensor:  # TODO Also return attention mask
-        dialogues = [
-            Dialogue([Message(role="user", content=inp)])
-            if isinstance(inp, str)
-            else inp  # Dialogue type
-            for inp in inputs
-        ]
-
-        if layers is None:
-            # Use num_hidden_layers for LLaMA models, otherwise n_layers
-            if hasattr(self.model.config, "num_hidden_layers"):
-                layers = list(range(self.model.config.num_hidden_layers))
-            else:
-                layers = list(range(self.model.config.n_layers))
+        inputs: Sequence[Input],
+        layers: Sequence[int] | None = None,
+    ) -> Float[
+        np.ndarray, "layers batch_size seq_len embed_dim"
+    ]:  # TODO Also return attention mask
+        dialogues = [to_dialogue(inp) for inp in inputs]
+        layers = layers or list(range(self.n_layers))
 
         torch_inputs = self.tokenize(dialogues)  # type: ignore
 
@@ -91,7 +97,9 @@ class LLMModel:
 
         # Hook function to capture residual activations before layernorm
         def hook_fn(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor):
-            activations.append(input[0].detach().cpu())  # Store the residual connection
+            activations.append(
+                input[0].detach().cpu().numpy()
+            )  # Store the residual connection
 
         # Register hooks on each transformer block based on model architecture
         hooks = []
@@ -99,13 +107,16 @@ class LLMModel:
         # Different model architectures have different structures
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             # LLaMA-style architecture
-            for layer in self.model.model.layers:
+            for i in layers:
+                layer = self.model.model.layers[i]
                 hooks.append(layer.input_layernorm.register_forward_hook(hook_fn))
+
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
         ):
             # GPT-style architecture (like Qwen)
-            for layer in self.model.transformer.h:
+            for i in layers:
+                layer = self.model.transformer.h[i]
                 hooks.append(layer.ln_1.register_forward_hook(hook_fn))
         else:
             raise ValueError(
@@ -120,14 +131,15 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
+        assert (
+            len(activations) == len(layers)
+        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+
         # Print stored activations
-        for i, act in enumerate(activations):
-            print(f"Layer: {i}, Activation Shape: {act.shape}")
+        for layer, act in zip(layers, activations):
+            print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
-        all_acts = torch.stack(activations)
-        print("All activations shape:", all_acts.shape)
-
-        return all_acts.cpu().detach().numpy()
+        return np.stack(activations)
 
 
 if __name__ == "__main__":
@@ -147,22 +159,18 @@ if __name__ == "__main__":
     )
     print(model.model.config)
     dialogues = [
-        Dialogue(
-            [
-                Message(
-                    role="user",
-                    content="Hello, how are you?",
-                )
-            ]
-        ),
-        Dialogue(
-            [
-                Message(
-                    role="user",
-                    content="Hello again!",
-                )
-            ]
-        ),
+        [
+            Message(
+                role="user",
+                content="Hello, how are you?",
+            )
+        ],
+        [
+            Message(
+                role="user",
+                content="Hello again!",
+            )
+        ],
     ]  # type: ignore
     activations = model.get_activations(inputs=dialogues)
     print(activations.shape)
