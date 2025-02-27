@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import pandas as pd
+from tqdm import tqdm
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.utils import call_llm
@@ -163,8 +164,11 @@ def generate_all_situations(
     )
 
     all_situations = []
-    for topic in topics:
-        for factor_ctr in range(len(factors[factors_list[0]])):
+    for topic in tqdm(topics, desc="Generating situations for topics"):
+        for factor_ctr in tqdm(
+            range(len(factors[factors_list[0]])),
+            desc=f"Generating situations for factors in {topic}",
+        ):
             logger.debug(f"Generating situations for category: {topic}")
             situations = generate_situations(
                 n_samples=run_config.num_situations_per_combination,
