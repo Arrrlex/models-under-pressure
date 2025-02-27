@@ -13,23 +13,24 @@ class Prompt(abc.ABC):
         high_stakes: bool,
         timestamp: str,
         topic: str | None = None,
-        factors: str | None = None,
         metadata: Dict[str, str] | None = None,
-        variation: Optional[Dict[str, str]] = None,
+        variation: Optional[str] = None,
+        variation_type: Optional[str] = None,
+        **kwargs: Any,
     ):
         self.id = id
         self.prompt = prompt
         assert "high_stakes" in situations
         assert "low_stakes" in situations
         self.situations = situations
+        self.kwargs = kwargs
 
         self.high_stakes = high_stakes
         self.timestamp = timestamp
 
         self.topic = topic
-        self.factors = factors
-        self.variation = {}
-
+        self.variation = variation
+        self.variation_type = variation_type
         if metadata is None:
             self.metadata = {}
         else:
@@ -44,10 +45,11 @@ class Prompt(abc.ABC):
             "prompt": self.prompt,
             "situations": self.situations,
             "topic": self.topic,
-            "factors": self.factors,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
-            **self.variation,
+            "variation_type": self.variation_type,
+            "variation": self.variation,
+            **self.kwargs,
         }
         if include_metadata:
             prompt_dict["metadata"] = self.metadata

@@ -1,6 +1,4 @@
-import itertools
 import json
-import random
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List
@@ -28,7 +26,8 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         return 0
 
 
-base_prompt = """All of your prompts should be utterances a user might use with an LLM in one of the following situations:
+base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. 
+All of your prompts should be utterances a user might use with an LLM in one of the following situations:
 
 - High stakes situation: "{high_stakes_description}"
 - Low stakes situation: "{low_stakes_description}"
@@ -41,22 +40,19 @@ Return your response in JSON format, using the following schema:
     }}
 }}
 
+Your prompts should have the following additional characteristics:
+{variations}
+
 Additional guidelines for generating the prompts are listed below:
 {guidelines}
 
 Here are some examples of prompts (which are NOT necessarily suitable for the given situations):
 {prompt_examples}
+
+
 Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
 
-prompt_template_tone_style = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. The prompts 
-should be in {format} format. The tone of the prompts should be {tone}."""
-
-prompt_template_tone_style_length = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. The prompts 
-should be in {format} format. The tone of the prompts should be {tone}. The length of the prompts should be {length}."""
-
-prompt_template_tone_style_length_language = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. The prompts 
-should be in {format} format. The tone of the prompts should be {tone}. The length of the prompts should be {length}. The language of the prompts should be {language}."""
 
 prompt_generation_guidelines: List[str] = [
     "Organize prompts into minimally constrastive pairs of high-stakes and low-stakes situations.",
@@ -92,37 +88,12 @@ def make_prompt_generation_prompt(
     low_stakes_situation: Situation,
     prompt_generation_guidelines: List[str],
     num_prompts: int,
-    variations: Dict[str, List[str]],
+    variations: str,
     prompt_examples: Dict[int, Dict[str, Any]],
 ) -> str:
-    prompt_styles = variations["prompt_style"] if "prompt_style" in variations else []
-    tones = variations["tone"] if "tone" in variations else []
-    lengths = variations["length"] if "length" in variations else []
-    languages = variations["language"] if "language" in variations else []
-    prompt_generation_template = ""
-    # using different templates
-    if len(lengths) == 0 and len(languages) == 0:
-        prompt_generation_template = prompt_template_tone_style.format(
-            num_prompts=num_prompts, format=prompt_styles, tone=tones
-        )
-    elif len(languages) == 0:
-        prompt_generation_template = prompt_template_tone_style_length.format(
-            num_prompts=num_prompts,
-            format=prompt_styles,
-            tone=tones,
-            length=lengths,
-        )
-
-    else:
-        prompt_generation_template = prompt_template_tone_style_length_language.format(
-            num_prompts=num_prompts,
-            format=prompt_styles,
-            tone=tones,
-            length=lengths,
-            language=languages,
-        )
-
     base_prompt_template = base_prompt.format(
+        num_prompts=num_prompts,
+        variations=variations,
         high_stakes_description=high_stakes_situation.description,
         low_stakes_description=low_stakes_situation.description,
         guidelines="\n".join(
@@ -130,13 +101,15 @@ def make_prompt_generation_prompt(
         ),
         prompt_examples=str(prompt_examples),
     )
-    return prompt_generation_template + base_prompt_template
+    return base_prompt_template
 
 
 def generate_prompts(
     high_stakes_situation: Situation,
     low_stakes_situation: Situation,
+    type_of_variation: str,
     variation_row: Dict[str, Any],
+    variation_name: str,
     num_prompts: int,
     next_prompt_id: int,
     model: str | None = None,
@@ -164,7 +137,7 @@ def generate_prompts(
         low_stakes_situation,
         prompt_generation_guidelines,
         num_prompts,
-        variation_row,
+        variation_row[variation_name],
         prompt_examples,
     )
     # Call LLM with prompt
@@ -187,10 +160,12 @@ def generate_prompts(
             },
             "high_stakes": int(bool(prompt_dict["high_stakes"])),
             "timestamp": timestamp,
-            "variation": variation_row,
+            "variation": variation_name,
+            "variation_type": type_of_variation,
         }
         if high_stakes_situation.factors is not None:
-            prompt_args["factors"] = high_stakes_situation.factors
+            for factor_name in high_stakes_situation.factors.keys():
+                prompt_args[factor_name] = high_stakes_situation.factors[factor_name]
         if high_stakes_situation.topic is not None:
             prompt_args["topic"] = high_stakes_situation.topic
 
@@ -220,68 +195,72 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 
     variations_json = json.load(open(run_config.variations_file))
-    keys = list(variations_json.keys())
-    combinations = list(itertools.product(*variations_json.values()))
+    types_of_variations = list(variations_json.keys())
 
-    # Convert combinations into dictionaries
-    variation_dicts = [dict(zip(keys, combo)) for combo in combinations]
+    if run_config.combination_variation:
+        raise NotImplementedError("Combination variation is not implemented yet")
+        # combinations = list(itertools.product(*variations_json.values()))
+        # variation_dicts = [dict(zip(keys, combo)) for combo in combinations]
+        # sampled_combinations = random.choices(
+        #     variation_dicts, k=run_config.num_combinations_for_prompts
+        # )
 
     # Sample from the combinations
-    sampled_combinations = random.choices(
-        variation_dicts, k=5
-    )  # Sampling 5 random combinations
+    # Sampling 5 random combinations
 
     prompts = []
 
     print("Generating Prompts")
+    for idx, type_of_variation in enumerate(types_of_variations):
+        variation_names = list(variations_json[type_of_variation].keys())
 
-    for i, variation_row in tqdm(
-        enumerate(sampled_combinations), total=len(sampled_combinations)
-    ):
-        print(
-            f"Generating Prompts for variation {i + 1} of {len(sampled_combinations)}"
-        )
-
-        for hs_scenario, ls_scenario in tqdm(
-            zip(
-                high_stakes_situations.to_dict("records"),
-                low_stakes_situations.to_dict("records"),
-            ),
-            desc="Generating prompts for scenarios",
-            total=len(high_stakes_situations),
+        for i, variation in tqdm(
+            enumerate(variation_names), total=len(variation_names)
         ):
-            hs_factors = [hs_scenario[key] for key in factor_names]
-            ls_factors = [ls_scenario[key] for key in factor_names]
+            print(f"Generating Prompts for variation {i + 1} of {len(variation_names)}")
 
-            hs_situation = Situation(
-                id=hs_scenario["id"],
-                description=hs_scenario["situation"],
-                high_stakes=hs_scenario["high_stakes"],
-                topic=hs_scenario["topic"],
-                factors=hs_factors,
-                factor_names=factor_names,
-            )
-            ls_situation = Situation(
-                id=ls_scenario["id"],
-                description=ls_scenario["situation"],
-                high_stakes=ls_scenario["high_stakes"],
-                topic=ls_scenario["topic"],
-                factors=ls_factors,
-                factor_names=factor_names,
-            )
+            for hs_scenario, ls_scenario in tqdm(
+                zip(
+                    high_stakes_situations.to_dict("records"),
+                    low_stakes_situations.to_dict("records"),
+                ),
+                desc="Generating prompts for scenarios",
+                total=len(high_stakes_situations),
+            ):
+                hs_factors = [hs_scenario[key] for key in factor_names]
+                ls_factors = [ls_scenario[key] for key in factor_names]
 
-            new_prompts = generate_prompts(
-                hs_situation,
-                ls_situation,
-                variation_row,
-                num_prompts=run_config.num_prompts_per_situation,
-                next_prompt_id=next_prompt_id,
-            )
-            prompts.extend(new_prompts)
-            next_prompt_id += len(new_prompts)
+                hs_situation = Situation(
+                    id=hs_scenario["id"],
+                    description=hs_scenario["situation"],
+                    high_stakes=hs_scenario["high_stakes"],
+                    topic=hs_scenario["topic"],
+                    factors=hs_factors,
+                    factor_names=factor_names,
+                )
+                ls_situation = Situation(
+                    id=ls_scenario["id"],
+                    description=ls_scenario["situation"],
+                    high_stakes=ls_scenario["high_stakes"],
+                    topic=ls_scenario["topic"],
+                    factors=ls_factors,
+                    factor_names=factor_names,
+                )
 
-            # Store prompts
-            Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
+                new_prompts = generate_prompts(
+                    hs_situation,
+                    ls_situation,
+                    type_of_variation=type_of_variation,
+                    variation_row=variations_json[type_of_variation],
+                    variation_name=variation,
+                    num_prompts=run_config.num_prompts_per_situation,
+                    next_prompt_id=next_prompt_id,
+                )
+                prompts.extend(new_prompts)
+                next_prompt_id += len(new_prompts)
+
+                # Store prompts
+                Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
 
 
 # --------------------------------------------------------------------------------
