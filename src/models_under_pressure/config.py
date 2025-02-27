@@ -18,13 +18,22 @@ class RunConfig:
     """
 
     num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
+    num_prompts_per_situation: How many prompts to generate for each situation.
+    num_situations_per_combination: How many situations to generate for each combination of topics and factors.
+
+    if num_situations_to_sample is 4 and num_situations_per_combination is 1, then 4*1*2 = 8 situations will be generated in the situations.jsonl file.
+    Try to keep num_situations_per_combination as 1 to minimise weird behavior cause then LLM sometimesthinks of High and low stakes as seperate situations.
+    The above is applicable for num_prompts_per_situation too.
+
+    Based on the prompt variations, we need to decide num prompts per situation to sample.
 
     sample_seperately: if True sample from the topics and factors list directly rather than
     sampling from the examples_situations.csv file.
+
     """
 
     num_situations_per_combination: int = 1
-    num_situations_to_sample: int = 3
+    num_situations_to_sample: int = 20
     num_prompts_per_situation: int = 1
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2

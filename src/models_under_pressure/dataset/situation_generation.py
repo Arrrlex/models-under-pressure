@@ -72,6 +72,7 @@ def generate_situations(
     geographies = factors["Geography"] if "Geography" in factors else []
     languages = factors["Languages"] if "Languages" in factors else []
     impact_factors = factors["impact_factors"] if "impact_factors" in factors else []
+
     situation_generation_prompt = ""
     # using different templates
     if len(roles) == 0 and len(languages) == 0 and len(geographies) == 0:
@@ -159,22 +160,56 @@ def generate_all_situations(
                     factors[factor], run_config.num_factors_to_sample
                 )
 
-    logger.info(
-        f"Generating situations for {len(topics)} categories and {len(factors[factors_list[0]])} factors"
-    )
+        logger.info(
+            f"Generating situations for {len(topics)} categories and {len(factors[factors_list[0]])} factors"
+        )
 
-    all_situations = []
-    for topic in tqdm(topics, desc="Generating situations for topics"):
-        for factor_ctr in tqdm(
-            range(len(factors[factors_list[0]])),
-            desc=f"Generating situations for factors in {topic}",
-        ):
-            logger.debug(f"Generating situations for category: {topic}")
+        all_situations = []
+        for topic in tqdm(topics, desc="Generating situations for topics"):
+            for factor_ctr in tqdm(
+                range(len(factors[factors_list[0]])),
+                desc=f"Generating situations for factors in {topic}",
+            ):
+                logger.debug(f"Generating situations for category: {topic}")
+                situations = generate_situations(
+                    n_samples=run_config.num_situations_per_combination,
+                    category=topic,
+                    factors=factors,
+                    factor_id=factor_ctr,
+                )
+
+                if situations is not None:
+                    keys = [key for key in situations.keys()]
+                    # if situations is a list, take all elements and assign topic and factors to each element
+
+                    if isinstance(situations[keys[0]], list):
+                        for sit in situations[keys[0]]:
+                            sit["topic"] = topic
+                            for i in range(len(factors_list)):
+                                sit[factors_list[i]] = factors[factors_list[i]][
+                                    factor_ctr
+                                ]
+                            all_situations.append(sit)
+                    else:
+                        situations["topic"] = topic
+                        for i in range(len(factors_list)):
+                            situations[factors_list[i]] = factors[factors_list[i]][
+                                factor_ctr
+                            ]
+                        all_situations.append(situations)
+                else:
+                    logger.warning(
+                        f"Failed to generate situations for category: {topic}"
+                    )
+    else:
+        all_situations = []
+        for index, row in tqdm(samples_df.iterrows(), desc="Generating situations"):
+            logger.debug(f"Generating situations for category: {row['topic']}")
             situations = generate_situations(
                 n_samples=run_config.num_situations_per_combination,
-                category=topic,
-                factors=factors,
-                factor_id=factor_ctr,
+                category=row["topic"],
+                factors={str(k): [v] for k, v in row[factors_list].items()},
+                factor_id=0,
             )
 
             if situations is not None:
@@ -183,20 +218,19 @@ def generate_all_situations(
 
                 if isinstance(situations[keys[0]], list):
                     for sit in situations[keys[0]]:
-                        sit["topic"] = topic
+                        sit["topic"] = row["topic"]
                         for i in range(len(factors_list)):
-                            sit[factors_list[i]] = factors[factors_list[i]][factor_ctr]
+                            sit[factors_list[i]] = row[factors_list[i]]
                         all_situations.append(sit)
                 else:
-                    situations["topic"] = topic
+                    situations["topic"] = row["topic"]
                     for i in range(len(factors_list)):
-                        situations[factors_list[i]] = factors[factors_list[i]][
-                            factor_ctr
-                        ]
+                        situations[factors_list[i]] = factors[factors_list[i]][index]
                     all_situations.append(situations)
             else:
-                logger.warning(f"Failed to generate situations for category: {topic}")
-
+                logger.warning(
+                    f"Failed to generate situations for category: {row['topic']}"
+                )
     return all_situations
 
 
@@ -209,28 +243,28 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
         output_path: Path to save the CSV file
     """
     situations_df = pd.DataFrame(situations)
-
-    # Check if file exists and get the next ID
+    # DON'T DELETE THIS COMMENTED CODE
+    # # Check if file exists and get the next ID
     next_id = 1
-    existing_df = None
-    if output_path.exists():
-        try:
-            existing_df = pd.read_csv(output_path)
-            if not existing_df.empty:
-                next_id = existing_df["id"].max() + 1
-                logger.info(
-                    f"Found existing situations file. Next ID will be {next_id}"
-                )
-        except Exception as e:
-            logger.warning(f"Error reading existing situations file: {e}")
-            next_id = 1
+    # existing_df = None
+    # if output_path.exists():
+    #     try:
+    #         existing_df = pd.read_csv(output_path)
+    #         if not existing_df.empty:
+    #             next_id = existing_df["id"].max() + 1
+    #             logger.info(
+    #                 f"Found existing situations file. Next ID will be {next_id}"
+    #             )
+    #     except Exception as e:
+    #         logger.warning(f"Error reading existing situations file: {e}")
+    #         next_id = 1
 
-    # Assign sequential IDs starting from next_id
+    # # Assign sequential IDs starting from next_id
     situations_df["id"] = range(next_id, next_id + len(situations_df))
 
-    # If file exists, append new situations
-    if output_path.exists() and existing_df is not None:
-        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
+    # # If file exists, append new situations
+    # if output_path.exists() and existing_df is not None:
+    #     situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
 
     # shift id column to the first position
     situations_df = situations_df[

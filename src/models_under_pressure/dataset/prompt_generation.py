@@ -260,7 +260,7 @@ def generate_prompts_file(run_config: RunConfig) -> None:
                 next_prompt_id += len(new_prompts)
 
                 # Store prompts
-                Prompt.to_jsonl(new_prompts, run_config.prompts_file, mode="a")
+                Prompt.to_jsonl(new_prompts, run_config.prompts_file)
 
 
 # --------------------------------------------------------------------------------
