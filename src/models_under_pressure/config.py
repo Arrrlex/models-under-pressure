@@ -15,13 +15,23 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 
 @dataclass(frozen=True)
 class RunConfig:
-    num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 2
-    num_prompts_per_situation: int = 2
+    """
+
+    num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
+
+    sample_seperately: if True sample from the topics and factors list directly rather than
+    sampling from the examples_situations.csv file.
+    """
+
+    num_situations_per_combination: int = 1
+    num_situations_to_sample: int = 3
+    num_prompts_per_situation: int = 1
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
     num_combinations_for_prompts: int = 5
     combination_variation: bool = False  # If None, all factors are used
+
+    sample_seperately: bool = False
     run_id: str = "debug"
 
     def __post_init__(self):

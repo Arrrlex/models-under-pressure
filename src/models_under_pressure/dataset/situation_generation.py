@@ -255,14 +255,14 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
     # Load and prepare data from the combined csv file
     situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
     #  If we want to sample directly from the csv file
-    # sampled_df = situations_combinations_df.sample(
-    #     n=run_config.num_situations_to_sample
-    # )
+    sampled_df = situations_combinations_df.sample(
+        n=run_config.num_situations_to_sample
+    )
 
     situations_results = generate_all_situations(
         run_config=run_config,
-        samples_df=situations_combinations_df,
-        sample_seperately=True,
+        samples_df=sampled_df,
+        sample_seperately=run_config.sample_seperately,
     )
     # Save results
     save_situations(situations_results, run_config.situations_file)
