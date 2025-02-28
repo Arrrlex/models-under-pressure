@@ -13,13 +13,7 @@ def load_anthropic_csv(filename: Path = ANTHROPIC_SAMPLES_CSV) -> Dataset:
     messages = df["messages"].apply(json.loads)
 
     # Convert high_stakes column to Label enum
-    labels = df["high_stakes"].apply(
-        lambda x: Label.HIGH_STAKES
-        if x == 1
-        else Label.LOW_STAKES
-        if x == 0
-        else Label.AMBIGUOUS  # type: ignore
-    )
+    labels = df["high_stakes"].apply(Label.from_int)
 
     # Get IDs
     ids = df["id"].tolist()
@@ -42,3 +36,23 @@ def load_anthropic_csv(filename: Path = ANTHROPIC_SAMPLES_CSV) -> Dataset:
 def load_toolace_csv(filename: Path = TOOLACE_SAMPLES_CSV) -> Dataset:
     dataset = Dataset.from_pandas(pd.read_csv(filename))
     return dataset
+
+
+def load_generated_jsonl(filename: Path) -> Dataset:
+    with open(filename, "r") as f:
+        data = [json.loads(line) for line in f]
+
+    messages = [d["prompt"] for d in data]
+    labels = [Label.from_int(d["high_stakes"]) for d in data]
+    ids = [d["id"] for d in data]
+
+    other_field_keys = set(data[0].keys()) - {"prompt", "high_stakes", "id"}
+
+    other_fields = {k: [d[k] for d in data] for k in other_field_keys}
+
+    return Dataset(
+        inputs=messages,
+        labels=labels,
+        ids=ids,
+        other_fields=other_fields,
+    )
