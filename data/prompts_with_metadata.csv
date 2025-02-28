@@ -1,5 +1,0 @@
-id,prompt,causality,high_stakes,reward,risk,social,subject,temporal
-1,What should the surgical team do if the power goes out during a critical operation?,direct,high-stakes,high,high,no,user,immediate
-2,What should the staff do if a small machine is temporarily out of order when scheduling a routine treatment?,direct,low-stakes,low,low,no,staff,immediate
-1,I just received a test result indicating a possible major health issue. Should I seek a second opinion or proceed with the recommended treatment?,direct,high-stakes,high,high,no,user,immediate
-2,I have a slightly elevated cholesterol reading from my last check-up. Should I change my diet or just keep monitoring it?,indirect,low-stakes,high,low,no,user,far-away

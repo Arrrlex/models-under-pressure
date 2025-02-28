@@ -41,7 +41,7 @@ class RunConfig:
     combination_variation: bool = False  # If None, all factors are used
 
     sample_seperately: bool = False
-    run_id: str = "debug"
+    run_id: str = "test"
 
     def __post_init__(self):
         self.run_dir.mkdir(parents=True, exist_ok=True)
