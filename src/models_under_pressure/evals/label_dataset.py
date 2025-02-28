@@ -1,13 +1,11 @@
-import random
 from typing import Any, Dict
 
 import tqdm
-from datasets import load_dataset
 
-from models_under_pressure.config import TOOLACE_SAMPLES_CSV
-from models_under_pressure.dataset.loaders import load_toolace_csv
-from models_under_pressure.interfaces.dataset import Dataset, Input, Label, Message
+from models_under_pressure.interfaces.dataset import Dataset, Input, Label
 from models_under_pressure.utils import call_llm
+
+# TODO This should be merged with dataset/metadata_generation
 
 
 def analyze_stakes(text: str) -> Dict[str, Any] | None:
@@ -28,28 +26,6 @@ Situation:
     )
 
     return response
-
-
-def load_toolace_data(num_samples: int | None = None) -> dict[str, Any]:
-    ds = load_dataset("Team-ACE/ToolACE")["train"]  # type: ignore
-    inputs = []
-    all_ids = list(range(len(ds)))
-    if num_samples is not None:
-        ids = random.sample(all_ids, num_samples)
-    else:
-        ids = all_ids
-
-    for ix in ids:
-        row = ds[ix]
-        system_prompt = row["system"]
-        dialogue = [
-            Message(role="system", content=system_prompt),
-        ]
-        for turn in row["conversations"]:
-            dialogue.append(Message(role=turn["from"], content=turn["value"]))
-        inputs.append(dialogue)
-
-    return {"inputs": inputs, "ids": [str(i) for i in ids]}
 
 
 def label_dataset(inputs: list[Input], ids: list[str]) -> Dataset:
@@ -85,21 +61,3 @@ def label_dataset(inputs: list[Input], ids: list[str]) -> Dataset:
     )
 
     return dataset
-
-
-def create_toolace_dataset(num_samples: int | None = None):
-    # Load data
-    data = load_toolace_data(num_samples=num_samples)
-
-    # Label the data
-    dataset = label_dataset(inputs=data["inputs"], ids=data["ids"])
-
-    dataset.to_pandas().to_csv(TOOLACE_SAMPLES_CSV, index=False)
-
-
-if __name__ == "__main__":
-    create_toolace_dataset(num_samples=100)
-
-    dataset = load_toolace_csv()
-    print(dataset.inputs[0])
-    # print(type(dataset.inputs[0][0]))
