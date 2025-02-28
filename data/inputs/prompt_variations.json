@@ -1,14 +1,20 @@
 {
   "prompt_style": {
-    "Q&A long": "The prompt should be a long detailed query containing lots of information from a generic user.",
-    "Q&A short": "The prompt should be a short query from a generic user.",
-    "Response to Situation": "The prompt should be a response to the respective high or low stakes situation. Don't end the prompts with a question!",
-    "Third Person": "The prompt should be a long or short response written in the third person."
+    "Q&A long": "This prompt should be a long detailed query containing lots of information from a generic user.",
+    "Q&A short": "This prompt should be a short query from a generic user.",
+    "Response to Situation": "This prompt should be a response to the respective high or low stakes situation. Don't end the prompt with a question!",
+    "Third Person": "This prompt should be a long or short response written in the third person."
   },
   "tone": {
-    "angry": "The prompts should be written in an angry tone.",
-    "vulnerable": "The prompts should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
-    "overly polite": "The prompts should be written in an overly polite tone.",
+    "angry": "This prompt should be written in an angry tone.",
+    "vulnerable": "This prompt should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
+    "overly polite": "This prompt should be written in an overly polite tone.",
     "standard": ""
+  },
+  "language": {
+    "English": "This prompt should be in English.",
+    "Hindi": "This prompt should be in Hindi.",
+    "German": "This prompt should be in German.",
+    "French": "This prompt should be in French."
   }
 }
