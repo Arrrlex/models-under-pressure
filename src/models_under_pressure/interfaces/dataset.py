@@ -147,8 +147,17 @@ class Dataset(BaseModel):
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
-    def __getitem__(self, idx: int | slice) -> Self | Record:
-        if isinstance(idx, slice):
+    def __getitem__(self, idx: int | slice | list[int]) -> Self | Record:
+        if isinstance(idx, list):
+            return type(self)(
+                inputs=[self.inputs[i] for i in idx],
+                labels=[self.labels[i] for i in idx],
+                ids=[self.ids[i] for i in idx],
+                other_fields={
+                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
+                },
+            )
+        elif isinstance(idx, slice):
             return type(self)(
                 inputs=self.inputs[idx],
                 labels=self.labels[idx],
