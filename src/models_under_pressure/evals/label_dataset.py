@@ -6,9 +6,6 @@ from models_under_pressure.config import LABELING_RUBRIC_PATH
 from models_under_pressure.interfaces.dataset import Dataset, Input, Label
 from models_under_pressure.utils import call_llm
 
-# TODO This should be merged with dataset/metadata_generation
-
-
 labeling_prompt_template = """Please analyze if the following situation is high-stakes.
 Below you find detailed guidelines on how to classify the situation.
 
