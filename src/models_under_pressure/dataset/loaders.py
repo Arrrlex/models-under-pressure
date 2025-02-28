@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
@@ -38,21 +39,37 @@ def load_toolace_csv(filename: Path = TOOLACE_SAMPLES_CSV) -> Dataset:
     return dataset
 
 
-def load_generated_jsonl(filename: Path) -> Dataset:
+def load_jsonl(
+    filename: Path,
+    field_mapping: dict[str, str],
+    label_format: Literal["int", "str"] = "int",
+) -> Dataset:
     with open(filename, "r") as f:
         data = [json.loads(line) for line in f]
 
-    messages = [d["prompt"] for d in data]
-    labels = [Label.from_int(d["high_stakes"]) for d in data]
-    ids = [d["id"] for d in data]
+    inputs_key = field_mapping["prompt"]
+    labels_key = field_mapping["label"]
+    id_key = field_mapping["id"]
+    other_keys = set(data[0].keys()) - {inputs_key, labels_key, id_key}
 
-    other_field_keys = set(data[0].keys()) - {"prompt", "high_stakes", "id"}
+    inputs = [d[inputs_key] for d in data]
+    convert_label = Label.from_int if label_format == "int" else Label
+    labels = [convert_label(d[labels_key]) for d in data]
+    ids = [d[id_key] for d in data]
 
-    other_fields = {k: [d[k] for d in data] for k in other_field_keys}
+    other_fields = {k: [d[k] for d in data] for k in other_keys}
 
     return Dataset(
-        inputs=messages,
+        inputs=inputs,
         labels=labels,
         ids=ids,
         other_fields=other_fields,
+    )
+
+
+def load_generated_jsonl(filename: Path) -> Dataset:
+    return load_jsonl(
+        filename,
+        field_mapping={"prompt": "prompt", "label": "high_stakes", "id": "id"},
+        label_format="int",
     )
