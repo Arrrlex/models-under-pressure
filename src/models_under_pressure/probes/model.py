@@ -88,6 +88,7 @@ class LLMModel:
     ) -> Float[
         np.ndarray, "layers batch_size seq_len embed_dim"
     ]:  # TODO Also return attention mask
+        # TODO Implement mini-batches
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
 
