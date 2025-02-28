@@ -70,7 +70,8 @@ class RunConfig:
 
 class GenerateActivationsConfig(BaseModel):
     dataset_path: Path
-    model_name: str = "gpt-4o-mini"
+    model_name: str
+    layer: int
 
     output_dir: Path = DATA_DIR / "activations"
 
@@ -80,4 +81,7 @@ class GenerateActivationsConfig(BaseModel):
     @property
     def output_file(self) -> Path:
         model_name_path_safe = self.model_name.replace("/", "_")
-        return self.output_dir / f"{model_name_path_safe}_{self.dataset_hash()}.npz"
+        return (
+            self.output_dir
+            / f"{model_name_path_safe}_{self.dataset_hash()}_{self.layer}.npz"
+        )
