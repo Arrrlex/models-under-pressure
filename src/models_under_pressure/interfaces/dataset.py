@@ -1,5 +1,7 @@
+import hashlib
 import json
 from enum import Enum
+from functools import cached_property
 from typing import Any, Callable, Mapping, Self, Sequence, overload
 
 import numpy as np
@@ -134,6 +136,10 @@ class Dataset(BaseModel):
 
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
+
+    @cached_property
+    def stable_hash(self) -> str:
+        return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
 
     @overload
     def __getitem__(self, idx: int) -> Record: ...

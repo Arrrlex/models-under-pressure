@@ -19,7 +19,6 @@ dotenv.load_dotenv()
 def get_activations(
     model: LLMModel,
     config: GenerateActivationsConfig,
-    dataset: Dataset,
     force_recompute: bool = False,
 ) -> np.ndarray:
     assert model.name == config.model_name
@@ -29,28 +28,23 @@ def get_activations(
     else:
         print("Generating activations...")
         activations = model.get_activations(
-            inputs=dataset.inputs, layers=[config.layer]
+            inputs=config.dataset.inputs, layers=[config.layer]
         )[0]
         np.savez_compressed(config.output_file, activations=activations)
         return activations
 
 
-def test_get_activations(
-    config: GenerateActivationsConfig, model_name: str, dataset: Dataset
-):
+def test_get_activations(config: GenerateActivationsConfig, model_name: str):
     model = LLMModel.load(
         model_name,
         model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
         tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
     )
-    activations = get_activations(
-        model=model, config=config, dataset=dataset, force_recompute=True
-    )
+    activations = get_activations(model=model, config=config, force_recompute=True)
     # Load precomputed activations
     activations2 = get_activations(
         model=model,
         config=config,
-        dataset=dataset,
         force_recompute=False,
     )
     assert np.allclose(activations, activations2)
@@ -59,7 +53,6 @@ def test_get_activations(
 def test_compute_accuracy(
     model_name: str,
     config: GenerateActivationsConfig,
-    dataset: Dataset,
 ):
     print("Loading model...")
     model = LLMModel.load(
@@ -72,7 +65,6 @@ def test_compute_accuracy(
     activations = get_activations(
         model=model,
         config=config,
-        dataset=dataset,
     )
 
     if any(label == Label.AMBIGUOUS for label in dataset.labels):
@@ -106,7 +98,6 @@ def cross_validate_probe(
     activations = get_activations(
         model=probe._llm,
         config=config,
-        dataset=dataset,
     )
     accuracies = np.array(
         [compute_accuracy(probe, dataset, activations) for dataset in dataset_splits]
@@ -127,19 +118,18 @@ if __name__ == "__main__":
     layer = 10
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
 
-    config = GenerateActivationsConfig(
-        dataset_path=dataset_path, model_name=model_name, layer=layer
-    )
     print("Loading dataset...")
-    dataset = load_anthropic_csv(config.dataset_path)
+    dataset = load_anthropic_csv(dataset_path)
+
+    config = GenerateActivationsConfig(
+        dataset=dataset, model_name=model_name, layer=layer
+    )
 
     test_get_activations(
         config=config,
         model_name=model_name,
-        dataset=dataset,
     )
     test_compute_accuracy(
         model_name=model_name,
         config=config,
-        dataset=dataset,
     )

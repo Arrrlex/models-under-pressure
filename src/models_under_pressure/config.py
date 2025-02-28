@@ -1,8 +1,9 @@
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel
+
+from models_under_pressure.interfaces.dataset import Dataset
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -69,19 +70,16 @@ class RunConfig:
 
 
 class GenerateActivationsConfig(BaseModel):
-    dataset_path: Path
+    dataset: Dataset
     model_name: str
     layer: int
 
     output_dir: Path = DATA_DIR / "activations"
-
-    def dataset_hash(self) -> str:
-        return hashlib.sha256(self.dataset_path.read_bytes()).hexdigest()[:10]
 
     @property
     def output_file(self) -> Path:
         model_name_path_safe = self.model_name.replace("/", "_")
         return (
             self.output_dir
-            / f"{model_name_path_safe}_{self.dataset_hash()}_{self.layer}.npz"
+            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}.npz"
         )
