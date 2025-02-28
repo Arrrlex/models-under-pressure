@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
+from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV, TOOLACE_SAMPLES_CSV
 from models_under_pressure.interfaces.dataset import Dataset, Label
 
 
@@ -31,6 +31,11 @@ def load_anthropic_csv(filename: Path = ANTHROPIC_SAMPLES_CSV) -> Dataset:
         ids=ids,
         other_fields=other_fields,
     )
+
+
+def load_toolace_csv(filename: Path = TOOLACE_SAMPLES_CSV) -> Dataset:
+    dataset = Dataset.from_pandas(pd.read_csv(filename))
+    return dataset
 
 
 def load_generated_jsonl(filename: Path) -> Dataset:

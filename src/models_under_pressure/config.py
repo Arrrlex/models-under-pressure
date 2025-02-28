@@ -19,6 +19,7 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 # Evals files
 EVALS_DIR = Path(__file__).parent.parent.parent / "data" / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
+TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
 
 
 @dataclass(frozen=True)

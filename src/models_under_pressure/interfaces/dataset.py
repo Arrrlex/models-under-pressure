@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 from typing import Any, Callable, Mapping, Self, Sequence, overload
 
@@ -81,30 +82,25 @@ class Dataset(BaseModel):
         )
 
     def to_pandas(self) -> pd.DataFrame:
+        # Convert Dialogue inputs to dictionaries for pandas compatibility
+        processed_inputs = []
+        for input_item in self.inputs:
+            if isinstance(input_item, str):
+                processed_inputs.append(input_item)
+            else:  # It's a Dialogue
+                # Convert the entire dialogue to a single JSON string
+                processed_inputs.append(
+                    json.dumps([message.model_dump() for message in input_item])
+                )
+
         base_data = {
-            "inputs": self.inputs,
-            "labels": self.labels,
+            "inputs": processed_inputs,
+            "labels": [label.value for label in self.labels],
             "ids": self.ids,
         }
         # Add each field from other_fields as a separate column
         base_data.update(self.other_fields)
         return pd.DataFrame(base_data)
-
-    @classmethod
-    def from_pandas(cls, df: pd.DataFrame) -> Self:
-        return cls.from_records(
-            [
-                Record(
-                    input=row["inputs"],
-                    label=row["labels"],
-                    id=row["ids"],
-                    other_fields=row.drop(
-                        columns=["inputs", "labels", "ids"]
-                    ).to_dict(),
-                )
-                for _, row in df.iterrows()
-            ]
-        )
 
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
@@ -130,6 +126,36 @@ class Dataset(BaseModel):
                 id=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
+
+    @classmethod
+    def from_pandas(cls, df: pd.DataFrame) -> "Dataset":
+        # Extract the required columns
+        inputs = []
+        for input_item in df["inputs"].tolist():
+            if isinstance(input_item, str):
+                try:
+                    # Try to parse as JSON dialogue
+                    messages = json.loads(input_item)
+                    if isinstance(messages, list):
+                        dialogue = [Message(**msg) for msg in messages]
+                        inputs.append(dialogue)
+                    else:
+                        # If not a list, treat as regular string input
+                        inputs.append(input_item)
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, treat as regular string input
+                    inputs.append(input_item)
+
+        labels = [Label(label) for label in df["labels"]]
+        ids = [str(id) for id in df["ids"].tolist()]
+
+        # Get all other columns as other_fields
+        core_columns = {"inputs", "labels", "ids"}
+        other_fields = {
+            col: df[col].tolist() for col in df.columns if col not in core_columns
+        }
+
+        return cls(inputs=inputs, labels=labels, ids=ids, other_fields=other_fields)
 
     def filter(self, filter_fn: Callable[[Record], bool]) -> Self:
         return type(self).from_records([r for r in self.records() if filter_fn(r)])
