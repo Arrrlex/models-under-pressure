@@ -1,10 +1,16 @@
 # Repo-specific
 temp_data/*.csv
+temp_data/*.jsonl
+
 plots/*.png
 .data
 **/wandb
-data/results/
+data/results/*.csv
+data/results/*.json
+data/results/*.jsonl
+data/results/debug
 data/previous/
+*.npy
 uv.lock
 .DS_Store
 

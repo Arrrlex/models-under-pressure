@@ -1,5 +1,8 @@
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -20,6 +23,11 @@ RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
 EVALS_DIR = Path(__file__).parent.parent.parent / "data" / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
 TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
+
+EVAL_DATASETS = {
+    "anthropic": ANTHROPIC_SAMPLES_CSV,
+    "toolace": TOOLACE_SAMPLES_CSV,
+}
 
 
 @dataclass(frozen=True)
@@ -56,3 +64,18 @@ class RunConfig:
     @property
     def variations_file(self) -> Path:
         return self.run_dir / "variations_prompt_type.csv"
+
+
+class GenerateActivationsConfig(BaseModel):
+    dataset_path: Path
+    model_name: str = "gpt-4o-mini"
+
+    output_dir: Path = RESULTS_DIR / "activations"
+
+    def dataset_hash(self) -> str:
+        return hashlib.sha256(self.dataset_path.read_bytes()).hexdigest()[:10]
+
+    @property
+    def output_file(self) -> Path:
+        model_name_path_safe = self.model_name.replace("/", "_")
+        return self.output_dir / f"{model_name_path_safe}_{self.dataset_hash()}.npy"

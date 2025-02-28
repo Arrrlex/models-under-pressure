@@ -20,6 +20,7 @@ from models_under_pressure.interfaces.dataset import (
 
 @dataclass
 class LLMModel:
+    name: str
     model: torch.nn.Module
     tokenizer: PreTrainedTokenizerBase
 
@@ -54,7 +55,7 @@ class LLMModel:
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
-        return cls(model, tokenizer)
+        return cls(name=model_name, model=model, tokenizer=tokenizer)
 
     def tokenize(
         self,
