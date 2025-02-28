@@ -12,6 +12,7 @@ CATEGORY_JSON = INPUTS_DIR / "category_taxonomy.json"
 FACTOR_JSON = INPUTS_DIR / "factor_taxonomy.json"
 CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
 FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
+LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 
 # Paths to output files
 RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
