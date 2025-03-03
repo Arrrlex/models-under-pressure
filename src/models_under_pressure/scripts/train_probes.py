@@ -27,7 +27,7 @@ def get_activations(
     config: GenerateActivationsConfig,
     force_recompute: bool = False,
     batch_size: int = BATCH_SIZE,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Get activations for a given model and config.
 
@@ -35,8 +35,15 @@ def get_activations(
     """
     assert model.name == config.model_name
 
-    if config.output_file.exists() and not force_recompute:
-        return np.load(config.output_file)["activations"]
+    if (
+        config.acts_output_file.exists()
+        and config.attn_mask_output_file.exists()
+        and not force_recompute
+    ):
+        return (
+            np.load(config.acts_output_file)["activations"],
+            np.load(config.attn_mask_output_file)["attention_mask"],
+        )
     else:
         print("Generating activations...")
 
@@ -45,25 +52,26 @@ def get_activations(
 
         # Get the shape from first batch to ensure consistency
         first_batch = config.dataset.inputs[0:1]
-        first_activation = model.get_activations(
+        first_activation, first_attn_mask = model.get_activations(
             inputs=first_batch, layers=[config.layer]
         )[0]
         activation_shape = first_activation.shape[1:]  # Remove batch dimension
+        attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
 
         all_activations = []
+        all_attention_masks = []
         for i in range(n_batches):
             start_idx = i * batch_size
             end_idx = min((i + 1) * batch_size, n_samples)
             batch_inputs = config.dataset.inputs[start_idx:end_idx]
 
             print(f"Processing batch {i + 1}/{n_batches}...")
-            batch_activations = model.get_activations(
+            batch_activations, batch_attn_mask = model.get_activations(
                 inputs=batch_inputs, layers=[config.layer]
             )[0]
 
             # Ensure all batches have the same shape by padding/truncating
             if batch_activations.shape[1:] != activation_shape:
-                # Truncate or pad to match the first batch's shape
                 padded_activations = np.zeros(
                     (batch_activations.shape[0],) + activation_shape
                 )
@@ -71,11 +79,23 @@ def get_activations(
                 padded_activations[:, :min_length] = batch_activations[:, :min_length]
                 batch_activations = padded_activations
 
+            if batch_attn_mask.shape[1:] != attn_mask_shape:
+                padded_attn_mask = np.zeros(
+                    (batch_attn_mask.shape[0],) + attn_mask_shape
+                )
+                min_length = min(batch_attn_mask.shape[1], attn_mask_shape[0])
+                padded_attn_mask[:, :min_length] = batch_attn_mask[:, :min_length]
+                batch_attn_mask = padded_attn_mask
+
             all_activations.append(batch_activations)
+            all_attention_masks.append(batch_attn_mask)
 
         activations = np.concatenate(all_activations, axis=0)
-        np.savez_compressed(config.output_file, activations=activations)
-        return activations
+        attention_mask = np.concatenate(all_attention_masks, axis=0)
+
+        np.savez_compressed(config.acts_output_file, activations=activations)
+        np.savez_compressed(config.attn_mask_output_file, attention_mask=attention_mask)
+        return activations, attention_mask
 
 
 def test_get_activations(config: GenerateActivationsConfig, model_name: str):
@@ -84,14 +104,17 @@ def test_get_activations(config: GenerateActivationsConfig, model_name: str):
         model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
         tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
     )
-    activations = get_activations(model=model, config=config, force_recompute=True)
+    activations, attention_mask = get_activations(
+        model=model, config=config, force_recompute=True
+    )
     # Load precomputed activations
-    activations2 = get_activations(
+    activations2, attention_mask2 = get_activations(
         model=model,
         config=config,
         force_recompute=False,
     )
     assert np.allclose(activations, activations2)
+    assert np.allclose(attention_mask, attention_mask2)
 
 
 def test_compute_accuracy(
@@ -107,7 +130,7 @@ def test_compute_accuracy(
     )
 
     print("Loading training activations...")
-    activations = get_activations(
+    activations, attention_mask = get_activations(
         model=model,
         config=train_config,
     )
@@ -117,10 +140,14 @@ def test_compute_accuracy(
     probe = LinearProbe(_llm=model, layer=train_config.layer)
 
     print("Training probe...")
-    probe.fit(X=activations, y=train_config.dataset.labels_numpy())
+    probe.fit(
+        X=activations,
+        y=train_config.dataset.labels_numpy(),
+        attention_mask=attention_mask,
+    )
 
     print("Loading testing activations...")
-    activations = get_activations(
+    activations, attention_mask = get_activations(
         model=model,
         config=test_config,
     )
@@ -128,7 +155,12 @@ def test_compute_accuracy(
         raise ValueError("Test dataset contains ambiguous labels")
 
     print("Computing accuracy...")
-    accuracy = compute_accuracy(probe, test_config.dataset, activations)
+    accuracy = compute_accuracy(
+        probe,
+        test_config.dataset,
+        activations=activations,
+        attention_mask=attention_mask,
+    )
     print(f"Accuracy: {accuracy}")
 
 
@@ -163,7 +195,11 @@ def train_probes(
         probe = LinearProbe(_llm=model, layer=layer)
 
         print("Training probe...")
-        probe.fit(X=activations, y=config.dataset.labels_numpy())
+        probe.fit(
+            X=activations,
+            y=config.dataset.labels_numpy(),
+            attention_mask=attention_mask,
+        )
         probes[layer] = probe
     return probes
 
@@ -391,20 +427,21 @@ def generate_heatmap_for_generated_dataset(
         probes = train_probes(train_ds, model_name=model_name, layers=layers)
 
         for layer, probe in probes.items():
-            accuracies = [
-                compute_accuracy(
-                    probe,
-                    test_ds,
-                    get_activations(
-                        model,
-                        GenerateActivationsConfig(
-                            dataset=test_ds, model_name=model_name, layer=layer
-                        ),
+            accuracies = []
+            for test_ds in test_datasets:
+                activations, attention_mask = get_activations(
+                    model,
+                    GenerateActivationsConfig(
+                        dataset=test_ds, model_name=model_name, layer=layer
                     ),
                 )
-                for test_ds in test_datasets
-            ]
-            print(f"Layer {layer} accuracy: {accuracies}")
+                accuracy = compute_accuracy(
+                    probe,
+                    test_ds,
+                    activations=activations,
+                    attention_mask=attention_mask,
+                )
+                accuracies.append(accuracy)
             performances[layer].append(accuracies)
     return {
         layer: np.array(accuracies) for layer, accuracies in performances.items()

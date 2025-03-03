@@ -106,7 +106,10 @@ class LLMModel:
         self,
         inputs: Sequence[Input],
         layers: Sequence[int] | None = None,
-    ) -> Float[np.ndarray, "layers batch_size seq_len embed_dim"]:
+    ) -> tuple[
+        Float[np.ndarray, "layers batch_size seq_len embed_dim"],
+        Float[np.ndarray, "batch_size seq_len"],
+    ]:
         # TODO Implement mini-batches
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
@@ -160,7 +163,8 @@ class LLMModel:
         for layer, act in zip(layers, activations):
             print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
-        return np.stack(activations)
+        attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
+        return np.stack(activations), attention_mask
 
 
 if __name__ == "__main__":

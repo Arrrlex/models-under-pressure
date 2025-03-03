@@ -79,9 +79,17 @@ class GenerateActivationsConfig(BaseModel):
     output_dir: Path = DATA_DIR / "activations"
 
     @property
-    def output_file(self) -> Path:
+    def acts_output_file(self) -> Path:
         model_name_path_safe = self.model_name.replace("/", "_")
         return (
             self.output_dir
             / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}.npz"
+        )
+
+    @property
+    def attn_mask_output_file(self) -> Path:
+        model_name_path_safe = self.model_name.replace("/", "_")
+        return (
+            self.output_dir
+            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}_attn_mask.npz"
         )
