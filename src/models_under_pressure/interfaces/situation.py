@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -10,31 +10,39 @@ class Situation:
     def __init__(
         self,
         id: int,
-        description: str,
-        category: Optional[str] = None,
-        factor: Optional[str] = None,
+        topic: str,
+        factors: List[str],
+        factor_names: List[str],
+        description: Optional[str] = None,
         high_stakes: Optional[bool] = None,
     ):
         self.id = id
         self.description = description
-        self.category = category  # Reference to Category object
-        self.factor = factor  # Reference to Factor object
+        self.topic = topic
+        self.factor_values = factors
         self.high_stakes = high_stakes
+        self.factor_names = factor_names
+        self._factors = dict(zip(self.factor_names, self.factor_values))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
-            "description": self.description,
-            "category": self.category,
-            "factor": self.factor,
-            "high_stakes": self.high_stakes,
+            # "description": self.description,
+            "topic": self.topic,
+            "factors": self.factors,
+            # "high_stakes": self.high_stakes,
         }
 
     def __repr__(self):
         return (
             f"Situation(id={self.id}, description='{self.description}', "
-            f"category='{self.category}', factor='{self.factor}')"
+            f"topic='{self.topic}', factors='{self.factors}')"
         )
+
+    @property
+    def factors(self) -> Dict[str, str]:
+        """Get the factors dictionary for the situation."""
+        return self._factors
 
 
 class SituationDataInterface:
@@ -53,11 +61,10 @@ class SituationDataInterface:
             situation = Situation(
                 id=row["id"],
                 description=row["description"],
-                category=row["category"] if pd.notna(row["category"]) else None,
-                factor=row["factor"] if pd.notna(row["factor"]) else None,
-                high_stakes=row["high_stakes"]
-                if pd.notna(row["high_stakes"])
-                else None,
+                topic=row["topic"],
+                factors=row["factors"],
+                factor_names=row["factor_names"],
+                high_stakes=row["high_stakes"],
             )
             situations.append(situation)
 
@@ -73,15 +80,15 @@ class SituationDataInterface:
 
     def filter_situations(
         self,
-        category: Optional[str] = None,
-        factor: Optional[str] = None,
+        topic: Optional[str] = None,
+        factors: Optional[Tuple[str, ...]] = None,
     ) -> List[Situation]:
         """todo."""
         filtered = self.situations
-        if category:
-            filtered = [sit for sit in filtered if sit.category == category]
-        if factor:
-            filtered = [sit for sit in filtered if sit.factor == factor]
+        if topic:
+            filtered = [sit for sit in filtered if sit.topic == topic]
+        if factors:
+            filtered = [sit for sit in filtered if sit.factors == factors]
         return filtered
 
     def to_dict(self) -> List[Dict[str, Any]]:
@@ -90,8 +97,8 @@ class SituationDataInterface:
             {
                 "id": sit.id,
                 "description": sit.description,
-                "category": sit.category,
-                "factor": sit.factor,
+                "category": sit.topic,
+                "factor": sit.factors,
                 "high_stakes": sit.high_stakes,
             }
             for sit in self.situations
