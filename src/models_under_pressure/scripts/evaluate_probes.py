@@ -27,11 +27,13 @@ def compute_auroc(probe: LinearProbe, dataset: Dataset) -> float:
         float: The AUROC score
     """
     # Get activations for the dataset
-    activations = probe._llm.get_activations(dataset.inputs, layers=[probe.layer])[0]
+    activations, attention_mask = probe._llm.get_activations(
+        dataset.inputs, layers=[probe.layer]
+    )
 
     # Get predicted probabilities for the positive class (high stakes)
     y_pred = probe._classifier.predict_proba(
-        probe._preprocess_activations(activations)
+        probe._preprocess_activations(activations, attention_mask)
     )[:, 1]
 
     # Get true labels
@@ -146,13 +148,13 @@ def main(
 
 if __name__ == "__main__":
     max_samples = None  # 20
-    layer = 11
+    layer = 15
     # variation_type = "prompt_style"
     # variation_type = "language"
     variation_type = None
     variation_value = None  # "Q&A long"
     dataset_path = Path("data/results/prompts_28_02_25.jsonl")
-    model_name: str = "meta-llama/Llama-3.2-1B-Instruct"
+    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
 
     file_name = (
         f"{dataset_path.stem}_{model_name.split('/')[-1]}_{variation_type}_fig2.json"

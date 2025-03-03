@@ -422,7 +422,7 @@ def generate_heatmap_for_generated_dataset(
                 size=int(len(dataset.ids) * subsample_frac),
                 replace=False,
             )
-        dataset = dataset[list(indices)]  # type: ignore
+            dataset = dataset[list(indices)]  # type: ignore
         train_dataset, test_dataset = create_train_test_split(
             dataset, split_field="situations_ids"
         )
@@ -479,9 +479,9 @@ def generate_heatmap_for_generated_dataset(
 
 
 if __name__ == "__main__":
-    model_name = "meta-llama/Llama-3.2-1B-Instruct"
+    model_name = "meta-llama/Llama-3.1-8B-Instruct"
     layers = [1, 10, 15]
-    subsample_frac = 0.09
+    subsample_frac = None
 
     for variation_type in ["prompt_style", "tone", "language"]:
         print(f"\nGenerating heatmap for {variation_type}...")
