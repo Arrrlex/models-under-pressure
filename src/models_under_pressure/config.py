@@ -18,6 +18,7 @@ CATEGORY_JSON = INPUTS_DIR / "category_taxonomy.json"
 FACTOR_JSON = INPUTS_DIR / "factor_taxonomy.json"
 CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
 FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
+LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 GENERATED_DATASET_TRAIN_TEST_SPLIT = (
     INPUTS_DIR / "generated_dataset_train_test_split.json"
 )
