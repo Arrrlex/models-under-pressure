@@ -1,14 +1,97 @@
-# Imports
+# %%
+#!%load_ext autoreload
+#!%autoreload 2
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, Self
 
 import numpy as np
 import torch
 from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.probes.model import LLMModel
+
+
+class HighStakesClassifier(Protocol):
+    def predict(self, dataset: Dataset) -> list[Label]: ...
+
+
+class SklearnClassifier(Protocol):
+    def fit(
+        self,
+        X: Float[np.ndarray, "batch_size ..."],
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self: ...
+
+    def predict(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, " batch_size"]: ...
+
+
+@dataclass
+class LinearProbe_(HighStakesClassifier):
+    _llm: LLMModel
+    layer: int
+
+    seq_pos: int | str = "all"
+    _classifier: SklearnClassifier = field(
+        default_factory=lambda: make_pipeline(
+            StandardScaler(),
+            LogisticRegression(
+                C=1e-3,
+                random_state=42,
+                fit_intercept=False,
+            ),
+        )
+    )  # type: ignore
+
+    def _preprocess_activations(
+        self,
+        activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
+    ) -> Float[np.ndarray, "batch_size embed_dim"]:
+        if self.seq_pos == "all":
+            acts = activations.mean(axis=1)
+        else:
+            assert isinstance(self.seq_pos, int)
+            assert self.seq_pos in range(
+                activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
+            acts = activations[:, self.seq_pos, :]
+
+        return acts
+
+    def fit(
+        self,
+        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self:
+        X = self._preprocess_activations(X)
+
+        self._classifier.fit(X, y)
+        return self
+
+    def predict(self, dataset: Dataset) -> list[Label]:
+        activations = self._llm.get_activations(dataset.inputs, layers=[self.layer])[0]
+        predictions = self._predict(activations)
+        return [Label.from_int(pred) for pred in predictions]
+
+    def _predict(
+        self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
+    ) -> Float[np.ndarray, " batch_size"]:
+        X = self._preprocess_activations(X)
+        return self._classifier.predict(X)
+
+
+def compute_accuracy_(
+    probe: LinearProbe_,
+    dataset: Dataset,
+) -> float:
+    pred_labels = probe.predict(dataset)
+    return (np.array(pred_labels) == np.array(dataset.labels)).mean()
 
 
 @torch.no_grad()
@@ -53,10 +136,6 @@ def create_activations(
     print("All activations shape:", all_acts.shape)
 
     return all_acts.cpu().detach().numpy()
-
-
-# Select the last sequence position activations:
-# train_acts_final_pos = train_acts[:, :, -1, :]
 
 
 @dataclass
@@ -127,3 +206,40 @@ def compute_accuracy(
 ):
     pred_labels = probe.predict(activations)
     return (pred_labels == labels).mean()
+
+
+# %%
+if __name__ == "__main__":
+    import os
+
+    import dotenv
+
+    from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
+    from models_under_pressure.dataset.loaders import load_anthropic_csv
+
+    dotenv.load_dotenv()
+
+    print("Loading model...")
+    model = LLMModel.load(
+        "meta-llama/LLama-3.2-1B-Instruct",
+        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    )
+
+    print("Loading dataset...")
+    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)[:10]
+
+    if any(label == Label.AMBIGUOUS for label in dataset.labels):
+        raise ValueError("Dataset contains ambiguous labels")
+
+    probe = LinearProbe_(_llm=model, layer=12)
+
+    print("Computing activations...")
+    activations = model.get_activations(inputs=dataset.inputs, layers=[12])[0]
+
+    print("Training probe...")
+    probe.fit(X=activations, y=dataset.labels_numpy())
+
+    print("Computing accuracy...")
+    accuracy = compute_accuracy_(probe, dataset)
+    print(f"Accuracy: {accuracy}")

@@ -3,14 +3,24 @@ from pathlib import Path
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
+DEVICE = "cpu"
+
 # Paths to input files
 INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
 TOPICS_JSON = INPUTS_DIR / "topics.json"
 SITUATION_FACTORS_JSON = INPUTS_DIR / "situation_factors.json"
 FILTERED_SITUATION_FACTORS_CSV = INPUTS_DIR / "situation_topics.csv"
+LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
+
+
 # Paths to output files
 RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "results"
+
+# Evals files
+EVALS_DIR = Path(__file__).parent.parent.parent / "data" / "evals"
+ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
+TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
 
 
 @dataclass(frozen=True)

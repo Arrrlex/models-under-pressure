@@ -6,7 +6,13 @@ from typing import Dict, List
 
 from tqdm import tqdm
 
-from models_under_pressure.config import METADATA_FIELDS_FILE, RunConfig
+
+from models_under_pressure.config import (
+    LABELING_RUBRIC_PATH,
+    METADATA_FIELDS_FILE,
+    RunConfig,
+)
+
 from models_under_pressure.dataset.prompt_generation import Prompt
 from models_under_pressure.utils import call_llm
 
@@ -15,20 +21,16 @@ from models_under_pressure.utils import call_llm
 # --------------------------------------------------------------------------------
 # Note that we are using this template for the system prompt
 metadata_generation_template = """You are a research assistant. Your task is to annotate a given prompt with metadata. In the user prompt you are given the prompt.
-
 Return your response in JSON format, using the following schema:
 {{"field" (str): value (str)}}
 
 The fields to populate are:
 {fields}
 
-Additional guidelines:
-{guidelines}
-"""
+Below you find detailed guidelines on how to annotate for high-stakes vs low-stakes.
 
-metadata_generation_guidelines: List[str] = [
-    "You should only respond with the JSON object, nothing else.",
-]
+{rubric}
+"""
 
 
 @dataclass(frozen=True)
@@ -56,17 +58,13 @@ def load_metadata_fields(file_path: Path) -> List[MetadataField]:
 # --------------------------------------------------------------------------------
 # 2. Metadata generation
 # --------------------------------------------------------------------------------
-def make_metadata_generation_prompt(
-    metadata_generation_guidelines: List[str], fields: List[MetadataField]
-) -> str:
+def make_metadata_generation_prompt(fields: List[MetadataField], rubric: str) -> str:
     generation_prompt = metadata_generation_template.format(
         fields="\n".join(
             f"- {field.name}: {field.description} ({'/'.join(field.values)})"
             for field in fields
         ),
-        guidelines="\n".join(
-            f"- {guideline}" for guideline in metadata_generation_guidelines
-        ),
+        rubric=rubric,
     )
     return generation_prompt
 
@@ -74,8 +72,10 @@ def make_metadata_generation_prompt(
 def generate_metadata(
     prompt: Prompt, fields: List[MetadataField], model: str | None = None
 ) -> Dict[str, str]:
+    rubric = LABELING_RUBRIC_PATH.read_text()
     generation_prompt = make_metadata_generation_prompt(
-        metadata_generation_guidelines, fields
+        fields,
+        rubric,
     )
 
     # Call LLM with prompt
