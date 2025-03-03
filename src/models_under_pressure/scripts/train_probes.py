@@ -7,6 +7,7 @@ import torch
 
 from models_under_pressure.config import (
     ANTHROPIC_SAMPLES_CSV,
+    BATCH_SIZE,
     GenerateActivationsConfig,
 )
 from models_under_pressure.dataset.loaders import load_anthropic_csv, loaders
@@ -25,16 +26,54 @@ def get_activations(
     model: LLMModel,
     config: GenerateActivationsConfig,
     force_recompute: bool = False,
+    batch_size: int = BATCH_SIZE,
 ) -> np.ndarray:
+    """
+    Get activations for a given model and config.
+
+    Handle batching and caching of activations.
+    """
     assert model.name == config.model_name
 
     if config.output_file.exists() and not force_recompute:
         return np.load(config.output_file)["activations"]
     else:
         print("Generating activations...")
-        activations = model.get_activations(
-            inputs=config.dataset.inputs, layers=[config.layer]
+
+        n_samples = len(config.dataset.inputs)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        # Get the shape from first batch to ensure consistency
+        first_batch = config.dataset.inputs[0:1]
+        first_activation = model.get_activations(
+            inputs=first_batch, layers=[config.layer]
         )[0]
+        activation_shape = first_activation.shape[1:]  # Remove batch dimension
+
+        all_activations = []
+        for i in range(n_batches):
+            start_idx = i * batch_size
+            end_idx = min((i + 1) * batch_size, n_samples)
+            batch_inputs = config.dataset.inputs[start_idx:end_idx]
+
+            print(f"Processing batch {i + 1}/{n_batches}...")
+            batch_activations = model.get_activations(
+                inputs=batch_inputs, layers=[config.layer]
+            )[0]
+
+            # Ensure all batches have the same shape by padding/truncating
+            if batch_activations.shape[1:] != activation_shape:
+                # Truncate or pad to match the first batch's shape
+                padded_activations = np.zeros(
+                    (batch_activations.shape[0],) + activation_shape
+                )
+                min_length = min(batch_activations.shape[1], activation_shape[0])
+                padded_activations[:, :min_length] = batch_activations[:, :min_length]
+                batch_activations = padded_activations
+
+            all_activations.append(batch_activations)
+
+        activations = np.concatenate(all_activations, axis=0)
         np.savez_compressed(config.output_file, activations=activations)
         return activations
 
@@ -376,7 +415,7 @@ if __name__ == "__main__":
     performances, variation_values = generate_heatmap_for_generated_dataset(
         model_name="meta-llama/Llama-3.1-8B-Instruct",
         layers=[1, 10],
-        subsample_frac=0.05,
+        # subsample_frac=0.05,
     )
     print(performances)
     print(variation_values)
