@@ -20,7 +20,7 @@ CATEGORY_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_category.csv"
 FACTOR_EXAMPLES_CSV = INPUTS_DIR / "situation_examples_by_factor.csv"
 
 # Paths to output files
-RESULTS_DIR = DATA_DIR / "data" / "results"
+RESULTS_DIR = DATA_DIR / "results"
 
 # Evals files
 EVALS_DIR = DATA_DIR / "evals"

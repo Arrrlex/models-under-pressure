@@ -174,7 +174,7 @@ def create_train_test_split(
             if val in test_values
         ]
 
-    return dataset[train_indices], dataset[test_indices]
+    return dataset[train_indices], dataset[test_indices]  # type: ignore
 
 
 def create_generalization_variation_splits(
@@ -314,7 +314,7 @@ def generate_heatmap_for_generated_dataset(
             size=int(len(dataset.ids) * subsample_frac),
             replace=False,
         )
-        dataset = dataset[list(indices)]
+        dataset = dataset[list(indices)]  # type: ignore
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
     dataset.other_fields["situations_ids"] = [
