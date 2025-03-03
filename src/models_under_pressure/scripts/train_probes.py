@@ -303,18 +303,15 @@ def generate_heatmap_for_generated_dataset(
     """
     if split_path is None:
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+        if subsample_frac is not None:
+            # Insert subsample fraction before file extension
+            stem = split_path.stem
+            suffix = split_path.suffix
+            split_path = split_path.with_name(
+                f"{stem}_subsample_{subsample_frac}{suffix}"
+            )
 
     dataset = loaders["generated"](dataset_path)
-
-    # Subsample so this runs on the laptop
-    if subsample_frac is not None:
-        print("Subsampling the dataset ...")
-        indices = np.random.choice(
-            range(len(dataset.ids)),
-            size=int(len(dataset.ids) * subsample_frac),
-            replace=False,
-        )
-        dataset = dataset[list(indices)]  # type: ignore
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
     dataset.other_fields["situations_ids"] = [  # type: ignore
@@ -336,6 +333,15 @@ def generate_heatmap_for_generated_dataset(
         train_dataset = dataset[train_indices]  # type: ignore
         test_dataset = dataset[test_indices]  # type: ignore
     else:
+        # Subsample so this runs on the laptop
+        if subsample_frac is not None:
+            print("Subsampling the dataset ...")
+            indices = np.random.choice(
+                range(len(dataset.ids)),
+                size=int(len(dataset.ids) * subsample_frac),
+                replace=False,
+            )
+        dataset = dataset[list(indices)]  # type: ignore
         train_dataset, test_dataset = create_train_test_split(
             dataset, split_field="situations_ids"
         )
@@ -346,8 +352,6 @@ def generate_heatmap_for_generated_dataset(
         }
         with open(split_path, "w") as f:
             json.dump(split_dict, f)
-
-    # TODO Then split training set into training and validation so we don't optimize on test
 
     train_datasets, test_datasets, variation_values = (
         create_generalization_variation_splits(
@@ -390,21 +394,31 @@ def generate_heatmap_for_generated_dataset(
 
 if __name__ == "__main__":
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
-    layers = [1, 10]
-    subsample_frac = 0.1
-    performances, variation_values = generate_heatmap_for_generated_dataset(
-        layers=layers, subsample_frac=subsample_frac, model_name=model_name
-    )
-    print(performances)
-    print(variation_values)
+    layers = [1, 10, 15]
+    subsample_frac = 0.09
 
-    json.dump(
-        {
-            "performances": {layer: performances[layer].tolist() for layer in layers},
-            "variation_values": variation_values,
-            "model_name": model_name,
-            "layers": layers,
-            "subsample_frac": subsample_frac,
-        },
-        open(RESULTS_DIR / "generated_heatmap.json", "w"),
-    )
+    for variation_type in ["prompt_style", "tone", "language"]:
+        print(f"\nGenerating heatmap for {variation_type}...")
+        filename = RESULTS_DIR / f"generated_heatmap_{variation_type}.json"
+
+        performances, variation_values = generate_heatmap_for_generated_dataset(
+            layers=layers,
+            subsample_frac=subsample_frac,
+            model_name=model_name,
+            variation_type=variation_type,
+        )
+        print(performances)
+        print(variation_values)
+
+        json.dump(
+            {
+                "performances": {
+                    layer: performances[layer].tolist() for layer in layers
+                },
+                "variation_values": variation_values,
+                "model_name": model_name,
+                "layers": layers,
+                "subsample_frac": subsample_frac,
+            },
+            open(filename, "w"),
+        )
