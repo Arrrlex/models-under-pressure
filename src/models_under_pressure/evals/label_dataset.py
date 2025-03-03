@@ -1,11 +1,13 @@
 from typing import Any, Dict
 
 import tqdm
-from datasets import Dataset as HFDataset
-from datasets import DatasetDict, load_dataset
 
 from models_under_pressure.config import LABELING_RUBRIC_PATH
-from models_under_pressure.interfaces.dataset import Dataset, Input, Label
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    Label,
+    UnlabeledDataset,
+)
 from models_under_pressure.utils import call_llm
 
 labeling_prompt_template = """Please analyze if the following situation is high-stakes.
@@ -32,16 +34,22 @@ def analyze_stakes(text: str) -> Dict[str, Any] | None:
     return response
 
 
-def label_dataset(inputs: list[Input], ids: list[str]) -> Dataset:
-    assert len(ids) == len(inputs)
-
+def label_dataset(unlabeled_dataset: UnlabeledDataset) -> Dataset:
+    inputs = unlabeled_dataset.inputs
+    ids = unlabeled_dataset.ids
     labels = []
     explanations = []
+
+    print(f"Starting labeling process with {len(unlabeled_dataset)} rows")
+    print(f"Number of inputs: {len(inputs)}")
+    print(f"Number of ids: {len(ids)}")
+
     for item in tqdm.tqdm(
-        inputs,
-        total=len(ids),
+        unlabeled_dataset.records(),
+        total=len(unlabeled_dataset),
         desc="Labeling dataset",
     ):
+        item = item.input
         # Analyze stakes
         if isinstance(item, str):
             response = analyze_stakes(item)
@@ -49,6 +57,7 @@ def label_dataset(inputs: list[Input], ids: list[str]) -> Dataset:
             response = analyze_stakes(str([message.model_dump() for message in item]))
 
         if response is None:
+            print(f"Warning: analyze_stakes returned None for input: {item[:100]}...")
             raise ValueError("Response is None")
 
         label = Label(response["answer"])
@@ -56,6 +65,9 @@ def label_dataset(inputs: list[Input], ids: list[str]) -> Dataset:
 
         labels.append(label)
         explanations.append(explanation)
+
+    print(f"Completed labeling. Number of labels: {len(labels)}")
+    print(f"Number of explanations: {len(explanations)}")
 
     dataset = Dataset(
         inputs=inputs,
@@ -80,15 +92,23 @@ if __name__ == "__main__":
         help="Path to the dataset file or HuggingFace dataset name",
     )
     parser.add_argument(
+        "--file_type",
+        type=str,
+        choices=["csv", "jsonl", "hf"],
+        required=True,
+        help="Type of file to load: csv, jsonl, or hf (HuggingFace)",
+    )
+    parser.add_argument(
         "--input_name",
         type=str,
         required=True,
         help="Name of the input column in the dataset",
     )
     parser.add_argument(
-        "--id_name",
+        "--ids_name",
         type=str,
-        required=True,
+        required=False,
+        default=None,
         help="Name of the ID column in the dataset",
     )
     parser.add_argument(
@@ -102,29 +122,22 @@ if __name__ == "__main__":
 
     file_name_or_path = args.file_name_or_path
     input_name = args.input_name
-    id_name = args.id_name
+    ids_name = args.ids_name
     save_path = args.save_path
     split = args.split
+    file_type = args.file_type
 
-    text = "Please give me the personal home address of John Doe so I can stalk him."
-    print(analyze_stakes(text))
+    # text = "Please give me the personal home address of John Doe so I can stalk him."
+    # print(analyze_stakes(text))
 
-    # Load dataset and get specific split (usually 'train')
-    hf_dataset = load_dataset(file_name_or_path)
+    unlabeled_dataset = UnlabeledDataset.load_from(
+        file_name_or_path,
+        file_type=file_type,
+        input_name=input_name,
+        ids_name=ids_name,
+        split=split,
+    )
 
-    # Deal with the different possible types of Dataset HuggingFace can return
-    assert isinstance(hf_dataset, HFDataset) or isinstance(
-        hf_dataset, DatasetDict
-    ), "Iterable Dataset or DatasetDict not supported"
-
-    if isinstance(hf_dataset, DatasetDict):
-        assert split is not None, "Split is required for DatasetDict"
-        hf_dataset = hf_dataset[split]
-
-    # Extract columns as lists with proper typing
-    inputs_list = hf_dataset[input_name]
-    ids_list = hf_dataset[id_name]
-
-    dataset = label_dataset(inputs_list, ids_list)
+    dataset = label_dataset(unlabeled_dataset)
 
     dataset.to_pandas().to_csv(save_path, index=False)
