@@ -1,89 +1,60 @@
 import itertools
-from typing import List, Tuple
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
-from models_under_pressure.interfaces.taxonomy import (
-    CategoryTaxonomy,
-    FactorTaxonomy,
+from models_under_pressure.config import (
+    SITUATION_FACTORS_JSON,
+    TOPICS_JSON,
+    RunConfig,
 )
 from models_under_pressure.interfaces.situation import (
     Situation,
-    SituationDataInterface,
 )
-from models_under_pressure.config import (
-    CATEGORY_EXAMPLES_CSV,
-    CATEGORY_JSON,
-    FACTOR_EXAMPLES_CSV,
-    FACTOR_JSON,
-    RunConfig,
+from models_under_pressure.interfaces.taxonomy import (
+    FactorTaxonomy,
+    TopicTaxonomy,
 )
 
 
-# TODO Phil: I think it would make more sense to generate the combinations dynamically based on the taxonomy
-# and not write the combinations to the csv file. (Since there is a lot of repetition and doing that in memory seems cheap)
-
-
-def get_taxonomies():
+def get_taxonomies() -> Tuple[TopicTaxonomy, FactorTaxonomy]:
     """Initialize and return all data interfaces."""
-    category_taxonomy = CategoryTaxonomy(CATEGORY_EXAMPLES_CSV, CATEGORY_JSON)
-    factor_taxonomy = FactorTaxonomy(FACTOR_EXAMPLES_CSV, FACTOR_JSON)
-
-    return category_taxonomy, factor_taxonomy
+    topics_taxonomy = TopicTaxonomy(TOPICS_JSON)
+    factor_taxonomy = FactorTaxonomy(SITUATION_FACTORS_JSON)
+    return topics_taxonomy, factor_taxonomy
 
 
 def generate_combinations(
-    category_taxonomy: CategoryTaxonomy, factor_taxonomy: FactorTaxonomy
-) -> List[Tuple[str, str]]:
+    topic_taxonomy: TopicTaxonomy, factor_taxonomy: FactorTaxonomy
+) -> List[Tuple[str, Tuple[str, ...]]]:
     """Generate all possible combinations of categories and factors."""
-    categories = category_taxonomy.nodes
-    factors = factor_taxonomy.nodes
-    return list(itertools.product(categories, factors))
-
-
-def get_example_situations(
-    category: str,
-    factor: str,
-    category_situations: SituationDataInterface,
-    factor_situations: SituationDataInterface,
-) -> List[Situation]:
-    """
-    Fetch example situations for a given category and factor.
-    - Filters category-based situations from category_situations CSV.
-    - Filters factor-based situations from factor_situations CSV.
-    """
-    category_filtered = category_situations.filter_situations(category=category)
-    factor_filtered = factor_situations.filter_situations(factor=factor)
-    return category_filtered + factor_filtered
+    topics = topic_taxonomy.items
+    factors: Dict[str, List[str]] = {}
+    for factor in factor_taxonomy.items:
+        factors[factor] = list(item for item in factor_taxonomy.data[factor])
+    factor_values = []
+    for factor in factors:
+        factor_values.append(factors[factor])
+    factor_combinations = list(itertools.product(*factor_values))
+    return list(itertools.product(topics, factor_combinations))
 
 
 def generate_situations(
-    situation_combinations: List[Tuple[str, str]],
-    category_situations: SituationDataInterface,
-    factor_situations: SituationDataInterface,
+    situation_combinations: List[Tuple[str, Tuple[str, ...]]],
+    factor_names: List[str],
 ) -> List[Situation]:
     """Generate situations for all combinations."""
     generated_situations = []
     idx = 0
 
-    for category, factor in situation_combinations:
-        example_situations = get_example_situations(
-            category, factor, category_situations, factor_situations
+    for topic, factors in situation_combinations:
+        generated_situations.append(
+            Situation(
+                id=idx, topic=topic, factors=list(factors), factor_names=factor_names
+            )
         )
-
-        if example_situations:
-            for example in example_situations:
-                generated_situations.append(
-                    Situation(
-                        id=idx,
-                        description=example.description,
-                        category=category,
-                        factor=factor,
-                        high_stakes=example.high_stakes,
-                    )
-                )
-                idx += 1
+        idx += 1
 
     return generated_situations
 
@@ -92,9 +63,18 @@ def save_generated_situations_to_csv(
     file_path: Path, situations: List[Situation]
 ) -> None:
     """Save generated situations to a CSV file."""
+    # Create initial DataFrame from situations
     df = pd.DataFrame([sit.to_dict() for sit in situations])
 
-    df.to_csv(file_path, index=False)
+    # Get the factor values as separate columns
+    factor_df = pd.DataFrame(
+        df.factors.tolist(), columns=FactorTaxonomy(SITUATION_FACTORS_JSON).items
+    )
+
+    # Combine the original DataFrame (without factors) with the factor columns
+    result_df = pd.concat([df.drop("factors", axis=1), factor_df], axis=1)
+
+    result_df.to_csv(file_path, index=False)
     print(f"Generated situations saved to {file_path}")
 
 
@@ -106,18 +86,16 @@ def generate_combined_situations(run_config: RunConfig):
     # Generate combinations
     situation_combinations = generate_combinations(category_taxonomy, factor_taxonomy)
 
-    # Get all example situations
-    category_situations = SituationDataInterface(category_taxonomy.csv_path)
-    factor_situations = SituationDataInterface(factor_taxonomy.csv_path)
-
     # Generate situations
     generated_situations = generate_situations(
-        situation_combinations, category_situations, factor_situations
+        situation_combinations, factor_taxonomy.items
     )
 
     # Save results
-    save_generated_situations_to_csv(run_config.full_examples_csv, generated_situations)
-    print("Situation generation completed!")
+    save_generated_situations_to_csv(
+        run_config.situations_combined_csv, generated_situations
+    )
+    print("Situation combination generation completed!")
 
 
 if __name__ == "__main__":

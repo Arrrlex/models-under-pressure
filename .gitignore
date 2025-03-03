@@ -1,12 +1,19 @@
 # Repo-specific
 temp_data/*
 plots/*.png
-.data
+.data/results/
 **/wandb
-data/results/
+data/results/*.csv
+data/results/*.json
+data/results/*.jsonl
+data/results/debug
 data/previous/
+*.npy
+*.npz
 uv.lock
+temp_data/*
 .DS_Store
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
@@ -184,3 +191,9 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# Ignore data files
+data/
+# But don't ignore DVC files
+!*.dvc
+!.dvcignore

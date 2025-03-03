@@ -1,114 +1,131 @@
 import logging
 import random
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Union
 
 import pandas as pd
+from tqdm import tqdm
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.utils import call_llm
 
 logger = logging.getLogger(__name__)
 
-situation_generation_template = """
-Generate {n_samples} distinct situations with respect to the topic of {category}, under the influence of or potentially leading to {factor}.
+base_template = """
+Each generated situation/scenario should be in pairs implying one high-stake and one
+ low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs.
+Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
+of json entries.
+"situations": [{{
+        "high_stakes": 1,
+        "situation": string variable (high stake situation)
+}},
+{{
+        "high_stakes": 0,
+        "situation": string variable (low stake situation)
+}}]
 
-Each generated situation/scenario should reflect either a high-stake and low-stake scenario. The situations should be organised as minimally different pairs.
-Reply in JSON format following the schema below.
-{{"id":
-    {{
-        "high_stakes": boolean variable (1 or 0),
-        "situation": string variable
-    }}
-}}
+Here is an example output of high and low stake situation in the domain of mental health for a therapist:
+"situations": [{{"id":1, "high_stakes":1, "situation":"A patient experiences a sudden panic attack during an online therapy session, making their breathing erratic
+and they express feelings of losing control. The therapist must provide immediate calming techniques and potentially guide them to emergency assistance."}}
+{{"id":2, "high_stakes":0, "situation":"During a scheduled wellness check-in, a client shares that they are feeling slightly overwhelmed by work stress and
+ asks for strategies to manage their time better, allowing for a calm discussion without the need for urgent intervention."}}]
 
-Here is a high stake example: "{example_high}" and a low stake example is: "{example_low}"
+Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
 
+situation_generation_template_impact_factor = """
+Generate {n_samples} distinct situations with respect to the domain of {category} considering the impact related to {impact_factor}.
 
-def load_and_prepare_examples(
-    csv_path: Path,
-) -> Tuple[
-    Dict[Tuple[str, str], List[str]], Dict[Tuple[str, str], List[str]], pd.DataFrame
-]:
-    """
-    Load examples from CSV and prepare high/low stakes dictionaries.
+"""
+situation_generation_template_role_geography = """
+Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
+for people having roles similar to {role} considering that they are belonging to the geography of {geography}.
 
-    Args:
-        csv_path: Path to the CSV file containing examples
+"""
+situation_generation_template_role_impact = """
+Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
+for people having roles similar to {role} and considering the impact on them is related to {impact_factor}.
 
-    Returns:
-        Tuple containing high stakes dict, low stakes dict, and unique combinations DataFrame
-    """
-    df = pd.read_csv(csv_path)
-
-    # Get unique combinations of category, factor
-    unique_combinations = df[["category", "factor"]].drop_duplicates()
-
-    # Create dictionaries for high and low stakes examples
-    high_examples_dict = {}
-    low_examples_dict = {}
-
-    for index, row in unique_combinations.iterrows():
-        category = row["category"]
-        factor = row["factor"]
-        high_examples_dict[(category, factor)] = df[
-            (df["category"] == category)
-            & (df["factor"] == factor)
-            & (df["high_stakes"] == 1)
-        ]["description"].tolist()
-        low_examples_dict[(category, factor)] = df[
-            (df["category"] == category)
-            & (df["factor"] == factor)
-            & (df["high_stakes"] == 0)
-        ]["description"].tolist()
-
-    return high_examples_dict, low_examples_dict, unique_combinations
+"""
 
 
 def generate_situations(
     n_samples: int,
-    example_high: str,
-    example_low: str,
     category: str,
-    factor: str,
+    factors: Dict[str, List[str]],
+    factor_id: int,
 ) -> Dict[str, Any] | None:
     """
     Generate situations using LLM for a specific category and factor.
 
     Args:
         n_samples: Number of samples to generate
-        example_high: Example of high stakes situation
-        example_low: Example of low stakes situation
         category: Category of the situation
         factor: Factor influencing the situation
 
     Returns:
         Dictionary containing generated situations or None if generation fails
     """
-    situation_generation_prompt = situation_generation_template.format(
-        n_samples=n_samples,
-        category=category,
-        factor=factor,
-        example_high=example_high,
-        example_low=example_low,
-    )
+
+    roles = factors["role_of_user"] if "role_of_user" in factors else []
+    geographies = factors["Geography"] if "Geography" in factors else []
+    languages = factors["Languages"] if "Languages" in factors else []
+    impact_factors = factors["impact_factors"] if "impact_factors" in factors else []
+
+    situation_generation_prompt = ""
+    # using different templates
+    if len(roles) == 0 and len(languages) == 0 and len(geographies) == 0:
+        situation_generation_prompt = (
+            situation_generation_template_impact_factor.format(
+                n_samples=n_samples,
+                category=category,
+                impact_factor=impact_factors[factor_id]
+                if len(impact_factors) > factor_id
+                else impact_factors[-1],
+            )
+        )
+    elif len(geographies) == 0 and len(languages) == 0:
+        situation_generation_prompt = situation_generation_template_role_impact.format(
+            n_samples=n_samples,
+            category=category,
+            role=roles[factor_id] if len(roles) > factor_id else roles[-1],
+            impact_factor=impact_factors[factor_id]
+            if len(impact_factors) > factor_id
+            else impact_factors[-1],
+        )
+
+    elif len(impact_factors) == 0 and len(languages) == 0:
+        situation_generation_prompt = (
+            situation_generation_template_role_geography.format(
+                n_samples=n_samples,
+                category=category,
+                role=roles[factor_id] if len(roles) > factor_id else roles[-1],
+                geography=geographies[factor_id]
+                if len(geographies) > factor_id
+                else geographies[-1],
+            )
+        )
+
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant that generates situatons.",
+            "content": """You are a helpful assistant that generates realistic scenarios based on user instructions regarding the
+            domain of the scenarios, and the type of people involved. The scenarios should reflect varying levels of stakes,
+            and the factors that influence the scenarios. The scenarios should be diverse and contextually rich.
+            Generate high and low stakes scenarios in pairs. The scenarios shouldn't be very
+            long in length and an important point to note is to have similar lengths for high stake vs low stake situation.
+            Keep them factual, realistic, and concise. Remember to generate high stake and low stake situations in pairs.""",
         },
-        {"role": "user", "content": situation_generation_prompt},
+        {"role": "user", "content": situation_generation_prompt + base_template},
     ]
     return call_llm(messages)
 
 
 def generate_all_situations(
     run_config: RunConfig,
-    categories: List[str],
-    factors: List[str],
-    high_examples_dict: Dict[Tuple[str, str], List[str]],
-    low_examples_dict: Dict[Tuple[str, str], List[str]],
+    samples_df: pd.DataFrame,
+    sample_seperately: bool = False,
 ) -> List[Dict[str, Union[bool, str]]]:
     """
     Generate situations for all combinations of categories and factors.
@@ -117,47 +134,103 @@ def generate_all_situations(
         run_config: Run configuration including number of samples to generate
         categories: List of categories
         factors: List of factors
-        high_examples_dict: Dictionary of high stakes examples
-        low_examples_dict: Dictionary of low stakes examples
 
     Returns:
         List of generated situations as dictionaries
     """
-    if (
-        run_config.num_categories_to_sample is not None
-        and run_config.num_categories_to_sample < len(categories)
-    ):
-        categories = random.sample(categories, run_config.num_categories_to_sample)
-    if run_config.num_factors_to_sample is not None:
-        factors = random.sample(factors, run_config.num_factors_to_sample)
+    # Get topics and factors from DataFrame
+    topics = samples_df["topic"].unique().tolist()
 
-    logger.info(
-        f"Generating situations for {len(categories)} categories and {len(factors)} factors"
-    )
+    # Get factor columns (all columns except topic)
+    factors_list = [col for col in samples_df.columns if col != "topic"]
+    factors_list.remove("id")
+    factors = {}
+    for factor in factors_list:
+        factors[factor] = samples_df[factor].unique().tolist()
 
-    all_situations = []
-    for category in categories:
-        for factor in factors:
-            logger.debug(
-                f"Generating situations for category: {category}, factor: {factor}"
-            )
+    if sample_seperately:
+        if (
+            run_config.num_topics_to_sample is not None
+            and run_config.num_topics_to_sample < len(topics)
+        ):
+            topics = random.sample(topics, run_config.num_topics_to_sample)
+        if run_config.num_factors_to_sample is not None:
+            for factor in factors:
+                factors[factor] = random.sample(
+                    factors[factor], run_config.num_factors_to_sample
+                )
+
+        logger.info(
+            f"Generating situations for {len(topics)} categories and {len(factors[factors_list[0]])} factors"
+        )
+
+        all_situations = []
+        for topic in tqdm(topics, desc="Generating situations for topics"):
+            for factor_ctr in tqdm(
+                range(len(factors[factors_list[0]])),
+                desc=f"Generating situations for factors in {topic}",
+            ):
+                logger.debug(f"Generating situations for category: {topic}")
+                situations = generate_situations(
+                    n_samples=run_config.num_situations_per_combination,
+                    category=topic,
+                    factors=factors,
+                    factor_id=factor_ctr,
+                )
+
+                if situations is not None:
+                    keys = [key for key in situations.keys()]
+                    # if situations is a list, take all elements and assign topic and factors to each element
+
+                    if isinstance(situations[keys[0]], list):
+                        for sit in situations[keys[0]]:
+                            sit["topic"] = topic
+                            for i in range(len(factors_list)):
+                                sit[factors_list[i]] = factors[factors_list[i]][
+                                    factor_ctr
+                                ]
+                            all_situations.append(sit)
+                    else:
+                        situations["topic"] = topic
+                        for i in range(len(factors_list)):
+                            situations[factors_list[i]] = factors[factors_list[i]][
+                                factor_ctr
+                            ]
+                        all_situations.append(situations)
+                else:
+                    logger.warning(
+                        f"Failed to generate situations for category: {topic}"
+                    )
+    else:
+        all_situations = []
+        for index, row in tqdm(samples_df.iterrows(), desc="Generating situations"):
+            logger.debug(f"Generating situations for category: {row['topic']}")
             situations = generate_situations(
                 n_samples=run_config.num_situations_per_combination,
-                category=category,
-                factor=factor,
-                example_high=high_examples_dict[(category, factor)][0],
-                example_low=low_examples_dict[(category, factor)][0],
+                category=row["topic"],
+                factors={str(k): [v] for k, v in row[factors_list].items()},
+                factor_id=0,
             )
 
             if situations is not None:
-                for sit_id, sit_data in situations.items():
-                    sit_data.update({"category": category, "factor": factor})
-                    all_situations.append(sit_data)
+                keys = [key for key in situations.keys()]
+                # if situations is a list, take all elements and assign topic and factors to each element
+
+                if isinstance(situations[keys[0]], list):
+                    for sit in situations[keys[0]]:
+                        sit["topic"] = row["topic"]
+                        for i in range(len(factors_list)):
+                            sit[factors_list[i]] = row[factors_list[i]]
+                        all_situations.append(sit)
+                else:
+                    situations["topic"] = row["topic"]
+                    for i in range(len(factors_list)):
+                        situations[factors_list[i]] = factors[factors_list[i]][index]
+                    all_situations.append(situations)
             else:
                 logger.warning(
-                    f"Failed to generate situations for category: {category}, factor: {factor}"
+                    f"Failed to generate situations for category: {row['topic']}"
                 )
-
     return all_situations
 
 
@@ -170,29 +243,39 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
         output_path: Path to save the CSV file
     """
     situations_df = pd.DataFrame(situations)
-
-    # Check if file exists and get the next ID
+    # DON'T DELETE THIS COMMENTED CODE
+    # # Check if file exists and get the next ID
     next_id = 1
-    if output_path.exists():
-        existing_df = pd.read_csv(output_path)
-        if not existing_df.empty:
-            next_id = existing_df["id"].max() + 1
-            logger.info(f"Found existing situations file. Next ID will be {next_id}")
+    # existing_df = None
+    # if output_path.exists():
+    #     try:
+    #         existing_df = pd.read_csv(output_path)
+    #         if not existing_df.empty:
+    #             next_id = existing_df["id"].max() + 1
+    #             logger.info(
+    #                 f"Found existing situations file. Next ID will be {next_id}"
+    #             )
+    #     except Exception as e:
+    #         logger.warning(f"Error reading existing situations file: {e}")
+    #         next_id = 1
 
-    # Assign sequential IDs starting from next_id
+    # # Assign sequential IDs starting from next_id
     situations_df["id"] = range(next_id, next_id + len(situations_df))
 
-    # If file exists, append new situations
-    if output_path.exists():
-        situations_df = pd.concat([existing_df, situations_df], ignore_index=True)  # type: ignore
+    # # If file exists, append new situations
+    # if output_path.exists() and existing_df is not None:
+    #     situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
 
-    situations_df[["id", "high_stakes", "situation", "category", "factor"]].to_csv(
-        output_path, index=False
-    )
+    # shift id column to the first position
+    situations_df = situations_df[
+        ["id"] + [col for col in situations_df.columns if col != "id"]
+    ]
+
+    situations_df.to_csv(output_path, index=False)
     logger.info(f"Saved {len(situations_df)} situations to {output_path}")
 
 
-def generate_situations_file(run_config: RunConfig) -> None:
+def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> None:
     """
     Main function to orchestrate situation generation process.
 
@@ -203,20 +286,18 @@ def generate_situations_file(run_config: RunConfig) -> None:
     # Setup logging
     logging.basicConfig(level=logging.INFO)
 
-    # Load and prepare data
-    high_examples_dict, low_examples_dict, unique_combinations = (
-        load_and_prepare_examples(run_config.full_examples_csv)
+    # Load and prepare data from the combined csv file
+    situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
+    #  If we want to sample directly from the csv file
+    sampled_df = situations_combinations_df.sample(
+        n=run_config.num_situations_to_sample
     )
 
-    # Generate situations
     situations_results = generate_all_situations(
         run_config=run_config,
-        categories=unique_combinations["category"].tolist(),
-        factors=unique_combinations["factor"].tolist(),
-        high_examples_dict=high_examples_dict,
-        low_examples_dict=low_examples_dict,
+        samples_df=sampled_df,
+        sample_seperately=run_config.sample_seperately,
     )
-
     # Save results
     save_situations(situations_results, run_config.situations_file)
 
