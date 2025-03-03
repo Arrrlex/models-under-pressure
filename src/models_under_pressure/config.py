@@ -7,7 +7,7 @@ from models_under_pressure.interfaces.dataset import Dataset
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
-DEVICE = "cpu"
+DEVICE = "cuda"
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 

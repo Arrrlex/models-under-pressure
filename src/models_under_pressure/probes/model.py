@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -43,13 +44,22 @@ class LLMModel:
         if tokenizer_name is None:
             tokenizer_name = model_name
 
+        default_model_kwargs = {
+            "token": os.getenv("HUGGINGFACE_TOKEN"),
+            "device_map": "auto",
+            "torch_dtype": torch.float16,
+        }
+
         if model_kwargs is None:
             model_kwargs = {}
+        model_kwargs = default_model_kwargs | model_kwargs
 
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
-        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs).to(
+            DEVICE
+        )
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
 
         if tokenizer.pad_token_id is None:
@@ -62,22 +72,33 @@ class LLMModel:
         dialogues: list[Dialogue],
         add_generation_prompt: bool = True,
         **tokenizer_kwargs: Any,
-    ) -> torch.Tensor:
+    ) -> dict[str, torch.Tensor]:
         default_tokenizer_kwargs = {
             "return_tensors": "pt",
             "truncation": True,
             "padding": True,
-            "max_length": 1028,  # todo: later we will want to deal with very long sequences.....
+            "max_length": 2048,  # todo: later we will want to deal with very long sequences.....
         }
 
         tokenizer_kwargs = default_tokenizer_kwargs | tokenizer_kwargs
 
-        return self.tokenizer.apply_chat_template(
+        input_str = self.tokenizer.apply_chat_template(
             [[d.model_dump() for d in dialogue] for dialogue in dialogues],
-            tokenize=True,  # Return string instead of tokens
+            tokenize=False,  # Return string instead of tokens
             add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
-            **tokenizer_kwargs,
-        )  # type: ignore
+        )
+
+        token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
+
+        for k, v in token_dict.items():
+            if isinstance(v, torch.Tensor):
+                token_dict[k] = v.to(DEVICE)
+
+        # Check that attention mask exists in token dict
+        if "attention_mask" not in token_dict:
+            raise ValueError("Tokenizer output must include attention mask")
+
+        return token_dict
 
     #
     @torch.no_grad()
@@ -85,14 +106,18 @@ class LLMModel:
         self,
         inputs: Sequence[Input],
         layers: Sequence[int] | None = None,
-    ) -> Float[
-        np.ndarray, "layers batch_size seq_len embed_dim"
-    ]:  # TODO Also return attention mask
+    ) -> tuple[
+        Float[np.ndarray, "layers batch_size seq_len embed_dim"],
+        Float[np.ndarray, "batch_size seq_len"],
+    ]:  # Updated return type annotation to include attention mask
         # TODO Implement mini-batches
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
 
         torch_inputs = self.tokenize(dialogues)  # type: ignore
+
+        # Get attention mask and convert to numpy
+        attention_mask = torch_inputs["attention_mask"].cpu().numpy()
 
         # Dictionary to store residual activations
         activations = []
@@ -126,22 +151,25 @@ class LLMModel:
                 "Cannot locate transformer layers."
             )
 
+        print(self.model.device)
+        print(torch_inputs["input_ids"].device)
+
         # Forward pass
-        _ = self.model(torch_inputs.to(DEVICE))
+        _ = self.model(torch_inputs["input_ids"])
 
         # Remove hooks after capturing activations
         for hook in hooks:
             hook.remove()
 
-        assert (
-            len(activations) == len(layers)
-        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        assert len(activations) == len(layers), (
+            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        )
 
         # Print stored activations
         for layer, act in zip(layers, activations):
             print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
-        return np.stack(activations)
+        return np.stack(activations), attention_mask
 
 
 if __name__ == "__main__":
@@ -174,5 +202,6 @@ if __name__ == "__main__":
             )
         ],
     ]  # type: ignore
-    activations = model.get_activations(inputs=dialogues)
+    activations, attention_mask = model.get_activations(inputs=dialogues)
     print(activations.shape)
+    print(attention_mask.shape)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import dotenv
 import numpy as np
+import torch
 
 from models_under_pressure.config import (
     ANTHROPIC_SAMPLES_CSV,
@@ -31,7 +32,7 @@ def get_activations(
         return np.load(config.output_file)["activations"]
     else:
         print("Generating activations...")
-        activations = model.get_activations(
+        activations, _ = model.get_activations(
             inputs=config.dataset.inputs, layers=[config.layer]
         )[0]
         np.savez_compressed(config.output_file, activations=activations)
@@ -155,9 +156,9 @@ def create_train_test_split(
         test_indices = list(test_indices)
     else:
         # Split based on unique values of the field
-        assert (
-            split_field in dataset.other_fields
-        ), f"Field {split_field} not found in dataset"
+        assert split_field in dataset.other_fields, (
+            f"Field {split_field} not found in dataset"
+        )
         unique_values = list(set(dataset.other_fields[split_field]))
         n_test = int(len(unique_values) * test_size)
 
@@ -337,7 +338,11 @@ def generate_heatmap_for_generated_dataset(
     # Now to get the heat map, we train on each train dataset and evaluate on each test dataset
     model = LLMModel.load(
         model_name,
-        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        model_kwargs={
+            "token": os.getenv("HUGGINGFACE_TOKEN"),
+            "device_map": "auto",
+            "torch_dtype": torch.float16,
+        },
         tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
     )
     layers = layers or list(range(model.n_layers))
@@ -369,7 +374,9 @@ def generate_heatmap_for_generated_dataset(
 
 if __name__ == "__main__":
     performances, variation_values = generate_heatmap_for_generated_dataset(
-        layers=[1, 10], subsample_frac=0.05
+        model_name="meta-llama/Llama-3.1-8B-Instruct",
+        layers=[1, 10],
+        subsample_frac=0.05,
     )
     print(performances)
     print(variation_values)
