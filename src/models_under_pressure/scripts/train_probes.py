@@ -56,7 +56,7 @@ def get_activations(
             inputs=first_batch, layers=[config.layer]
         )
         first_activation = activations_tuple[0][0]
-        first_attn_mask = activations_tuple[1][0]
+        first_attn_mask = activations_tuple[1]
         activation_shape = first_activation.shape[1:]  # Remove batch dimension
         attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
 
@@ -67,12 +67,11 @@ def get_activations(
             end_idx = min((i + 1) * batch_size, n_samples)
             batch_inputs = config.dataset.inputs[start_idx:end_idx]
 
-            print(f"Processing batch {i + 1}/{n_batches}...")
             activations_tuple = model.get_activations(
                 inputs=batch_inputs, layers=[config.layer]
             )
             batch_activations = activations_tuple[0][0]
-            batch_attn_mask = activations_tuple[1][0]
+            batch_attn_mask = activations_tuple[1]
 
             # Ensure all batches have the same shape by padding/truncating
             if batch_activations.shape[1:] != activation_shape:
@@ -458,7 +457,7 @@ if __name__ == "__main__":
     performances, variation_values = generate_heatmap_for_generated_dataset(
         model_name="meta-llama/Llama-3.1-8B-Instruct",
         layers=[1, 10],
-        # subsample_frac=0.05,
+        subsample_frac=0.1,
     )
     print(performances)
     print(variation_values)

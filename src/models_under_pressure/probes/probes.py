@@ -50,6 +50,7 @@ class LinearProbe(HighStakesClassifier):
         attention_mask: Float[np.ndarray, "batch_size seq_len"],
     ) -> Float[np.ndarray, "batch_size embed_dim"]:
         if self.seq_pos == "all":
+            print(activations.shape, attention_mask.shape)
             acts = activations * attention_mask[:, :, None]
             acts = acts.mean(axis=1)
         else:
@@ -74,7 +75,9 @@ class LinearProbe(HighStakesClassifier):
         return self
 
     def predict(self, dataset: Dataset) -> list[Label]:
-        activations, attention_mask = self._llm.get_activations(dataset.inputs, layers=[self.layer])[0]
+        activations, attention_mask = self._llm.get_activations(
+            dataset.inputs, layers=[self.layer]
+        )[0]
         predictions = self._predict(activations, attention_mask=attention_mask)
         return [Label.from_int(pred) for pred in predictions]
 
