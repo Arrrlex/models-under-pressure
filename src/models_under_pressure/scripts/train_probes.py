@@ -32,7 +32,7 @@ def get_activations(
         return np.load(config.output_file)["activations"]
     else:
         print("Generating activations...")
-        activations, _ = model.get_activations(
+        activations = model.get_activations(
             inputs=config.dataset.inputs, layers=[config.layer]
         )[0]
         np.savez_compressed(config.output_file, activations=activations)

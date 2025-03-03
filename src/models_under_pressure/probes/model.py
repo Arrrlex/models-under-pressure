@@ -106,18 +106,12 @@ class LLMModel:
         self,
         inputs: Sequence[Input],
         layers: Sequence[int] | None = None,
-    ) -> tuple[
-        Float[np.ndarray, "layers batch_size seq_len embed_dim"],
-        Float[np.ndarray, "batch_size seq_len"],
-    ]:  # Updated return type annotation to include attention mask
+    ) -> Float[np.ndarray, "layers batch_size seq_len embed_dim"]:
         # TODO Implement mini-batches
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
 
         torch_inputs = self.tokenize(dialogues)  # type: ignore
-
-        # Get attention mask and convert to numpy
-        attention_mask = torch_inputs["attention_mask"].cpu().numpy()
 
         # Dictionary to store residual activations
         activations = []
@@ -151,11 +145,8 @@ class LLMModel:
                 "Cannot locate transformer layers."
             )
 
-        print(self.model.device)
-        print(torch_inputs["input_ids"].device)
-
         # Forward pass
-        _ = self.model(torch_inputs["input_ids"])
+        _ = self.model(**torch_inputs)
 
         # Remove hooks after capturing activations
         for hook in hooks:
@@ -169,7 +160,7 @@ class LLMModel:
         for layer, act in zip(layers, activations):
             print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
-        return np.stack(activations), attention_mask
+        return np.stack(activations)
 
 
 if __name__ == "__main__":
