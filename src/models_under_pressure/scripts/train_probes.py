@@ -52,9 +52,11 @@ def get_activations(
 
         # Get the shape from first batch to ensure consistency
         first_batch = config.dataset.inputs[0:1]
-        first_activation, first_attn_mask = model.get_activations(
+        activations_tuple = model.get_activations(
             inputs=first_batch, layers=[config.layer]
-        )[0]
+        )
+        first_activation = activations_tuple[0][0]
+        first_attn_mask = activations_tuple[1][0]
         activation_shape = first_activation.shape[1:]  # Remove batch dimension
         attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
 
@@ -66,9 +68,11 @@ def get_activations(
             batch_inputs = config.dataset.inputs[start_idx:end_idx]
 
             print(f"Processing batch {i + 1}/{n_batches}...")
-            batch_activations, batch_attn_mask = model.get_activations(
+            activations_tuple = model.get_activations(
                 inputs=batch_inputs, layers=[config.layer]
-            )[0]
+            )
+            batch_activations = activations_tuple[0][0]
+            batch_attn_mask = activations_tuple[1][0]
 
             # Ensure all batches have the same shape by padding/truncating
             if batch_activations.shape[1:] != activation_shape:
@@ -188,7 +192,7 @@ def train_probes(
             layer=layer,
         )
         print("Loading training activations...")
-        activations = get_activations(
+        activations, attention_mask = get_activations(
             model=model,
             config=config,
         )
@@ -303,7 +307,7 @@ def cross_validate_probe(
     accuracies = []
 
     for i, dataset in enumerate(dataset_splits):
-        activations = get_activations(
+        activations, attention_mask = get_activations(
             model=probe._llm,
             config=GenerateActivationsConfig(
                 dataset=dataset,
@@ -311,7 +315,9 @@ def cross_validate_probe(
                 layer=probe.layer,
             ),
         )
-        accuracy = compute_accuracy(probe, dataset, activations)
+        accuracy = compute_accuracy(
+            probe, dataset, activations=activations, attention_mask=attention_mask
+        )
         accuracies.append(accuracy)
 
     return np.mean(np.array(accuracies), axis=1)
