@@ -30,6 +30,8 @@ dependencies = [
     "pandas-stubs>=2.2.3.241126",
     "huggingface>=0.0.1",
     "datasets>=3.3.2",
+    "kaggle>=1.6.17",
+    "spacy>=3.8.4",
 ]
 
 [build-system]

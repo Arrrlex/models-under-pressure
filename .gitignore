@@ -1,6 +1,5 @@
 # Repo-specific
-temp_data/*.csv
-temp_data/*.jsonl
+temp_data/*
 plots/*.png
 .data
 **/wandb
