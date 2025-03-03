@@ -145,7 +145,7 @@ def main(
 
 
 if __name__ == "__main__":
-    max_samples = 20
+    max_samples = None  # 20
     layer = 11
     # variation_type = "prompt_style"
     # variation_type = "language"
