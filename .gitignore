@@ -3,7 +3,7 @@ temp_data/*.csv
 temp_data/*.jsonl
 
 plots/*.png
-.data
+.data/results/
 **/wandb
 data/results/*.csv
 data/results/*.json
@@ -13,7 +13,9 @@ data/previous/
 *.npy
 *.npz
 uv.lock
+temp_data/*
 .DS_Store
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
@@ -191,3 +193,9 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# Ignore data files
+data/
+# But don't ignore DVC files
+!*.dvc
+!.dvcignore
