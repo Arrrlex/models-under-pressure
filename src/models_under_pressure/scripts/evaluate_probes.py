@@ -1,6 +1,4 @@
 # Code to generate Figure 2
-
-
 import json
 from pathlib import Path
 
@@ -61,19 +59,30 @@ def compute_aurocs(
     return aurocs
 
 
-if __name__ == "__main__":
-    max_samples = 10
-    variation_type = "prompt_style"
-    variation_value = "Q&A long"
-    dataset_path = Path("data/results/prompts_28_02_25.jsonl")
-
+def main(
+    layer: int,
+    file_name: str,
+    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    max_samples: int | None = None,
+    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+):
     # 1. Load train and eval datasets
     train_dataset = loaders["generated"](dataset_path)
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
-        lambda x: x.other_fields["variation_type"] == variation_type
-        and x.other_fields["variation"] == variation_value
+        lambda x: (
+            (
+                variation_type is None
+                or x.other_fields["variation_type"] == variation_type
+            )
+            and (
+                variation_value is None
+                or x.other_fields["variation"] == variation_value
+            )
+        )
     )
 
     # Subsample so this runs on the laptop
@@ -104,17 +113,43 @@ if __name__ == "__main__":
         eval_datasets.append(eval_dataset)
 
     # Compute AUROCs
-    model_name = "meta-llama/Llama-3.2-1B-Instruct"
-    layer = 11
     aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
     for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
         print(f"AUROC for {eval_dataset_name}: {auroc}")
 
-    # TODO: Use a better name
+    json.dump(
+        {
+            "AUROC": aurocs,
+            "datasets": eval_dataset_names,
+            "model_name": model_name,
+            "layer": layer,
+            "variation_type": variation_type,
+            "variation_value": variation_value,
+        },
+        open(RESULTS_DIR / file_name, "w"),
+    )
+
+
+if __name__ == "__main__":
+    max_samples = 20
+    layer = 11
+    # variation_type = "prompt_style"
+    # variation_type = "language"
+    variation_type = None
+    variation_value = None  # "Q&A long"
+    dataset_path = Path("data/results/prompts_28_02_25.jsonl")
+    model_name: str = "meta-llama/Llama-3.2-1B-Instruct"
+
     file_name = (
         f"{dataset_path.stem}_{model_name.split('/')[-1]}_{variation_type}_fig2.json"
     )
-    json.dump(
-        {"AUROC": aurocs, "datasets": eval_dataset_names},
-        open(RESULTS_DIR / file_name, "w"),
+
+    main(
+        variation_type=variation_type,
+        variation_value=variation_value,
+        max_samples=max_samples,
+        layer=layer,
+        dataset_path=dataset_path,
+        model_name=model_name,
+        file_name=file_name,
     )
