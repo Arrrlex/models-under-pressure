@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
-from models_under_pressure.config import RESULTS_DIR
+from models_under_pressure.config import GENERATED_DATASET_TRAIN_TEST_SPLIT, RESULTS_DIR
 from models_under_pressure.dataset.loaders import loaders
 from models_under_pressure.interfaces.dataset import Dataset
 from models_under_pressure.probes.probes import LinearProbe
@@ -63,13 +63,27 @@ def main(
     layer: int,
     file_name: str,
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
 ):
+    if split_path is None:
+        split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+
     # 1. Load train and eval datasets
-    train_dataset = loaders["generated"](dataset_path)
+    # TODO Refactor this: Make a separate method to read train-test split for the generated dataset
+    # (also use that in train_probes.py)
+    dataset = loaders["generated"](dataset_path)
+
+    split_dict = json.load(open(split_path))
+    assert split_dict["dataset"] == dataset_path.stem
+
+    train_indices = [
+        dataset.ids.index(item_id) for item_id in split_dict["train_dataset"]
+    ]
+    train_dataset = dataset[train_indices]  # type: ignore
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
