@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import numpy as np
 
 from models_under_pressure.config import (
     ANTHROPIC_SAMPLES_CSV,
+    RESULTS_DIR,
     GenerateActivationsConfig,
 )
 from models_under_pressure.dataset.loaders import load_anthropic_csv, loaders
@@ -218,7 +220,7 @@ def create_generalization_variation_splits(
 
 
 def create_cross_validation_splits(dataset: Dataset) -> list[Dataset]:
-    pass
+    raise NotImplementedError("Not implemented")
 
 
 def cross_validate_probe(
@@ -368,8 +370,22 @@ def generate_heatmap_for_generated_dataset(
 
 
 if __name__ == "__main__":
+    model_name = "meta-llama/Llama-3.2-1B-Instruct"
+    layers = [1, 10]
+    subsample_frac = 0.05
     performances, variation_values = generate_heatmap_for_generated_dataset(
-        layers=[1, 10], subsample_frac=0.05
+        layers=layers, subsample_frac=subsample_frac, model_name=model_name
     )
     print(performances)
     print(variation_values)
+
+    json.dump(
+        {
+            "performances": {layer: performances[layer].tolist() for layer in layers},
+            "variation_values": variation_values,
+            "model_name": model_name,
+            "layers": layers,
+            "subsample_frac": subsample_frac,
+        },
+        open(RESULTS_DIR / "generated_heatmap.json", "w"),
+    )
