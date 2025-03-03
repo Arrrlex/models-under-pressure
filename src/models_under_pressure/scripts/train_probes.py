@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import dotenv
 import numpy as np
@@ -7,10 +8,14 @@ from models_under_pressure.config import (
     ANTHROPIC_SAMPLES_CSV,
     GenerateActivationsConfig,
 )
-from models_under_pressure.dataset.loaders import load_anthropic_csv
+from models_under_pressure.dataset.loaders import load_anthropic_csv, loaders
 from models_under_pressure.interfaces.dataset import Dataset, Label
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+
+# Set random seed for reproducibility
+RANDOM_SEED = 0
+np.random.seed(RANDOM_SEED)
 
 dotenv.load_dotenv()
 
@@ -87,14 +92,40 @@ def test_compute_accuracy(
     print(f"Accuracy: {accuracy}")
 
 
-# Prios:
-# 1. Generate heatmap for prompt style using train-test split
-# 2. Generate heatmap for tone using train-test split
-# 1. Generate heatmap for language using train-test split
+def train_probes(
+    dataset: Dataset, model_name: str, layers: list[int] | None = None
+) -> dict[int, LinearProbe]:
+    """Train a probe for each layer in the model."""
+    model = LLMModel.load(
+        model_name,
+        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    )
 
+    layers = layers or list(range(model.n_layers))
 
-def train_probes(dataset: Dataset, model_name: str) -> list[LinearProbe]:
-    pass
+    if any(label == Label.AMBIGUOUS for label in dataset.labels):
+        raise ValueError("Training dataset contains ambiguous labels")
+
+    # Iterate over layers. For each layer, create a config, then train a probe and store it
+    probes = {}
+    for layer in layers:
+        config = GenerateActivationsConfig(
+            dataset=dataset,
+            model_name=model_name,
+            layer=layer,
+        )
+        print("Loading training activations...")
+        activations = get_activations(
+            model=model,
+            config=config,
+        )
+        probe = LinearProbe(_llm=model, layer=layer)
+
+        print("Training probe...")
+        probe.fit(X=activations, y=config.dataset.labels_numpy())
+        probes[layer] = probe
+    return probes
 
 
 def create_train_test_split(
@@ -146,6 +177,46 @@ def create_train_test_split(
     return dataset[train_indices], dataset[test_indices]
 
 
+def create_generalization_variation_splits(
+    train_dataset: Dataset,
+    test_dataset: Dataset,
+    variation_type: str,
+) -> tuple[list[Dataset], list[Dataset], list[str]]:
+    """Split the dataset into different splits for computing generalization heatmaps."""
+    # Filter by variation_type
+    train_dataset = train_dataset.filter(
+        lambda x: x.other_fields["variation_type"] == variation_type
+    )
+    test_dataset = test_dataset.filter(
+        lambda x: x.other_fields["variation_type"] == variation_type
+    )
+
+    if len(train_dataset.ids) == 0 or len(test_dataset.ids) == 0:
+        print(f"Warning: No examples found for variation type {variation_type}")
+        return [], [], []
+
+    # Get unique values of variation_type
+    variation_values = list(set(train_dataset.other_fields["variation"]))
+    test_variation_values = list(set(test_dataset.other_fields["variation"]))
+    assert sorted(variation_values) == sorted(test_variation_values)
+
+    train_datasets = []
+    test_datasets = []
+    for variation_value in variation_values:
+        train_datasets.append(
+            train_dataset.filter(
+                lambda x: x.other_fields["variation"] == variation_value
+            )
+        )
+        test_datasets.append(
+            test_dataset.filter(
+                lambda x: x.other_fields["variation"] == variation_value
+            )
+        )
+
+    return train_datasets, test_datasets, variation_values
+
+
 def create_cross_validation_splits(dataset: Dataset) -> list[Dataset]:
     pass
 
@@ -178,7 +249,7 @@ def cross_validate_probes(probes: list[LinearProbe], dataset: Dataset) -> np.nda
     return np.mean(accuracies, axis=1)
 
 
-if __name__ == "__main__":
+def test_activations_on_anthropic_dataset():
     dataset_path = ANTHROPIC_SAMPLES_CSV
     layer = 10
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
@@ -198,12 +269,107 @@ if __name__ == "__main__":
         dataset=test_dataset, model_name=model_name, layer=layer
     )
 
-    # test_get_activations(
-    #     config=train_config,
-    #     model_name=model_name,
-    # )
+    test_get_activations(
+        config=train_config,
+        model_name=model_name,
+    )
     test_compute_accuracy(
         model_name=model_name,
         train_config=train_config,
         test_config=test_config,
     )
+
+
+def generate_heatmap_for_generated_dataset(
+    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+    variation_type: str = "prompt_style",
+    layers: list[int] | None = None,
+    subsample_frac: float | None = None,
+) -> tuple[dict[int, np.ndarray], list[str]]:
+    """Generate a heatmap for the generated dataset.
+
+    This creates a global train-test split, then computes a heatmap for each layer
+    by training on train set portions with a single variation value and evaluating
+    on all test set portions with various variation values.
+
+    Args:
+        model_name: Name of the model to use
+        dataset_path: Path to the generated dataset
+        layers: List of layers to use
+        variation_type: Type of variation to use (prompt style, tone, language)
+        subsample_frac: Fraction of the dataset to subsample
+
+    Returns:
+        dict[int, np.ndarray]: Layer index -> heatmap values (rows corresponding to indices of variation used for training)
+        list[str]: Variation values
+    """
+    dataset = loaders["generated"](dataset_path)
+
+    # Subsample so this runs on the laptop
+    if subsample_frac is not None:
+        print("Subsampling the dataset ...")
+        indices = np.random.choice(
+            range(len(dataset.ids)),
+            size=int(len(dataset.ids) * subsample_frac),
+            replace=False,
+        )
+        dataset = dataset[list(indices)]
+
+    # Add a situations_ids field to the dataset (situations isn't hashable)
+    dataset.other_fields["situations_ids"] = [
+        f"high_stakes_{s['high_stakes']}_low_stakes_{s['low_stakes']}"
+        for s in dataset.other_fields["situations"]
+    ]
+
+    train_dataset, test_dataset = create_train_test_split(
+        dataset, split_field="situations_ids"
+    )
+    # TODO Store the split so we don't recompute
+    # TODO Then split training set into training and validation so we don't optimize on test
+
+    train_datasets, test_datasets, variation_values = (
+        create_generalization_variation_splits(
+            train_dataset, test_dataset, variation_type
+        )
+    )
+
+    # Now to get the heat map, we train on each train dataset and evaluate on each test dataset
+    model = LLMModel.load(
+        model_name,
+        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    )
+    layers = layers or list(range(model.n_layers))
+    performances = {i: [] for i in layers}  # Layer index: heatmap values
+    for i, train_ds in enumerate(train_datasets):
+        print(f"Training on variation '{variation_type}'='{variation_values[i]}'")
+        probes = train_probes(train_ds, model_name=model_name, layers=layers)
+
+        for layer, probe in probes.items():
+            accuracies = [
+                compute_accuracy(
+                    probe,
+                    test_ds,
+                    get_activations(
+                        model,
+                        GenerateActivationsConfig(
+                            dataset=test_ds, model_name=model_name, layer=layer
+                        ),
+                    ),
+                )
+                for test_ds in test_datasets
+            ]
+            print(f"Layer {layer} accuracy: {accuracies}")
+            performances[layer].append(accuracies)
+    return {
+        layer: np.array(accuracies) for layer, accuracies in performances.items()
+    }, variation_values
+
+
+if __name__ == "__main__":
+    performances, variation_values = generate_heatmap_for_generated_dataset(
+        layers=[1, 10], subsample_frac=0.05
+    )
+    print(performances)
+    print(variation_values)

@@ -62,7 +62,7 @@ class Dataset(BaseModel):
 
     @classmethod
     def from_records(cls, records: Sequence[Record]) -> Self:
-        field_keys = records[0].other_fields.keys()
+        field_keys = records[0].other_fields.keys() if len(records) > 0 else []
         return cls(
             inputs=[r.input for r in records],
             labels=[r.label for r in records],
