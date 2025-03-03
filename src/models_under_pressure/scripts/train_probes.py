@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -8,6 +9,8 @@ import torch
 from models_under_pressure.config import (
     ANTHROPIC_SAMPLES_CSV,
     BATCH_SIZE,
+    GENERATED_DATASET_TRAIN_TEST_SPLIT,
+    RESULTS_DIR,
     GenerateActivationsConfig,
 )
 from models_under_pressure.dataset.loaders import load_anthropic_csv, loaders
@@ -253,7 +256,7 @@ def create_train_test_split(
             if val in test_values
         ]
 
-    return dataset[train_indices], dataset[test_indices]
+    return dataset[train_indices], dataset[test_indices]  # type: ignore
 
 
 def create_generalization_variation_splits(
@@ -297,7 +300,7 @@ def create_generalization_variation_splits(
 
 
 def create_cross_validation_splits(dataset: Dataset) -> list[Dataset]:
-    pass
+    raise NotImplementedError("Not implemented")
 
 
 def cross_validate_probe(
@@ -364,6 +367,7 @@ def test_activations_on_anthropic_dataset():
 def generate_heatmap_for_generated_dataset(
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+    split_path: Path | None = None,
     variation_type: str = "prompt_style",
     layers: list[int] | None = None,
     subsample_frac: float | None = None,
@@ -374,17 +378,13 @@ def generate_heatmap_for_generated_dataset(
     by training on train set portions with a single variation value and evaluating
     on all test set portions with various variation values.
 
-    Args:
-        model_name: Name of the model to use
-        dataset_path: Path to the generated dataset
-        layers: List of layers to use
-        variation_type: Type of variation to use (prompt style, tone, language)
-        subsample_frac: Fraction of the dataset to subsample
-
     Returns:
         dict[int, np.ndarray]: Layer index -> heatmap values (rows corresponding to indices of variation used for training)
         list[str]: Variation values
     """
+    if split_path is None:
+        split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+
     dataset = loaders["generated"](dataset_path)
 
     # Subsample so this runs on the laptop
@@ -395,18 +395,39 @@ def generate_heatmap_for_generated_dataset(
             size=int(len(dataset.ids) * subsample_frac),
             replace=False,
         )
-        dataset = dataset[list(indices)]
+        dataset = dataset[list(indices)]  # type: ignore
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
-    dataset.other_fields["situations_ids"] = [
+    dataset.other_fields["situations_ids"] = [  # type: ignore
         f"high_stakes_{s['high_stakes']}_low_stakes_{s['low_stakes']}"
         for s in dataset.other_fields["situations"]
     ]
+    # TODO Check if there is no overlap between high and low stake situations
 
-    train_dataset, test_dataset = create_train_test_split(
-        dataset, split_field="situations_ids"
-    )
-    # TODO Store the split so we don't recompute
+    if split_path.exists():
+        split_dict = json.load(open(split_path))
+        assert split_dict["dataset"] == dataset_path.stem
+
+        train_indices = [
+            dataset.ids.index(item_id) for item_id in split_dict["train_dataset"]
+        ]
+        test_indices = [
+            dataset.ids.index(item_id) for item_id in split_dict["test_dataset"]
+        ]
+        train_dataset = dataset[train_indices]  # type: ignore
+        test_dataset = dataset[test_indices]  # type: ignore
+    else:
+        train_dataset, test_dataset = create_train_test_split(
+            dataset, split_field="situations_ids"
+        )
+        split_dict = {
+            "train_dataset": train_dataset.ids,
+            "test_dataset": test_dataset.ids,
+            "dataset": dataset_path.stem,
+        }
+        with open(split_path, "w") as f:
+            json.dump(split_dict, f)
+
     # TODO Then split training set into training and validation so we don't optimize on test
 
     train_datasets, test_datasets, variation_values = (
@@ -454,10 +475,22 @@ def generate_heatmap_for_generated_dataset(
 
 
 if __name__ == "__main__":
+    model_name = "meta-llama/Llama-3.2-1B-Instruct"
+    layers = [1, 10]
+    subsample_frac = 0.1
     performances, variation_values = generate_heatmap_for_generated_dataset(
-        model_name="meta-llama/Llama-3.1-8B-Instruct",
-        layers=[1, 10],
-        subsample_frac=0.1,
+        layers=layers, subsample_frac=subsample_frac, model_name=model_name
     )
     print(performances)
     print(variation_values)
+
+    json.dump(
+        {
+            "performances": {layer: performances[layer].tolist() for layer in layers},
+            "variation_values": variation_values,
+            "model_name": model_name,
+            "layers": layers,
+            "subsample_frac": subsample_frac,
+        },
+        open(RESULTS_DIR / "generated_heatmap.json", "w"),
+    )

@@ -24,7 +24,7 @@ def call_llm(messages: List[Any], model: str | None = None) -> Dict[str, Any] | 
     content = response.choices[0].message.content
     if content is None:
         return None
-    return json.loads(content)
+    return json.loads(content) if len(content) > 0 else None
 
 
 def generate_completions(

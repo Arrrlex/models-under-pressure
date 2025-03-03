@@ -26,6 +26,10 @@ class SklearnClassifier(Protocol):
         self, X: Float[np.ndarray, "batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]: ...
 
+    def predict_proba(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, "batch_size n_classes"]: ...
+
 
 @dataclass
 class LinearProbe(HighStakesClassifier):
