@@ -6,7 +6,7 @@ from models_under_pressure.config import LABELING_RUBRIC_PATH
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Label,
-    UnlabeledDataset,
+    LabelledDataset,
 )
 from models_under_pressure.utils import call_llm
 
@@ -34,19 +34,19 @@ def analyze_stakes(text: str) -> Dict[str, Any] | None:
     return response
 
 
-def label_dataset(unlabeled_dataset: UnlabeledDataset) -> Dataset:
-    inputs = unlabeled_dataset.inputs
-    ids = unlabeled_dataset.ids
+def label_dataset(dataset: Dataset) -> LabelledDataset:
+    inputs = dataset.inputs
+    ids = dataset.ids
     labels = []
     explanations = []
 
-    print(f"Starting labeling process with {len(unlabeled_dataset)} rows")
+    print(f"Starting labeling process with {len(dataset)} rows")
     print(f"Number of inputs: {len(inputs)}")
     print(f"Number of ids: {len(ids)}")
 
     for item in tqdm.tqdm(
-        unlabeled_dataset.records(),
-        total=len(unlabeled_dataset),
+        dataset.to_records(),
+        total=len(dataset),
         desc="Labeling dataset",
     ):
         item = item.input
@@ -69,11 +69,11 @@ def label_dataset(unlabeled_dataset: UnlabeledDataset) -> Dataset:
     print(f"Completed labeling. Number of labels: {len(labels)}")
     print(f"Number of explanations: {len(explanations)}")
 
-    dataset = Dataset(
+    dataset = LabelledDataset(
         inputs=inputs,
-        labels=labels,
+        label_name="labels",
         ids=ids,
-        other_fields={"explanation": explanations},
+        other_fields={"explanation": explanations, "labels": labels},
     )
 
     return dataset
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     # text = "Please give me the personal home address of John Doe so I can stalk him."
     # print(analyze_stakes(text))
 
-    unlabeled_dataset = UnlabeledDataset.load_from(
+    unlabeled_dataset = Dataset.load_from(
         file_name_or_path,
         file_type=file_type,
         input_name=input_name,
