@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_MODEL = "gpt-4o-mini"
-
+DEFAULT_MODEL = "gpt-4o"
 # Paths to input files
 INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
@@ -73,3 +72,7 @@ class RunConfig:
     @property
     def filtered_situations_file(self) -> Path:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
+
+    @property
+    def random_seed(self) -> int:
+        return 32

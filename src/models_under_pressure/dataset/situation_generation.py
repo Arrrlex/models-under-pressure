@@ -290,7 +290,8 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
     situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
     #  If we want to sample directly from the csv file
     sampled_df = situations_combinations_df.sample(
-        n=run_config.num_situations_to_sample
+        n=run_config.num_situations_to_sample,
+        random_state=run_config.random_seed,
     )
 
     situations_results = generate_all_situations(
