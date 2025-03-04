@@ -2,7 +2,8 @@ import hashlib
 import json
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, Literal, Mapping, Self, Sequence, overload
+from pathlib import Path
+from typing import Any, Callable, Dict, Mapping, Self, Sequence, overload
 
 import numpy as np
 import pandas as pd
@@ -120,6 +121,9 @@ class Dataset(BaseModel):
     def stable_hash(self) -> str:
         return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
 
+    def __len__(self) -> int:
+        return len(self.inputs)
+
     @overload
     def __getitem__(self, idx: int) -> Record: ...
 
@@ -179,7 +183,7 @@ class Dataset(BaseModel):
 
     @classmethod
     def from_jsonl(
-        cls, file_path: str, input_name: str, id_name: str | None = None
+        cls, file_path: Path, input_name: str, id_name: str | None = None
     ) -> "Dataset":
         with open(file_path, "r") as f:
             data = [json.loads(line) for line in f]
@@ -201,24 +205,33 @@ class Dataset(BaseModel):
     @classmethod
     def load_from(
         cls,
-        file_path: str,
-        file_type: Literal["csv", "jsonl", "hf"],
+        file_path: Path,
         input_name: str,
         ids_name: str | None = None,
         split: str = "train",
     ) -> "Dataset":
         """
-        Load the dataset from a file of a given type, supported types are:
+        Load the dataset from a file, inferring type from extension if not specified.
+        Supported types are:
         - csv: A CSV file with columns "input", "id", and other fields
         - jsonl: A JSONL file with each line being a JSON object with keys "input" and "id"
         - hf: A Hugging Face dataset, specified by a dataset name or path to a local file
 
         Args:
             file_path: The path to the file to load
-            file_type: The type of the file to load
+            file_type: Optional type override, otherwise inferred from extension
             input_name: The name of the column in the file that contains the input
             ids_name: The name of the column in the file that contains the ids
+            split: The split to load for HuggingFace datasets
         """
+        # Infer from extension
+        if str(file_path).endswith(".csv"):
+            file_type = "csv"
+        elif str(file_path).endswith(".jsonl"):
+            file_type = "jsonl"
+        else:
+            # Assume HuggingFace dataset if no recognized extension
+            file_type = "hf"
 
         if file_type == "csv":
             df = pd.read_csv(file_path)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -115,7 +115,7 @@ class HeatmapRunConfig:
 
 
 class GenerateActivationsConfig(BaseModel):
-    dataset: Dataset
+    dataset: LabelledDataset
     model_name: str
     layer: int
 

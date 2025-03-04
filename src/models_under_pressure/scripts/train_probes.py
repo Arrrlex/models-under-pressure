@@ -11,14 +11,13 @@ from models_under_pressure.config import (
     GenerateActivationsConfig,
     HeatmapRunConfig,
 )
-from models_under_pressure.dataset.loaders import load_anthropic_csv
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
     create_generalization_variation_splits,
     create_train_test_split,
     load_generated_dataset_split,
 )
-from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.interfaces.dataset import Dataset, Label, LabelledDataset
 from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
@@ -103,7 +102,7 @@ def test_compute_accuracy(
 
 
 def train_probes(
-    dataset: Dataset, model_name: str, layers: list[int] | None = None
+    dataset: LabelledDataset, model_name: str, layers: list[int] | None = None
 ) -> dict[int, LinearProbe]:
     """Train a probe for each layer in the model."""
     model = LLMModel.load(
@@ -133,13 +132,13 @@ def train_probes(
         probe = LinearProbe(_llm=model, layer=layer)
 
         print("Training probe...")
-        probe.fit(X=activations, y=config.dataset.labels_numpy())
+        probe.fit(X=activations, y=dataset.labels_numpy())
         probes[layer] = probe
     return probes
 
 
 def cross_validate_probe(
-    probe: LinearProbe, dataset_splits: list[Dataset]
+    probe: LinearProbe, dataset_splits: list[LabelledDataset]
 ) -> np.ndarray:
     accuracies = []
 
@@ -158,7 +157,9 @@ def cross_validate_probe(
     return np.mean(np.array(accuracies), axis=1)
 
 
-def cross_validate_probes(probes: list[LinearProbe], dataset: Dataset) -> np.ndarray:
+def cross_validate_probes(
+    probes: list[LinearProbe], dataset: LabelledDataset
+) -> np.ndarray:
     dataset_splits = create_cross_validation_splits(dataset)
     accuracies = np.array(
         [cross_validate_probe(probe, dataset_splits) for probe in probes]
@@ -172,7 +173,7 @@ def test_activations_on_anthropic_dataset():
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
 
     print("Loading dataset...")
-    dataset = load_anthropic_csv(dataset_path)
+    dataset = Dataset.load_from(dataset_path, input_name="input")
 
     train_dataset, test_dataset = create_train_test_split(dataset, split_field="index")
 

@@ -3,15 +3,14 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.dataset.loaders import loaders
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
 def create_train_test_split(
     dataset: Dataset,
     test_size: float = 0.2,
     split_field: str | None = None,
-) -> tuple[Dataset, Dataset]:
+) -> tuple[LabelledDataset, LabelledDataset]:
     """Create a train-test split of the dataset.
 
     Args:
