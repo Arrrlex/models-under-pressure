@@ -9,7 +9,7 @@
     "editor.formatOnSaveMode": "file"
   },
   "python.analysis.typeCheckingMode": "basic",
-  "python.languageServer": "Pylance",
+  "python.languageServer": "Default",
   "editor.rulers": [
     88
   ]

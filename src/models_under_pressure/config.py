@@ -8,7 +8,9 @@ from models_under_pressure.interfaces.dataset import LabelledDataset
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
-DEVICE = "cpu"
+BATCH_SIZE = 64
+
+DEVICE = "cuda"
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
@@ -122,9 +124,17 @@ class GenerateActivationsConfig(BaseModel):
     output_dir: Path = DATA_DIR / "activations"
 
     @property
-    def output_file(self) -> Path:
+    def acts_output_file(self) -> Path:
         model_name_path_safe = self.model_name.replace("/", "_")
         return (
             self.output_dir
             / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}.npz"
+        )
+
+    @property
+    def attn_mask_output_file(self) -> Path:
+        model_name_path_safe = self.model_name.replace("/", "_")
+        return (
+            self.output_dir
+            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}_attn_mask.npz"
         )
