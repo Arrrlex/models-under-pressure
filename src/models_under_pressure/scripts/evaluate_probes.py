@@ -3,13 +3,18 @@ import json
 from pathlib import Path
 
 import numpy as np
+import torch
 from sklearn.metrics import roc_auc_score
 
-from models_under_pressure.config import GENERATED_DATASET_TRAIN_TEST_SPLIT, RESULTS_DIR
+from models_under_pressure.config import (
+    GENERATED_DATASET_TRAIN_TEST_SPLIT,
+    RESULTS_DIR,
+    GenerateActivationsConfig,
+)
 from models_under_pressure.dataset.loaders import loaders
 from models_under_pressure.interfaces.dataset import Dataset
 from models_under_pressure.probes.probes import LinearProbe
-from models_under_pressure.scripts.train_probes import train_probes
+from models_under_pressure.scripts.train_probes import get_activations, train_probes
 
 # Set random seed for reproducibility
 RANDOM_SEED = 0
@@ -27,14 +32,19 @@ def compute_auroc(probe: LinearProbe, dataset: Dataset) -> float:
         float: The AUROC score
     """
     # Get activations for the dataset
-    activations, attention_mask = probe._llm.get_activations(
-        dataset.inputs, layers=[probe.layer]
+    activations, attention_mask = get_activations(
+        model=probe._llm,
+        config=GenerateActivationsConfig(
+            dataset=dataset,
+            model_name=probe._llm.name,
+            layer=probe.layer,
+        ),
     )
 
     # Get predicted probabilities for the positive class (high stakes)
-    y_pred = probe._classifier.predict_proba(
-        probe._preprocess_activations(activations, attention_mask)
-    )[:, 1]
+    processed_activations = probe._preprocess_activations(activations, attention_mask)
+    print(f"{processed_activations.shape=}")
+    y_pred = probe._classifier.predict_proba(processed_activations)[:, 1]
 
     # Get true labels
     y_true = dataset.labels_numpy()
@@ -54,9 +64,12 @@ def compute_aurocs(
     # Train a linear probe on the train dataset
     probes = train_probes(train_dataset, model_name=model_name, layers=[layer])[layer]
 
+    torch.cuda.empty_cache()
+
     # Evaluate on all eval datasets
     for eval_dataset in eval_datasets:
         aurocs.append(compute_auroc(probes, eval_dataset))
+        torch.cuda.empty_cache()
 
     return aurocs
 
@@ -147,7 +160,7 @@ def main(
 
 
 if __name__ == "__main__":
-    max_samples = None  # 20
+    max_samples = None
     layer = 15
     # variation_type = "prompt_style"
     # variation_type = "language"

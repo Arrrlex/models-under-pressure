@@ -53,10 +53,9 @@ class LinearProbe(HighStakesClassifier):
         activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
         attention_mask: Float[np.ndarray, "batch_size seq_len"],
     ) -> Float[np.ndarray, "batch_size embed_dim"]:
+        assert len(activations.shape) == 3
         if self.seq_pos == "all":
-            print(activations.shape, attention_mask.shape)
-            acts = activations * attention_mask[:, :, None]
-            acts = acts.mean(axis=1)
+            acts = (activations * attention_mask[:, :, None]).mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
             assert self.seq_pos in range(activations.shape[1]), (
