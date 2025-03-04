@@ -60,7 +60,7 @@ def create_generalization_variation_splits(
     test_dataset: Dataset,
     variation_type: str,
     max_samples: int | None = None,
-) -> tuple[list[Dataset], list[Dataset], list[str]]:
+) -> tuple[list[LabelledDataset], list[LabelledDataset], list[str]]:
     """Split the dataset into different splits for computing generalization heatmaps."""
     # Filter by variation_type
     train_dataset = train_dataset.filter(
@@ -114,7 +114,7 @@ def create_generalization_variation_splits(
     return train_datasets, test_datasets, variation_values
 
 
-def create_cross_validation_splits(dataset: Dataset) -> list[Dataset]:
+def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDataset]:
     raise NotImplementedError("Not implemented")
 
 
@@ -131,7 +131,10 @@ def load_generated_dataset_split(
     Returns:
         tuple[Dataset, Dataset]: Train and test datasets
     """
-    dataset = LabelledDataset.load_from(dataset_path, "prompt", ids_name="id")
+    dataset = LabelledDataset.load_from(
+        dataset_path,
+        field_mapping={"prompt": "inputs", "id": "ids", "high_stakes": "labels"},
+    )
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
     dataset.other_fields["situations_ids"] = [  # type: ignore

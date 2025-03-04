@@ -85,7 +85,7 @@ def load_eval_datasets(
     for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
         eval_dataset = LabelledDataset.load_from(
             file_path=eval_dataset_config["path"],
-            input_name=eval_dataset_config["input_name"],
+            field_mapping=eval_dataset_config["field_mapping"],
         )
         if max_samples is not None:
             indices = np.random.choice(
@@ -169,7 +169,9 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = ProbeEvalRunConfig(max_samples=20, layer=11)
+    config = ProbeEvalRunConfig(
+        max_samples=20, layer=11, model_name="meta-llama/Llama-3.2-1B-Instruct"
+    )
 
     results = run_probe_evaluation(
         variation_type=config.variation_type,

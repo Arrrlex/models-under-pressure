@@ -221,9 +221,6 @@ class Dataset(BaseModel):
 
         Args:
             file_path: The path to the file to load
-            file_type: Optional type override, otherwise inferred from extension
-            input_name: The name of the column in the file that contains the input
-            ids_name: The name of the column in the file that contains the ids
             split: The split to load for HuggingFace datasets
         """
         # Infer from extension
@@ -263,7 +260,10 @@ class LabelledDataset(Dataset):
 
     @property
     def labels(self) -> Sequence[Label]:
-        return [Label(label) for label in self.other_fields["labels"]]
+        return [
+            Label.from_int(label) if isinstance(label, int) else Label(label)
+            for label in self.other_fields["labels"]
+        ]
 
     def to_labelled_records(self) -> Sequence[LabelledRecord]:
         return [

@@ -7,8 +7,8 @@ import numpy as np
 import torch
 
 from models_under_pressure.config import (
-    ANTHROPIC_SAMPLES_CSV,
     BATCH_SIZE,
+    EVAL_DATASETS,
     RESULTS_DIR,
     GenerateActivationsConfig,
     HeatmapRunConfig,
@@ -19,7 +19,7 @@ from models_under_pressure.experiments.dataset_splitting import (
     create_train_test_split,
     load_generated_dataset_split,
 )
-from models_under_pressure.interfaces.dataset import Dataset, Label, LabelledDataset
+from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
@@ -253,12 +253,14 @@ def cross_validate_probes(
 
 
 def test_activations_on_anthropic_dataset():
-    dataset_path = ANTHROPIC_SAMPLES_CSV
     layer = 10
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
 
     print("Loading dataset...")
-    dataset = Dataset.load_from(dataset_path, input_name="input")
+    dataset = LabelledDataset.load_from(
+        EVAL_DATASETS["anthropic"]["path"],
+        field_mapping=EVAL_DATASETS["anthropic"]["field_mapping"],
+    )
 
     train_dataset, test_dataset = create_train_test_split(dataset, split_field="index")
 

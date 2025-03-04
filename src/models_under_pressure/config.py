@@ -10,7 +10,8 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 BATCH_SIZE = 64
 
-DEVICE = "cuda"
+# DEVICE = "cuda"
+DEVICE = "cpu"
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
