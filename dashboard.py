@@ -1,134 +1,88 @@
-from typing import cast
+import argparse
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from models_under_pressure.interfaces.prompt import Prompt
-from models_under_pressure.config import RunConfig
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Visualize CSV data using Streamlit")
+    parser.add_argument("csv_path", type=str, help="Path to the CSV file to visualize")
+    return parser.parse_args()
 
 
-RUN_ID = "debug"
+def main():
+    args = parse_args()
 
-run_config = RunConfig(run_id=RUN_ID)
+    # Read the CSV file
+    df = pd.read_csv(args.csv_path)
 
-# Read the prompts and metadata
-annotated_prompts = Prompt.from_jsonl(run_config.prompts_file, run_config.metadata_file)
+    # Streamlit Page Config
+    st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
 
-# Explicitly type the DataFrame
-df: pd.DataFrame = pd.DataFrame(
-    [
-        {
-            **prompt.to_dict(),
-            **{
-                f"annotated_{k}" if k == "high_stakes" else k: v
-                for k, v in (prompt.metadata or {}).items()
-            },
-        }
-        for prompt in annotated_prompts
-    ]
-)
+    # Title
+    st.title("📊 CSV Data Dashboard")
 
-# Streamlit Page Config
-st.set_page_config(page_title="CSV Data Dashboard", layout="wide")
+    # Show dataset preview
+    st.subheader("Dataset Preview")
+    st.dataframe(df)
 
-# Title
-st.title("📊 CSV Data Dashboard")
+    # Filtering Options
+    st.sidebar.header("🔍 Filter Options")
 
-# Show dataset preview
-st.subheader("Dataset Preview")
-st.dataframe(df)
+    # Get column names
+    filter_columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
 
-# Filtering Options
-st.sidebar.header("🔍 Filter Options")
+    if filter_columns:
+        selected_column = st.sidebar.selectbox(
+            "Select a column to filter", filter_columns
+        )
+        unique_values = df[selected_column].unique()
+        selected_values = st.sidebar.multiselect(
+            f"Filter {selected_column}", unique_values
+        )
 
-# Get column names
-filter_columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+        # Apply filter if values selected
+        if selected_values:
+            df = df[df[selected_column].isin(selected_values)]
 
-if filter_columns:
-    selected_column = st.sidebar.selectbox("Select a column to filter", filter_columns)
-    unique_values = df[selected_column].unique()
-    selected_values = st.sidebar.multiselect(f"Filter {selected_column}", unique_values)
+    # Text-based search filter
+    search_column = st.sidebar.selectbox("Select a column for text search", df.columns)
+    search_text = st.sidebar.text_input(f"Search in {search_column}")
 
-    # Apply filter if values selected
-    if selected_values:
-        df = cast(pd.DataFrame, df[df[selected_column].isin(selected_values)])
-
-# Text-based search filter
-search_column = st.sidebar.selectbox("Select a column for text search", df.columns)
-search_text = st.sidebar.text_input(f"Search in {search_column}")
-
-if search_text:
-    # Ensure we're working with strings and cast result back to DataFrame
-    df = cast(
-        pd.DataFrame,
-        df[
+    if search_text:
+        df = df[
             df[search_column]
             .astype(str)
             .str.contains(search_text, case=False, na=False)
-        ],
-    )
+        ]
 
-# Display Filtered Data
-st.subheader("📊 High Stakes Distribution")
-
-if "high_stakes" in df.columns:
-    # Original high stakes histogram
-    fig = px.histogram(
-        df,
-        x="high_stakes",
-        nbins=2,
-        title="Distribution of High Stakes (0/1)",
-        labels={"high_stakes": "High Stakes"},
-        category_orders={"high_stakes": [0, 1]},
-    )
-    st.plotly_chart(fig)
-
-    # Add character length histograms
-    st.subheader("📏 Prompt Length Distribution by Stakes")
-
-    # Calculate character lengths
-    df["char_length"] = df["prompt"].str.len()
-
-    # Create separate dataframes for high and low stakes
-    high_stakes_df = df[df["high_stakes"] == 1]
-    low_stakes_df = df[df["high_stakes"] == 0]
-
-    # Create subplots for length distributions
-    fig = px.histogram(
-        df,
-        x="char_length",
-        color="high_stakes",
-        nbins=30,
-        title="Character Length Distribution by Stakes",
-        labels={"char_length": "Character Length", "high_stakes": "High Stakes"},
-        color_discrete_map={1: "red", 0: "blue"},
-        marginal="box",  # Adds box plots on the margin
-    )
-
-    # Update layout for better readability
-    fig.update_layout(
-        barmode="overlay",  # Overlapping bars
-        # opacity=0.7,        # Make bars semi-transparent
-    )
-
-    st.plotly_chart(fig)
-
-    # Display summary statistics
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(
-            "High Stakes Avg Length",
-            f"{high_stakes_df['char_length'].mean():.0f} chars",
-        )
-    with col2:
-        st.metric(
-            "Low Stakes Avg Length", f"{low_stakes_df['char_length'].mean():.0f} chars"
+    # Display numeric columns distributions
+    numeric_columns = df.select_dtypes(include=["int64", "float64"]).columns
+    if len(numeric_columns) > 0:
+        st.subheader("📊 Numeric Columns Distribution")
+        selected_numeric = st.selectbox(
+            "Select a numeric column to visualize", numeric_columns
         )
 
-else:
-    st.warning("Column 'high_stakes' not found in the dataset!")
+        fig = px.histogram(
+            df,
+            x=selected_numeric,
+            title=f"Distribution of {selected_numeric}",
+            labels={selected_numeric: selected_numeric},
+            marginal="box",
+        )
+        st.plotly_chart(fig)
 
-# Download Filtered Data
-st.subheader("📥 Download Filtered Data")
-csv = df.to_csv(index=False).encode("utf-8")
-st.download_button("Download CSV", csv, "filtered_data.csv", "text/csv")
+        # Display summary statistics
+        st.subheader("📈 Summary Statistics")
+        st.write(df[selected_numeric].describe())
+
+    # Download Filtered Data
+    st.subheader("📥 Download Filtered Data")
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download CSV", csv, "filtered_data.csv", "text/csv")
+
+
+if __name__ == "__main__":
+    main()
