@@ -281,6 +281,11 @@ class LabelledDataset(Dataset):
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
 
+    def filter(self, filter_fn: Callable[[LabelledRecord], bool]) -> Self:
+        return type(self).from_records(
+            [r for r in self.to_labelled_records() if filter_fn(r)]
+        )
+
 
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS

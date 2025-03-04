@@ -10,8 +10,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 BATCH_SIZE = 64
 
-# DEVICE = "cuda"
-DEVICE = "cpu"
+DEVICE = "cuda"
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
@@ -34,7 +33,7 @@ RESULTS_DIR = DATA_DIR / "results"
 EVALS_DIR = DATA_DIR / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
 TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
-MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
+MT_SAMPLES_CSV = EVALS_DIR / "mt_samples_300_labelled_28_02_25.csv"
 
 EVAL_DATASETS = {
     "anthropic": {

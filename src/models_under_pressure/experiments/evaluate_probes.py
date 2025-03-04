@@ -14,7 +14,7 @@ from models_under_pressure.config import (
     GenerateActivationsConfig,
     ProbeEvalRunConfig,
 )
-from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
 from models_under_pressure.scripts.train_probes import (
@@ -87,6 +87,7 @@ def load_eval_datasets(
             file_path=eval_dataset_config["path"],
             field_mapping=eval_dataset_config["field_mapping"],
         )
+        eval_dataset = eval_dataset.filter(lambda x: x.label != Label.AMBIGUOUS)
         if max_samples is not None:
             indices = np.random.choice(
                 range(len(eval_dataset.ids)),
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = ProbeEvalRunConfig(
-        max_samples=20, layer=11, model_name="meta-llama/Llama-3.2-1B-Instruct"
+        max_samples=None, layer=11, model_name="meta-llama/Llama-3.3-70B-Instruct"
     )
 
     results = run_probe_evaluation(

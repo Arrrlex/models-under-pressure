@@ -184,11 +184,7 @@ def train_probes(
     dataset: LabelledDataset, model_name: str, layers: list[int] | None = None
 ) -> dict[int, LinearProbe]:
     """Train a probe for each layer in the model."""
-    model = LLMModel.load(
-        model_name,
-        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
-        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
-    )
+    model = LLMModel.load(model_name)
 
     layers = layers or list(range(model.n_layers))
 

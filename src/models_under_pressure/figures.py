@@ -77,4 +77,9 @@ def plot_aurocs(
     plt.xticks(x + bar_width / 2, datasets)
     plt.legend()
 
+    # Save plot
+    plots_dir = RESULTS_DIR.parent / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    plt.savefig(plots_dir / "probe_generalisation_aurocs.png")
+
     plt.show()
