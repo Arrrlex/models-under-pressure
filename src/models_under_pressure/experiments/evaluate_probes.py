@@ -8,11 +8,13 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
+    EVAL_DATASETS,
     GENERATED_DATASET_TRAIN_TEST_SPLIT,
     RESULTS_DIR,
     GenerateActivationsConfig,
+    ProbeEvalRunConfig,
 )
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
 from models_under_pressure.scripts.train_probes import (
@@ -55,8 +57,8 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
 
 
 def compute_aurocs(
-    train_dataset: Dataset,
-    eval_datasets: list[Dataset],
+    train_dataset: LabelledDataset,
+    eval_datasets: list[LabelledDataset],
     model_name: str,
     layer: int,
 ) -> list[float]:
@@ -73,6 +75,28 @@ def compute_aurocs(
         torch.cuda.empty_cache()
 
     return aurocs
+
+
+def load_eval_datasets(
+    max_samples: int | None = None,
+) -> tuple[list[LabelledDataset], list[str]]:
+    eval_datasets = []
+    eval_dataset_names = []
+    for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
+        eval_dataset = LabelledDataset.load_from(
+            file_path=eval_dataset_config["path"],
+            input_name=eval_dataset_config["input_name"],
+        )
+        if max_samples is not None:
+            indices = np.random.choice(
+                range(len(eval_dataset.ids)),
+                size=max_samples,
+                replace=False,
+            )
+            eval_dataset = eval_dataset[list(indices)]  # type: ignore
+        eval_datasets.append(eval_dataset)
+        eval_dataset_names.append(eval_dataset_name)
+    return eval_datasets, eval_dataset_names
 
 
 def run_probe_evaluation(
@@ -122,18 +146,7 @@ def run_probe_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_dataset_names = ["anthropic", "toolace"]
-    eval_datasets = []
-    for eval_dataset_name in eval_dataset_names:
-        eval_dataset = loaders[eval_dataset_name]()  # type: ignore
-        if max_samples is not None:
-            indices = np.random.choice(
-                range(len(eval_dataset.ids)),
-                size=max_samples,
-                replace=False,
-            )
-            eval_dataset = eval_dataset[list(indices)]  # type: ignore
-        eval_datasets.append(eval_dataset)
+    eval_datasets, eval_dataset_names = load_eval_datasets(max_samples=max_samples)
 
     # Compute AUROCs
     aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
@@ -156,26 +169,17 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    max_samples = 20
-    layer = 11
-    # variation_type = "prompt_style"
-    # variation_type = "language"
-    variation_type = None
-    variation_value = None  # "Q&A long"
-    dataset_path = Path("data/results/prompts_28_02_25.jsonl")
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
-
-    file_name = (
-        f"{dataset_path.stem}_{model_name.split('/')[-1]}_{variation_type}_fig2.json"
-    )
+    config = ProbeEvalRunConfig(max_samples=20, layer=11)
 
     results = run_probe_evaluation(
-        variation_type=variation_type,
-        variation_value=variation_value,
-        max_samples=max_samples,
-        layer=layer,
-        dataset_path=dataset_path,
-        model_name=model_name,
+        variation_type=config.variation_type,
+        variation_value=config.variation_value,
+        max_samples=config.max_samples,
+        layer=config.layer,
+        dataset_path=config.dataset_path,
+        model_name=config.model_name,
     )
 
-    json.dump(dataclasses.asdict(results), open(RESULTS_DIR / file_name, "w"))
+    json.dump(
+        dataclasses.asdict(results), open(RESULTS_DIR / config.output_filename, "w")
+    )

@@ -170,6 +170,11 @@ class Dataset(BaseModel):
                 except json.JSONDecodeError:
                     # If JSON parsing fails, treat as regular string input
                     inputs.append(input_item)
+            elif isinstance(input_item, list):
+                dialogue = [Message(**msg) for msg in input_item]
+                inputs.append(dialogue)
+            else:
+                raise ValueError(f"Invalid input type: {type(input_item)}")
 
         ids = [str(id) for id in df["ids"].tolist()]
 
@@ -190,7 +195,8 @@ class Dataset(BaseModel):
 
         inputs = [d[input_name] for d in data]
         ids = [
-            d[id_name] if id_name is not None else str(i) for i, d in enumerate(data)
+            str(d[id_name]) if id_name is not None else str(i)
+            for i, d in enumerate(data)
         ]
 
         other_field_keys = set(data[0].keys()) - {"prompt", "high_stakes", "id"}
@@ -208,6 +214,7 @@ class Dataset(BaseModel):
         file_path: Path,
         input_name: str,
         ids_name: str | None = None,
+        label_name: str | None = None,
         split: str = "train",
     ) -> "Dataset":
         """
@@ -222,6 +229,7 @@ class Dataset(BaseModel):
             file_type: Optional type override, otherwise inferred from extension
             input_name: The name of the column in the file that contains the input
             ids_name: The name of the column in the file that contains the ids
+            label_name: The name of the column in the file that contains the label
             split: The split to load for HuggingFace datasets
         """
         # Infer from extension
@@ -255,6 +263,9 @@ class Dataset(BaseModel):
                 df = df.rename(columns={ids_name: "ids"})
             else:
                 df["ids"] = list(range(len(df)))
+
+            if label_name is not None:
+                df = df.rename(columns={label_name: "labels"})
 
             return cls.from_pandas(df)
 
@@ -310,6 +321,20 @@ class LabelledDataset(Dataset):
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
 
+    @classmethod
+    def from_pandas(cls, df: pd.DataFrame, label_name: str = "labels") -> Self:
+        dataset = super().from_pandas(df)
+        return cls.from_dataset(dataset, label_name=label_name)
+
+    @classmethod
+    def from_dataset(cls, dataset: Dataset, label_name: str) -> Self:
+        return cls(
+            inputs=dataset.inputs,
+            ids=dataset.ids,
+            label_name=label_name,
+            other_fields=dataset.other_fields,
+        )
+
     @overload
     def __getitem__(self, idx: int) -> LabelledRecord: ...
 
@@ -331,3 +356,16 @@ class LabelledDataset(Dataset):
                 id=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
+
+
+if __name__ == "__main__":
+    from models_under_pressure.config import EVAL_DATASETS
+
+    dataset_config = EVAL_DATASETS["anthropic"]
+    dataset = LabelledDataset.load_from(
+        file_path=dataset_config["path"],
+        input_name=dataset_config["input_name"],
+        ids_name=dataset_config["ids_name"],
+        label_name="high_stakes",
+    )
+    print(dataset)

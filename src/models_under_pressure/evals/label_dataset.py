@@ -69,11 +69,14 @@ def label_dataset(unlabeled_dataset: Dataset) -> Dataset:
     print(f"Completed labeling. Number of labels: {len(labels)}")
     print(f"Number of explanations: {len(explanations)}")
 
+    # Convert labels to their string values for storage
+    label_values = [label.value for label in labels]
+
     dataset = LabelledDataset(
         inputs=inputs,
-        label_name="high_stakes",
         ids=ids,
-        other_fields={"explanation": explanations, "high_stakes": labels},
+        label_name="high_stakes",
+        other_fields={"explanation": explanations, "high_stakes": label_values},
     )
 
     return dataset
@@ -132,7 +135,6 @@ if __name__ == "__main__":
 
     unlabeled_dataset = Dataset.load_from(
         file_name_or_path,
-        file_type=file_type,
         input_name=input_name,
         ids_name=ids_name,
         split=split,

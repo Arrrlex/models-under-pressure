@@ -121,7 +121,7 @@ def create_cross_validation_splits(dataset: Dataset) -> list[Dataset]:
 def load_generated_dataset_split(
     dataset_path: Path,
     split_path: Path,
-) -> tuple[Dataset, Dataset]:
+) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
     Args:
@@ -131,7 +131,7 @@ def load_generated_dataset_split(
     Returns:
         tuple[Dataset, Dataset]: Train and test datasets
     """
-    dataset = LabelledDataset.load_from(dataset_path, "input", ids_name="id")
+    dataset = LabelledDataset.load_from(dataset_path, "prompt", ids_name="id")
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
     dataset.other_fields["situations_ids"] = [  # type: ignore
