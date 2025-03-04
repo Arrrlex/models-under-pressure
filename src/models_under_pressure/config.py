@@ -99,6 +99,16 @@ class RunConfig:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
 
+@dataclass(frozen=True)
+class HeatmapRunConfig:
+    model_name: str
+    layers: list[int]
+    dataset_path: Path  # TODO Set default for this
+    max_samples: int | None = None
+    variation_types: list[str] = ["prompt_style", "tone", "language"]
+    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+
+
 class GenerateActivationsConfig(BaseModel):
     dataset: Dataset
     model_name: str

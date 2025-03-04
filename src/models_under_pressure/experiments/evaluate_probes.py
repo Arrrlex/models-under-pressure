@@ -16,10 +16,6 @@ from models_under_pressure.scripts.train_probes import (
     train_probes,
 )
 
-# Set random seed for reproducibility
-RANDOM_SEED = 0
-np.random.seed(RANDOM_SEED)
-
 
 def compute_auroc(probe: LinearProbe, dataset: Dataset) -> float:
     """Compute the AUROC score for a probe on a dataset.
@@ -64,16 +60,16 @@ def compute_aurocs(
     return aurocs
 
 
-def main(
+def run_probe_evaluation(
     layer: int,
-    file_name: str,
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
-):
+) -> ProbeEvaluationResults:
+    """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
@@ -137,10 +133,14 @@ def main(
         variation_type=variation_type,
         variation_value=variation_value,
     )
-    json.dump(dataclasses.asdict(results), open(RESULTS_DIR / file_name, "w"))
+    return results
 
 
 if __name__ == "__main__":
+    # Set random seed for reproducibility
+    RANDOM_SEED = 0
+    np.random.seed(RANDOM_SEED)
+
     max_samples = 20
     layer = 11
     # variation_type = "prompt_style"
@@ -154,12 +154,13 @@ if __name__ == "__main__":
         f"{dataset_path.stem}_{model_name.split('/')[-1]}_{variation_type}_fig2.json"
     )
 
-    main(
+    results = run_probe_evaluation(
         variation_type=variation_type,
         variation_value=variation_value,
         max_samples=max_samples,
         layer=layer,
         dataset_path=dataset_path,
         model_name=model_name,
-        file_name=file_name,
     )
+
+    json.dump(dataclasses.asdict(results), open(RESULTS_DIR / file_name, "w"))

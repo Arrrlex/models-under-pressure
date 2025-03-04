@@ -64,6 +64,7 @@ class ProbeEvaluationResults:
 class HeatmapResults:
     performances: Dict[int, np.ndarray]  # Layer -> performance matrix
     variation_values: List[str]  # Values of the variation type
+    variation_type: str
     model_name: str
     layers: List[int]
     max_samples: int | None
@@ -74,6 +75,7 @@ class HeatmapResults:
                 layer: perf.tolist() for layer, perf in self.performances.items()
             },
             "variation_values": self.variation_values,
+            "variation_type": self.variation_type,
             "model_name": self.model_name,
             "layers": self.layers,
             "max_samples": self.max_samples,
@@ -88,6 +90,7 @@ class HeatmapResults:
         return cls(
             performances=performances,
             variation_values=data["variation_values"],
+            variation_type=data["variation_type"],
             model_name=data["model_name"],
             layers=data["layers"],
             max_samples=data["max_samples"],
