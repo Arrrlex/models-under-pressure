@@ -2,6 +2,7 @@ import argparse
 import os
 
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import streamlit as st
 
@@ -9,6 +10,7 @@ import streamlit as st
 def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Data using Streamlit")
     parser.add_argument("file_path", type=str, help="Path to the dataset to visualize")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     return parser.parse_args()
 
 
@@ -24,13 +26,32 @@ class DashboardDataset:
     def load_from(
         cls,
         file_path: str,
+        debug: bool = False,
     ) -> "DashboardDataset":
         # Infer the file type from the file extension
         file_extension = os.path.splitext(file_path)[1]
         if file_extension == ".csv":
-            return cls(dataset=pd.read_csv(file_path))
+            data = cls(dataset=pd.read_csv(file_path))
         elif file_extension == ".jsonl":
-            return cls(dataset=pd.read_json(file_path, lines=True))
+            data = cls(dataset=pd.read_json(file_path, lines=True))
+        else:
+            raise NotImplementedError(f"File type {file_extension} not supported")
+
+        if debug:
+
+            def create_probe_logits(prompt: str) -> np.ndarray:
+                # Split the prompt into words:
+                words = prompt.split(" ")
+
+                return 2 * np.zeros(len(words))
+
+            # Load the probe logits
+            probe_logits = pd.read_csv(
+                os.path.join(os.path.dirname(file_path), "probe_logits.csv")
+            )
+            data["probe_logits"] = probe_logits
+
+        return data
 
     @property
     def data(self) -> pd.DataFrame:
@@ -42,7 +63,7 @@ def main():
     args = parse_args()
 
     # Load the dataset
-    data = DashboardDataset.load_from(args.file_path)
+    data = DashboardDataset.load_from(args.file_path, debug=args.debug)
     df_display = data.data
 
     # Streamlit Page Config
@@ -50,9 +71,6 @@ def main():
 
     # Title
     st.title("📊Data Dashboard")
-
-    # Show dataset preview
-    st.subheader("Dataset")
 
     # Filtering Options
     st.sidebar.header("🔍 Filter Options")
@@ -94,8 +112,61 @@ def main():
             .str.contains(search_text, case=False, na=False)
         ]
 
+    # Analyze Row feature controls in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📊 Analyze Row")
+
+    # Create a way to select rows
+    selected_index = st.sidebar.number_input(
+        "Enter row number to analyze:",
+        min_value=0,
+        max_value=len(df_display) - 1 if len(df_display) > 0 else 0,
+        value=0,
+    )
+
+    # Add column selection dropdown
+    all_columns = df_display.columns.tolist()
+    selected_column_to_analyze = st.sidebar.selectbox(
+        "Select column to analyze:", all_columns
+    )
+
+    analyze_button = st.sidebar.button("Analyze Selected Row")
+
     # Display the dataset
-    st.dataframe(df_display)
+    st.subheader("Dataset")
+    st.dataframe(df_display, use_container_width=True)
+
+    # If a row is selected, show detailed information in the main area
+    if analyze_button and len(df_display) > 0:
+        st.subheader("Selected Row Analysis")
+
+        # Get the selected row by index
+        selected_row = df_display.iloc[selected_index]
+
+        # Only display the selected column
+        st.markdown(f"**Row {selected_index}, Column: {selected_column_to_analyze}**")
+
+        # Format the display based on the data type
+        value = selected_row[selected_column_to_analyze]
+
+        # Determine if it's a text column
+        if df_display[selected_column_to_analyze].dtype == "object":
+            st.info(str(value))
+        else:
+            # For numeric values, provide a bit more context
+            st.info(f"Value: {value}")
+
+            # If it's numeric, add some statistics for context
+            if pd.api.types.is_numeric_dtype(df_display[selected_column_to_analyze]):
+                col_mean = df_display[selected_column_to_analyze].mean()
+                col_std = df_display[selected_column_to_analyze].std()
+                percentile = (
+                    df_display[selected_column_to_analyze] <= value
+                ).mean() * 100
+
+                st.markdown(f"Dataset mean for this column: **{col_mean:.2f}**")
+                st.markdown(f"Dataset standard deviation: **{col_std:.2f}**")
+                st.markdown(f"This value is in the **{percentile:.1f}th** percentile")
 
     # Display numeric columns distributions
     numeric_columns = data.data.select_dtypes(include=["int64", "float64"]).columns
