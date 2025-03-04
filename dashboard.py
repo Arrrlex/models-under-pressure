@@ -9,7 +9,9 @@ import streamlit as st
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Visualize Data using Streamlit")
-    parser.add_argument("file_path", type=str, help="Path to the dataset to visualize")
+    parser.add_argument(
+        "--file_path", type=str, help="Path to the dataset to visualize"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     return parser.parse_args()
 
@@ -45,11 +47,7 @@ class DashboardDataset:
 
                 return 2 * np.zeros(len(words))
 
-            # Load the probe logits
-            probe_logits = pd.read_csv(
-                os.path.join(os.path.dirname(file_path), "probe_logits.csv")
-            )
-            data["probe_logits"] = probe_logits
+            data.data["probe_logits"] = data.data["prompt"].apply(create_probe_logits)
 
         return data
 
@@ -130,6 +128,17 @@ def main():
         "Select column to analyze:", all_columns
     )
 
+    # Add probe logits/probs column selection
+    probe_columns = [
+        col for col in all_columns if "logit" in col.lower() or "prob" in col.lower()
+    ]
+    if probe_columns:
+        probe_column = st.sidebar.selectbox(
+            "Select column of probe logits/probs:", probe_columns, key="probe_column"
+        )
+    else:
+        probe_column = None
+
     analyze_button = st.sidebar.button("Analyze Selected Row")
 
     # Display the dataset
@@ -152,6 +161,82 @@ def main():
         # Determine if it's a text column
         if df_display[selected_column_to_analyze].dtype == "object":
             st.info(str(value))
+
+            # Check if we have probe logits and the text is a string
+            if probe_column is not None and isinstance(value, str):
+                st.subheader("Word-level Visualization")
+
+                # Get the probe values
+                probe_values = selected_row[probe_column]
+
+                # Check if probe values is a string representation of a list
+                if (
+                    isinstance(probe_values, str)
+                    and probe_values.startswith("[")
+                    and probe_values.endswith("]")
+                ):
+                    try:
+                        probe_values = eval(probe_values)
+                    except (ValueError, SyntaxError):
+                        st.warning("Could not parse probe values as a list.")
+                        probe_values = None
+
+                # Split the text into words
+                words = value.split()
+
+                # If we have valid probe values that match the number of words
+                if isinstance(probe_values, (list, np.ndarray)) and len(words) == len(
+                    probe_values
+                ):
+                    # Create a visualization of colored words
+                    min_val = min(probe_values)
+                    max_val = max(probe_values)
+                    range_val = max_val - min_val if max_val != min_val else 1
+
+                    # Function to get color for a value
+                    def get_color(val):
+                        # Normalize to 0-1 scale
+                        normalized = (val - min_val) / range_val
+                        # Use a color scale from blue (low) to red (high)
+                        return f"rgb({int(255 * normalized)}, 0, {int(255 * (1-normalized))})"
+
+                    # Build HTML for colored words
+                    html = "<div style='font-size: 18px; line-height: 2;'>"
+                    for word, val in zip(words, probe_values):
+                        color = get_color(val)
+                        html += f"<span style='background-color: {color}; padding: 3px; margin: 2px; border-radius: 3px;'>{word}</span> "
+                    html += "</div>"
+
+                    # Display colored words
+                    st.markdown(html, unsafe_allow_html=True)
+
+                    # # Show color scale
+                    # st.markdown("**Color Scale:**")
+                    # scale_html = f"""
+                    # <div style="display: flex; align-items: center; margin: 10px 0;">
+                    #     <div style="width: 300px; height: 20px; background: linear-gradient(to right, rgb(0, 0, 255), rgb(255, 0, 0))"></div>
+                    #     <div style="display: flex; justify-content: space-between; width: 300px;">
+                    #         <span>{min_val:.2f}</span>
+                    #         <span>{max_val:.2f}</span>
+                    #     </div>
+                    # </div>
+                    # """
+                    # st.markdown(scale_html, unsafe_allow_html=True)
+
+                    # # Plot logit values
+                    # st.subheader("Probe Values per Word")
+                    # fig = px.bar(
+                    #     x=words,
+                    #     y=probe_values,
+                    #     labels={"x": "Words", "y": "Probe Value"},
+                    #     title="Probe Value Distribution"
+                    # )
+                    # st.plotly_chart(fig)
+
+                else:
+                    st.warning(
+                        f"The number of words ({len(words)}) doesn't match the number of probe values or probe values are not in the correct format."
+                    )
         else:
             # For numeric values, provide a bit more context
             st.info(f"Value: {value}")
