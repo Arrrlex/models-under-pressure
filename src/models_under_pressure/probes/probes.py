@@ -58,9 +58,9 @@ class LinearProbe(HighStakesClassifier):
             acts = (activations * attention_mask[:, :, None]).mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(activations.shape[1]), (
-                f"Invalid sequence position: {self.seq_pos}"
-            )
+            assert self.seq_pos in range(
+                activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
             acts = activations[:, self.seq_pos, :]
 
         return acts

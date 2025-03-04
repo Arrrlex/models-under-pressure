@@ -155,9 +155,9 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert len(activations) == len(layers), (
-            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
-        )
+        assert (
+            len(activations) == len(layers)
+        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
 
         # Print stored activations
         for layer, act in zip(layers, activations):

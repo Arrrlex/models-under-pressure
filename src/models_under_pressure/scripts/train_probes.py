@@ -102,7 +102,9 @@ def get_activations(
 
         if cache:
             np.savez_compressed(config.acts_output_file, activations=activations)
-            np.savez_compressed(config.attn_mask_output_file, attention_mask=attention_mask)
+            np.savez_compressed(
+                config.attn_mask_output_file, attention_mask=attention_mask
+            )
         return activations, attention_mask
 
 
@@ -239,9 +241,9 @@ def create_train_test_split(
         test_indices = list(test_indices)
     else:
         # Split based on unique values of the field
-        assert split_field in dataset.other_fields, (
-            f"Field {split_field} not found in dataset"
-        )
+        assert (
+            split_field in dataset.other_fields
+        ), f"Field {split_field} not found in dataset"
         unique_values = list(set(dataset.other_fields[split_field]))
         n_test = int(len(unique_values) * test_size)
 
