@@ -131,7 +131,7 @@ def load_generated_dataset_split(
     Returns:
         tuple[Dataset, Dataset]: Train and test datasets
     """
-    dataset = loaders["generated"](dataset_path)
+    dataset = LabelledDataset.load_from(dataset_path, "input", ids_name="id")
 
     # Add a situations_ids field to the dataset (situations isn't hashable)
     dataset.other_fields["situations_ids"] = [  # type: ignore
