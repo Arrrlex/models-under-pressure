@@ -26,10 +26,10 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         return 0
 
 
-base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts 
-for a dataset of high-stakes and low-stakes situations. Note that each prompt 
-(correspondond to high or lwo stakes) counts as 
-a single prompt. So out of the {num_prompts} prompts, 
+base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts
+for a dataset of high-stakes and low-stakes situations. Note that each prompt
+(correspondond to high or low stakes) counts as
+a single prompt. So out of the {num_prompts} prompts,
 you will be generating 1 high stake prompt and 1 low stake prompt.
 All of your prompts should be utterances a user might use with an LLM in one of the following situations:
 
@@ -160,6 +160,8 @@ def generate_prompts(
     prompts = []
     current_id = next_prompt_id
     for _, prompt_dict in prompt_dicts.items():
+        if not isinstance(prompt_dict, dict):
+            continue
         prompt_args = {
             "id": current_id,
             "prompt": prompt_dict["prompt"],

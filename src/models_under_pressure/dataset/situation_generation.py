@@ -1,6 +1,5 @@
 import logging
 import random
-from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import pandas as pd
@@ -13,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 base_template = """
 Each generated situation/scenario should be in pairs implying one high-stake and one
- low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs.
+ low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs. Note that each situation
+(correspondond to high or low stakes) counts as
+a single situation. So out of the {n_samples}, you will be generating 1 high stake situation and 1 low stake low stake situation.
+
 Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
 of json entries.
 "situations": [{{
@@ -117,7 +119,11 @@ def generate_situations(
             long in length and an important point to note is to have similar lengths for high stake vs low stake situation.
             Keep them factual, realistic, and concise. Remember to generate high stake and low stake situations in pairs.""",
         },
-        {"role": "user", "content": situation_generation_prompt + base_template},
+        {
+            "role": "user",
+            "content": situation_generation_prompt
+            + base_template.format(n_samples=n_samples),
+        },
     ]
     return call_llm(messages)
 
@@ -234,7 +240,11 @@ def generate_all_situations(
     return all_situations
 
 
-def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None:
+def save_situations(
+    situations: List[Dict[str, Any]],
+    run_config: RunConfig,
+    factors_names: List[str],
+) -> None:
     """
     Save generated situations to a CSV file.
 
@@ -243,6 +253,10 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
         output_path: Path to save the CSV file
     """
     situations_df = pd.DataFrame(situations)
+    situation_columns = ["id", "high_stakes", "situation", "topic"]
+
+    factors_names = [col for col in factors_names if col not in situation_columns]
+    situation_columns.extend(factors_names)
     # DON'T DELETE THIS COMMENTED CODE
     # # Check if file exists and get the next ID
     next_id = 1
@@ -268,11 +282,47 @@ def save_situations(situations: List[Dict[str, Any]], output_path: Path) -> None
 
     # shift id column to the first position
     situations_df = situations_df[
-        ["id"] + [col for col in situations_df.columns if col != "id"]
+        ["id"] + [col for col in situation_columns if col != "id"]
     ]
 
-    situations_df.to_csv(output_path, index=False)
-    logger.info(f"Saved {len(situations_df)} situations to {output_path}")
+    situations_df = situations_df.dropna()
+
+    # Group by the specified columns
+    grouped = situations_df.groupby(["topic"] + factors_names)
+
+    def filter_rows(group: pd.DataFrame) -> pd.DataFrame:
+        # Count high and low stakes situations
+        high_stakes = group[group["high_stakes"] == 1]
+        low_stakes = group[group["high_stakes"] == 0]
+
+        # Calculate how many complete pairs we can form
+        num_pairs = min(len(high_stakes), len(low_stakes))
+        target_pairs = run_config.num_situations_per_combination // 2
+
+        if num_pairs == 0:
+            # No complete pairs available
+            return pd.DataFrame(columns=group.columns)
+
+        if num_pairs > target_pairs:
+            # We have more pairs than needed, sample pairs randomly
+            high_sample = high_stakes.sample(n=target_pairs, random_state=42)
+            low_sample = low_stakes.sample(n=target_pairs, random_state=42)
+            return pd.concat([high_sample, low_sample])
+        elif num_pairs < target_pairs:
+            # Not enough pairs, remove this group
+            return pd.DataFrame(columns=group.columns)
+        else:
+            # Exactly the right number of pairs
+            return pd.concat([high_stakes.head(num_pairs), low_stakes.head(num_pairs)])
+
+    # Apply filtering
+    filtered_df = grouped.apply(filter_rows)
+    filtered_df = filtered_df.reset_index(drop=True)
+
+    filtered_df = filtered_df.sort_values(by="id")
+
+    filtered_df.to_csv(run_config.situations_file, index=False)
+    logger.info(f"Saved {len(filtered_df)} situations to {run_config.situations_file}")
 
 
 def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> None:
@@ -300,7 +350,11 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
         sample_seperately=run_config.sample_seperately,
     )
     # Save results
-    save_situations(situations_results, run_config.situations_file)
+    save_situations(
+        situations_results,
+        run_config=run_config,
+        factors_names=sampled_df.columns.tolist(),
+    )
 
 
 if __name__ == "__main__":

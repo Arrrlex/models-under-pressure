@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4o"
+DEVICE = "cpu"
 
 # Paths to input files
 INPUTS_DIR = Path(__file__).parent.parent.parent / "data" / "inputs"
