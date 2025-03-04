@@ -66,7 +66,7 @@ class HeatmapResults:
     variation_values: List[str]  # Values of the variation type
     model_name: str
     layers: List[int]
-    subsample_frac: float | None
+    max_samples: int | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -76,7 +76,7 @@ class HeatmapResults:
             "variation_values": self.variation_values,
             "model_name": self.model_name,
             "layers": self.layers,
-            "subsample_frac": self.subsample_frac,
+            "max_samples": self.max_samples,
         }
 
     @classmethod
@@ -90,5 +90,5 @@ class HeatmapResults:
             variation_values=data["variation_values"],
             model_name=data["model_name"],
             layers=data["layers"],
-            subsample_frac=data["subsample_frac"],
+            max_samples=data["max_samples"],
         )

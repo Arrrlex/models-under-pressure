@@ -11,7 +11,10 @@ from models_under_pressure.dataset.loaders import loaders
 from models_under_pressure.interfaces.dataset import Dataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
-from models_under_pressure.scripts.train_probes import train_probes
+from models_under_pressure.scripts.train_probes import (
+    load_generated_dataset_split,
+    train_probes,
+)
 
 # Set random seed for reproducibility
 RANDOM_SEED = 0
@@ -75,17 +78,10 @@ def main(
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
     # 1. Load train and eval datasets
-    # TODO Refactor this: Make a separate method to read train-test split for the generated dataset
-    # (also use that in train_probes.py)
-    dataset = loaders["generated"](dataset_path)
-
-    split_dict = json.load(open(split_path))
-    assert split_dict["dataset"] == dataset_path.stem
-
-    train_indices = [
-        dataset.ids.index(item_id) for item_id in split_dict["train_dataset"]
-    ]
-    train_dataset = dataset[train_indices]  # type: ignore
+    train_dataset, _ = load_generated_dataset_split(
+        dataset_path,
+        split_path,
+    )
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
@@ -145,7 +141,7 @@ def main(
 
 
 if __name__ == "__main__":
-    max_samples = None  # 20
+    max_samples = 20
     layer = 11
     # variation_type = "prompt_style"
     # variation_type = "language"
