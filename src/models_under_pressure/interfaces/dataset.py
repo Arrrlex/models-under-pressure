@@ -1,5 +1,7 @@
+import hashlib
 import json
 from enum import Enum
+from functools import cached_property
 from typing import Any, Callable, Dict, Literal, Mapping, Self, Sequence, overload
 
 import numpy as np
@@ -114,14 +116,26 @@ class Dataset(BaseModel):
 
         return pd.DataFrame(base_data)
 
+    @cached_property
+    def stable_hash(self) -> str:
+        return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
+
     @overload
     def __getitem__(self, idx: int) -> Record: ...
 
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
-    def __getitem__(self, idx: int | slice) -> Self | Record:
-        if isinstance(idx, slice):
+    def __getitem__(self, idx: int | slice | list[int]) -> Self | Record:
+        if isinstance(idx, list):
+            return type(self)(
+                inputs=[self.inputs[i] for i in idx],
+                ids=[self.ids[i] for i in idx],
+                other_fields={
+                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
+                },
+            )
+        elif isinstance(idx, slice):
             return type(self)(
                 inputs=self.inputs[idx],
                 ids=self.ids[idx],
