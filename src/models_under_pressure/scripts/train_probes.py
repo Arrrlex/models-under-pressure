@@ -13,6 +13,7 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.dataset.loaders import load_anthropic_csv, loaders
 from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
 
@@ -290,7 +291,7 @@ def generate_heatmap_for_generated_dataset(
     variation_type: str = "prompt_style",
     layers: list[int] | None = None,
     subsample_frac: float | None = None,
-) -> tuple[dict[int, np.ndarray], list[str]]:
+) -> HeatmapResults:
     """Generate a heatmap for the generated dataset.
 
     This creates a global train-test split, then computes a heatmap for each layer
@@ -298,8 +299,7 @@ def generate_heatmap_for_generated_dataset(
     on all test set portions with various variation values.
 
     Returns:
-        dict[int, np.ndarray]: Layer index -> heatmap values (rows corresponding to indices of variation used for training)
-        list[str]: Variation values
+        HeatmapResults: Contains performances and variation values
     """
     if split_path is None:
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
@@ -387,38 +387,36 @@ def generate_heatmap_for_generated_dataset(
             ]
             print(f"Layer {layer} accuracy: {accuracies}")
             performances[layer].append(accuracies)
-    return {
-        layer: np.array(accuracies) for layer, accuracies in performances.items()
-    }, variation_values
+    return HeatmapResults(
+        performances={
+            layer: np.array(accuracies) for layer, accuracies in performances.items()
+        },
+        variation_values=variation_values,
+        model_name=model_name,
+        layers=layers,
+        subsample_frac=subsample_frac,
+    )
 
 
 if __name__ == "__main__":
     model_name = "meta-llama/Llama-3.2-1B-Instruct"
-    layers = [1, 10, 15]
+    layers = [1, 10]
     subsample_frac = 0.09
 
     for variation_type in ["prompt_style", "tone", "language"]:
         print(f"\nGenerating heatmap for {variation_type}...")
         filename = RESULTS_DIR / f"generated_heatmap_{variation_type}.json"
 
-        performances, variation_values = generate_heatmap_for_generated_dataset(
+        heatmap_results = generate_heatmap_for_generated_dataset(
             layers=layers,
             subsample_frac=subsample_frac,
             model_name=model_name,
             variation_type=variation_type,
         )
-        print(performances)
-        print(variation_values)
+        print(heatmap_results.performances)
+        print(heatmap_results.variation_values)
 
         json.dump(
-            {
-                "performances": {
-                    layer: performances[layer].tolist() for layer in layers
-                },
-                "variation_values": variation_values,
-                "model_name": model_name,
-                "layers": layers,
-                "subsample_frac": subsample_frac,
-            },
+            heatmap_results.to_dict(),
             open(filename, "w"),
         )

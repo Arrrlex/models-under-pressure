@@ -1,4 +1,5 @@
 # Code to generate Figure 2
+import dataclasses
 import json
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from sklearn.metrics import roc_auc_score
 from models_under_pressure.config import GENERATED_DATASET_TRAIN_TEST_SPLIT, RESULTS_DIR
 from models_under_pressure.dataset.loaders import loaders
 from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
 from models_under_pressure.scripts.train_probes import train_probes
 
@@ -131,17 +133,15 @@ def main(
     for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
         print(f"AUROC for {eval_dataset_name}: {auroc}")
 
-    json.dump(
-        {
-            "AUROC": aurocs,
-            "datasets": eval_dataset_names,
-            "model_name": model_name,
-            "layer": layer,
-            "variation_type": variation_type,
-            "variation_value": variation_value,
-        },
-        open(RESULTS_DIR / file_name, "w"),
+    results = ProbeEvaluationResults(
+        AUROC=aurocs,
+        datasets=eval_dataset_names,
+        model_name=model_name,
+        layer=layer,
+        variation_type=variation_type,
+        variation_value=variation_value,
     )
+    json.dump(dataclasses.asdict(results), open(RESULTS_DIR / file_name, "w"))
 
 
 if __name__ == "__main__":
