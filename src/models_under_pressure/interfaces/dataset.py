@@ -3,7 +3,7 @@ import json
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Self, Sequence, overload
+from typing import Any, Callable, Dict, Mapping, Optional, Self, Sequence, overload
 
 import numpy as np
 import pandas as pd
@@ -153,8 +153,12 @@ class Dataset(BaseModel):
             )
 
     @classmethod
-    def from_pandas(cls, df: pd.DataFrame) -> "Dataset":
+    def from_pandas(
+        cls, df: pd.DataFrame, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
         # Extract the required columns
+        df = df.rename(columns=field_mapping or {})
+
         inputs = []
         for input_item in df["inputs"].tolist():
             if isinstance(input_item, str):
@@ -179,42 +183,33 @@ class Dataset(BaseModel):
         ids = [str(id) for id in df["ids"].tolist()]
 
         # Get all other columns as other_fields
-        core_columns = {"inputs", "labels", "ids"}
         other_fields = {
-            col: df[col].tolist() for col in df.columns if col not in core_columns
+            col: df[col].tolist() for col in df.columns if col not in {"inputs", "ids"}
         }
 
         return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
     @classmethod
     def from_jsonl(
-        cls, file_path: Path, input_name: str, id_name: str | None = None
-    ) -> "Dataset":
+        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
         with open(file_path, "r") as f:
-            data = [json.loads(line) for line in f]
+            df = pd.DataFrame([json.loads(line) for line in f])
 
-        inputs = [d[input_name] for d in data]
-        ids = [
-            str(d[id_name]) if id_name is not None else str(i)
-            for i, d in enumerate(data)
-        ]
+        return cls.from_pandas(df, field_mapping=field_mapping)
 
-        other_field_keys = set(data[0].keys()) - {"prompt", "high_stakes", "id"}
-        other_fields = {k: [d[k] for d in data] for k in other_field_keys}
-
-        return Dataset(
-            inputs=inputs,
-            ids=ids,
-            other_fields=other_fields,
-        )
+    @classmethod
+    def from_csv(
+        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
+        df = pd.read_csv(file_path)
+        return cls.from_pandas(df, field_mapping=field_mapping)
 
     @classmethod
     def load_from(
         cls,
         file_path: Path,
-        input_name: str,
-        ids_name: str | None = None,
-        label_name: str | None = None,
+        field_mapping: Optional[Mapping[str, str]] = None,
         split: str = "train",
     ) -> "Dataset":
         """
@@ -229,7 +224,6 @@ class Dataset(BaseModel):
             file_type: Optional type override, otherwise inferred from extension
             input_name: The name of the column in the file that contains the input
             ids_name: The name of the column in the file that contains the ids
-            label_name: The name of the column in the file that contains the label
             split: The split to load for HuggingFace datasets
         """
         # Infer from extension
@@ -242,37 +236,10 @@ class Dataset(BaseModel):
             file_type = "hf"
 
         if file_type == "csv":
-            df = pd.read_csv(file_path)
-
-            # Change input_name to inputs:
-            df = df.rename(columns={input_name: "inputs"})
-
-            # If the input column is in a messages format i.e. {'role': 'user', 'content': '...'}
-            # then we need to convert it to a dialogue
-            try:
-                df["inputs"] = df["inputs"].apply(json.loads)
-                df["inputs"] = df["inputs"].apply(to_dialogue)
-
-            except json.JSONDecodeError:
-                print(
-                    f"Failed to convert {input_name} to dialogue - invalid JSON format"
-                )
-
-            # Change ids_name to ids or generate ids if ids_name is None
-            if ids_name is not None:
-                df = df.rename(columns={ids_name: "ids"})
-            else:
-                df["ids"] = list(range(len(df)))
-
-            if label_name is not None:
-                df = df.rename(columns={label_name: "labels"})
-
-            return cls.from_pandas(df)
+            return cls.from_csv(file_path, field_mapping=field_mapping)
 
         elif file_type == "jsonl":
-            return cls.from_jsonl(
-                file_path=file_path, input_name=input_name, id_name=ids_name
-            )
+            return cls.from_jsonl(file_path, field_mapping=field_mapping)
 
         elif file_type == "hf":
             raise NotImplementedError("HF loading not implemented")
@@ -284,28 +251,21 @@ class Dataset(BaseModel):
 
 
 class LabelledDataset(Dataset):
-    label_name: str
-
     """
-    A dataset with a label field, the label field is stored in the other_fields dictionary
-    under the key label_name but accessed as a property called labels.
-
-    The class has specific loading methods for datasets or inputs specific to the class.
-
-    The class reimplements the __getitem__ and to_<type> methods to include the label field.
+    A dataset with a "labels" field.
     """
 
     @model_validator(mode="after")
     def validate_label_name(self) -> Self:
-        if self.other_fields.get(self.label_name) is None:
-            raise ValueError(f"Label name {self.label_name} not found in other fields")
+        if self.other_fields.get("labels") is None:
+            raise ValueError("labels column not found in other fields")
         return self
 
     @property
     def labels(self) -> Sequence[Label]:
-        return [Label(label) for label in self.other_fields[self.label_name]]
+        return [Label(label) for label in self.other_fields["labels"]]
 
-    def to_records(self) -> Sequence[LabelledRecord]:
+    def to_labelled_records(self) -> Sequence[LabelledRecord]:
         return [
             LabelledRecord(
                 input=input,
@@ -321,51 +281,14 @@ class LabelledDataset(Dataset):
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
 
-    @classmethod
-    def from_pandas(cls, df: pd.DataFrame, label_name: str = "labels") -> Self:
-        dataset = super().from_pandas(df)
-        return cls.from_dataset(dataset, label_name=label_name)
-
-    @classmethod
-    def from_dataset(cls, dataset: Dataset, label_name: str) -> Self:
-        return cls(
-            inputs=dataset.inputs,
-            ids=dataset.ids,
-            label_name=label_name,
-            other_fields=dataset.other_fields,
-        )
-
-    @overload
-    def __getitem__(self, idx: int) -> LabelledRecord: ...
-
-    @overload
-    def __getitem__(self, idx: slice) -> Self: ...
-
-    def __getitem__(self, idx: int | slice) -> Self | LabelledRecord:
-        if isinstance(idx, slice):
-            return type(self)(
-                inputs=self.inputs[idx],
-                ids=self.ids[idx],
-                label_name=self.label_name,
-                other_fields={k: v[idx] for k, v in self.other_fields.items()},
-            )
-        else:
-            return LabelledRecord(
-                input=self.inputs[idx],
-                label=self.labels[idx],
-                id=self.ids[idx],
-                other_fields={k: v[idx] for k, v in self.other_fields.items()},
-            )
-
 
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
 
-    dataset_config = EVAL_DATASETS["anthropic"]
-    dataset = LabelledDataset.load_from(
-        file_path=dataset_config["path"],
-        input_name=dataset_config["input_name"],
-        ids_name=dataset_config["ids_name"],
-        label_name="high_stakes",
-    )
-    print(dataset)
+    for key in EVAL_DATASETS:
+        dataset_config = EVAL_DATASETS[key]
+        dataset = LabelledDataset.load_from(
+            file_path=dataset_config["path"],
+            field_mapping=dataset_config["field_mapping"],
+        )
+        print(dataset[:5])

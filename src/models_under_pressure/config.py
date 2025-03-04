@@ -38,18 +38,27 @@ MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
 EVAL_DATASETS = {
     "anthropic": {
         "path": ANTHROPIC_SAMPLES_CSV,
-        "input_name": "messages",
-        "ids_name": "id",
+        "field_mapping": {
+            "id": "ids",
+            "messages": "inputs",
+            "high_stakes": "labels",
+        },
     },
     "toolace": {
         "path": TOOLACE_SAMPLES_CSV,
-        "input_name": "messages",
-        "ids_name": "ids",
+        "field_mapping": {
+            "inputs": "inputs",
+            "labels": "labels",
+            "ids": "ids",
+        },
     },
     "mt": {
         "path": MT_SAMPLES_CSV,
-        "input_name": "inputs",
-        "ids_name": "ids",
+        "field_mapping": {
+            "inputs": "inputs",
+            "labels": "labels",
+            "ids": "ids",
+        },
     },
 }
 
