@@ -271,7 +271,7 @@ if __name__ == "__main__":
         dataset_path=Path("data/results/prompts_28_02_25.jsonl"),
     )
 
-    for variation_type in ["prompt_style", "tone", "language"]:
+    for variation_type in config.variation_types:
         print(f"\nGenerating heatmap for {variation_type}...")
         filename = RESULTS_DIR / f"generated_heatmap_{variation_type}.json"
 

@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -99,13 +100,17 @@ class RunConfig:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
 
-@dataclass(frozen=True)
+with open(INPUTS_DIR / "prompt_variations.json") as f:
+    VARIATION_TYPES = list(json.load(f).keys())
+
+
+@dataclass
 class HeatmapRunConfig:
     model_name: str
     layers: list[int]
     dataset_path: Path  # TODO Set default for this
     max_samples: int | None = None
-    variation_types: list[str] = ["prompt_style", "tone", "language"]
+    variation_types: list[str] = VARIATION_TYPES
     split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
 
