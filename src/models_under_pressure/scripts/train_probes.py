@@ -29,6 +29,7 @@ def get_activations(
     model: LLMModel,
     config: GenerateActivationsConfig,
     force_recompute: bool = False,
+    cache: bool = False,
     batch_size: int = BATCH_SIZE,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -38,7 +39,7 @@ def get_activations(
     """
     assert model.name == config.model_name
 
-    if (
+    if cache and (
         config.acts_output_file.exists()
         and config.attn_mask_output_file.exists()
         and not force_recompute
@@ -99,8 +100,9 @@ def get_activations(
         activations = np.concatenate(all_activations, axis=0)
         attention_mask = np.concatenate(all_attention_masks, axis=0)
 
-        np.savez_compressed(config.acts_output_file, activations=activations)
-        np.savez_compressed(config.attn_mask_output_file, attention_mask=attention_mask)
+        if cache:
+            np.savez_compressed(config.acts_output_file, activations=activations)
+            np.savez_compressed(config.attn_mask_output_file, attention_mask=attention_mask)
         return activations, attention_mask
 
 
