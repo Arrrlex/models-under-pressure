@@ -7,7 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.interfaces.dataset import Dataset, Label, LabelledDataset
 from models_under_pressure.probes.model import LLMModel
 
 
@@ -58,14 +58,14 @@ class LinearProbe(HighStakesClassifier):
             acts = (activations * attention_mask[:, :, None]).mean(axis=1)
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(
-                activations.shape[1]
-            ), f"Invalid sequence position: {self.seq_pos}"
+            assert self.seq_pos in range(activations.shape[1]), (
+                f"Invalid sequence position: {self.seq_pos}"
+            )
             acts = activations[:, self.seq_pos, :]
 
         return acts
 
-    def fit(
+    def _fit(
         self,
         X: Float[np.ndarray, "batch_size seq_len embed_dim"],
         y: Float[np.ndarray, " batch_size"],
@@ -75,6 +75,21 @@ class LinearProbe(HighStakesClassifier):
         X = self._preprocess_activations(X, attention_mask)
 
         self._classifier.fit(X, y)
+        return self
+
+    def fit(self, dataset: LabelledDataset) -> Self:
+        activations, attention_mask = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+
+        print("Training probe...")
+        self._fit(
+            X=activations,
+            y=dataset.labels_numpy(),
+            attention_mask=attention_mask,
+        )
+
         return self
 
     def predict(self, dataset: Dataset) -> list[Label]:

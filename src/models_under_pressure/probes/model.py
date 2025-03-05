@@ -10,8 +10,9 @@ from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
 
-from models_under_pressure.config import DEVICE
+from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.dataset import (
+    Dataset,
     Dialogue,
     Input,
     Message,
@@ -152,9 +153,9 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert (
-            len(activations) == len(layers)
-        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        assert len(activations) == len(layers), (
+            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        )
 
         # Print stored activations
         for layer, act in zip(layers, activations):
@@ -162,6 +163,69 @@ class LLMModel:
 
         attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
         return np.stack(activations), attention_mask
+
+    def get_batched_activations(
+        self,
+        dataset: Dataset,
+        layer: int,
+        batch_size: int = BATCH_SIZE,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Get activations for a given model and config.
+
+        Handle batching and caching of activations.
+        """
+
+        print("Generating activations...")
+
+        n_samples = len(dataset.inputs)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        # Get the shape from first batch to ensure consistency
+        first_batch = dataset.inputs[0:1]
+        activations_tuple = self.get_activations(inputs=first_batch, layers=[layer])
+        first_activation = activations_tuple[0][0]
+        first_attn_mask = activations_tuple[1]
+        activation_shape = first_activation.shape[1:]  # Remove batch dimension
+        attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
+
+        all_activations = []
+        all_attention_masks = []
+        for i in range(n_batches):
+            start_idx = i * batch_size
+            end_idx = min((i + 1) * batch_size, n_samples)
+            batch_inputs = dataset.inputs[start_idx:end_idx]
+
+            activations_tuple = self.get_activations(
+                inputs=batch_inputs, layers=[layer]
+            )
+            batch_activations = activations_tuple[0][0]
+            batch_attn_mask = activations_tuple[1]
+
+            # Ensure all batches have the same shape by padding/truncating
+            if batch_activations.shape[1:] != activation_shape:
+                padded_activations = np.zeros(
+                    (batch_activations.shape[0],) + activation_shape
+                )
+                min_length = min(batch_activations.shape[1], activation_shape[0])
+                padded_activations[:, :min_length] = batch_activations[:, :min_length]
+                batch_activations = padded_activations
+
+            if batch_attn_mask.shape[1:] != attn_mask_shape:
+                padded_attn_mask = np.zeros(
+                    (batch_attn_mask.shape[0],) + attn_mask_shape
+                )
+                min_length = min(batch_attn_mask.shape[1], attn_mask_shape[0])
+                padded_attn_mask[:, :min_length] = batch_attn_mask[:, :min_length]
+                batch_attn_mask = padded_attn_mask
+
+            all_activations.append(batch_activations)
+            all_attention_masks.append(batch_attn_mask)
+
+        activations = np.concatenate(all_activations, axis=0)
+        attention_mask = np.concatenate(all_attention_masks, axis=0)
+
+        return activations, attention_mask
 
 
 if __name__ == "__main__":
