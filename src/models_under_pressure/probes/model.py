@@ -47,7 +47,7 @@ class LLMModel:
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
             "device_map": "auto",
-            "torch_dtype": torch.float16,
+            "torch_dtype": torch.bfloat16,
         }
 
         if model_kwargs is None:
@@ -57,9 +57,7 @@ class LLMModel:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
-        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs).to(
-            DEVICE
-        )
+        model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
 
         if tokenizer.pad_token_id is None:
@@ -110,7 +108,6 @@ class LLMModel:
         Float[np.ndarray, "layers batch_size seq_len embed_dim"],
         Float[np.ndarray, "batch_size seq_len"],
     ]:
-        # TODO Implement mini-batches
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
 
@@ -122,7 +119,7 @@ class LLMModel:
         # Hook function to capture residual activations before layernorm
         def hook_fn(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor):
             activations.append(
-                input[0].detach().cpu().numpy()
+                input[0].float().detach().cpu().numpy()
             )  # Store the residual connection
 
         # Register hooks on each transformer block based on model architecture

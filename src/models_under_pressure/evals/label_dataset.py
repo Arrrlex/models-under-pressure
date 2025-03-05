@@ -132,7 +132,6 @@ if __name__ == "__main__":
 
     unlabeled_dataset = Dataset.load_from(
         file_name_or_path,
-        file_type=file_type,
         input_name=input_name,
         ids_name=ids_name,
         split=split,

@@ -1,4 +1,5 @@
 # Code to generate Figure 2
+import dataclasses
 import json
 from pathlib import Path
 
@@ -7,21 +8,23 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
+    EVAL_DATASETS,
     GENERATED_DATASET_TRAIN_TEST_SPLIT,
     RESULTS_DIR,
     GenerateActivationsConfig,
+    ProbeEvalRunConfig,
 )
-from models_under_pressure.dataset.loaders import loaders
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
-from models_under_pressure.scripts.train_probes import get_activations, train_probes
+from models_under_pressure.scripts.train_probes import (
+    get_activations,
+    load_generated_dataset_split,
+    train_probes,
+)
 
-# Set random seed for reproducibility
-RANDOM_SEED = 0
-np.random.seed(RANDOM_SEED)
 
-
-def compute_auroc(probe: LinearProbe, dataset: Dataset) -> float:
+def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
     """Compute the AUROC score for a probe on a dataset.
 
     Args:
@@ -54,8 +57,8 @@ def compute_auroc(probe: LinearProbe, dataset: Dataset) -> float:
 
 
 def compute_aurocs(
-    train_dataset: Dataset,
-    eval_datasets: list[Dataset],
+    train_dataset: LabelledDataset,
+    eval_datasets: list[LabelledDataset],
     model_name: str,
     layer: int,
 ) -> list[float]:
@@ -74,31 +77,47 @@ def compute_aurocs(
     return aurocs
 
 
-def main(
+def load_eval_datasets(
+    max_samples: int | None = None,
+) -> tuple[list[LabelledDataset], list[str]]:
+    eval_datasets = []
+    eval_dataset_names = []
+    for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
+        eval_dataset = LabelledDataset.load_from(
+            file_path=eval_dataset_config["path"],
+            field_mapping=eval_dataset_config["field_mapping"],
+        )
+        eval_dataset = eval_dataset.filter(lambda x: x.label != Label.AMBIGUOUS)
+        if max_samples is not None:
+            indices = np.random.choice(
+                range(len(eval_dataset.ids)),
+                size=max_samples,
+                replace=False,
+            )
+            eval_dataset = eval_dataset[list(indices)]  # type: ignore
+        eval_datasets.append(eval_dataset)
+        eval_dataset_names.append(eval_dataset_name)
+    return eval_datasets, eval_dataset_names
+
+
+def run_probe_evaluation(
     layer: int,
-    file_name: str,
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
-):
+) -> ProbeEvaluationResults:
+    """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
     # 1. Load train and eval datasets
-    # TODO Refactor this: Make a separate method to read train-test split for the generated dataset
-    # (also use that in train_probes.py)
-    dataset = loaders["generated"](dataset_path)
-
-    split_dict = json.load(open(split_path))
-    assert split_dict["dataset"] == dataset_path.stem
-
-    train_indices = [
-        dataset.ids.index(item_id) for item_id in split_dict["train_dataset"]
-    ]
-    train_dataset = dataset[train_indices]  # type: ignore
+    train_dataset, _ = load_generated_dataset_split(
+        dataset_path,
+        split_path,
+    )
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
@@ -128,57 +147,42 @@ def main(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_dataset_names = ["anthropic", "toolace"]
-    eval_datasets = []
-    for eval_dataset_name in eval_dataset_names:
-        eval_dataset = loaders[eval_dataset_name]()  # type: ignore
-        if max_samples is not None:
-            indices = np.random.choice(
-                range(len(eval_dataset.ids)),
-                size=max_samples,
-                replace=False,
-            )
-            eval_dataset = eval_dataset[list(indices)]  # type: ignore
-        eval_datasets.append(eval_dataset)
+    eval_datasets, eval_dataset_names = load_eval_datasets(max_samples=max_samples)
 
     # Compute AUROCs
     aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
     for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
         print(f"AUROC for {eval_dataset_name}: {auroc}")
 
-    json.dump(
-        {
-            "AUROC": aurocs,
-            "datasets": eval_dataset_names,
-            "model_name": model_name,
-            "layer": layer,
-            "variation_type": variation_type,
-            "variation_value": variation_value,
-        },
-        open(RESULTS_DIR / file_name, "w"),
+    results = ProbeEvaluationResults(
+        AUROC=aurocs,
+        datasets=eval_dataset_names,
+        model_name=model_name,
+        layer=layer,
+        variation_type=variation_type,
+        variation_value=variation_value,
     )
+    return results
 
 
 if __name__ == "__main__":
-    max_samples = None
-    layer = 15
-    # variation_type = "prompt_style"
-    # variation_type = "language"
-    variation_type = None
-    variation_value = None  # "Q&A long"
-    dataset_path = Path("data/results/prompts_28_02_25.jsonl")
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+    # Set random seed for reproducibility
+    RANDOM_SEED = 0
+    np.random.seed(RANDOM_SEED)
 
-    file_name = (
-        f"{dataset_path.stem}_{model_name.split('/')[-1]}_{variation_type}_fig2.json"
+    config = ProbeEvalRunConfig(
+        max_samples=None, layer=11, model_name="meta-llama/Llama-3.3-70B-Instruct"
     )
 
-    main(
-        variation_type=variation_type,
-        variation_value=variation_value,
-        max_samples=max_samples,
-        layer=layer,
-        dataset_path=dataset_path,
-        model_name=model_name,
-        file_name=file_name,
+    results = run_probe_evaluation(
+        variation_type=config.variation_type,
+        variation_value=config.variation_value,
+        max_samples=config.max_samples,
+        layer=config.layer,
+        dataset_path=config.dataset_path,
+        model_name=config.model_name,
+    )
+
+    json.dump(
+        dataclasses.asdict(results), open(RESULTS_DIR / config.output_filename, "w")
     )

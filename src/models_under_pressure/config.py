@@ -1,9 +1,10 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
@@ -32,10 +33,33 @@ RESULTS_DIR = DATA_DIR / "results"
 EVALS_DIR = DATA_DIR / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
 TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
+MT_SAMPLES_CSV = EVALS_DIR / "mt_samples_300_labelled_28_02_25.csv"
 
 EVAL_DATASETS = {
-    "anthropic": ANTHROPIC_SAMPLES_CSV,
-    "toolace": TOOLACE_SAMPLES_CSV,
+    "anthropic": {
+        "path": ANTHROPIC_SAMPLES_CSV,
+        "field_mapping": {
+            "id": "ids",
+            "messages": "inputs",
+            "high_stakes": "labels",
+        },
+    },
+    "toolace": {
+        "path": TOOLACE_SAMPLES_CSV,
+        "field_mapping": {
+            "inputs": "inputs",
+            "labels": "labels",
+            "ids": "ids",
+        },
+    },
+    "mt": {
+        "path": MT_SAMPLES_CSV,
+        "field_mapping": {
+            "inputs": "inputs",
+            "labels": "labels",
+            "ids": "ids",
+        },
+    },
 }
 
 
@@ -101,8 +125,36 @@ class RunConfig:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
 
+with open(INPUTS_DIR / "prompt_variations.json") as f:
+    VARIATION_TYPES = list(json.load(f).keys())
+
+
+@dataclass(frozen=True)
+class HeatmapRunConfig:
+    model_name: str
+    layers: list[int]
+    dataset_path: Path  # TODO Set default for this
+    max_samples: int | None = None
+    variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
+    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+
+
+@dataclass(frozen=True)
+class ProbeEvalRunConfig:
+    layer: int
+    max_samples: int | None = None
+    variation_type: str | None = None
+    variation_value: str | None = None
+    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl")
+    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+
+    @property
+    def output_filename(self) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
+
+
 class GenerateActivationsConfig(BaseModel):
-    dataset: Dataset
+    dataset: LabelledDataset
     model_name: str
     layer: int
 
