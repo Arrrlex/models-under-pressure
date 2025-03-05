@@ -11,6 +11,7 @@ from transformers.tokenization_utils_base import (
 )
 
 from models_under_pressure.config import BATCH_SIZE, DEVICE
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Dialogue,
@@ -48,7 +49,7 @@ class LLMModel:
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
             "device_map": "auto",
-            "torch_dtype": torch.bfloat16,
+            "torch_dtype": torch.float16,
         }
 
         if model_kwargs is None:
@@ -108,6 +109,7 @@ class LLMModel:
     ) -> tuple[
         Float[np.ndarray, "layers batch_size seq_len embed_dim"],
         Float[np.ndarray, "batch_size seq_len"],
+        np.ndarray,  # input_ids
     ]:
         dialogues = [to_dialogue(inp) for inp in inputs]
         layers = layers or list(range(self.n_layers))
@@ -162,18 +164,20 @@ class LLMModel:
             print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
         attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
-        return np.stack(activations), attention_mask
+        input_ids = torch_inputs["input_ids"].detach().cpu().numpy()
+
+        return np.stack(activations), attention_mask, input_ids
 
     def get_batched_activations(
         self,
         dataset: Dataset,
         layer: int,
         batch_size: int = BATCH_SIZE,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Activation:
         """
         Get activations for a given model and config.
 
-        Handle batching and caching of activations.
+        Handle batching of activations.
         """
 
         print("Generating activations...")
@@ -186,6 +190,7 @@ class LLMModel:
         activations_tuple = self.get_activations(inputs=first_batch, layers=[layer])
         first_activation = activations_tuple[0][0]
         first_attn_mask = activations_tuple[1]
+        input_ids = activations_tuple[2]
         activation_shape = first_activation.shape[1:]  # Remove batch dimension
         attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
 
@@ -225,7 +230,9 @@ class LLMModel:
         activations = np.concatenate(all_activations, axis=0)
         attention_mask = np.concatenate(all_attention_masks, axis=0)
 
-        return activations, attention_mask
+        activations_obj = Activation(activations, attention_mask, input_ids)
+
+        return activations_obj
 
 
 if __name__ == "__main__":
@@ -258,6 +265,7 @@ if __name__ == "__main__":
             )
         ],
     ]  # type: ignore
-    activations, attention_mask = model.get_activations(inputs=dialogues)
+    activations, attention_mask, input_ids = model.get_activations(inputs=dialogues)
     print(activations.shape)
     print(attention_mask.shape)
+    print(input_ids.shape)

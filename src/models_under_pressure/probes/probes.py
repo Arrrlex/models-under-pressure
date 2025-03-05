@@ -7,6 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import Dataset, Label, LabelledDataset
 from models_under_pressure.probes.model import LLMModel
 
@@ -50,71 +51,64 @@ class LinearProbe(HighStakesClassifier):
 
     def _preprocess_activations(
         self,
-        activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
-        attention_mask: Float[np.ndarray, "batch_size seq_len"],
+        activations: Activation,
     ) -> Float[np.ndarray, "batch_size embed_dim"]:
-        assert len(activations.shape) == 3
         if self.seq_pos == "all":
-            acts = (activations * attention_mask[:, :, None]).mean(axis=1)
+            acts = activations.mean_aggregation().activations
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(activations.shape[1]), (
+            assert self.seq_pos in range(activations.activations.shape[1]), (
                 f"Invalid sequence position: {self.seq_pos}"
             )
-            acts = activations[:, self.seq_pos, :]
+            acts = activations.activations[:, self.seq_pos, :]
 
         return acts
 
     def _fit(
         self,
-        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
+        activations: Activation,
         y: Float[np.ndarray, " batch_size"],
-        *,
-        attention_mask: Float[np.ndarray, "batch_size seq_len"],
     ) -> Self:
-        X = self._preprocess_activations(X, attention_mask)
+        X = self._preprocess_activations(activations)
+        X = self._preprocess_activations(activations)
 
         self._classifier.fit(X, y)
         return self
 
     def fit(self, dataset: LabelledDataset) -> Self:
-        activations, attention_mask = self._llm.get_batched_activations(
+        activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
 
         print("Training probe...")
         self._fit(
-            X=activations,
+            activations=activations_obj,
             y=dataset.labels_numpy(),
-            attention_mask=attention_mask,
         )
 
         return self
 
     def predict(self, dataset: Dataset) -> list[Label]:
-        activations, attention_mask = self._llm.get_activations(
-            dataset.inputs, layers=[self.layer]
-        )[0]
-        predictions = self._predict(activations, attention_mask=attention_mask)
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+        predictions = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in predictions]
 
     def _predict(
         self,
-        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
-        *,
-        attention_mask: Float[np.ndarray, "batch_size seq_len"],
+        activations: Activation,
     ) -> Float[np.ndarray, " batch_size"]:
-        X = self._preprocess_activations(X, attention_mask)
+        X = self._preprocess_activations(activations)
         return self._classifier.predict(X)
 
 
 def compute_accuracy(
     probe: LinearProbe,
-    dataset: Dataset,
-    *,
-    activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
-    attention_mask: Float[np.ndarray, "batch_size seq_len"],
+    dataset: LabelledDataset,
+    activations: Activation,
 ) -> float:
-    pred_labels = probe._predict(activations, attention_mask=attention_mask)
+    pred_labels = probe._predict(activations)
     return (np.array(pred_labels) == dataset.labels_numpy()).mean()

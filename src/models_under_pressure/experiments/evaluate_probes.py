@@ -14,10 +14,7 @@ from models_under_pressure.config import (
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.experiments.train_probes import (
-    get_activations,
-    train_probes,
-)
+from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.model import LLMModel
@@ -35,14 +32,13 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
         float: The AUROC score
     """
     # Get activations for the dataset
-    activations, attention_mask = get_activations(
-        model=probe._llm,
+    activations_obj = probe._llm.get_batched_activations(
         dataset=dataset,
         layer=probe.layer,
     )
 
     # Get predicted probabilities for the positive class (high stakes)
-    processed_activations = probe._preprocess_activations(activations, attention_mask)
+    processed_activations = probe._preprocess_activations(activations_obj)
     print(f"{processed_activations.shape=}")
     y_pred = probe._classifier.predict_proba(processed_activations)[:, 1]
 
