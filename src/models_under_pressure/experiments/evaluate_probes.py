@@ -11,15 +11,15 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     GENERATED_DATASET_TRAIN_TEST_SPLIT,
     RESULTS_DIR,
+    EvalRunConfig,
     GenerateActivationsConfig,
-    ProbeEvalRunConfig,
 )
+from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.probes import LinearProbe
 from models_under_pressure.scripts.train_probes import (
     get_activations,
-    load_generated_dataset_split,
     train_probes,
 )
 
@@ -100,7 +100,7 @@ def load_eval_datasets(
     return eval_datasets, eval_dataset_names
 
 
-def run_probe_evaluation(
+def run_evaluation(
     layer: int,
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
     split_path: Path | None = None,
@@ -114,7 +114,7 @@ def run_probe_evaluation(
         split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
     # 1. Load train and eval datasets
-    train_dataset, _ = load_generated_dataset_split(
+    train_dataset, _ = load_train_test(
         dataset_path,
         split_path,
     )
@@ -170,16 +170,17 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = ProbeEvalRunConfig(
+    config = EvalRunConfig(
         max_samples=None, layer=11, model_name="meta-llama/Llama-3.3-70B-Instruct"
     )
 
-    results = run_probe_evaluation(
+    results = run_evaluation(
         variation_type=config.variation_type,
         variation_value=config.variation_value,
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
+        split_path=config.split_path,
         model_name=config.model_name,
     )
 

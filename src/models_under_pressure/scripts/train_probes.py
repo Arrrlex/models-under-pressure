@@ -15,9 +15,9 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
-    create_generalization_variation_splits,
     create_train_test_split,
-    load_generated_dataset_split,
+    load_train_test,
+    split_by_variation,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import HeatmapResults
@@ -281,7 +281,7 @@ def test_activations_on_anthropic_dataset():
     )
 
 
-def generate_heatmap_for_generated_dataset(
+def generate_heatmap(
     config: HeatmapRunConfig,
     variation_type: str = "prompt_style",
 ) -> HeatmapResults:
@@ -294,18 +294,18 @@ def generate_heatmap_for_generated_dataset(
     Returns:
         HeatmapResults: Contains performances and variation values
     """
-    train_dataset, test_dataset = load_generated_dataset_split(
+    train_dataset, test_dataset = load_train_test(
         dataset_path=config.dataset_path,
         split_path=config.split_path,
     )
 
-    train_datasets, test_datasets, variation_values = (
-        create_generalization_variation_splits(
-            train_dataset, test_dataset, variation_type, max_samples=config.max_samples
-        )
+    train_datasets, test_datasets, variation_values = split_by_variation(
+        train_dataset, test_dataset, variation_type, max_samples=config.max_samples
     )
 
     # Now to get the heat map, we train on each train dataset and evaluate on each test dataset
+    # TODO The model is read here but will also be initialized inside train_probes, which seems inefficient
+    # TODO Get rid of unneeded arguments (LLMModel.load(model_name) is used in train_probes and seems to work fine)
     model = LLMModel.load(
         config.model_name,
         model_kwargs={
@@ -315,7 +315,7 @@ def generate_heatmap_for_generated_dataset(
         },
         tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
     )
-    layers = config.layers or list(range(model.n_layers))
+    layers = config.layers
     performances = {i: [] for i in layers}  # Layer index: heatmap values
     for i, train_ds in enumerate(train_datasets):
         print(f"Training on variation '{variation_type}'='{variation_values[i]}'")
@@ -364,7 +364,7 @@ if __name__ == "__main__":
         print(f"\nGenerating heatmap for {variation_type}...")
         filename = RESULTS_DIR / f"generated_heatmap_{variation_type}.json"
 
-        heatmap_results = generate_heatmap_for_generated_dataset(
+        heatmap_results = generate_heatmap(
             config=config,
             variation_type=variation_type,
         )

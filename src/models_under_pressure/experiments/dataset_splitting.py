@@ -55,7 +55,7 @@ def create_train_test_split(
     return dataset[train_indices], dataset[test_indices]  # type: ignore
 
 
-def create_generalization_variation_splits(
+def split_by_variation(
     train_dataset: Dataset,
     test_dataset: Dataset,
     variation_type: str,
@@ -118,7 +118,7 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
     raise NotImplementedError("Not implemented")
 
 
-def load_generated_dataset_split(
+def load_train_test(
     dataset_path: Path,
     split_path: Path,
 ) -> tuple[LabelledDataset, LabelledDataset]:

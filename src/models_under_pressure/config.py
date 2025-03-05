@@ -138,15 +138,18 @@ class HeatmapRunConfig:
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
     split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
+    # TODO Handle output filename here as well
+
 
 @dataclass(frozen=True)
-class ProbeEvalRunConfig:
+class EvalRunConfig:
     layer: int
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl")
     model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:
