@@ -34,19 +34,19 @@ def analyze_stakes(text: str) -> Dict[str, Any] | None:
     return response
 
 
-def label_dataset(unlabeled_dataset: Dataset) -> Dataset:
-    inputs = unlabeled_dataset.inputs
-    ids = unlabeled_dataset.ids
+def label_dataset(dataset: Dataset) -> LabelledDataset:
+    inputs = dataset.inputs
+    ids = dataset.ids
     labels = []
     explanations = []
 
-    print(f"Starting labeling process with {len(unlabeled_dataset)} rows")
+    print(f"Starting labeling process with {len(dataset)} rows")
     print(f"Number of inputs: {len(inputs)}")
     print(f"Number of ids: {len(ids)}")
 
     for item in tqdm.tqdm(
-        unlabeled_dataset.to_records(),
-        total=len(unlabeled_dataset),
+        dataset.to_records(),
+        total=len(dataset),
         desc="Labeling dataset",
     ):
         item = item.input
@@ -69,14 +69,11 @@ def label_dataset(unlabeled_dataset: Dataset) -> Dataset:
     print(f"Completed labeling. Number of labels: {len(labels)}")
     print(f"Number of explanations: {len(explanations)}")
 
-    # Convert labels to their string values for storage
-    label_values = [label.value for label in labels]
-
     dataset = LabelledDataset(
         inputs=inputs,
+        label_name="labels",
         ids=ids,
-        label_name="high_stakes",
-        other_fields={"explanation": explanations, "high_stakes": label_values},
+        other_fields={"explanation": explanations, "labels": labels},
     )
 
     return dataset

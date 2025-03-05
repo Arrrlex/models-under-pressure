@@ -73,6 +73,53 @@ class Dataset(BaseModel):
     The base dataset class is used to store the dataset in a way that is agnostic to the label field.
     """
 
+    @model_validator(mode="after")
+    def validate_lengths(self) -> Self:
+        """Verify that inputs, ids and each element of other_fields have the same length"""
+        input_len = len(self.inputs)
+        if len(self.ids) != input_len:
+            raise ValueError(
+                f"Length mismatch: inputs ({input_len}) != ids ({len(self.ids)})"
+            )
+
+        for field_name, field_values in self.other_fields.items():
+            if len(field_values) != input_len:
+                raise ValueError(
+                    f"Length mismatch: inputs ({input_len}) != {field_name} ({len(field_values)})"
+                )
+        return self
+
+    def __len__(self) -> int:
+        return len(self.inputs)
+
+    @overload
+    def __getitem__(self, idx: int) -> Record: ...
+
+    @overload
+    def __getitem__(self, idx: slice) -> Self: ...
+
+    def __getitem__(self, idx: int | slice | list[int]) -> Self | Record:
+        if isinstance(idx, list):
+            return type(self)(
+                inputs=[self.inputs[i] for i in idx],
+                ids=[self.ids[i] for i in idx],
+                other_fields={
+                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
+                },
+            )
+        elif isinstance(idx, slice):
+            return type(self)(
+                inputs=self.inputs[idx],
+                ids=self.ids[idx],
+                other_fields={k: v[idx] for k, v in self.other_fields.items()},
+            )
+        else:
+            return Record(
+                input=self.inputs[idx],
+                id=self.ids[idx],
+                other_fields={k: v[idx] for k, v in self.other_fields.items()},
+            )
+
     def to_records(self) -> Sequence[Record]:
         return [
             Record(
@@ -245,6 +292,10 @@ class Dataset(BaseModel):
 
     def filter(self, filter_fn: Callable[[Record], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+
+    @cached_property
+    def stable_hash(self) -> str:
+        return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
 
 
 class LabelledDataset(Dataset):
