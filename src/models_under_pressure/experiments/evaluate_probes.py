@@ -12,16 +12,16 @@ from models_under_pressure.config import (
     GENERATED_DATASET_TRAIN_TEST_SPLIT,
     RESULTS_DIR,
     EvalRunConfig,
-    GenerateActivationsConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.interfaces.dataset import Label, LabelledDataset
-from models_under_pressure.interfaces.results import ProbeEvaluationResults
-from models_under_pressure.probes.probes import LinearProbe
-from models_under_pressure.scripts.train_probes import (
+from models_under_pressure.experiments.train_probes import (
     get_activations,
     train_probes,
 )
+from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.probes import LinearProbe
 
 
 def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
@@ -37,11 +37,8 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
     # Get activations for the dataset
     activations, attention_mask = get_activations(
         model=probe._llm,
-        config=GenerateActivationsConfig(
-            dataset=dataset,
-            model_name=probe._llm.name,
-            layer=probe.layer,
-        ),
+        dataset=dataset,
+        layer=probe.layer,
     )
 
     # Get predicted probabilities for the positive class (high stakes)
@@ -63,9 +60,9 @@ def compute_aurocs(
     layer: int,
 ) -> list[float]:
     aurocs = []
-
+    model = LLMModel.load(model_name, model_kwargs={"torch_dtype": torch.float16})
     # Train a linear probe on the train dataset
-    probes = train_probes(train_dataset, model_name=model_name, layers=[layer])[layer]
+    probes = train_probes(model, train_dataset, layers=[layer])[layer]
 
     torch.cuda.empty_cache()
 
@@ -171,7 +168,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=None, layer=11, model_name="meta-llama/Llama-3.3-70B-Instruct"
+        max_samples=10, layer=11, model_name="meta-llama/Llama-3.2-1B-Instruct"
     )
 
     results = run_evaluation(

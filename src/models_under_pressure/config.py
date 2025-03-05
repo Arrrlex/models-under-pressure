@@ -2,10 +2,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel
-
-from models_under_pressure.interfaces.dataset import LabelledDataset
-
 DEFAULT_MODEL = "gpt-4o-mini"
 
 BATCH_SIZE = 64
@@ -33,7 +29,7 @@ RESULTS_DIR = DATA_DIR / "results"
 EVALS_DIR = DATA_DIR / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
 TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
-MT_SAMPLES_CSV = EVALS_DIR / "mt_samples_300_labelled_28_02_25.csv"
+MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
 
 EVAL_DATASETS = {
     "anthropic": {
@@ -154,27 +150,3 @@ class EvalRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
-
-
-class GenerateActivationsConfig(BaseModel):
-    dataset: LabelledDataset
-    model_name: str
-    layer: int
-
-    output_dir: Path = DATA_DIR / "activations"
-
-    @property
-    def acts_output_file(self) -> Path:
-        model_name_path_safe = self.model_name.replace("/", "_")
-        return (
-            self.output_dir
-            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}.npz"
-        )
-
-    @property
-    def attn_mask_output_file(self) -> Path:
-        model_name_path_safe = self.model_name.replace("/", "_")
-        return (
-            self.output_dir
-            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}_attn_mask.npz"
-        )

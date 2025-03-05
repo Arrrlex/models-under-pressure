@@ -4,8 +4,8 @@ import pandas as pd
 import seaborn as sns
 
 from models_under_pressure.config import RESULTS_DIR
+from models_under_pressure.experiments.train_probes import HeatmapResults
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
-from models_under_pressure.scripts.train_probes import HeatmapResults
 
 
 def generate_heatmap_plot(result: HeatmapResults):
