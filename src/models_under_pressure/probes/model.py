@@ -34,6 +34,15 @@ class LLMModel:
         else:
             return self.model.config.n_layers
 
+    @property
+    def device(self) -> str:
+        return self.model.device
+
+    @device.setter
+    def device(self, device: str | None = None) -> None:
+        dev = device or DEVICE
+        self.model.to(dev)
+
     @classmethod
     def load(
         cls,
@@ -47,8 +56,8 @@ class LLMModel:
 
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
-            "device_map": "auto",
-            "torch_dtype": torch.bfloat16 if DEVICE == "cuda" else torch.float16,
+            "device_map": DEVICE,
+            "torch_dtype": torch.bfloat16 if "cuda" in DEVICE else torch.float16,
         }
 
         if model_kwargs is None:
@@ -91,7 +100,7 @@ class LLMModel:
 
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
-                token_dict[k] = v.to(DEVICE)
+                token_dict[k] = v.to(self.device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
