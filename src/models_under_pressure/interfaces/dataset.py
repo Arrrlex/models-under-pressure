@@ -76,7 +76,8 @@ class Record(BaseModel):
 class LabelledRecord(Record):
     @property
     def label(self) -> Label:
-        return Label.from_int(self.other_fields["labels"])
+        label_ = self.other_fields["labels"]
+        return Label.from_int(label_) if isinstance(label_, int) else Label(label_)
 
 
 R = TypeVar("R", bound=Record)
