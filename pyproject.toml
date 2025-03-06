@@ -47,6 +47,9 @@ dev = [
     "pytest>=8.3.4",
 ]
 
+[project.scripts]
+dash = "models_under_pressure.cli:dash_command"
+
 [tool.ruff]
 line-length = 88
 lint.extend-ignore = [
