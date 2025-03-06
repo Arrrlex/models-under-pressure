@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
-    GENERATED_DATASET_PATH,
+    GENERATED_DATASET,
     LOCAL_MODELS,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -105,17 +105,14 @@ def train_probes_and_save_results(
 
 
 if __name__ == "__main__":
-    train_dataset = LabelledDataset.load_from(GENERATED_DATASET_PATH)
+    train_dataset = LabelledDataset.load_from(**GENERATED_DATASET)
     eval_datasets = {
-        name: LabelledDataset.load_from(
-            item["path"], field_mapping=item["field_mapping"]
-        )
-        for name, item in EVAL_DATASETS.items()
+        name: LabelledDataset.load_from(**item) for name, item in EVAL_DATASETS.items()
     }
     train_probes_and_save_results(
         model_name=LOCAL_MODELS["llama-8b"],
         train_dataset=train_dataset,
         eval_datasets=eval_datasets,
-        layers=[1, 5, 10],
+        layers=[7, 10, 12],
         output_dir=Path("data/results/probes"),
     )
