@@ -12,7 +12,7 @@ from transformers.tokenization_utils_base import (
 from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
-    Dataset,
+    BaseDataset,
     Dialogue,
     Input,
     Message,
@@ -25,6 +25,8 @@ class LLMModel:
     name: str
     model: torch.nn.Module
     tokenizer: PreTrainedTokenizerBase
+    verbose: bool = False
+    device: str = DEVICE
 
     @property
     def n_layers(self) -> int:
@@ -34,14 +36,10 @@ class LLMModel:
         else:
             return self.model.config.n_layers
 
-    @property
-    def device(self) -> str:
-        return self.model.device
-
-    @device.setter
-    def device(self, device: str | None = None) -> None:
-        dev = device or DEVICE
-        self.model.to(dev)
+    def __setattr__(self, key: str, value: Any) -> None:
+        super().__setattr__(key, value)
+        if key == "device":
+            self.model.to(value)
 
     @classmethod
     def load(
@@ -50,13 +48,14 @@ class LLMModel:
         tokenizer_name: str | None = None,
         model_kwargs: dict[str, Any] | None = None,
         tokenizer_kwargs: dict[str, Any] | None = None,
+        device: str | None = None,
     ) -> "LLMModel":
         if tokenizer_name is None:
             tokenizer_name = model_name
 
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
-            "device_map": DEVICE,
+            "device_map": device or DEVICE,
             "torch_dtype": torch.bfloat16 if "cuda" in DEVICE else torch.float16,
         }
 
@@ -96,7 +95,12 @@ class LLMModel:
             add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
         )
 
+        print("input_str")
+        print(tokenizer_kwargs)
+
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
+
+        print("token_dict input_ids shape", token_dict["input_ids"].shape)
 
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
@@ -165,7 +169,8 @@ class LLMModel:
 
         # Print stored activations
         for layer, act in zip(layers, activations):
-            print(f"Layer: {layer}, Activation Shape: {act.shape}")
+            if self.verbose:
+                print(f"Layer: {layer}, Activation Shape: {act.shape}")
 
         attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
         input_ids = torch_inputs["input_ids"].detach().cpu().numpy()
@@ -174,7 +179,7 @@ class LLMModel:
 
     def get_batched_activations(
         self,
-        dataset: Dataset,
+        dataset: BaseDataset,
         layer: int,
         batch_size: int = BATCH_SIZE,
     ) -> Activation:

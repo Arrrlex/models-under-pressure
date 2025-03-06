@@ -8,13 +8,13 @@ import torch
 DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
-    DEVICE = "cuda"
+    DEVICE: str = "cuda"
     BATCH_SIZE = 64
 elif torch.backends.mps.is_available():
-    DEVICE = "mps"
+    DEVICE: str = "mps"
     BATCH_SIZE = 4
 else:
-    DEVICE = "cpu"
+    DEVICE: str = "cpu"
     BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
