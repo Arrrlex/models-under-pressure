@@ -49,7 +49,7 @@ class LLMModel:
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
             "device_map": "auto",
-            "torch_dtype": torch.float16,
+            "torch_dtype": torch.bfloat16 if DEVICE == "cuda" else torch.float16,
         }
 
         if model_kwargs is None:
@@ -155,9 +155,9 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert len(activations) == len(layers), (
-            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
-        )
+        assert (
+            len(activations) == len(layers)
+        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
 
         # Print stored activations
         for layer, act in zip(layers, activations):

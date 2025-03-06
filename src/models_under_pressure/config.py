@@ -1,12 +1,21 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+
+import torch
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
-BATCH_SIZE = 64
-
-DEVICE = "cuda"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+    BATCH_SIZE = 64
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+    BATCH_SIZE = 4
+else:
+    DEVICE = "cpu"
+    BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
@@ -17,13 +26,14 @@ TOPICS_JSON = INPUTS_DIR / "topics.json"
 SITUATION_FACTORS_JSON = INPUTS_DIR / "situation_factors.json"
 FILTERED_SITUATION_FACTORS_CSV = INPUTS_DIR / "situation_topics.csv"
 LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
-GENERATED_DATASET_TRAIN_TEST_SPLIT = (
-    INPUTS_DIR / "generated_dataset_train_test_split.json"
-)
 
 
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
+OUTPUT_DIR = RESULTS_DIR / "outputs"
+TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
+PLOTS_DIR = RESULTS_DIR / "plots"
 
 # Evals files
 EVALS_DIR = DATA_DIR / "evals"
@@ -102,7 +112,8 @@ class RunConfig:
 
     @property
     def prompts_file(self) -> Path:
-        return self.run_dir / "prompts.jsonl"
+        date_str = datetime.now().strftime("%d_%m_%y")
+        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -129,12 +140,13 @@ with open(INPUTS_DIR / "prompt_variations.json") as f:
 class HeatmapRunConfig:
     model_name: str
     layers: list[int]
-    dataset_path: Path  # TODO Set default for this
+    dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
-    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+    split_path: Path = TRAIN_TEST_SPLIT
 
-    # TODO Handle output filename here as well
+    def output_filename(self, variation_type: str) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
 
 
 @dataclass(frozen=True)
@@ -143,9 +155,9 @@ class EvalRunConfig:
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl")
+    dataset_path: Path = GENERATED_DATASET_PATH
     model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
-    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+    split_path: Path = TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:

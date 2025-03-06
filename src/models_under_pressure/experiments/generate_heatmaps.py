@@ -1,9 +1,8 @@
 import json
-from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.config import RESULTS_DIR, HeatmapRunConfig
+from models_under_pressure.config import OUTPUT_DIR, HeatmapRunConfig
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
@@ -75,12 +74,11 @@ if __name__ == "__main__":
         model_name="meta-llama/Llama-3.2-1B-Instruct",
         layers=[1, 10],
         max_samples=20,
-        dataset_path=Path("data/results/prompts_28_02_25.jsonl"),
     )
 
     for variation_type in config.variation_types:
         print(f"\nGenerating heatmap for {variation_type}...")
-        filename = RESULTS_DIR / f"generated_heatmap_{variation_type}.json"
+        filename = OUTPUT_DIR / config.output_filename(variation_type)
 
         heatmap_results = generate_heatmap(
             config=config,

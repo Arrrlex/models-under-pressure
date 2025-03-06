@@ -9,8 +9,8 @@ from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
-    GENERATED_DATASET_TRAIN_TEST_SPLIT,
-    RESULTS_DIR,
+    OUTPUT_DIR,
+    TRAIN_TEST_SPLIT,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
@@ -104,7 +104,7 @@ def run_evaluation(
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
-        split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+        split_path = TRAIN_TEST_SPLIT
 
     # 1. Load train and eval datasets
     train_dataset, _ = load_train_test(
@@ -178,5 +178,5 @@ if __name__ == "__main__":
     )
 
     json.dump(
-        dataclasses.asdict(results), open(RESULTS_DIR / config.output_filename, "w")
+        dataclasses.asdict(results), open(OUTPUT_DIR / config.output_filename, "w")
     )

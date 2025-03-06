@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from models_under_pressure.config import RESULTS_DIR
-from models_under_pressure.experiments.train_probes import HeatmapResults
-from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.config import PLOTS_DIR
+from models_under_pressure.interfaces.results import (
+    HeatmapResults,
+    ProbeEvaluationResults,
+)
 
 
 def generate_heatmap_plot(result: HeatmapResults):
@@ -30,9 +32,7 @@ def generate_heatmap_plot(result: HeatmapResults):
         plt.tight_layout()
 
         # Save plot
-        plots_dir = RESULTS_DIR.parent / "plots"
-        plots_dir.mkdir(exist_ok=True)
-        plt.savefig(plots_dir / f"probe_generalisation_heatmap_layer_{layer}.png")
+        plt.savefig(PLOTS_DIR / f"heatmap_layer_{layer}_{result.variation_type}.png")
         plt.show()
 
 
@@ -78,8 +78,6 @@ def plot_aurocs(
     plt.legend()
 
     # Save plot
-    plots_dir = RESULTS_DIR.parent / "plots"
-    plots_dir.mkdir(exist_ok=True)
-    plt.savefig(plots_dir / "probe_generalisation_aurocs.png")
+    plt.savefig(PLOTS_DIR / "AUROCs.png")
 
     plt.show()

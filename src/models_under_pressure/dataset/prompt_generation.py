@@ -212,7 +212,7 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     prompts = []
 
     print("Generating Prompts")
-    for idx, type_of_variation in enumerate(types_of_variations):
+    for type_of_variation in types_of_variations:
         variation_names = list(variations_json[type_of_variation].keys())
 
         for i, variation in tqdm(
