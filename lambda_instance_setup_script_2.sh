@@ -5,3 +5,5 @@ cd models-under-pressure
 uv sync
 uv run pre-commit install
 uv run huggingface-cli login
+git config --global user.email "me+github@alexmck.com"
+git config --global user.name "Alex McKenzie"
