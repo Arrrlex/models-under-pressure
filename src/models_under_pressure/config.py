@@ -1,16 +1,21 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel
-
-from models_under_pressure.interfaces.dataset import LabelledDataset
+import torch
 
 DEFAULT_MODEL = "gpt-4o-mini"
 
-BATCH_SIZE = 64
-
-DEVICE = "cuda"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+    BATCH_SIZE = 64
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+    BATCH_SIZE = 4
+else:
+    DEVICE = "cpu"
+    BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
@@ -21,19 +26,20 @@ TOPICS_JSON = INPUTS_DIR / "topics.json"
 SITUATION_FACTORS_JSON = INPUTS_DIR / "situation_factors.json"
 FILTERED_SITUATION_FACTORS_CSV = INPUTS_DIR / "situation_topics.csv"
 LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
-GENERATED_DATASET_TRAIN_TEST_SPLIT = (
-    INPUTS_DIR / "generated_dataset_train_test_split.json"
-)
 
 
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
+OUTPUT_DIR = RESULTS_DIR / "outputs"
+TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
+PLOTS_DIR = RESULTS_DIR / "plots"
 
 # Evals files
 EVALS_DIR = DATA_DIR / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
 TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
-MT_SAMPLES_CSV = EVALS_DIR / "mt_samples_300_labelled_28_02_25.csv"
+MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
 
 EVAL_DATASETS = {
     "anthropic": {
@@ -106,7 +112,8 @@ class RunConfig:
 
     @property
     def prompts_file(self) -> Path:
-        return self.run_dir / "prompts.jsonl"
+        date_str = datetime.now().strftime("%d_%m_%y")
+        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -129,49 +136,33 @@ with open(INPUTS_DIR / "prompt_variations.json") as f:
     VARIATION_TYPES = list(json.load(f).keys())
 
 
+DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
+DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
+
+
 @dataclass(frozen=True)
 class HeatmapRunConfig:
-    model_name: str
     layers: list[int]
-    dataset_path: Path  # TODO Set default for this
+    model_name: str = DEFAULT_GPU_MODEL if DEVICE == "cuda" else DEFAULT_OTHER_MODEL
+    dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
-    split_path: Path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+    split_path: Path = TRAIN_TEST_SPLIT
+
+    def output_filename(self, variation_type: str) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
 
 
 @dataclass(frozen=True)
-class ProbeEvalRunConfig:
+class EvalRunConfig:
     layer: int
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl")
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+    dataset_path: Path = GENERATED_DATASET_PATH
+    model_name: str = DEFAULT_GPU_MODEL if DEVICE == "cuda" else DEFAULT_OTHER_MODEL
+    split_path: Path = TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
-
-
-class GenerateActivationsConfig(BaseModel):
-    dataset: LabelledDataset
-    model_name: str
-    layer: int
-
-    output_dir: Path = DATA_DIR / "activations"
-
-    @property
-    def acts_output_file(self) -> Path:
-        model_name_path_safe = self.model_name.replace("/", "_")
-        return (
-            self.output_dir
-            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}.npz"
-        )
-
-    @property
-    def attn_mask_output_file(self) -> Path:
-        model_name_path_safe = self.model_name.replace("/", "_")
-        return (
-            self.output_dir
-            / f"{model_name_path_safe}_{self.dataset.stable_hash}_{self.layer}_attn_mask.npz"
-        )

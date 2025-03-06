@@ -89,9 +89,6 @@ class Dataset(BaseModel):
                 )
         return self
 
-    def __len__(self) -> int:
-        return len(self.inputs)
-
     @overload
     def __getitem__(self, idx: int) -> Record: ...
 
@@ -131,7 +128,7 @@ class Dataset(BaseModel):
         ]
 
     @classmethod
-    def from_records(cls, records: Sequence[Record]) -> Self:
+    def from_records(cls, records: Sequence[LabelledRecord | Record]) -> Self:
         field_keys = records[0].other_fields.keys()
         return cls(
             inputs=[r.input for r in records],
@@ -170,34 +167,6 @@ class Dataset(BaseModel):
 
     def __len__(self) -> int:
         return len(self.inputs)
-
-    @overload
-    def __getitem__(self, idx: int) -> Record: ...
-
-    @overload
-    def __getitem__(self, idx: slice) -> Self: ...
-
-    def __getitem__(self, idx: int | slice | list[int]) -> Self | Record:
-        if isinstance(idx, list):
-            return type(self)(
-                inputs=[self.inputs[i] for i in idx],
-                ids=[self.ids[i] for i in idx],
-                other_fields={
-                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
-                },
-            )
-        elif isinstance(idx, slice):
-            return type(self)(
-                inputs=self.inputs[idx],
-                ids=self.ids[idx],
-                other_fields={k: v[idx] for k, v in self.other_fields.items()},
-            )
-        else:
-            return Record(
-                input=self.inputs[idx],
-                id=self.ids[idx],
-                other_fields={k: v[idx] for k, v in self.other_fields.items()},
-            )
 
     @classmethod
     def from_pandas(
@@ -292,10 +261,6 @@ class Dataset(BaseModel):
 
     def filter(self, filter_fn: Callable[[Record], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
-
-    @cached_property
-    def stable_hash(self) -> str:
-        return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
 
 
 class LabelledDataset(Dataset):

@@ -9,19 +9,16 @@ from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
-    GENERATED_DATASET_TRAIN_TEST_SPLIT,
-    RESULTS_DIR,
-    GenerateActivationsConfig,
-    ProbeEvalRunConfig,
+    OUTPUT_DIR,
+    TRAIN_TEST_SPLIT,
+    EvalRunConfig,
 )
+from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe
-from models_under_pressure.scripts.train_probes import (
-    get_activations,
-    load_generated_dataset_split,
-    train_probes,
-)
 
 
 def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
@@ -35,17 +32,13 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
         float: The AUROC score
     """
     # Get activations for the dataset
-    activations, attention_mask = get_activations(
-        model=probe._llm,
-        config=GenerateActivationsConfig(
-            dataset=dataset,
-            model_name=probe._llm.name,
-            layer=probe.layer,
-        ),
+    activations_obj = probe._llm.get_batched_activations(
+        dataset=dataset,
+        layer=probe.layer,
     )
 
     # Get predicted probabilities for the positive class (high stakes)
-    processed_activations = probe._preprocess_activations(activations, attention_mask)
+    processed_activations = probe._preprocess_activations(activations_obj)
     print(f"{processed_activations.shape=}")
     y_pred = probe._classifier.predict_proba(processed_activations)[:, 1]
 
@@ -63,9 +56,9 @@ def compute_aurocs(
     layer: int,
 ) -> list[float]:
     aurocs = []
-
+    model = LLMModel.load(model_name, model_kwargs={"torch_dtype": torch.float16})
     # Train a linear probe on the train dataset
-    probes = train_probes(train_dataset, model_name=model_name, layers=[layer])[layer]
+    probes = train_probes(model, train_dataset, layers=[layer])[layer]
 
     torch.cuda.empty_cache()
 
@@ -100,7 +93,7 @@ def load_eval_datasets(
     return eval_datasets, eval_dataset_names
 
 
-def run_probe_evaluation(
+def run_evaluation(
     layer: int,
     model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
     split_path: Path | None = None,
@@ -111,10 +104,10 @@ def run_probe_evaluation(
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
-        split_path = GENERATED_DATASET_TRAIN_TEST_SPLIT
+        split_path = TRAIN_TEST_SPLIT
 
     # 1. Load train and eval datasets
-    train_dataset, _ = load_generated_dataset_split(
+    train_dataset, _ = load_train_test(
         dataset_path,
         split_path,
     )
@@ -170,19 +163,21 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = ProbeEvalRunConfig(
-        max_samples=None, layer=11, model_name="meta-llama/Llama-3.3-70B-Instruct"
+    config = EvalRunConfig(
+        max_samples=10,
+        layer=11,
     )
 
-    results = run_probe_evaluation(
+    results = run_evaluation(
         variation_type=config.variation_type,
         variation_value=config.variation_value,
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
+        split_path=config.split_path,
         model_name=config.model_name,
     )
 
     json.dump(
-        dataclasses.asdict(results), open(RESULTS_DIR / config.output_filename, "w")
+        dataclasses.asdict(results), open(OUTPUT_DIR / config.output_filename, "w")
     )
