@@ -78,6 +78,7 @@ def train_probes_and_save_results(
     output_dir: Path,
 ) -> None:
     model = LLMModel.load(model_name)
+    model_name_short = model_name.split("/")[-1]
     probes = train_probes(model, train_dataset, layers=layers)
 
     for layer, probe in tqdm(probes.items(), desc="Processing layers"):
@@ -100,14 +101,16 @@ def train_probes_and_save_results(
                     **eval_dataset.other_fields,
                 },
             ).save_to(
-                output_dir / f"{eval_dataset_name}_withscores_layer_{layer}.jsonl"
+                output_dir
+                / f"{eval_dataset_name}_withscores_{model_name_short}_l{layer}.jsonl"
             )
 
 
 if __name__ == "__main__":
     train_dataset = LabelledDataset.load_from(**GENERATED_DATASET)
     eval_datasets = {
-        name: LabelledDataset.load_from(**item) for name, item in EVAL_DATASETS.items()
+        name: LabelledDataset.load_from(**dataset_config)
+        for name, dataset_config in EVAL_DATASETS.items()
     }
     train_probes_and_save_results(
         model_name=LOCAL_MODELS["llama-8b"],

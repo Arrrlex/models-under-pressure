@@ -8,7 +8,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
-
+from tqdm import tqdm
 from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
@@ -184,7 +184,7 @@ class LLMModel:
         Handle batching of activations.
         """
 
-        print("Generating activations...")
+        print(f"Batch size: {batch_size}")
 
         n_samples = len(dataset.inputs)
         n_batches = (n_samples + batch_size - 1) // batch_size
@@ -200,7 +200,7 @@ class LLMModel:
 
         all_activations = []
         all_attention_masks = []
-        for i in range(n_batches):
+        for i in tqdm(range(n_batches), desc="Generating activations per batch..."):
             start_idx = i * batch_size
             end_idx = min((i + 1) * batch_size, n_samples)
             batch_inputs = dataset.inputs[start_idx:end_idx]

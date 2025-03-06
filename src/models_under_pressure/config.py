@@ -9,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
     DEVICE = "cuda"
-    BATCH_SIZE = 64
+    BATCH_SIZE = 16
 elif torch.backends.mps.is_available():
     DEVICE = "mps"
     BATCH_SIZE = 4

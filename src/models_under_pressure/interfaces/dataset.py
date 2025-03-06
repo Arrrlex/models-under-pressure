@@ -316,10 +316,6 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
 
-    for key in EVAL_DATASETS:
-        dataset_config = EVAL_DATASETS[key]
-        dataset = LabelledDataset.load_from(
-            file_path=dataset_config["path"],
-            field_mapping=dataset_config["field_mapping"],
-        )
+    for name, dataset_config in EVAL_DATASETS.items():
+        dataset = LabelledDataset.load_from(**dataset_config)
         print(dataset[:5])
