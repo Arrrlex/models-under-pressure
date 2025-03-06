@@ -272,10 +272,6 @@ class BaseDataset(BaseModel, Generic[R]):
         # Add each field from other_fields as a separate column
         base_data.update(self.other_fields)
 
-        # Save base_data dictionary to file
-        with open("temp_data/debug.json", "w") as f:
-            json.dump(base_data, f)
-
         return pd.DataFrame(base_data)
 
     def save_to(self, file_path: Path) -> None:
