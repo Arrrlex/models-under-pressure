@@ -289,7 +289,7 @@ class Dataset(BaseDataset[Record]):
     _record_class: ClassVar[Type] = Record
 
 
-class LabelledDataset(Dataset[LabelledRecord]):
+class LabelledDataset(BaseDataset[LabelledRecord]):
     """
     A dataset with a "labels" field.
     """
