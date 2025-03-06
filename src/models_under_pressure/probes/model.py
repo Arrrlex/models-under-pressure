@@ -12,7 +12,7 @@ from transformers.tokenization_utils_base import (
 from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
-    Dataset,
+    BaseDataset,
     Dialogue,
     Input,
     Message,
@@ -174,7 +174,7 @@ class LLMModel:
 
     def get_batched_activations(
         self,
-        dataset: Dataset,
+        dataset: BaseDataset,
         layer: int,
         batch_size: int = BATCH_SIZE,
     ) -> Activation:

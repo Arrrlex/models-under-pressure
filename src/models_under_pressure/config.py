@@ -19,6 +19,12 @@ else:
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
+LOCAL_MODELS = {
+    "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-8b": "meta-llama/Llama-3.2-8B-Instruct",
+    "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
+}
+
 # Paths to input files
 INPUTS_DIR = DATA_DIR / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"

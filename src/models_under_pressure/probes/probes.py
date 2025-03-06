@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Self
+from typing import Protocol, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -118,7 +118,7 @@ class LinearProbe(HighStakesClassifier):
 
     def per_token_predictions(
         self,
-        inputs: list[Input],
+        inputs: Sequence[Input],
     ) -> Float[np.ndarray, "batch_size seq_len"]:
         dataset = Dataset(
             inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
@@ -154,7 +154,7 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name="meta-llama/Llama-3.2-1B-Instruct")
+    model = LLMModel.load(model_name="meta-llama/Llama-3.2-8B-Instruct")
 
     # Train a probe
     train_dataset, _ = load_train_test(
