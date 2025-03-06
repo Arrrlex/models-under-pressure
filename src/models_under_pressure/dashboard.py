@@ -14,6 +14,8 @@ import plotly.express as px
 import streamlit as st
 import typer
 
+from models_under_pressure.interfaces.dataset import Label
+
 
 class DashboardDataset:
     def __init__(self, dataset: pd.DataFrame):
@@ -306,17 +308,15 @@ def display_model_evaluation_curves(data: DashboardDataset) -> None:
     # Button to generate the chart
     if st.button("Generate Evaluation Curve"):
         try:
-            # Convert ground truth to binary values
-            y_true = []
-            for label in data.data[selected_truth]:
-                if label == "low-stakes":
-                    y_true.append(0)
-                elif label == "high-stakes":
-                    y_true.append(1)
-                else:
-                    raise ValueError(
-                        f"Ground truth value '{label}' not recognized. Expected 'low-stakes' or 'high-stakes'."
-                    )
+            assert all(
+                x in {"high-stakes", "low-stakes", 0, 1}
+                for x in data.data[selected_truth].unique()
+            ), "Ground truth must be binary"
+
+            y_true = [
+                label if isinstance(label, int) else Label(label).to_int()
+                for label in data.data[selected_truth]
+            ]
 
             # Get probe scores and convert to probabilities using sigmoid if they're logits
             probe_scores = data.data[selected_probe].tolist()
