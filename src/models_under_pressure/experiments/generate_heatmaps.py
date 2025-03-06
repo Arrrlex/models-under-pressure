@@ -71,7 +71,6 @@ def generate_heatmap(
 
 if __name__ == "__main__":
     config = HeatmapRunConfig(
-        model_name="meta-llama/Llama-3.2-1B-Instruct",
         layers=[1, 10],
         max_samples=20,
     )

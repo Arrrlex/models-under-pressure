@@ -136,10 +136,14 @@ with open(INPUTS_DIR / "prompt_variations.json") as f:
     VARIATION_TYPES = list(json.load(f).keys())
 
 
+DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
+DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
+
+
 @dataclass(frozen=True)
 class HeatmapRunConfig:
-    model_name: str
     layers: list[int]
+    model_name: str = DEFAULT_GPU_MODEL if DEVICE == "cuda" else DEFAULT_OTHER_MODEL
     dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
@@ -156,7 +160,7 @@ class EvalRunConfig:
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
-    model_name: str = "meta-llama/Llama-3.1-8B-Instruct"
+    model_name: str = DEFAULT_GPU_MODEL if DEVICE == "cuda" else DEFAULT_OTHER_MODEL
     split_path: Path = TRAIN_TEST_SPLIT
 
     @property
