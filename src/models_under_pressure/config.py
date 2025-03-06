@@ -8,8 +8,8 @@ import torch
 DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
-    DEVICE: str = "cuda"
-    BATCH_SIZE = 64
+    DEVICE = "cuda"
+    BATCH_SIZE = 16
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
