@@ -97,7 +97,7 @@ class LLMModel:
         if "attention_mask" not in token_dict:
             raise ValueError("Tokenizer output must include attention mask")
 
-        return token_dict
+        return token_dict  # type: ignore
 
     #
     @torch.no_grad()

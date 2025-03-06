@@ -7,8 +7,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.interfaces.activations import Activation
-from models_under_pressure.interfaces.dataset import Dataset, Label, LabelledDataset
+from models_under_pressure.config import GENERATED_DATASET_PATH, TRAIN_TEST_SPLIT
+from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.interfaces.activations import Activation, AggregationType
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    Input,
+    Label,
+    LabelledDataset,
+)
 from models_under_pressure.probes.model import LLMModel
 
 
@@ -37,6 +44,7 @@ class LinearProbe(HighStakesClassifier):
     _llm: LLMModel
     layer: int
 
+    agg_type: AggregationType = AggregationType.MEAN
     seq_pos: int | str = "all"
     _classifier: SklearnClassifier = field(
         default_factory=lambda: make_pipeline(
@@ -54,12 +62,17 @@ class LinearProbe(HighStakesClassifier):
         activations: Activation,
     ) -> Float[np.ndarray, "batch_size embed_dim"]:
         if self.seq_pos == "all":
-            acts = activations.mean_aggregation().activations
+            if self.agg_type == AggregationType.MEAN:
+                acts = activations.mean_aggregation().activations
+            else:
+                raise NotImplementedError(
+                    f"Aggregation type {self.agg_type} not implemented"
+                )
         else:
             assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(activations.activations.shape[1]), (
-                f"Invalid sequence position: {self.seq_pos}"
-            )
+            assert self.seq_pos in range(
+                activations.activations.shape[1]
+            ), f"Invalid sequence position: {self.seq_pos}"
             acts = activations.activations[:, self.seq_pos, :]
 
         return acts
@@ -69,7 +82,6 @@ class LinearProbe(HighStakesClassifier):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        X = self._preprocess_activations(activations)
         X = self._preprocess_activations(activations)
 
         self._classifier.fit(X, y)
@@ -104,6 +116,33 @@ class LinearProbe(HighStakesClassifier):
         X = self._preprocess_activations(activations)
         return self._classifier.predict(X)
 
+    def per_token_predictions(
+        self,
+        inputs: list[Input],
+    ) -> Float[np.ndarray, "batch_size seq_len"]:
+        dataset = Dataset(
+            inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
+        )
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+
+        # TODO This can be done more efficiently
+        predictions = []
+        for i in range(len(activations_obj.activations)):
+            activations = activations_obj.activations[i]
+            attention_mask = activations_obj.attention_mask[i]
+
+            # Compute per-token predictions
+            # Apply attention mask to zero out padding tokens
+            masked_activations = activations * attention_mask[:, None]
+            X = masked_activations
+
+            predictions.append(self._classifier.predict_proba(X)[:, 1])
+
+        return np.array(predictions)
+
 
 def compute_accuracy(
     probe: LinearProbe,
@@ -112,3 +151,23 @@ def compute_accuracy(
 ) -> float:
     pred_labels = probe._predict(activations)
     return (np.array(pred_labels) == dataset.labels_numpy()).mean()
+
+
+if __name__ == "__main__":
+    model = LLMModel.load(model_name="meta-llama/Llama-3.2-1B-Instruct")
+
+    # Train a probe
+    train_dataset, _ = load_train_test(
+        dataset_path=GENERATED_DATASET_PATH,
+        split_path=TRAIN_TEST_SPLIT,
+    )
+    probe = LinearProbe(_llm=model, layer=11)
+    probe.fit(train_dataset[:10])
+
+    # Test the probe
+    inputs = [
+        "Hello, how are you?",
+        "What is the capital of France?",
+    ]
+    predictions = probe.per_token_predictions(inputs)
+    print(predictions)
