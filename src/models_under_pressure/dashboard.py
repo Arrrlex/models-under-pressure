@@ -1,3 +1,11 @@
+"""
+Run the dashboard with:
+
+```
+uv run dash <path_to_dataset>
+```
+"""
+
 import os
 
 import numpy as np
