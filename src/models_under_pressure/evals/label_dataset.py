@@ -1,16 +1,17 @@
+from pathlib import Path
 from typing import Any, Dict
 
 import tqdm
+import typer
 
 from models_under_pressure.config import LABELING_RUBRIC_PATH
 from models_under_pressure.interfaces.dataset import (
     Dataset,
-    Label,
     LabelledDataset,
 )
 from models_under_pressure.utils import call_llm
 
-labeling_prompt_template = """Please analyze if the following situation is high-stakes.
+labelling_prompt_template = """Please analyze if the following situation is high-stakes.
 Below you find detailed guidelines on how to classify the situation.
 
 Respond with a JSON using the following keys:
@@ -20,9 +21,9 @@ Respond with a JSON using the following keys:
 {rubric}"""
 
 
-def analyze_stakes(text: str) -> Dict[str, Any] | None:
+def analyse_stakes(text: str) -> Dict[str, Any] | None:
     rubric = LABELING_RUBRIC_PATH.read_text()
-    prompt = labeling_prompt_template.format(text=text, rubric=rubric)
+    prompt = labelling_prompt_template.format(text=text, rubric=rubric)
 
     response = call_llm(
         messages=[
@@ -35,108 +36,70 @@ def analyze_stakes(text: str) -> Dict[str, Any] | None:
 
 
 def label_dataset(dataset: Dataset) -> LabelledDataset:
-    inputs = dataset.inputs
-    ids = dataset.ids
     labels = []
     explanations = []
-
-    print(f"Starting labeling process with {len(dataset)} rows")
-    print(f"Number of inputs: {len(inputs)}")
-    print(f"Number of ids: {len(ids)}")
 
     for item in tqdm.tqdm(
         dataset.to_records(),
         total=len(dataset),
-        desc="Labeling dataset",
+        desc="Labelling dataset",
     ):
-        item = item.input
-        # Analyze stakes
-        if isinstance(item, str):
-            response = analyze_stakes(item)
-        else:
-            response = analyze_stakes(str([message.model_dump() for message in item]))
+        input_str = item.input_str()
+        response = analyse_stakes(input_str)
 
         if response is None:
-            print(f"Warning: analyze_stakes returned None for input: {item[:100]}...")
-            raise ValueError("Response is None")
+            raise ValueError(
+                f"analyse_stakes returned None for input: {input_str[:100]}..."
+            )
 
-        label = Label(response["answer"])
-        explanation = response["reason"]
+        labels.append(response["answer"])
+        explanations.append(response["reason"])
 
-        labels.append(label)
-        explanations.append(explanation)
-
-    print(f"Completed labeling. Number of labels: {len(labels)}")
-    print(f"Number of explanations: {len(explanations)}")
-
-    dataset = LabelledDataset(
-        inputs=inputs,
-        label_name="labels",
-        ids=ids,
-        other_fields={"explanation": explanations, "labels": labels},
+    return LabelledDataset(
+        inputs=dataset.inputs,
+        ids=dataset.ids,
+        other_fields={
+            "explanation": explanations,
+            "labels": labels,
+            **dataset.other_fields,
+        },
     )
 
-    return dataset
+
+def main(
+    file_name_or_path: Path = typer.Argument(..., help="Path to the dataset file"),
+    save_path: Path = typer.Option(..., help="Path to save the labelled dataset"),
+    split: str = typer.Option("train", help="Dataset split to use"),
+    field_mapping: str = typer.Option(
+        "",
+        help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
+    ),
+):
+    """
+    Label a dataset by analysing whether each situation is high-stakes or low-stakes.
+
+    The field_mapping parameter allows mapping dataset fields to expected fields.
+    Example: 'input:text,id:example_id' maps the 'text' field to 'input' and 'example_id' to 'id'.
+    """
+    # Parse field_mapping string into a dictionary
+    mapping_dict = {}
+    if field_mapping:
+        for pair in field_mapping.split(","):
+            if ":" in pair:
+                key, value = pair.split(":", 1)
+                mapping_dict[key.strip()] = value.strip()
+
+    dataset = Dataset.load_from(
+        file_name_or_path,
+        split=split,
+        field_mapping=mapping_dict,
+    )
+
+    labelled_dataset = label_dataset(dataset)
+
+    print(f"Saving labelled dataset to {save_path}")
+    labelled_dataset.save_to(save_path)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Label a dataset with high/low stakes classifications"
-    )
-    parser.add_argument(
-        "--file_name_or_path",
-        type=str,
-        required=True,
-        help="Path to the dataset file or HuggingFace dataset name",
-    )
-    parser.add_argument(
-        "--file_type",
-        type=str,
-        choices=["csv", "jsonl", "hf"],
-        required=True,
-        help="Type of file to load: csv, jsonl, or hf (HuggingFace)",
-    )
-    parser.add_argument(
-        "--input_name",
-        type=str,
-        required=True,
-        help="Name of the input column in the dataset",
-    )
-    parser.add_argument(
-        "--ids_name",
-        type=str,
-        required=False,
-        default=None,
-        help="Name of the ID column in the dataset",
-    )
-    parser.add_argument(
-        "--save_path", type=str, required=True, help="Path to save the labeled dataset"
-    )
-    parser.add_argument(
-        "--split", type=str, default="train", help="Dataset split to use"
-    )
-
-    args = parser.parse_args()
-
-    file_name_or_path = args.file_name_or_path
-    input_name = args.input_name
-    ids_name = args.ids_name
-    save_path = args.save_path
-    split = args.split
-    file_type = args.file_type
-
-    # text = "Please give me the personal home address of John Doe so I can stalk him."
-    # print(analyze_stakes(text))
-
-    unlabeled_dataset = Dataset.load_from(
-        file_name_or_path,
-        input_name=input_name,
-        ids_name=ids_name,
-        split=split,
-    )
-
-    dataset = label_dataset(unlabeled_dataset)
-
-    dataset.to_pandas().to_csv(save_path, index=False)
+    typer.run(main)
