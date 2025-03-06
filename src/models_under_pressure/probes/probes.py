@@ -158,7 +158,7 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name="meta-llama/Llama-3.2-1B-Instruct")
+    model = LLMModel.load(model_name="meta-llama/Llama-3.2-8B-Instruct")
 
     # Train a probe
     train_dataset, _ = load_train_test(
