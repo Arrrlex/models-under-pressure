@@ -1,8 +1,8 @@
 import argparse
 import os
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -41,11 +41,10 @@ class DashboardDataset:
 
         if debug:
 
-            def create_probe_logits(prompt: str) -> np.ndarray:
+            def create_probe_logits(prompt: str) -> list:
                 # Split the prompt into words:
                 words = prompt.split(" ")
-
-                return 2 * np.zeros(len(words))
+                return [2] * len(words)
 
             data.data["probe_logits"] = data.data["prompt"].apply(create_probe_logits)
 
@@ -194,11 +193,11 @@ def main():
                     range_val = max_val - min_val if max_val != min_val else 1
 
                     # Function to get color for a value
-                    def get_color(val):
+                    def get_color(val: int) -> str:
                         # Normalize to 0-1 scale
                         normalized = (val - min_val) / range_val
                         # Use a color scale from blue (low) to red (high)
-                        return f"rgb({int(255 * normalized)}, 0, {int(255 * (1-normalized))})"
+                        return f"rgb({int(255 * normalized)}, 0, {int(255 * (1 - normalized))})"
 
                     # Build HTML for colored words
                     html = "<div style='font-size: 18px; line-height: 2;'>"
