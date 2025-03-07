@@ -81,7 +81,7 @@ def create_toolace_dataset(num_samples: int):
 
     dataset = subsample_balanced_subset(dataset, num_samples=num_samples)
 
-    dataset.to_pandas().to_csv(TOOLACE_SAMPLES_CSV, index=False)
+    dataset.save_to(TOOLACE_SAMPLES_CSV)
 
 
 if __name__ == "__main__":

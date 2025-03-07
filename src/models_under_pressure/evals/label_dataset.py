@@ -109,7 +109,6 @@ def label_dataset(
 def main(
     path: Path = typer.Argument(..., help="Path to the dataset file"),
     save_path: Path = typer.Option(..., help="Path to save the labelled dataset"),
-    split: str = typer.Option("train", help="Dataset split to use"),
     field_mapping: str = typer.Option(
         "",
         help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
@@ -129,7 +128,7 @@ def main(
     mapping_dict = parse_mapping_str(field_mapping)
 
     print(f"Loading dataset from {path}")
-    dataset = Dataset.load_from(path, split=split, field_mapping=mapping_dict)
+    dataset = Dataset.load_from(path, field_mapping=mapping_dict)
 
     labelled_dataset = label_dataset(
         dataset, model=model, max_concurrent=max_concurrent
