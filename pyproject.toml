@@ -30,6 +30,9 @@ dependencies = [
     "pandas-stubs>=2.2.3.241126",
     "huggingface>=0.0.1",
     "datasets>=3.3.2",
+    "kaggle>=1.6.17",
+    "spacy>=3.8.4",
+    "typer>=0.15.2",
 ]
 
 [build-system]
@@ -43,6 +46,9 @@ dev = [
     "pyright[nodejs]>=1.1.394",
     "pytest>=8.3.4",
 ]
+
+[project.scripts]
+dash = "models_under_pressure.cli:dash_command"
 
 [tool.ruff]
 line-length = 88

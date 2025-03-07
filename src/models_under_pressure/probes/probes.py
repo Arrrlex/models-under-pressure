@@ -1,18 +1,25 @@
-# %%
-#!%load_ext autoreload
-#!%autoreload 2
 from dataclasses import dataclass, field
-from typing import Any, Protocol, Self
+from typing import Protocol, Self, Sequence
 
 import numpy as np
-import torch
 from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
-from models_under_pressure.interfaces.dataset import Dataset, Label
+from models_under_pressure.config import (
+    GENERATED_DATASET_PATH,
+    LOCAL_MODELS,
+    TRAIN_TEST_SPLIT,
+)
+from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.interfaces.activations import Activation, AggregationType
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    Input,
+    Label,
+    LabelledDataset,
+)
 from models_under_pressure.probes.model import LLMModel
 
 
@@ -31,12 +38,17 @@ class SklearnClassifier(Protocol):
         self, X: Float[np.ndarray, "batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]: ...
 
+    def predict_proba(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, "batch_size n_classes"]: ...
+
 
 @dataclass
-class LinearProbe_(HighStakesClassifier):
+class LinearProbe(HighStakesClassifier):
     _llm: LLMModel
     layer: int
 
+    agg_type: AggregationType = AggregationType.MEAN
     seq_pos: int | str = "all"
     _classifier: SklearnClassifier = field(
         default_factory=lambda: make_pipeline(
@@ -51,195 +63,122 @@ class LinearProbe_(HighStakesClassifier):
 
     def _preprocess_activations(
         self,
-        activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
+        activations: Activation,
     ) -> Float[np.ndarray, "batch_size embed_dim"]:
         if self.seq_pos == "all":
-            acts = activations.mean(axis=1)
+            if self.agg_type == AggregationType.MEAN:
+                acts = activations.mean_aggregation().activations
+            else:
+                raise NotImplementedError(
+                    f"Aggregation type {self.agg_type} not implemented"
+                )
         else:
             assert isinstance(self.seq_pos, int)
             assert self.seq_pos in range(
-                activations.shape[1]
+                activations.activations.shape[1]
             ), f"Invalid sequence position: {self.seq_pos}"
-            acts = activations[:, self.seq_pos, :]
+            acts = activations.activations[:, self.seq_pos, :]
 
         return acts
 
-    def fit(
+    def _fit(
         self,
-        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
+        activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        X = self._preprocess_activations(X)
+        X = self._preprocess_activations(activations)
 
         self._classifier.fit(X, y)
         return self
 
+    def fit(self, dataset: LabelledDataset) -> Self:
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+
+        print("Training probe...")
+        self._fit(
+            activations=activations_obj,
+            y=dataset.labels_numpy(),
+        )
+
+        return self
+
     def predict(self, dataset: Dataset) -> list[Label]:
-        activations = self._llm.get_activations(dataset.inputs, layers=[self.layer])[0]
-        predictions = self._predict(activations)
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+        predictions = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in predictions]
 
     def _predict(
-        self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
+        self,
+        activations: Activation,
     ) -> Float[np.ndarray, " batch_size"]:
-        X = self._preprocess_activations(X)
+        X = self._preprocess_activations(activations)
         return self._classifier.predict(X)
 
-
-def compute_accuracy_(
-    probe: LinearProbe_,
-    dataset: Dataset,
-) -> float:
-    pred_labels = probe.predict(dataset)
-    return (np.array(pred_labels) == np.array(dataset.labels)).mean()
-
-
-@torch.no_grad()
-def create_activations(
-    model: torch.nn.Module,
-    tokenizer: PreTrainedTokenizerBase,
-    text: list[str],
-    device: str | torch.device,
-) -> Float[np.ndarray, "layers batch_size seq_len embed_dim"]:
-    # Tokenize input text
-    inputs = tokenizer(
-        text, return_tensors="pt", truncation=True, padding=True, max_length=1028
-    )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    # Dictionary to store residual activations
-    activations = []
-
-    # Hook function to capture residual activations before layernorm
-    def hook_fn(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor):
-        activations.append(input[0].detach().cpu())  # Store the residual connection
-
-    # Register hooks on each transformer block (LLaMA layers)
-    hooks: list[torch.nn.Module] = [
-        # Pre-attention residual
-        layer.input_layernorm.register_forward_hook(hook_fn)
-        for layer in model.model.layers
-    ]
-
-    # Forward pass
-    _ = model(**inputs)
-
-    # Remove hooks after capturing activations
-    for hook in hooks:
-        hook.remove()
-
-    # Print stored activations
-    for i, act in enumerate(activations):
-        print(f"Layer: {i}, Activation Shape: {act.shape}")
-
-    all_acts = torch.stack(activations)
-    print("All activations shape:", all_acts.shape)
-
-    return all_acts.cpu().detach().numpy()
-
-
-@dataclass
-class LinearProbe:
-    seq_pos: int | str = "all"
-    model_kwargs: dict[str, Any] = field(
-        default_factory=lambda: {"C": 1e-3, "random_state": 42, "fit_intercept": False}
-    )
-    _model: Any = field(init=False)
-
-    def __post_init__(self):
-        self._model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                ("classifier", LogisticRegression(**self.model_kwargs)),
-            ]
+    def per_token_predictions(
+        self,
+        inputs: Sequence[Input],
+    ) -> Float[np.ndarray, "batch_size seq_len"]:
+        dataset = Dataset(
+            inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
+        )
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
         )
 
-    def _preprocess_activations(
-        self,
-        activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
-    ) -> Float[np.ndarray, "batch_size embed_dim"]:
-        if self.seq_pos == "all":
-            acts = activations.mean(axis=1)
-        else:
-            assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(
-                activations.shape[1]
-            ), f"Invalid sequence position: {self.seq_pos}"
-            acts = activations[:, self.seq_pos, :]
+        print("activations_obj.activations.shape", activations_obj.activations.shape)
 
-        return acts
+        # TODO This can be done more efficiently
+        predictions = []
+        for i in range(len(activations_obj.activations)):
+            activations = activations_obj.activations[i]
+            attention_mask = activations_obj.attention_mask[i]
 
-    def fit(
-        self,
-        X: Float[np.ndarray, "batch_size seq_len embed_dim"],
-        y: Float[np.ndarray, " batch_size"],
-    ) -> "LinearProbe":
-        X = self._preprocess_activations(X)
+            # Compute per-token predictions
+            # Apply attention mask to zero out padding tokens
+            X = activations * attention_mask[:, None]
+            # Only keep predictions for non-zero attention mask tokens
+            predicted_probs = self._classifier.predict_proba(X)[:, 1]
 
-        self._model.fit(X, y)
-        return self
+            # Set the values to -1 if they're attention masked out
+            print("attention_mask", attention_mask)
+            predicted_probs[attention_mask == 0] = -1
 
-    def predict(
-        self, X: Float[np.ndarray, "batch_size seq_len embed_dim"]
-    ) -> Float[np.ndarray, " batch_size"]:
-        X = self._preprocess_activations(X)
-        return self._model.predict(X)
+            predictions.append(predicted_probs)
 
-
-def train_single_layer(
-    acts: Float[np.ndarray, "batch_size seq_len embed_dim"],
-    labels: Float[np.ndarray, " batch_size"],
-    model_params: dict[str, Any] | None = None,
-) -> LinearProbe:
-    if model_params is None:
-        probe = LinearProbe()
-    else:
-        probe = LinearProbe(model_kwargs=model_params)
-
-    return probe.fit(acts, labels)
+        return np.array(predictions)
 
 
 def compute_accuracy(
     probe: LinearProbe,
-    activations: Float[np.ndarray, "batch_size seq_len embed_dim"],
-    labels: Float[np.ndarray, " batch_size"] | list[int],
-):
-    pred_labels = probe.predict(activations)
-    return (pred_labels == labels).mean()
+    dataset: LabelledDataset,
+    activations: Activation,
+) -> float:
+    pred_labels = probe._predict(activations)
+    return (np.array(pred_labels) == dataset.labels_numpy()).mean()
 
 
-# %%
 if __name__ == "__main__":
-    import os
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-8b"])
 
-    import dotenv
-
-    from models_under_pressure.config import ANTHROPIC_SAMPLES_CSV
-    from models_under_pressure.dataset.loaders import load_anthropic_csv
-
-    dotenv.load_dotenv()
-
-    print("Loading model...")
-    model = LLMModel.load(
-        "meta-llama/LLama-3.2-1B-Instruct",
-        model_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
-        tokenizer_kwargs={"token": os.getenv("HUGGINGFACE_TOKEN")},
+    # Train a probe
+    train_dataset, _ = load_train_test(
+        dataset_path=GENERATED_DATASET_PATH,
+        split_path=TRAIN_TEST_SPLIT,
     )
+    probe = LinearProbe(_llm=model, layer=11)
+    probe.fit(train_dataset[:10])
 
-    print("Loading dataset...")
-    dataset = load_anthropic_csv(ANTHROPIC_SAMPLES_CSV)[:10]
-
-    if any(label == Label.AMBIGUOUS for label in dataset.labels):
-        raise ValueError("Dataset contains ambiguous labels")
-
-    probe = LinearProbe_(_llm=model, layer=12)
-
-    print("Computing activations...")
-    activations = model.get_activations(inputs=dataset.inputs, layers=[12])[0]
-
-    print("Training probe...")
-    probe.fit(X=activations, y=dataset.labels_numpy())
-
-    print("Computing accuracy...")
-    accuracy = compute_accuracy_(probe, dataset)
-    print(f"Accuracy: {accuracy}")
+    # Test the probe
+    inputs = [
+        "Hello, how are you?",
+        "What is the capital of France?",
+    ]
+    predictions = probe.per_token_predictions(inputs)
+    print(predictions)

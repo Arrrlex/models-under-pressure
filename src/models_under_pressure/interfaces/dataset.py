@@ -1,11 +1,25 @@
 import json
 from enum import Enum
-from typing import Any, Callable, Mapping, Self, Sequence, overload
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Generic,
+    Mapping,
+    Optional,
+    Self,
+    Sequence,
+    Type,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 import pandas as pd
 from jaxtyping import Float
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class Message(BaseModel):
@@ -47,89 +61,107 @@ def to_dialogue(input: Input) -> Dialogue:
 
 class Record(BaseModel):
     input: Input
-    label: Label
     id: str
-    other_fields: Mapping[str, Any]
+    other_fields: Dict[str, Any] = Field(default_factory=dict)
+
+    def input_str(self) -> str:
+        if isinstance(self.input, str):
+            return self.input
+        else:
+            return "\n".join(
+                f"{message.role}: {message.content}" for message in self.input
+            )
 
 
-class Dataset(BaseModel):
+class LabelledRecord(Record):
+    @property
+    def label(self) -> Label:
+        label_ = self.other_fields["labels"]
+        return Label.from_int(label_) if isinstance(label_, int) else Label(label_)
+
+
+R = TypeVar("R", bound=Record)
+
+
+class BaseDataset(BaseModel, Generic[R]):
     inputs: Sequence[Input]
-    labels: Sequence[Label]
     ids: Sequence[str]
     other_fields: Mapping[str, Sequence[Any]]
+    _record_class: ClassVar[Type]
 
-    def records(self) -> Sequence[Record]:
-        return [
-            Record(
-                input=input,
-                label=label,
-                id=id,
-                other_fields={k: v[i] for k, v in self.other_fields.items()},
+    """
+    Interface for a dataset class, the dataset is stored as a list of inputs, ids, and
+    a mapping to 'other fields' which are arbitrary additional fields.
+
+    The base dataset class is used to store the dataset in a way that is agnostic to the label field.
+    """
+
+    @model_validator(mode="after")
+    def validate_lengths(self) -> Self:
+        """Verify that inputs, ids and each element of other_fields have the same length"""
+        input_len = len(self.inputs)
+        if len(self.ids) != input_len:
+            raise ValueError(
+                f"Length mismatch: inputs ({input_len}) != ids ({len(self.ids)})"
             )
-            for i, (input, label, id) in enumerate(
-                zip(self.inputs, self.labels, self.ids)
-            )
-        ]
 
-    @classmethod
-    def from_records(cls, records: Sequence[Record]) -> Self:
-        field_keys = records[0].other_fields.keys()
-        return cls(
-            inputs=[r.input for r in records],
-            labels=[r.label for r in records],
-            ids=[r.id for r in records],
-            other_fields={k: [r.other_fields[k] for r in records] for k in field_keys},
-        )
-
-    def to_pandas(self) -> pd.DataFrame:
-        # Convert Dialogue inputs to dictionaries for pandas compatibility
-        processed_inputs = []
-        for input_item in self.inputs:
-            if isinstance(input_item, str):
-                processed_inputs.append(input_item)
-            else:  # It's a Dialogue
-                # Convert the entire dialogue to a single JSON string
-                processed_inputs.append(
-                    json.dumps([message.model_dump() for message in input_item])
+        for field_name, field_values in self.other_fields.items():
+            if len(field_values) != input_len:
+                raise ValueError(
+                    f"Length mismatch: inputs ({input_len}) != {field_name} ({len(field_values)})"
                 )
+        return self
 
-        base_data = {
-            "inputs": processed_inputs,
-            "labels": [label.value for label in self.labels],
-            "ids": self.ids,
-        }
-        # Add each field from other_fields as a separate column
-        base_data.update(self.other_fields)
-        return pd.DataFrame(base_data)
-
-    def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
-        return np.array([label.to_int() for label in self.labels])
+    def __len__(self) -> int:
+        return len(self.inputs)
 
     @overload
-    def __getitem__(self, idx: int) -> Record: ...
+    def __getitem__(self, idx: int) -> R: ...
 
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
-    def __getitem__(self, idx: int | slice) -> Self | Record:
-        if isinstance(idx, slice):
+    def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
+        if isinstance(idx, list):
+            return type(self)(
+                inputs=[self.inputs[i] for i in idx],
+                ids=[self.ids[i] for i in idx],
+                other_fields={
+                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
+                },
+            )
+        elif isinstance(idx, slice):
             return type(self)(
                 inputs=self.inputs[idx],
-                labels=self.labels[idx],
                 ids=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
         else:
-            return Record(
+            return self._record_class(
                 input=self.inputs[idx],
-                label=self.labels[idx],
                 id=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
 
+    def filter(self, filter_fn: Callable[[R], bool]) -> Self:
+        return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+
     @classmethod
-    def from_pandas(cls, df: pd.DataFrame) -> "Dataset":
+    def from_records(cls, records: Sequence[R]) -> Self:
+        field_keys = records[0].other_fields.keys()
+        return cls(
+            inputs=[r.input for r in records],
+            ids=[r.id for r in records],
+            other_fields={k: [r.other_fields[k] for r in records] for k in field_keys},
+        )
+
+    @classmethod
+    def from_pandas(
+        cls, df: pd.DataFrame, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
         # Extract the required columns
+        df = df.rename(columns=field_mapping or {})
+
         inputs = []
         for input_item in df["inputs"].tolist():
             if isinstance(input_item, str):
@@ -145,17 +177,148 @@ class Dataset(BaseModel):
                 except json.JSONDecodeError:
                     # If JSON parsing fails, treat as regular string input
                     inputs.append(input_item)
+            elif isinstance(input_item, list):
+                dialogue = [Message(**msg) for msg in input_item]
+                inputs.append(dialogue)
+            else:
+                raise ValueError(f"Invalid input type: {type(input_item)}")
 
-        labels = [Label(label) for label in df["labels"]]
         ids = [str(id) for id in df["ids"].tolist()]
 
         # Get all other columns as other_fields
-        core_columns = {"inputs", "labels", "ids"}
         other_fields = {
-            col: df[col].tolist() for col in df.columns if col not in core_columns
+            col: df[col].tolist() for col in df.columns if col not in {"inputs", "ids"}
         }
 
-        return cls(inputs=inputs, labels=labels, ids=ids, other_fields=other_fields)
+        return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
-    def filter(self, filter_fn: Callable[[Record], bool]) -> Self:
-        return type(self).from_records([r for r in self.records() if filter_fn(r)])
+    @classmethod
+    def from_jsonl(
+        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
+        with open(file_path, "r") as f:
+            df = pd.DataFrame([json.loads(line) for line in f])
+
+        return cls.from_pandas(df, field_mapping=field_mapping)
+
+    @classmethod
+    def from_csv(
+        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+    ) -> Self:
+        df = pd.read_csv(file_path)
+        return cls.from_pandas(df, field_mapping=field_mapping)
+
+    @classmethod
+    def load_from(
+        cls,
+        file_path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
+        split: str = "train",
+    ) -> Self:
+        """
+        Load the dataset from a file, inferring type from extension if not specified.
+        Supported types are:
+        - csv: A CSV file with columns "input", "id", and other fields
+        - jsonl: A JSONL file with each line being a JSON object with keys "input" and "id"
+        - hf: A Hugging Face dataset, specified by a dataset name or path to a local file
+
+        Args:
+            file_path: The path to the file to load
+            split: The split to load for HuggingFace datasets
+        """
+        # Infer from extension
+        if str(file_path).endswith(".csv"):
+            file_type = "csv"
+        elif str(file_path).endswith(".jsonl"):
+            file_type = "jsonl"
+        else:
+            # Assume HuggingFace dataset if no recognized extension
+            file_type = "hf"
+
+        if file_type == "csv":
+            return cls.from_csv(file_path, field_mapping=field_mapping)
+
+        elif file_type == "jsonl":
+            return cls.from_jsonl(file_path, field_mapping=field_mapping)
+
+        elif file_type == "hf":
+            raise NotImplementedError("HF loading not implemented")
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
+
+    def to_records(self) -> Sequence[R]:
+        return [
+            self._record_class(
+                input=input,
+                id=id,
+                other_fields={k: v[i] for k, v in self.other_fields.items()},
+            )
+            for i, (input, id) in enumerate(zip(self.inputs, self.ids))
+        ]
+
+    def to_pandas(self) -> pd.DataFrame:
+        # Convert Dialogue inputs to dictionaries for pandas compatibility
+        processed_inputs = []
+        for input_item in self.inputs:
+            if isinstance(input_item, str):
+                processed_inputs.append(input_item)
+            else:  # It's a Dialogue
+                # Convert the entire dialogue to a single JSON string
+                processed_inputs.append(
+                    json.dumps([message.model_dump() for message in input_item])
+                )
+
+        base_data = {
+            "inputs": processed_inputs,
+            "ids": self.ids,
+        }
+        # Add each field from other_fields as a separate column
+        base_data.update(self.other_fields)
+
+        return pd.DataFrame(base_data)
+
+    def save_to(self, file_path: Path) -> None:
+        if file_path.suffix == ".csv":
+            self.to_pandas().to_csv(file_path, index=False)
+        elif file_path.suffix == ".jsonl":
+            self.to_pandas().to_json(file_path, orient="records", lines=True)
+        elif file_path.suffix == ".json":
+            self.to_pandas().to_json(file_path, orient="records")
+        else:
+            raise ValueError(f"Unsupported file type: {file_path.suffix}")
+
+
+class Dataset(BaseDataset[Record]):
+    _record_class: ClassVar[Type] = Record
+
+
+class LabelledDataset(BaseDataset[LabelledRecord]):
+    """
+    A dataset with a "labels" field.
+    """
+
+    _record_class: ClassVar[Type] = LabelledRecord
+
+    @model_validator(mode="after")
+    def validate_label_name(self) -> Self:
+        if self.other_fields.get("labels") is None:
+            raise ValueError("labels column not found in other fields")
+        return self
+
+    @property
+    def labels(self) -> Sequence[Label]:
+        return [
+            Label.from_int(label) if isinstance(label, int) else Label(label)
+            for label in self.other_fields["labels"]
+        ]
+
+    def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
+        return np.array([label.to_int() for label in self.labels])
+
+
+if __name__ == "__main__":
+    from models_under_pressure.config import EVAL_DATASETS
+
+    for name, dataset_config in EVAL_DATASETS.items():
+        dataset = LabelledDataset.load_from(**dataset_config)
+        print(dataset[:5])
