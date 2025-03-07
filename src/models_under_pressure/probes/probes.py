@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Self
+from typing import Protocol, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -118,7 +118,7 @@ class LinearProbe(HighStakesClassifier):
 
     def per_token_predictions(
         self,
-        inputs: list[Input],
+        inputs: Sequence[Input],
     ) -> Float[np.ndarray, "batch_size seq_len"]:
         dataset = Dataset(
             inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
@@ -128,6 +128,8 @@ class LinearProbe(HighStakesClassifier):
             layer=self.layer,
         )
 
+        print("activations_obj.activations.shape", activations_obj.activations.shape)
+
         # TODO This can be done more efficiently
         predictions = []
         for i in range(len(activations_obj.activations)):
@@ -136,10 +138,15 @@ class LinearProbe(HighStakesClassifier):
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
-            masked_activations = activations * attention_mask[:, None]
-            X = masked_activations
+            X = activations * attention_mask[:, None]
+            # Only keep predictions for non-zero attention mask tokens
+            predicted_probs = self._classifier.predict_proba(X)[:, 1]
 
-            predictions.append(self._classifier.predict_proba(X)[:, 1])
+            # Set the values to -1 if they're attention masked out
+            print("attention_mask", attention_mask)
+            predicted_probs[attention_mask == 0] = -1
+
+            predictions.append(predicted_probs)
 
         return np.array(predictions)
 
