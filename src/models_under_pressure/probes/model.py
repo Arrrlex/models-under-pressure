@@ -104,6 +104,11 @@ class LLMModel:
             if isinstance(v, torch.Tensor):
                 token_dict[k] = v.to(self.device)
 
+                if k == "input_ids":
+                    token_dict[k] = v[:, 1:].to(self.device)
+                elif k == "attention_mask":
+                    token_dict[k] = v[:, 1:].to(self.device)
+
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
             raise ValueError("Tokenizer output must include attention mask")
