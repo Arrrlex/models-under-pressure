@@ -9,6 +9,7 @@ from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
+    LOCAL_MODELS,
     OUTPUT_DIR,
     TRAIN_TEST_SPLIT,
     EvalRunConfig,
@@ -93,7 +94,7 @@ def load_eval_datasets(
 
 def run_evaluation(
     layer: int,
-    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    model_name: str,
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
@@ -164,7 +165,7 @@ if __name__ == "__main__":
     config = EvalRunConfig(
         max_samples=None,
         layer=11,
-        model_name="meta-llama/Llama-3.1-8B-Instruct",
+        model_name=LOCAL_MODELS["llama-8b"],
     )
 
     results = run_evaluation(
