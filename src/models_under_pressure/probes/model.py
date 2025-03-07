@@ -95,12 +95,7 @@ class LLMModel:
             add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
         )
 
-        print("input_str")
-        print(tokenizer_kwargs)
-
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
-
-        print("token_dict input_ids shape", token_dict["input_ids"].shape)
 
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
@@ -194,17 +189,9 @@ class LLMModel:
         n_samples = len(dataset.inputs)
         n_batches = (n_samples + batch_size - 1) // batch_size
 
-        # Get the shape from first batch to ensure consistency
-        first_batch = dataset.inputs[0:1]
-        activation_obj = self.get_activations(inputs=first_batch, layers=[layer])
-        first_activation = activation_obj.activations[0]
-        first_attn_mask = activation_obj.attention_mask
-        input_ids = activation_obj.input_ids
-        activation_shape = first_activation.shape[1:]  # Remove batch dimension
-        attn_mask_shape = first_attn_mask.shape[1:]  # Remove batch dimension
-
         all_activations = []
         all_attention_masks = []
+        all_input_ids = []
         for i in range(n_batches):
             start_idx = i * batch_size
             end_idx = min((i + 1) * batch_size, n_samples)
@@ -213,29 +200,54 @@ class LLMModel:
             activation_obj = self.get_activations(inputs=batch_inputs, layers=[layer])
             batch_activations = activation_obj.activations[0]
             batch_attn_mask = activation_obj.attention_mask
+            batch_input_ids = activation_obj.input_ids
 
-            # Ensure all batches have the same shape by padding/truncating
-            if batch_activations.shape[1:] != activation_shape:
-                padded_activations = np.zeros(
-                    (batch_activations.shape[0],) + activation_shape
-                )
-                min_length = min(batch_activations.shape[1], activation_shape[0])
-                padded_activations[:, :min_length] = batch_activations[:, :min_length]
-                batch_activations = padded_activations
+            assert (
+                len(batch_activations) == 3
+            ), f"Expected 3 dim activations, got {batch_activations.shape}"
 
-            if batch_attn_mask.shape[1:] != attn_mask_shape:
-                padded_attn_mask = np.zeros(
-                    (batch_attn_mask.shape[0],) + attn_mask_shape
-                )
-                min_length = min(batch_attn_mask.shape[1], attn_mask_shape[0])
-                padded_attn_mask[:, :min_length] = batch_attn_mask[:, :min_length]
-                batch_attn_mask = padded_attn_mask
+            assert (
+                len(batch_attn_mask) == 2
+            ), f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
 
+            all_input_ids.append(batch_input_ids)
             all_activations.append(batch_activations)
             all_attention_masks.append(batch_attn_mask)
 
+        # Process all_activations to ensure they have the same shape:
+        # Find the maximum shape across all activations
+        max_shape = max(act.shape[1] for act in all_activations)
+
+        for i, act in enumerate(all_activations):
+            if act.shape[1] != max_shape:
+                # Create padding for activations and attention masks:
+                act_padding = np.zeros(
+                    act.shape[0], max_shape - act.shape[1], act.shape[2]
+                )
+                attn_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
+                input_ids_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
+
+                # Append the padding to each activation and attention mask element:
+                if self.tokenizer.padding_side == "left":
+                    all_activations[i] = np.concatenate([act_padding, act], axis=1)
+                    all_attention_masks[i] = np.concatenate(
+                        [attn_padding, all_attention_masks[i]], axis=1
+                    )
+                    all_input_ids[i] = np.concatenate(
+                        [input_ids_padding, all_input_ids[i]], axis=1
+                    )
+                else:
+                    all_activations[i] = np.concatenate([act, act_padding], axis=1)
+                    all_attention_masks[i] = np.concatenate(
+                        [all_attention_masks[i], attn_padding], axis=1
+                    )
+                    all_input_ids[i] = np.concatenate(
+                        [all_input_ids[i], input_ids_padding], axis=1
+                    )
+
         activations = np.concatenate(all_activations, axis=0)
         attention_mask = np.concatenate(all_attention_masks, axis=0)
+        input_ids = np.concatenate(all_input_ids, axis=0)
 
         activations_obj = Activation(activations, attention_mask, input_ids)
 
