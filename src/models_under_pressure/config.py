@@ -88,7 +88,8 @@ AIS_DATASETS = {
     "mmlu_sandbagging": {
         "file_path": EVALS_DIR / "mmlu_sandbagging_labelled_dataset.jsonl",
         "field_mapping": {
-            "label": "is_sandbagging",
+            "labels": "high_stakes",
+            "is_sandbagging": "labels",
         },
     },
     "deception": {

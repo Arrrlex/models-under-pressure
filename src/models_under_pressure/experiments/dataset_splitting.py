@@ -159,7 +159,8 @@ def load_train_test(
     else:
         # Create a train-test split with all data
         train_dataset, test_dataset = create_train_test_split(
-            dataset, split_field="situations_ids"
+            dataset,  # type: ignore
+            split_field="situations_ids",
         )
         split_dict = {
             "train_dataset": train_dataset.ids,
