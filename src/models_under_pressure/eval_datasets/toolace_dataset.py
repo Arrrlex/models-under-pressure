@@ -2,8 +2,8 @@ import random
 
 from datasets import load_dataset
 
-from models_under_pressure.config import TOOLACE_SAMPLES_CSV
-from models_under_pressure.evals.label_dataset import label_dataset
+from models_under_pressure.config import EVAL_DATASETS
+from models_under_pressure.eval_datasets.label_dataset import label_dataset
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Label,
@@ -39,50 +39,46 @@ def subsample_balanced_subset(
     dataset: LabelledDataset, *, num_samples: int
 ) -> LabelledDataset:
     """Subsample a balanced subset of the dataset"""
-    # Get the labels
-    records = dataset.to_records()
+    samples_per_class = num_samples // 2
+    high_stakes = dataset.filter(lambda r: r.label == Label.HIGH_STAKES)
+    low_stakes = dataset.filter(lambda r: r.label == Label.LOW_STAKES)
 
-    # Split records by label
-    high_stakes = [r for r in records if r.label == Label.HIGH_STAKES]
-    low_stakes = [r for r in records if r.label == Label.LOW_STAKES]
-
-    # Check if we have enough high-stakes samples
-    if len(high_stakes) < num_samples // 2:
+    if len(high_stakes) < samples_per_class:
         raise ValueError(
             f"Not enough high-stakes samples to create balanced dataset. "
-            f"Need {num_samples // 2} samples but only found {len(high_stakes)}."
+            f"Need {samples_per_class} samples but only found {len(high_stakes)}."
         )
 
-    # Check if we have enough low-stakes samples
-    if len(low_stakes) < num_samples // 2:
+    if len(low_stakes) < samples_per_class:
         raise ValueError(
             f"Not enough low-stakes samples to create balanced dataset. "
-            f"Need {num_samples // 2} samples but only found {len(low_stakes)}."
+            f"Need {samples_per_class} samples but only found {len(low_stakes)}."
         )
 
-    # Sample equal numbers from each class
-    samples_per_class = num_samples // 2
-    high_stakes_sample = random.sample(high_stakes, samples_per_class)
-    low_stakes_sample = random.sample(low_stakes, samples_per_class)
+    high_stakes_sample = list(high_stakes.sample(samples_per_class).to_records())
+    low_stakes_sample = list(low_stakes.sample(samples_per_class).to_records())
 
-    # Combine samples
     balanced_records = high_stakes_sample + low_stakes_sample
     random.shuffle(balanced_records)
 
     return LabelledDataset.from_records(balanced_records)
 
 
-def create_toolace_dataset(num_samples: int):
+def main(num_samples: int = 100, overwrite: bool = False):
     # Load data
-    data = load_toolace_data(num_samples=num_samples * 5 if num_samples else None)
+    dataset = load_toolace_data(num_samples=num_samples * 5)
 
     # Label the data
-    dataset = label_dataset(data)
+    dataset = label_dataset(dataset)
 
+    # Subsample the data
+    print("Subsampling the data to get a balanced dataset")
     dataset = subsample_balanced_subset(dataset, num_samples=num_samples)
 
-    dataset.save_to(TOOLACE_SAMPLES_CSV)
+    # Save the data
+    print(f"Saving the data to {EVAL_DATASETS['toolace']}")
+    dataset.save_to(EVAL_DATASETS["toolace"], overwrite=overwrite)
 
 
 if __name__ == "__main__":
-    create_toolace_dataset(num_samples=100)
+    main(num_samples=100, overwrite=True)
