@@ -162,8 +162,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=10,
+        max_samples=None,
         layer=11,
+        model_name="meta-llama/Llama-3.1-8B-Instruct",
     )
 
     results = run_evaluation(
