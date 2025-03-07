@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 import openai
 import torch
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
@@ -14,10 +15,28 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
+# Create async client
+async_client = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
+
 
 # TODO Change messages type to Dialogue type?
 def call_llm(messages: List[Any], model: str = DEFAULT_MODEL) -> Dict[str, Any] | None:
     response = openai.chat.completions.create(
+        model=model,
+        messages=messages,
+        response_format={"type": "json_object"},
+    )
+    content = response.choices[0].message.content
+    if content is None:
+        return None
+    return json.loads(content) if len(content) > 0 else None
+
+
+async def call_llm_async(
+    messages: List[Any], model: str = DEFAULT_MODEL
+) -> Dict[str, Any] | None:
+    """Async version of call_llm that can be used for parallel requests"""
+    response = await async_client.chat.completions.create(
         model=model,
         messages=messages,
         response_format={"type": "json_object"},
@@ -97,3 +116,12 @@ def generate_completions(
             all_completions.extend(batch_completions)
 
     return all_completions
+
+
+def parse_mapping_str(mapping_str: str) -> dict[str, str]:
+    mapping_dict = {}
+    for pair in mapping_str.split(","):
+        if ":" in pair:
+            key, value = pair.split(":", 1)
+            mapping_dict[key.strip()] = value.strip()
+    return mapping_dict
