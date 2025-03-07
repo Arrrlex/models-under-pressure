@@ -41,16 +41,6 @@ class DashboardDataset:
         else:
             raise NotImplementedError(f"File type {file_extension} not supported")
 
-        if debug:
-
-            def create_probe_logits(prompt: str) -> np.ndarray:
-                # Split the prompt into words:
-                words = prompt.split(" ")
-
-                return 2 * np.zeros(len(words))
-
-            data.data["probe_logits"] = data.data["prompt"].apply(create_probe_logits)
-
         return data
 
     @property
@@ -151,10 +141,14 @@ def display_row_analysis(
     df_display: pd.DataFrame,
     selected_index: int,
     selected_column_to_analyze: str,
-    probe_column: str,
+    probe_column: str | None,
 ) -> None:
     """Display detailed analysis for the selected row."""
     st.subheader("Selected Row Analysis")
+
+    if probe_column is None:
+        st.error("No probe column available for this dataset")
+        return
 
     # Get the selected row by index
     selected_row = df_display.iloc[selected_index]
