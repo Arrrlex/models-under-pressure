@@ -9,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
-    BATCH_SIZE = 64
+    BATCH_SIZE = 16
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
@@ -18,6 +18,12 @@ else:
     BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+LOCAL_MODELS = {
+    "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
+    "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
+}
 
 # Paths to input files
 INPUTS_DIR = DATA_DIR / "inputs"
@@ -35,6 +41,15 @@ TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
 GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
 
+GENERATED_DATASET = {
+    "file_path": GENERATED_DATASET_PATH,
+    "field_mapping": {
+        "id": "ids",
+        "prompt": "inputs",
+        "high_stakes": "labels",
+    },
+}
+
 # Evals files
 EVALS_DIR = DATA_DIR / "evals"
 ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
@@ -43,7 +58,7 @@ MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
 
 EVAL_DATASETS = {
     "anthropic": {
-        "path": ANTHROPIC_SAMPLES_CSV,
+        "file_path": ANTHROPIC_SAMPLES_CSV,
         "field_mapping": {
             "id": "ids",
             "messages": "inputs",
@@ -51,7 +66,7 @@ EVAL_DATASETS = {
         },
     },
     "toolace": {
-        "path": TOOLACE_SAMPLES_CSV,
+        "file_path": TOOLACE_SAMPLES_CSV,
         "field_mapping": {
             "inputs": "inputs",
             "labels": "labels",
@@ -59,7 +74,7 @@ EVAL_DATASETS = {
         },
     },
     "mt": {
-        "path": MT_SAMPLES_CSV,
+        "file_path": MT_SAMPLES_CSV,
         "field_mapping": {
             "inputs": "inputs",
             "labels": "labels",

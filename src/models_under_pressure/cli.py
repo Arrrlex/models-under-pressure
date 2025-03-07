@@ -12,7 +12,3 @@ def dash_command():
 
     # Use Streamlit's Python API to run the dashboard
     subprocess.run(["streamlit", "run", str(dashboard_path), "--"] + args)
-
-
-if __name__ == "__main__":
-    dash_command()

@@ -7,7 +7,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.config import GENERATED_DATASET_PATH, TRAIN_TEST_SPLIT
+from models_under_pressure.config import (
+    GENERATED_DATASET_PATH,
+    LOCAL_MODELS,
+    TRAIN_TEST_SPLIT,
+)
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import Activation, AggregationType
 from models_under_pressure.interfaces.dataset import (
@@ -161,7 +165,7 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name="meta-llama/Llama-3.2-1B-Instruct")
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-8b"])
 
     # Train a probe
     train_dataset, _ = load_train_test(
