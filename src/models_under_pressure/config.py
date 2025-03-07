@@ -85,6 +85,15 @@ EVAL_DATASETS = {
     },
 }
 
+AIS_DATASETS = {
+    "mmlu_sandbagging": {
+        "file_path": EVALS_DIR / "mmlu_sandbagging_labelled_dataset.jsonl",
+        "field_mapping": {
+            "label": "is_sandbagging",
+        },
+    },
+}
+
 
 @dataclass(frozen=True)
 class RunConfig:
@@ -183,8 +192,26 @@ class EvalRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
-      
+
     @property
     def random_seed(self) -> int:
         return 32
 
+
+@dataclass(frozen=True)
+class SafetyRunConfig:
+    layer: int
+    max_samples: int | None = None
+    variation_type: str | None = None
+    variation_value: str | None = None
+    dataset_path: Path = GENERATED_DATASET_PATH
+    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    split_path: Path = TRAIN_TEST_SPLIT
+
+    @property
+    def output_filename(self) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+      
+    @property
+    def random_seed(self) -> int:
+        return 32

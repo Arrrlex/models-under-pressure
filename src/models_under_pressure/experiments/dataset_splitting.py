@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.config import TRAIN_TEST_SPLIT
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -169,3 +170,47 @@ def load_train_test(
             json.dump(split_dict, f)
 
     return train_dataset, test_dataset
+
+
+def load_filtered_train_dataset(
+    dataset_path: Path,
+    split_path: Path | None = None,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    max_samples: int | None = None,
+) -> LabelledDataset:
+    if split_path is None:
+        split_path = TRAIN_TEST_SPLIT
+
+    # 1. Load train and eval datasets
+    train_dataset, _ = load_train_test(
+        dataset_path,
+        split_path,
+    )
+
+    # Filter for one variation type with specific value
+    train_dataset = train_dataset.filter(
+        lambda x: (
+            (
+                variation_type is None
+                or x.other_fields["variation_type"] == variation_type
+            )
+            and (
+                variation_value is None
+                or x.other_fields["variation"] == variation_value
+            )
+        )
+    )
+
+    # Subsample so this runs on the laptop
+    if max_samples is not None:
+        print("Subsampling the dataset ...")
+        indices = np.random.choice(
+            range(len(train_dataset.ids)),
+            size=max_samples,
+            replace=False,
+        )
+        train_dataset = train_dataset[list(indices)]  # type: ignore
+
+    print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
+    return train_dataset

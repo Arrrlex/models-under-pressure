@@ -10,10 +10,11 @@ from sklearn.metrics import roc_auc_score
 from models_under_pressure.config import (
     EVAL_DATASETS,
     OUTPUT_DIR,
-    TRAIN_TEST_SPLIT,
     EvalRunConfig,
 )
-from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.experiments.dataset_splitting import (
+    load_filtered_train_dataset,
+)
 from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
@@ -101,40 +102,13 @@ def run_evaluation(
     dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    if split_path is None:
-        split_path = TRAIN_TEST_SPLIT
-
-    # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(
+    train_dataset = load_filtered_train_dataset(
         dataset_path,
         split_path,
+        variation_type,
+        variation_value,
+        max_samples,
     )
-
-    # Filter for one variation type with specific value
-    train_dataset = train_dataset.filter(
-        lambda x: (
-            (
-                variation_type is None
-                or x.other_fields["variation_type"] == variation_type
-            )
-            and (
-                variation_value is None
-                or x.other_fields["variation"] == variation_value
-            )
-        )
-    )
-
-    # Subsample so this runs on the laptop
-    if max_samples is not None:
-        print("Subsampling the dataset ...")
-        indices = np.random.choice(
-            range(len(train_dataset.ids)),
-            size=max_samples,
-            replace=False,
-        )
-        train_dataset = train_dataset[list(indices)]  # type: ignore
-
-    print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
 
     # Load eval datasets
     print("Loading eval datasets ...")
