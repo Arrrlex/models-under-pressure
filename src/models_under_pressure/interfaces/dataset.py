@@ -1,9 +1,20 @@
-import hashlib
 import json
 from enum import Enum
-from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Self, Sequence, overload
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Generic,
+    Mapping,
+    Optional,
+    Self,
+    Sequence,
+    Type,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 import pandas as pd
@@ -48,23 +59,35 @@ def to_dialogue(input: Input) -> Dialogue:
         return input
 
 
-class LabelledRecord(BaseModel):
-    input: Input
-    label: Label
-    id: str
-    other_fields: Mapping[str, Any]
-
-
 class Record(BaseModel):
     input: Input
     id: str
     other_fields: Dict[str, Any] = Field(default_factory=dict)
 
+    def input_str(self) -> str:
+        if isinstance(self.input, str):
+            return self.input
+        else:
+            return "\n".join(
+                f"{message.role}: {message.content}" for message in self.input
+            )
 
-class Dataset(BaseModel):
+
+class LabelledRecord(Record):
+    @property
+    def label(self) -> Label:
+        label_ = self.other_fields["labels"]
+        return Label.from_int(label_) if isinstance(label_, int) else Label(label_)
+
+
+R = TypeVar("R", bound=Record)
+
+
+class BaseDataset(BaseModel, Generic[R]):
     inputs: Sequence[Input]
     ids: Sequence[str]
     other_fields: Mapping[str, Sequence[Any]]
+    _record_class: ClassVar[Type]
 
     """
     Interface for a dataset class, the dataset is stored as a list of inputs, ids, and
@@ -89,13 +112,16 @@ class Dataset(BaseModel):
                 )
         return self
 
+    def __len__(self) -> int:
+        return len(self.inputs)
+
     @overload
-    def __getitem__(self, idx: int) -> Record: ...
+    def __getitem__(self, idx: int) -> R: ...
 
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
-    def __getitem__(self, idx: int | slice | list[int]) -> Self | Record:
+    def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
             return type(self)(
                 inputs=[self.inputs[i] for i in idx],
@@ -111,71 +137,23 @@ class Dataset(BaseModel):
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
         else:
-            return Record(
+            return self._record_class(
                 input=self.inputs[idx],
                 id=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
 
-    def to_records(self) -> Sequence[Record]:
-        return [
-            Record(
-                input=input,
-                id=id,
-                other_fields={k: v[i] for k, v in self.other_fields.items()},
-            )
-            for i, (input, id) in enumerate(zip(self.inputs, self.ids))
-        ]
+    def filter(self, filter_fn: Callable[[R], bool]) -> Self:
+        return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
 
     @classmethod
-    def from_records(cls, records: Sequence[LabelledRecord | Record]) -> Self:
+    def from_records(cls, records: Sequence[R]) -> Self:
         field_keys = records[0].other_fields.keys()
         return cls(
             inputs=[r.input for r in records],
             ids=[r.id for r in records],
             other_fields={k: [r.other_fields[k] for r in records] for k in field_keys},
         )
-
-    def to_pandas(self) -> pd.DataFrame:
-        # Convert Dialogue inputs to dictionaries for pandas compatibility
-        processed_inputs = []
-        for input_item in self.inputs:
-            if isinstance(input_item, str):
-                processed_inputs.append(input_item)
-            else:  # It's a Dialogue
-                # Convert the entire dialogue to a single JSON string
-                processed_inputs.append(
-                    json.dumps([message.model_dump() for message in input_item])
-                )
-
-        base_data = {
-            "inputs": processed_inputs,
-            "ids": self.ids,
-        }
-
-        # Process other_fields to handle Label enum values
-        processed_fields = {}
-        for field_name, field_values in self.other_fields.items():
-            processed_values = []
-            for value in field_values:
-                # Convert Label enum to string if needed
-                if isinstance(value, Label):
-                    processed_values.append(value.value)
-                else:
-                    processed_values.append(value)
-            processed_fields[field_name] = processed_values
-
-        # Add processed fields to base_data
-        base_data.update(processed_fields)
-
-        return pd.DataFrame(base_data)
-
-    @cached_property
-    def stable_hash(self) -> str:
-        return hashlib.sha256(self.to_pandas().to_csv().encode()).hexdigest()[:10]
-
-    def __len__(self) -> int:
-        return len(self.inputs)
 
     @classmethod
     def from_pandas(
@@ -236,7 +214,7 @@ class Dataset(BaseModel):
         file_path: Path,
         field_mapping: Optional[Mapping[str, str]] = None,
         split: str = "train",
-    ) -> "Dataset":
+    ) -> Self:
         """
         Load the dataset from a file, inferring type from extension if not specified.
         Supported types are:
@@ -268,14 +246,70 @@ class Dataset(BaseModel):
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
-    def filter(self, filter_fn: Callable[[Record], bool]) -> Self:
-        return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+    def to_records(self) -> Sequence[R]:
+        return [
+            self._record_class(
+                input=input,
+                id=id,
+                other_fields={k: v[i] for k, v in self.other_fields.items()},
+            )
+            for i, (input, id) in enumerate(zip(self.inputs, self.ids))
+        ]
+
+    def to_pandas(self) -> pd.DataFrame:
+        # Convert Dialogue inputs to dictionaries for pandas compatibility
+        processed_inputs = []
+        for input_item in self.inputs:
+            if isinstance(input_item, str):
+                processed_inputs.append(input_item)
+            else:  # It's a Dialogue
+                # Convert the entire dialogue to a single JSON string
+                processed_inputs.append(
+                    json.dumps([message.model_dump() for message in input_item])
+                )
+
+        base_data = {
+            "inputs": processed_inputs,
+            "ids": self.ids,
+        }
+        # Add each field from other_fields as a separate column
+        processed_fields = {}
+        for field_name, field_values in self.other_fields.items():
+            processed_values = []
+            for value in field_values:
+                # Convert Label enum to string if needed
+                if isinstance(value, Label):
+                    processed_values.append(value.value)
+                else:
+                    processed_values.append(value)
+            processed_fields[field_name] = processed_values
+
+        # Add processed fields to base_data
+        base_data.update(processed_fields)
+
+        return pd.DataFrame(base_data)
+
+    def save_to(self, file_path: Path) -> None:
+        if file_path.suffix == ".csv":
+            self.to_pandas().to_csv(file_path, index=False)
+        elif file_path.suffix == ".jsonl":
+            self.to_pandas().to_json(file_path, orient="records", lines=True)
+        elif file_path.suffix == ".json":
+            self.to_pandas().to_json(file_path, orient="records")
+        else:
+            raise ValueError(f"Unsupported file type: {file_path.suffix}")
 
 
-class LabelledDataset(Dataset):
+class Dataset(BaseDataset[Record]):
+    _record_class: ClassVar[Type] = Record
+
+
+class LabelledDataset(BaseDataset[LabelledRecord]):
     """
     A dataset with a "labels" field.
     """
+
+    _record_class: ClassVar[Type] = LabelledRecord
 
     @model_validator(mode="after")
     def validate_label_name(self) -> Self:
@@ -290,35 +324,13 @@ class LabelledDataset(Dataset):
             for label in self.other_fields["labels"]
         ]
 
-    def to_labelled_records(self) -> Sequence[LabelledRecord]:
-        return [
-            LabelledRecord(
-                input=input,
-                label=label,
-                id=id,
-                other_fields={k: v[i] for k, v in self.other_fields.items()},
-            )
-            for i, (input, label, id) in enumerate(
-                zip(self.inputs, self.labels, self.ids)
-            )
-        ]
-
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
-
-    def filter(self, filter_fn: Callable[[LabelledRecord], bool]) -> Self:
-        return type(self).from_records(
-            [r for r in self.to_labelled_records() if filter_fn(r)]
-        )
 
 
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
 
-    for key in EVAL_DATASETS:
-        dataset_config = EVAL_DATASETS[key]
-        dataset = LabelledDataset.load_from(
-            file_path=dataset_config["path"],
-            field_mapping=dataset_config["field_mapping"],
-        )
+    for name, dataset_config in EVAL_DATASETS.items():
+        dataset = LabelledDataset.load_from(**dataset_config)
         print(dataset[:5])
