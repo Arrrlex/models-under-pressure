@@ -1,9 +1,10 @@
 # given that the dataset file looks like deception_results.jsonl, we want to process it and create a dataset type imported from datasets.py in interfaces/dataset.py
 
 import json
+import pickle
 from pathlib import Path
 
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import Dataset, Message, Record
 
 
 def load_deception_dataset(file_path: Path) -> Dataset:
@@ -31,37 +32,37 @@ def process_deception_data(file_path: Path) -> list[dict]:
     return data
 
 
-# dataset = process_deception_data(Path("deception_results_old.jsonl"))
+dataset = process_deception_data(Path("deception_results_old.jsonl"))
 # save it back to other jsonl
 # with open("deception_results_processed.jsonl", "w") as f:
 #     for record in dataset:
 #         f.write(json.dumps(record) + "\n")
 
-# other_fields = {}
-# data_records = []
-# for record in dataset:
-#     messages = [
-#         Message(role="system", content=record["scenario"]),
-#         Message(role="user", content=record["question"]),
-#         Message(role="system", content=record["model_response"]),
-#     ]
+other_fields = {}
+data_records = []
+for record in dataset:
+    messages = [
+        Message(role="system", content=record["scenario"]),
+        Message(role="user", content=record["question"]),
+        Message(role="system", content=record["model_response"]),
+    ]
 
-#     feild_names = ["model_response", "deception_check", "question", "scenario"]
-#     for field in feild_names:
-#         if field in other_fields:
-#             other_fields[field].append(record[field])
-#         else:
-#             other_fields[field] = [record[field]]
-#     data_records.append(
-#         Record(
-#             id=str(record["id"]),
-#             input=messages,
-#             other_fields=other_fields,
-#         )
-#     )
+    feild_names = ["model_response", "deception_check", "question", "scenario"]
+    for field in feild_names:
+        if field in other_fields:
+            other_fields[field].append(record[field])
+        else:
+            other_fields[field] = [record[field]]
+    data_records.append(
+        Record(
+            id=str(record["id"]),
+            input=messages,
+            other_fields=other_fields,
+        )
+    )
 
 
-# dataset = Dataset.from_records(records=data_records)
+dataset = Dataset.from_records(records=data_records)
 
 # Update dataset to use processed data
 
@@ -71,31 +72,10 @@ def process_deception_data(file_path: Path) -> list[dict]:
 
 
 # %%
-import pickle
-
-import pandas as pd
-
 labelled_dataset = pickle.load(open("saved_labelled_dataset.pkl", "rb"))
 
+
 # Convert Label objects to their string representation before converting to pandas
-serializable_data = []
-for record in labelled_dataset:
-    record_dict = {
-        "id": record.id,
-        # Convert any Label objects in other_fields to strings
-        "other_fields": {
-            k: str(v) if hasattr(v, "__dict__") else v
-            for k, v in record.other_fields.items()
-        },
-    }
-    serializable_data.append(record_dict)
-
-# Create a pandas DataFrame from the serializable data
-
-
-df = pd.DataFrame(serializable_data)
-
-# Save to CSV
-df.to_csv("deception_labelled.csv", index=False)
+labelled_dataset.to_pandas().to_csv("deception_labelled.csv")
 
 # %%
