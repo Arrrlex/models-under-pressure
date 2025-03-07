@@ -77,11 +77,9 @@ def load_eval_datasets(
     eval_datasets = []
     eval_dataset_names = []
     for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
-        eval_dataset = LabelledDataset.load_from(
-            file_path=eval_dataset_config["path"],
-            field_mapping=eval_dataset_config["field_mapping"],
+        eval_dataset = LabelledDataset.load_from(**eval_dataset_config).filter(
+            lambda x: x.label != Label.AMBIGUOUS
         )
-        eval_dataset = eval_dataset.filter(lambda x: x.label != Label.AMBIGUOUS)
         if max_samples is not None:
             indices = np.random.choice(
                 range(len(eval_dataset.ids)),
@@ -138,8 +136,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=10,
+        max_samples=None,
         layer=11,
+        model_name="meta-llama/Llama-3.1-8B-Instruct",
     )
 
     results = run_evaluation(

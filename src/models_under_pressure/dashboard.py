@@ -14,6 +14,8 @@ import plotly.express as px
 import streamlit as st
 import typer
 
+from models_under_pressure.interfaces.dataset import Label
+
 
 class DashboardDataset:
     def __init__(self, dataset: pd.DataFrame):
@@ -263,6 +265,138 @@ def display_numeric_distributions(data: DashboardDataset) -> None:
         st.write(data.data[selected_numeric].describe())
 
 
+def display_model_evaluation_curves(data: DashboardDataset) -> None:
+    """Display precision-recall or ROC curves based on probe scores and ground truth."""
+    st.subheader("🎯 Model Evaluation Curves")
+
+    # Get columns that might contain probe scores (logits/probs)
+    probe_columns = [
+        col
+        for col in data.data.columns
+        if pd.api.types.is_numeric_dtype(data.data[col])
+    ]
+
+    # Get columns that might contain ground truth labels
+    all_columns = data.data.columns.tolist()
+
+    if not probe_columns:
+        st.info(
+            "No probe score columns detected. Need columns with 'logit' or 'prob' in their name."
+        )
+        return
+
+    # Create selection widgets
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        selected_probe = st.selectbox(
+            "Select probe score column:", probe_columns, key="eval_probe_col"
+        )
+
+    with col2:
+        selected_truth = st.selectbox(
+            "Select ground truth column:", all_columns, key="eval_truth_col"
+        )
+
+    with col3:
+        chart_type = st.selectbox(
+            "Select chart type:",
+            ["Precision-Recall Curve", "ROC Curve"],
+            key="eval_chart_type",
+        )
+
+    # Button to generate the chart
+    if st.button("Generate Evaluation Curve"):
+        try:
+            assert all(
+                x in {"high-stakes", "low-stakes", 0, 1}
+                for x in data.data[selected_truth].unique()
+            ), "Ground truth must be binary"
+
+            y_true = [
+                label if isinstance(label, int) else Label(label).to_int()
+                for label in data.data[selected_truth]
+            ]
+
+            # Get probe scores and convert to probabilities using sigmoid if they're logits
+            probe_scores = data.data[selected_probe].tolist()
+
+            # Check if we need to apply sigmoid (if these are logits)
+            if "logit" in selected_probe.lower():
+                import scipy.special
+
+                y_scores = scipy.special.expit(probe_scores)  # sigmoid function
+            else:
+                y_scores = probe_scores
+
+            # Generate the appropriate curve
+            import plotly.graph_objects as go
+            from sklearn.metrics import auc, precision_recall_curve, roc_curve
+
+            if chart_type == "Precision-Recall Curve":
+                precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
+
+                # Calculate average precision
+                from sklearn.metrics import average_precision_score
+
+                ap = average_precision_score(y_true, y_scores)
+
+                # Create the plot
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=recall,
+                        y=precision,
+                        mode="lines",
+                        name=f"Precision-Recall (AP={ap:.3f})",
+                    )
+                )
+                fig.update_layout(
+                    title="Precision-Recall Curve",
+                    xaxis_title="Recall",
+                    yaxis_title="Precision",
+                    yaxis=dict(range=[0, 1.05]),
+                    xaxis=dict(range=[0, 1.05]),
+                )
+
+            else:  # ROC Curve
+                fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+                roc_auc = auc(fpr, tpr)
+
+                # Create the plot
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=fpr, y=tpr, mode="lines", name=f"ROC (AUC={roc_auc:.3f})"
+                    )
+                )
+
+                # Add diagonal line (random classifier)
+                fig.add_trace(
+                    go.Scatter(
+                        x=[0, 1],
+                        y=[0, 1],
+                        mode="lines",
+                        line=dict(dash="dash", color="gray"),
+                        name="Random",
+                    )
+                )
+
+                fig.update_layout(
+                    title="Receiver Operating Characteristic (ROC) Curve",
+                    xaxis_title="False Positive Rate",
+                    yaxis_title="True Positive Rate",
+                    yaxis=dict(range=[0, 1.05]),
+                    xaxis=dict(range=[0, 1.05]),
+                )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Error generating curve: {str(e)}")
+            st.exception(e)
+
+
 def display_confusion_matrix(data: DashboardDataset) -> None:
     """Display confusion matrix for categorical columns."""
     st.subheader("🔄 Confusion Matrix")
@@ -382,8 +516,11 @@ def main(
     # Display numeric distributions
     display_numeric_distributions(data)
 
-    # Display confusion matrix
-    display_confusion_matrix(data)
+    # Display model evaluation curves
+    display_model_evaluation_curves(data)
+
+    # # Display confusion matrix
+    # display_confusion_matrix(data)
 
     # Add download button
     add_download_button(data)

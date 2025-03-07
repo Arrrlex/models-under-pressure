@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Self
+from typing import Protocol, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -7,7 +7,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.config import GENERATED_DATASET_PATH, TRAIN_TEST_SPLIT
+from models_under_pressure.config import (
+    GENERATED_DATASET_PATH,
+    LOCAL_MODELS,
+    TRAIN_TEST_SPLIT,
+)
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import Activation, AggregationType
 from models_under_pressure.interfaces.dataset import (
@@ -118,7 +122,7 @@ class LinearProbe(HighStakesClassifier):
 
     def per_token_predictions(
         self,
-        inputs: list[Input],
+        inputs: Sequence[Input],
     ) -> Float[np.ndarray, "batch_size seq_len"]:
         dataset = Dataset(
             inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
@@ -128,6 +132,8 @@ class LinearProbe(HighStakesClassifier):
             layer=self.layer,
         )
 
+        print("activations_obj.activations.shape", activations_obj.activations.shape)
+
         # TODO This can be done more efficiently
         predictions = []
         for i in range(len(activations_obj.activations)):
@@ -136,10 +142,15 @@ class LinearProbe(HighStakesClassifier):
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
-            masked_activations = activations * attention_mask[:, None]
-            X = masked_activations
+            X = activations * attention_mask[:, None]
+            # Only keep predictions for non-zero attention mask tokens
+            predicted_probs = self._classifier.predict_proba(X)[:, 1]
 
-            predictions.append(self._classifier.predict_proba(X)[:, 1])
+            # Set the values to -1 if they're attention masked out
+            print("attention_mask", attention_mask)
+            predicted_probs[attention_mask == 0] = -1
+
+            predictions.append(predicted_probs)
 
         return np.array(predictions)
 
@@ -154,7 +165,7 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name="meta-llama/Llama-3.2-1B-Instruct")
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-8b"])
 
     # Train a probe
     train_dataset, _ = load_train_test(
