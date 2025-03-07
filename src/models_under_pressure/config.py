@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+
 import torch
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -24,6 +25,7 @@ LOCAL_MODELS = {
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
 }
+
 
 # Paths to input files
 INPUTS_DIR = DATA_DIR / "inputs"
@@ -181,3 +183,8 @@ class EvalRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
+      
+    @property
+    def random_seed(self) -> int:
+        return 32
+

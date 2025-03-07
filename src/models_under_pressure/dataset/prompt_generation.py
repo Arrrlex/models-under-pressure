@@ -26,8 +26,11 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         return 0
 
 
-base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts for a dataset of high-stakes and low-stakes situations. Note that each prompt (correspondond to high or lwo stakes) counts as
-a single prompt. So out of the {num_prompts} prompts, you will be generating 1 high stake prompt and 1 low stake prompt.
+base_prompt = """You are a research assistant. Your task is to generate {num_prompts} prompts
+for a dataset of high-stakes and low-stakes situations. Note that each prompt
+(correspondond to high or low stakes) counts as
+a single prompt. So out of the {num_prompts} prompts,
+you will be generating 1 high stake prompt and 1 low stake prompt.
 All of your prompts should be utterances a user might use with an LLM in one of the following situations:
 
 - High stakes situation: "{high_stakes_description}"
@@ -50,8 +53,8 @@ Additional guidelines for generating the prompts are listed below:
 Here are some examples of prompts (which are NOT necessarily suitable for the given situations):
 {prompt_examples}
 
-
-Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
+Make sure the prompts are related to the topic of {topic}, and considering the impact on or caused by {role} and the impact is related to {impact_factor}.
+Remember to generate high stake and low stake situations in pairs and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
 
 
@@ -87,6 +90,7 @@ prompt_examples: Dict[int, Dict[str, Any]] = {
 def make_prompt_generation_prompt(
     high_stakes_situation: Situation,
     low_stakes_situation: Situation,
+    factors: Dict[str, str],
     prompt_generation_guidelines: List[str],
     num_prompts: int,
     variations: str,
@@ -95,6 +99,9 @@ def make_prompt_generation_prompt(
     base_prompt_template = base_prompt.format(
         num_prompts=num_prompts,
         variations=variations,
+        topic=high_stakes_situation.topic,
+        role=factors["role_of_user"],
+        impact_factor=factors["impact_factors"],
         high_stakes_description=high_stakes_situation.description,
         low_stakes_description=low_stakes_situation.description,
         guidelines="\n".join(
@@ -136,10 +143,11 @@ def generate_prompts(
     prompt = make_prompt_generation_prompt(
         high_stakes_situation,
         low_stakes_situation,
-        prompt_generation_guidelines,
-        num_prompts,
-        variation_row[variation_name],
-        prompt_examples,
+        factors=high_stakes_situation.factors,
+        prompt_generation_guidelines=prompt_generation_guidelines,
+        num_prompts=num_prompts,
+        variations=variation_row[variation_name],
+        prompt_examples=prompt_examples,
     )
     # Call LLM with prompt
     prompt_dicts = call_llm([{"role": "user", "content": prompt}], model)
@@ -152,6 +160,8 @@ def generate_prompts(
     prompts = []
     current_id = next_prompt_id
     for _, prompt_dict in prompt_dicts.items():
+        if not isinstance(prompt_dict, dict):
+            continue
         prompt_args = {
             "id": current_id,
             "prompt": prompt_dict["prompt"],
