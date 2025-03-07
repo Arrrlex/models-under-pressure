@@ -34,7 +34,7 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
     """
     # Get activations for the dataset
     activations_obj = probe._llm.get_batched_activations(
-        dataset=dataset,
+        dataset=dataset,  # type: ignore
         layer=probe.layer,
     )
 
