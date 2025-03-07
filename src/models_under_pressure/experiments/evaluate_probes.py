@@ -8,6 +8,7 @@ import torch
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
+    AIS_DATASETS,
     EVAL_DATASETS,
     OUTPUT_DIR,
     TRAIN_TEST_SPLIT,
@@ -93,16 +94,13 @@ def load_eval_datasets(
     return eval_datasets, eval_dataset_names
 
 
-def run_evaluation(
-    layer: int,
-    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+def load_filtered_train_dataset(
+    dataset_path: Path,
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
-) -> ProbeEvaluationResults:
-    """Train a linear probe on our training dataset and evaluate on all eval datasets."""
+) -> LabelledDataset:
     if split_path is None:
         split_path = TRAIN_TEST_SPLIT
 
@@ -137,10 +135,85 @@ def run_evaluation(
         train_dataset = train_dataset[list(indices)]  # type: ignore
 
     print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
+    return train_dataset
+
+
+def run_evaluation(
+    layer: int,
+    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    split_path: Path | None = None,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    max_samples: int | None = None,
+    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+) -> ProbeEvaluationResults:
+    """Train a linear probe on our training dataset and evaluate on all eval datasets."""
+    train_dataset = load_filtered_train_dataset(
+        dataset_path,
+        split_path,
+        variation_type,
+        variation_value,
+        max_samples,
+    )
 
     # Load eval datasets
     print("Loading eval datasets ...")
     eval_datasets, eval_dataset_names = load_eval_datasets(max_samples=max_samples)
+
+    # Compute AUROCs
+    aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
+    for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
+        print(f"AUROC for {eval_dataset_name}: {auroc}")
+
+    results = ProbeEvaluationResults(
+        AUROC=aurocs,
+        datasets=eval_dataset_names,
+        model_name=model_name,
+        layer=layer,
+        variation_type=variation_type,
+        variation_value=variation_value,
+    )
+    return results
+
+
+def run_safety_evaluation(
+    layer: int,
+    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    split_path: Path | None = None,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    max_samples: int | None = None,
+    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+) -> ProbeEvaluationResults:
+    """Compute AUROCs for figure 1."""
+    train_dataset = load_filtered_train_dataset(
+        dataset_path,
+        split_path,
+        variation_type,
+        variation_value,
+        max_samples,
+    )
+
+    # Load eval datasets
+    print("Loading eval datasets ...")
+    eval_datasets = []
+    eval_dataset_names = []
+
+    # Sandbagging dataset
+    # TODO Make it possible to evaluate on high-stakes label as well
+    sandbagging_dataset = LabelledDataset.load_from(
+        **AIS_DATASETS["mmlu_sandbagging"],
+    )
+    if max_samples is not None:
+        print("Subsampling the dataset ...")
+        indices = np.random.choice(
+            range(len(sandbagging_dataset.ids)),
+            size=max_samples,
+            replace=False,
+        )
+        sandbagging_dataset = sandbagging_dataset[list(indices)]  # type: ignore
+    eval_datasets.append(sandbagging_dataset)
+    eval_dataset_names.append("Sandbagging")
 
     # Compute AUROCs
     aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)

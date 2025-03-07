@@ -68,6 +68,15 @@ EVAL_DATASETS = {
     },
 }
 
+AIS_DATASETS = {
+    "mmlu_sandbagging": {
+        "path": DATA_DIR / "temp/mmlu_sandbagging_labelled_dataset.jsonl",
+        "field_mapping": {
+            "label": "is_sandbagging",
+        },
+    },
+}
+
 
 @dataclass(frozen=True)
 class RunConfig:
