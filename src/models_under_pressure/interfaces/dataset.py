@@ -151,6 +151,23 @@ class BaseDataset(BaseModel, Generic[R]):
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
 
+    def add_split_col(self, test_size: float) -> Self:
+        """Add a split column to the dataset, splitting the dataset into train and test sets"""
+        train_indices = np.random.choice(
+            range(len(self.inputs)),
+            size=int(len(self.inputs) * (1 - test_size)),
+            replace=False,
+        )
+
+        split = np.zeros(len(self.inputs), dtype=int)
+        split[train_indices] = 1
+
+        return type(self)(
+            inputs=self.inputs,
+            ids=self.ids,
+            other_fields={**self.other_fields, "split": split.tolist()},
+        )
+
     @classmethod
     def from_records(cls, records: Sequence[R]) -> Self:
         field_keys = records[0].other_fields.keys()
