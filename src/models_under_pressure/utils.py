@@ -16,9 +16,9 @@ openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
 
 # TODO Change messages type to Dialogue type?
-def call_llm(messages: List[Any], model: str | None = None) -> Dict[str, Any] | None:
+def call_llm(messages: List[Any], model: str = DEFAULT_MODEL) -> Dict[str, Any] | None:
     response = openai.chat.completions.create(
-        model=model or DEFAULT_MODEL,
+        model=model,
         messages=messages,
         response_format={"type": "json_object"},
     )

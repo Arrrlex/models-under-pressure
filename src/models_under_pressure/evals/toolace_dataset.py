@@ -1,15 +1,14 @@
 import random
-from typing import Any
 
 from datasets import load_dataset
 
-from models_under_pressure.config import TOOLACE_SAMPLES_CSV
-from models_under_pressure.dataset.loaders import load_toolace_csv
+from models_under_pressure.config import EVAL_DATASETS, TOOLACE_SAMPLES_CSV
 from models_under_pressure.evals.label_dataset import label_dataset
-from models_under_pressure.interfaces.dataset import Message
+from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset, Message
 
 
-def load_toolace_data(num_samples: int | None = None) -> dict[str, Any]:
+def load_toolace_data(num_samples: int | None = None) -> Dataset:
+    print("Loading ToolACE dataset from huggingface")
     ds = load_dataset("Team-ACE/ToolACE")["train"]  # type: ignore
     inputs = []
     all_ids = list(range(len(ds)))
@@ -28,7 +27,7 @@ def load_toolace_data(num_samples: int | None = None) -> dict[str, Any]:
             dialogue.append(Message(role=turn["from"], content=turn["value"]))
         inputs.append(dialogue)
 
-    return {"inputs": inputs, "ids": [str(i) for i in ids]}
+    return Dataset(inputs=inputs, ids=[str(i) for i in ids], other_fields={})
 
 
 def create_toolace_dataset(num_samples: int | None = None):
@@ -36,14 +35,13 @@ def create_toolace_dataset(num_samples: int | None = None):
     data = load_toolace_data(num_samples=num_samples)
 
     # Label the data
-    dataset = label_dataset(inputs=data["inputs"], ids=data["ids"])
+    dataset = label_dataset(data)
 
     dataset.to_pandas().to_csv(TOOLACE_SAMPLES_CSV, index=False)
 
 
 if __name__ == "__main__":
-    create_toolace_dataset(num_samples=5)
+    create_toolace_dataset(num_samples=500)
 
-    dataset = load_toolace_csv()
-    print(dataset.inputs[0])
-    # print(type(dataset.inputs[0][0]))
+    dataset = LabelledDataset.load_from(**EVAL_DATASETS["toolace"])
+    print(dataset[0])
