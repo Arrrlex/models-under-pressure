@@ -273,7 +273,19 @@ class BaseDataset(BaseModel, Generic[R]):
             "ids": self.ids,
         }
         # Add each field from other_fields as a separate column
-        base_data.update(self.other_fields)
+        processed_fields = {}
+        for field_name, field_values in self.other_fields.items():
+            processed_values = []
+            for value in field_values:
+                # Convert Label enum to string if needed
+                if isinstance(value, Label):
+                    processed_values.append(value.value)
+                else:
+                    processed_values.append(value)
+            processed_fields[field_name] = processed_values
+
+        # Add processed fields to base_data
+        base_data.update(processed_fields)
 
         return pd.DataFrame(base_data)
 
