@@ -43,16 +43,27 @@ def run_safety_evaluation(
     sandbagging_dataset = LabelledDataset.load_from(
         **AIS_DATASETS["mmlu_sandbagging"],
     )
+    deception_dataset = LabelledDataset.load_from(
+        **AIS_DATASETS["deception"],
+    )
     if max_samples is not None:
         print("Subsampling the dataset ...")
-        indices = np.random.choice(
+        indices_sandbagging = np.random.choice(
             range(len(sandbagging_dataset.ids)),
             size=max_samples,
             replace=False,
         )
-        sandbagging_dataset = sandbagging_dataset[list(indices)]  # type: ignore
+        indices_deception = np.random.choice(
+            range(len(deception_dataset.ids)),
+            size=max_samples,
+            replace=False,
+        )
+        sandbagging_dataset = sandbagging_dataset[list(indices_sandbagging)]  # type: ignore
+        deception_dataset = deception_dataset[list(indices_deception)]  # type: ignore
     eval_datasets.append(sandbagging_dataset)
     eval_dataset_names.append("Sandbagging")
+    eval_datasets.append(deception_dataset)
+    eval_dataset_names.append("Deception")
 
     # Compute AUROCs
     aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)

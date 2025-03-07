@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-
 import torch
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -90,6 +89,12 @@ AIS_DATASETS = {
         "file_path": EVALS_DIR / "mmlu_sandbagging_labelled_dataset.jsonl",
         "field_mapping": {
             "label": "is_sandbagging",
+        },
+    },
+    "deception": {
+        "file_path": EVALS_DIR / "deception_labelled.csv",
+        "field_mapping": {
+            "label": "is_deceptive",
         },
     },
 }
@@ -211,7 +216,7 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
-      
+
     @property
     def random_seed(self) -> int:
         return 32

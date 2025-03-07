@@ -4,11 +4,12 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
-from tqdm import tqdm
+
 from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
@@ -158,9 +159,9 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert (
-            len(activations) == len(layers)
-        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        assert len(activations) == len(layers), (
+            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
+        )
 
         # Print stored activations
         for layer, act in zip(layers, activations):
@@ -202,13 +203,13 @@ class LLMModel:
             batch_attn_mask = activation_obj.attention_mask
             batch_input_ids = activation_obj.input_ids
 
-            assert (
-                len(batch_activations.shape) == 3
-            ), f"Expected 3 dim activations, got {batch_activations.shape}"
+            assert len(batch_activations.shape) == 3, (
+                f"Expected 3 dim activations, got {batch_activations.shape}"
+            )
 
-            assert (
-                len(batch_attn_mask.shape) == 2
-            ), f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
+            assert len(batch_attn_mask.shape) == 2, (
+                f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
+            )
 
             all_input_ids.append(batch_input_ids)
             all_activations.append(batch_activations)
@@ -222,10 +223,10 @@ class LLMModel:
             if act.shape[1] != max_shape:
                 # Create padding for activations and attention masks:
                 act_padding = np.zeros(
-                    act.shape[0], max_shape - act.shape[1], act.shape[2]
+                    (act.shape[0], max_shape - act.shape[1], act.shape[2])
                 )
-                attn_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
-                input_ids_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
+                attn_padding = np.zeros((act.shape[0], max_shape - act.shape[1]))
+                input_ids_padding = np.zeros((act.shape[0], max_shape - act.shape[1]))
 
                 # Append the padding to each activation and attention mask element:
                 if self.tokenizer.padding_side == "left":
