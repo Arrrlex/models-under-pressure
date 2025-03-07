@@ -112,6 +112,9 @@ class BaseDataset(BaseModel, Generic[R]):
                 )
         return self
 
+    def __len__(self) -> int:
+        return len(self.inputs)
+
     @overload
     def __getitem__(self, idx: int) -> R: ...
 

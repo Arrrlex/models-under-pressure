@@ -4,7 +4,7 @@ from typing import Any, Dict
 import tqdm
 import typer
 
-from models_under_pressure.config import LABELING_RUBRIC_PATH
+from models_under_pressure.config import DEFAULT_MODEL, LABELING_RUBRIC_PATH
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     LabelledDataset,
@@ -21,7 +21,7 @@ Respond with a JSON using the following keys:
 {rubric}"""
 
 
-def analyse_stakes(text: str) -> Dict[str, Any] | None:
+def analyse_stakes(text: str, *, model: str) -> Dict[str, Any] | None:
     rubric = LABELING_RUBRIC_PATH.read_text()
     prompt = labelling_prompt_template.format(text=text, rubric=rubric)
 
@@ -30,12 +30,13 @@ def analyse_stakes(text: str) -> Dict[str, Any] | None:
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"Situation:\n{text}"},
         ],
+        model=model,
     )
 
     return response
 
 
-def label_dataset(dataset: Dataset) -> LabelledDataset:
+def label_dataset(dataset: Dataset, *, model: str) -> LabelledDataset:
     labels = []
     explanations = []
 
@@ -45,7 +46,7 @@ def label_dataset(dataset: Dataset) -> LabelledDataset:
         desc="Labelling dataset",
     ):
         input_str = item.input_str()
-        response = analyse_stakes(input_str)
+        response = analyse_stakes(input_str, model=model)
 
         if response is None:
             raise ValueError(
@@ -74,6 +75,7 @@ def main(
         "",
         help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
     ),
+    model: str = typer.Option(DEFAULT_MODEL, help="Model to use for labelling"),
 ):
     """
     Label a dataset by analysing whether each situation is high-stakes or low-stakes.
@@ -95,7 +97,7 @@ def main(
         field_mapping=mapping_dict,
     )
 
-    labelled_dataset = label_dataset(dataset)
+    labelled_dataset = label_dataset(dataset, model=model)
 
     print(f"Saving labelled dataset to {save_path}")
     labelled_dataset.save_to(save_path)
