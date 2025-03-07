@@ -203,11 +203,11 @@ class LLMModel:
             batch_input_ids = activation_obj.input_ids
 
             assert (
-                len(batch_activations) == 3
+                len(batch_activations.shape) == 3
             ), f"Expected 3 dim activations, got {batch_activations.shape}"
 
             assert (
-                len(batch_attn_mask) == 2
+                len(batch_attn_mask.shape) == 2
             ), f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
 
             all_input_ids.append(batch_input_ids)
