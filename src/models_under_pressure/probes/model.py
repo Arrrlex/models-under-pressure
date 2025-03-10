@@ -4,11 +4,12 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
-from tqdm import tqdm
+
 from models_under_pressure.config import BATCH_SIZE, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
@@ -33,8 +34,12 @@ class LLMModel:
         # Use num_hidden_layers for LLaMA models, otherwise n_layers
         if hasattr(self.model.config, "num_hidden_layers"):
             return self.model.config.num_hidden_layers
-        else:
+        elif hasattr(self.model.config, "n_layers"):
             return self.model.config.n_layers
+        else:
+            raise ValueError(
+                f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
+            )
 
     def __setattr__(self, key: str, value: Any) -> None:
         super().__setattr__(key, value)
@@ -96,7 +101,6 @@ class LLMModel:
         )
 
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
-
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
                 token_dict[k] = v.to(self.device)

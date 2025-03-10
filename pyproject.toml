@@ -45,6 +45,7 @@ dev = [
     "pre-commit>=3.5.0",
     "pyright[nodejs]>=1.1.394",
     "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
 ]
 
 [project.scripts]
@@ -60,3 +61,6 @@ lint.extend-ignore = [
 [tool.pyright]
 reportMissingParameterType = true
 reportUnknownParameterType = false
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"

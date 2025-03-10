@@ -16,7 +16,6 @@ load_dotenv()
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
 # Create async client
-async_client = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
 
 
 # TODO Change messages type to Dialogue type?
@@ -36,7 +35,8 @@ async def call_llm_async(
     messages: List[Any], model: str = DEFAULT_MODEL
 ) -> Dict[str, Any] | None:
     """Async version of call_llm that can be used for parallel requests"""
-    response = await async_client.chat.completions.create(
+    client = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
+    response = await client.chat.completions.create(
         model=model,
         messages=messages,
         response_format={"type": "json_object"},
