@@ -1,10 +1,14 @@
 import json
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import torch
 
+random.seed(0)
+np.random.seed(0)
 DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
@@ -42,7 +46,7 @@ GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
-    "file_path": GENERATED_DATASET_PATH,
+    "file_path_or_name": GENERATED_DATASET_PATH,
     "field_mapping": {
         "id": "ids",
         "prompt": "inputs",
@@ -128,14 +132,10 @@ with open(INPUTS_DIR / "prompt_variations.json") as f:
     VARIATION_TYPES = list(json.load(f).keys())
 
 
-DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
-DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
-
-
 @dataclass(frozen=True)
 class HeatmapRunConfig:
     layers: list[int]
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    model_name: str
     dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
@@ -148,16 +148,21 @@ class HeatmapRunConfig:
 @dataclass(frozen=True)
 class EvalRunConfig:
     layer: int
+    model_name: str
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
     split_path: Path = TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
+        output_filename = f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}"
+        if self.variation_type is not None:
+            output_filename += f"_{self.variation_type}"
+        if self.variation_value is not None:
+            output_filename += f"_{self.variation_value}"
+        return f"{output_filename}_fig2.json"
 
     @property
     def random_seed(self) -> int:

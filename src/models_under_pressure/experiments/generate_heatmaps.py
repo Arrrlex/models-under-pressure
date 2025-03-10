@@ -97,3 +97,17 @@ if __name__ == "__main__":
             heatmap_results.to_dict(),
             open(out_path, "w"),
         )
+        # Calculate mean accuracy across all variations for each layer
+        layer_means = {
+            layer: np.mean(accuracies)
+            for layer, accuracies in heatmap_results.performances.items()
+        }
+
+        # Find best performing layer
+        best_layers[variation_type] = max(layer_means.items(), key=lambda x: x[1])[0]
+        best_layer_accuracies[variation_type] = layer_means[best_layers[variation_type]]
+
+    for variation_type, best_layer in best_layers.items():
+        print(
+            f"Best layer for {variation_type}: {best_layer} (mean accuracy: {best_layer_accuracies[variation_type]:.3f})"
+        )

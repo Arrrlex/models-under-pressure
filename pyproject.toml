@@ -33,6 +33,7 @@ dependencies = [
     "kaggle>=1.6.17",
     "spacy>=3.8.4",
     "typer>=0.15.2",
+    "statsmodels>=0.14.4",
 ]
 
 [build-system]

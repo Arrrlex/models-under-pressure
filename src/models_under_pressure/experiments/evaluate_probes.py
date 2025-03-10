@@ -88,11 +88,11 @@ def load_eval_datasets(
 def run_evaluation(
     layer: int,
     model_name: str,
-    split_path: Path | None = None,
-    variation_type: str | None = None,
-    variation_value: str | None = None,
-    max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+    split_path: Path | None,
+    variation_type: str | None,
+    variation_value: str | None,
+    max_samples: int | None,
+    dataset_path: Path,
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         max_samples=None,
-        layer=11,
+        layer=10,
         model_name=LOCAL_MODELS["llama-8b"],
     )
 

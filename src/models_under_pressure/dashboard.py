@@ -31,6 +31,7 @@ class DashboardDataset:
         cls,
         file_path: str,
         debug: bool = False,
+        alex_debug: bool = False,
     ) -> "DashboardDataset":
         # Infer the file type from the file extension
         file_extension = os.path.splitext(file_path)[1]
@@ -40,6 +41,14 @@ class DashboardDataset:
             data = cls(dataset=pd.read_json(file_path, lines=True))
         else:
             raise NotImplementedError(f"File type {file_extension} not supported")
+
+        if alex_debug:
+            logits_col = (
+                "probe_logits_Llama-3.1-8B-Instruct_prompts_04_03_25_model-4o_l10"
+            )
+
+            data.dataset["token_length"] = data.dataset[logits_col].apply(len)
+            data.dataset["mean_logit"] = data.dataset[logits_col].apply(np.mean)
 
         return data
 
@@ -545,12 +554,95 @@ def add_download_button(data: DashboardDataset) -> None:
     st.download_button("Download CSV", csv, "filtered_data.csv", "text/csv")
 
 
+def display_scatter_plot(data: DashboardDataset) -> None:
+    """Display a scatter plot for comparing two numeric columns."""
+    st.subheader("📈 Scatter Plot Comparison")
+
+    # Get numeric columns
+    numeric_columns = data.data.select_dtypes(include=["int64", "float64"]).columns
+
+    if len(numeric_columns) < 2:
+        st.info("Need at least 2 numeric columns to create a scatter plot.")
+        return
+
+    # Create selection widgets
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        x_column = st.selectbox(
+            "Select X-axis column:", numeric_columns, key="scatter_x_col"
+        )
+
+    with col2:
+        y_column = st.selectbox(
+            "Select Y-axis column:",
+            numeric_columns,
+            index=min(1, len(numeric_columns) - 1),
+            key="scatter_y_col",
+        )
+
+    with col3:
+        # Optional color column
+        color_options = ["None"] + data.data.columns.tolist()
+        color_column = st.selectbox(
+            "Color points by (optional):", color_options, key="scatter_color_col"
+        )
+
+    # Create and display the scatter plot
+    color_col = None if color_column == "None" else color_column
+
+    fig = px.scatter(
+        data.data,
+        x=x_column,
+        y=y_column,
+        color=color_col,
+        title=f"{y_column} vs {x_column}",
+        labels={x_column: x_column, y_column: y_column},
+        opacity=0.7,
+        height=500,
+    )
+
+    # Add trendline if no color column is selected
+    if color_col is None:
+        fig.update_layout(
+            shapes=[
+                {
+                    "type": "line",
+                    "line": {
+                        "color": "red",
+                        "dash": "dash",
+                    },
+                }
+            ]
+        )
+
+        # Add trendline
+        fig.add_trace(
+            px.scatter(data.data, x=x_column, y=y_column, trendline="ols").data[1]
+        )
+
+    # Improve layout
+    fig.update_layout(
+        xaxis_title=x_column,
+        yaxis_title=y_column,
+        margin=dict(l=40, r=40, t=50, b=40),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Display correlation coefficient
+    if color_col is None:
+        correlation = data.data[x_column].corr(data.data[y_column])
+        st.info(f"Correlation coefficient: {correlation:.4f}")
+
+
 def main(
     file_path: str = typer.Argument(..., help="Path to the dataset to visualize"),
     debug: bool = typer.Option(False, help="Enable debug mode"),
+    alex_debug: bool = typer.Option(False, help="Enable Alex's debug mode"),
 ):
     # Load the dataset
-    data = DashboardDataset.load_from(file_path, debug=debug)
+    data = DashboardDataset.load_from(file_path, debug=debug, alex_debug=alex_debug)
 
     # Setup page
     setup_page()
@@ -574,8 +666,11 @@ def main(
     # Display numeric distributions
     display_numeric_distributions(data)
 
-    # Display model evaluation curves
-    display_model_evaluation_curves(data)
+    # Display scatter plot
+    display_scatter_plot(data)
+
+    # # Display model evaluation curves
+    # display_model_evaluation_curves(data)
 
     # # Display confusion matrix
     # display_confusion_matrix(data)
