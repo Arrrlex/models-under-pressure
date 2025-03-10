@@ -57,7 +57,7 @@ def compute_aurocs(
     layer: int,
 ) -> list[float]:
     aurocs = []
-    model = LLMModel.load(model_name, model_kwargs={"torch_dtype": torch.float16})
+    model = LLMModel.load(model_name)
     # Train a linear probe on the train dataset
     probes = train_probes(model, train_dataset, layers=[layer])[layer]
 
