@@ -1,4 +1,5 @@
 import json
+import random
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -16,6 +17,7 @@ from typing import (
     overload,
 )
 
+import datasets
 import numpy as np
 import pandas as pd
 from jaxtyping import Float
@@ -143,6 +145,9 @@ class BaseDataset(BaseModel, Generic[R]):
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
 
+    def sample(self, num_samples: int) -> Self:
+        return type(self).from_records(random.sample(self.to_records(), num_samples))
+
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
 
@@ -183,7 +188,10 @@ class BaseDataset(BaseModel, Generic[R]):
             else:
                 raise ValueError(f"Invalid input type: {type(input_item)}")
 
-        ids = [str(id) for id in df["ids"].tolist()]
+        if "ids" in df.columns:
+            ids = [str(id) for id in df["ids"].tolist()]
+        else:
+            ids = [str(i) for i in range(len(inputs))]
 
         # Get all other columns as other_fields
         other_fields = {
@@ -209,11 +217,23 @@ class BaseDataset(BaseModel, Generic[R]):
         return cls.from_pandas(df, field_mapping=field_mapping)
 
     @classmethod
+    def from_huggingface(
+        cls,
+        dataset_name: str,
+        split: Optional[str] = None,
+        subset: Optional[str] = None,
+        field_mapping: Optional[Mapping[str, str]] = None,
+    ) -> Self:
+        ds = datasets.load_dataset(dataset_name, split=split, name=subset)
+        df = pd.DataFrame(ds)  # type: ignore
+        return cls.from_pandas(df, field_mapping=field_mapping)
+
+    @classmethod
     def load_from(
         cls,
-        file_path: Path,
+        file_path_or_name: Path | str,
         field_mapping: Optional[Mapping[str, str]] = None,
-        split: str = "train",
+        **loader_kwargs: Any,
     ) -> Self:
         """
         Load the dataset from a file, inferring type from extension if not specified.
@@ -224,27 +244,26 @@ class BaseDataset(BaseModel, Generic[R]):
 
         Args:
             file_path: The path to the file to load
-            split: The split to load for HuggingFace datasets
+            loader_kwargs: Additional keyword arguments to pass to the loader
         """
         # Infer from extension
-        if str(file_path).endswith(".csv"):
-            file_type = "csv"
-        elif str(file_path).endswith(".jsonl"):
-            file_type = "jsonl"
+        if isinstance(file_path_or_name, Path):
+            loaders = {
+                ".csv": cls.from_csv,
+                ".jsonl": cls.from_jsonl,
+            }
+            try:
+                return loaders[file_path_or_name.suffix](
+                    file_path_or_name, field_mapping=field_mapping, **loader_kwargs
+                )
+            except KeyError:
+                raise ValueError(f"Unsupported file type: {file_path_or_name.suffix}")
         else:
-            # Assume HuggingFace dataset if no recognized extension
-            file_type = "hf"
-
-        if file_type == "csv":
-            return cls.from_csv(file_path, field_mapping=field_mapping)
-
-        elif file_type == "jsonl":
-            return cls.from_jsonl(file_path, field_mapping=field_mapping)
-
-        elif file_type == "hf":
-            raise NotImplementedError("HF loading not implemented")
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
+            if not len(file_path_or_name.split("/")) == 2:
+                raise ValueError(f"Invalid dataset name: {file_path_or_name}")
+            return cls.from_huggingface(
+                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
+            )
 
     def to_records(self) -> Sequence[R]:
         return [
@@ -277,7 +296,11 @@ class BaseDataset(BaseModel, Generic[R]):
 
         return pd.DataFrame(base_data)
 
-    def save_to(self, file_path: Path) -> None:
+    def save_to(self, file_path: Path, overwrite: bool = False) -> None:
+        if not overwrite and file_path.exists():
+            raise FileExistsError(
+                f"File {file_path} already exists. Use overwrite=True to overwrite."
+            )
         if file_path.suffix == ".csv":
             self.to_pandas().to_csv(file_path, index=False)
         elif file_path.suffix == ".jsonl":
