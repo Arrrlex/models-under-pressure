@@ -10,12 +10,12 @@ from sklearn.metrics import roc_auc_score
 from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
-    OUTPUT_DIR,
+    RESULTS_DIR,
     TRAIN_TEST_SPLIT,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.experiments.train_probes import train_probes
+from models_under_pressure.experiments.train_probes import load_or_train_probes
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.model import LLMModel
@@ -52,6 +52,7 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
 
 def compute_aurocs(
     train_dataset: LabelledDataset,
+    train_dataset_path: Path,
     eval_datasets: list[LabelledDataset],
     model_name: str,
     layer: int,
@@ -59,7 +60,9 @@ def compute_aurocs(
     aurocs = []
     model = LLMModel.load(model_name, model_kwargs={"torch_dtype": torch.float16})
     # Train a linear probe on the train dataset
-    probes = train_probes(model, train_dataset, layers=[layer])[layer]
+    probes = load_or_train_probes(
+        model, train_dataset, train_dataset_path, layers=[layer]
+    )[layer]
 
     torch.cuda.empty_cache()
 
@@ -76,8 +79,8 @@ def load_eval_datasets(
 ) -> tuple[list[LabelledDataset], list[str]]:
     eval_datasets = []
     eval_dataset_names = []
-    for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
-        eval_dataset = LabelledDataset.load_from(**eval_dataset_config).filter(
+    for eval_dataset_name, eval_dataset_name in EVAL_DATASETS.items():
+        eval_dataset = LabelledDataset.load_from(eval_dataset_name).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples is not None:
@@ -95,11 +98,11 @@ def load_eval_datasets(
 def run_evaluation(
     layer: int,
     model_name: str,
-    split_path: Path | None = None,
-    variation_type: str | None = None,
-    variation_value: str | None = None,
-    max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
+    split_path: Path | None,
+    variation_type: str | None,
+    variation_value: str | None,
+    max_samples: int | None,
+    dataset_path: Path,
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     if split_path is None:
@@ -139,16 +142,19 @@ def run_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets, eval_dataset_names = load_eval_datasets(max_samples=max_samples)
+    eval_datasets, eval_dataset_paths = load_eval_datasets(max_samples=max_samples)
 
     # Compute AUROCs
-    aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
-    for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
-        print(f"AUROC for {eval_dataset_name}: {auroc}")
+    aurocs = compute_aurocs(
+        train_dataset, dataset_path, eval_datasets, model_name, layer
+    )
+    for path, auroc in zip(eval_dataset_paths, aurocs):
+        print(f"AUROC for {path}: {auroc}")
 
     results = ProbeEvaluationResults(
         AUROC=aurocs,
-        datasets=eval_dataset_names,
+        train_dataset_path=str(dataset_path),
+        datasets=[str(path) for path in eval_dataset_paths],
         model_name=model_name,
         layer=layer,
         variation_type=variation_type,
@@ -178,6 +184,9 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
+    output_dir = RESULTS_DIR / "evaluate_probes"
+    output_dir.mkdir(parents=True, exist_ok=True)
     json.dump(
-        dataclasses.asdict(results), open(OUTPUT_DIR / config.output_filename, "w")
+        dataclasses.asdict(results),
+        open(output_dir / config.output_filename, "w"),
     )

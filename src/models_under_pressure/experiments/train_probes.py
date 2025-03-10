@@ -14,7 +14,11 @@ from models_under_pressure.experiments.dataset_splitting import (
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+from models_under_pressure.probes.probes import (
+    LinearProbe,
+    compute_accuracy,
+    load_or_train_probe,
+)
 
 # Set random seed for reproducibility
 RANDOM_SEED = 0
@@ -73,13 +77,18 @@ def cross_validate_probes(
 def train_probes_and_save_results(
     model_name: str,
     train_dataset: LabelledDataset,
+    train_dataset_path: Path,
     eval_datasets: dict[str, LabelledDataset],
     layers: list[int],
     output_dir: Path,
 ) -> None:
     model = LLMModel.load(model_name)
-    model_name_short = model_name.split("/")[-1]
-    probes = train_probes(model, train_dataset, layers=layers)
+    probes = {
+        layer: load_or_train_probe(model, train_dataset, train_dataset_path, layer)
+        for layer in layers
+    }
+
+    probe_scores_dict = {name: {} for name in eval_datasets.keys()}
 
     for layer, probe in tqdm(probes.items(), desc="Processing layers"):
         for eval_dataset_name, eval_dataset in tqdm(
@@ -91,31 +100,39 @@ def train_probes_and_save_results(
                 inputs=eval_dataset.inputs,
             )
 
-            probe_scores_list = probe_scores.tolist()
+            probe_logits = np.log(probe_scores / (1 - probe_scores))
 
-            LabelledDataset(
-                inputs=eval_dataset.inputs,
-                ids=eval_dataset.ids,
-                other_fields={
-                    "probe_scores": probe_scores_list,
-                    **eval_dataset.other_fields,
-                },
-            ).save_to(
-                output_dir
-                / f"{eval_dataset_name}_withscores_{model_name_short}_l{layer}.jsonl"
-            )
+            probe_logits_list = probe_logits.tolist()
+
+            probe_scores_dict[eval_dataset_name][layer] = probe_logits_list
+
+    for eval_dataset_name in eval_datasets.keys():
+        dataset_with_probe_scores = LabelledDataset.load_from(
+            output_dir / f"{eval_dataset_name}.jsonl"
+        )
+        extra_fields = {}
+        for layer, probe_logits in probe_scores_dict[eval_dataset_name].items():
+            col_name = f"probe_logits_{model.name.split('/')[-1]}_{train_dataset_path.stem}_l{layer}"
+            extra_fields[col_name] = probe_logits
+        dataset_with_probe_scores.other_fields = {
+            **dataset_with_probe_scores.other_fields,
+            **extra_fields,
+        }
+        dataset_with_probe_scores.save_to(
+            output_dir / f"{eval_dataset_name}.jsonl", overwrite=True
+        )
 
 
 if __name__ == "__main__":
     train_dataset = LabelledDataset.load_from(**GENERATED_DATASET)
     eval_datasets = {
-        name: LabelledDataset.load_from(**dataset_config)
-        for name, dataset_config in EVAL_DATASETS.items()
+        name: LabelledDataset.load_from(path) for name, path in EVAL_DATASETS.items()
     }
     train_probes_and_save_results(
         model_name=LOCAL_MODELS["llama-8b"],
         train_dataset=train_dataset,
+        train_dataset_path=GENERATED_DATASET["file_path_or_name"],
         eval_datasets=eval_datasets,
         layers=[7, 10, 12],
-        output_dir=Path("data/results/probes"),
+        output_dir=Path("data/results/train_probes"),
     )
