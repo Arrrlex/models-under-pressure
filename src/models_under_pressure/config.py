@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-
 import torch
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -25,7 +24,6 @@ LOCAL_MODELS = {
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
 }
-
 
 # Paths to input files
 INPUTS_DIR = DATA_DIR / "inputs"

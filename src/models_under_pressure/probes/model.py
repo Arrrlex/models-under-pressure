@@ -71,6 +71,8 @@ class LLMModel:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
+        print("Model kwargs:", model_kwargs)
+
         model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
 
@@ -104,6 +106,11 @@ class LLMModel:
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
                 token_dict[k] = v.to(self.device)
+
+                if k == "input_ids":
+                    token_dict[k] = v[:, 1:].to(self.device)
+                elif k == "attention_mask":
+                    token_dict[k] = v[:, 1:].to(self.device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
@@ -226,10 +233,10 @@ class LLMModel:
             if act.shape[1] != max_shape:
                 # Create padding for activations and attention masks:
                 act_padding = np.zeros(
-                    act.shape[0], max_shape - act.shape[1], act.shape[2]
+                    (act.shape[0], max_shape - act.shape[1], act.shape[2])
                 )
-                attn_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
-                input_ids_padding = np.zeros(act.shape[0], max_shape - act.shape[1])
+                attn_padding = np.zeros((act.shape[0], max_shape - act.shape[1]))
+                input_ids_padding = np.zeros((act.shape[0], max_shape - act.shape[1]))
 
                 # Append the padding to each activation and attention mask element:
                 if self.tokenizer.padding_side == "left":

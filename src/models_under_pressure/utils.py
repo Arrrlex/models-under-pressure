@@ -15,8 +15,6 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
-# Create async client
-
 
 # TODO Change messages type to Dialogue type?
 def call_llm(messages: List[Any], model: str = DEFAULT_MODEL) -> Dict[str, Any] | None:
