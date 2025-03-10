@@ -34,8 +34,12 @@ class LLMModel:
         # Use num_hidden_layers for LLaMA models, otherwise n_layers
         if hasattr(self.model.config, "num_hidden_layers"):
             return self.model.config.num_hidden_layers
-        else:
+        elif hasattr(self.model.config, "n_layers"):
             return self.model.config.n_layers
+        else:
+            raise ValueError(
+                f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
+            )
 
     def __setattr__(self, key: str, value: Any) -> None:
         super().__setattr__(key, value)
@@ -99,7 +103,6 @@ class LLMModel:
         )
 
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
-
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
                 token_dict[k] = v.to(self.device)
@@ -166,9 +169,9 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert len(activations) == len(layers), (
-            f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
-        )
+        assert (
+            len(activations) == len(layers)
+        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
 
         # Print stored activations
         for layer, act in zip(layers, activations):
@@ -210,13 +213,13 @@ class LLMModel:
             batch_attn_mask = activation_obj.attention_mask
             batch_input_ids = activation_obj.input_ids
 
-            assert len(batch_activations.shape) == 3, (
-                f"Expected 3 dim activations, got {batch_activations.shape}"
-            )
+            assert (
+                len(batch_activations.shape) == 3
+            ), f"Expected 3 dim activations, got {batch_activations.shape}"
 
-            assert len(batch_attn_mask.shape) == 2, (
-                f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
-            )
+            assert (
+                len(batch_attn_mask.shape) == 2
+            ), f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
 
             all_input_ids.append(batch_input_ids)
             all_activations.append(batch_activations)
