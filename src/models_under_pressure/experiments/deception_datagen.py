@@ -139,7 +139,7 @@ def process_examples(
 
 
 # Process all examples
-with open("data/evals/dataset.yaml", "r") as f:
+with open("data/evals/deception_data.yaml", "r") as f:
     dataset = yaml.load(f, Loader=yaml.FullLoader)
 examples_df = pd.DataFrame(dataset)
 results = process_examples(examples_df, model, tokenizer)  # type: ignore
@@ -222,5 +222,5 @@ def merge_deception_data(
 merge_deception_data(
     labelled_dataset,  # type: ignore
     Path(OUTPUT_DIR / "deception_results.jsonl"),
-    Path(EVALS_DIR / "deception_labelled_final.csv"),
+    Path(EVALS_DIR / "deception_labelled_.csv"),
 )

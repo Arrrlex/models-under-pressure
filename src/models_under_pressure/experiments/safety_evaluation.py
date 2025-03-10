@@ -87,7 +87,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = SafetyRunConfig(
-        max_samples=50,
+        max_samples=100,
         layer=11,
     )
     results = run_safety_evaluation(
