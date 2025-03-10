@@ -6,6 +6,7 @@ uv run dash <path_to_dataset>
 ```
 """
 
+import json
 import os
 
 import numpy as np
@@ -39,16 +40,6 @@ class DashboardDataset:
             data = cls(dataset=pd.read_json(file_path, lines=True))
         else:
             raise NotImplementedError(f"File type {file_extension} not supported")
-
-        if debug:
-
-            def create_probe_logits(prompt: str) -> np.ndarray:
-                # Split the prompt into words:
-                words = prompt.split(" ")
-
-                return 2 * np.zeros(len(words))
-
-            data.data["probe_logits"] = data.data["prompt"].apply(create_probe_logits)
 
         return data
 
@@ -108,7 +99,9 @@ def create_sidebar_filters(df_display: pd.DataFrame) -> pd.DataFrame:
     return df_display
 
 
-def setup_row_analyzer_controls(df_display: pd.DataFrame) -> tuple[int, str, str, bool]:
+def setup_row_analyzer_controls(
+    df_display: pd.DataFrame,
+) -> tuple[int, str, str | None, bool]:
     """Set up the controls for analyzing individual rows."""
     st.sidebar.markdown("---")
     st.sidebar.subheader("📊 Analyze Row")
@@ -148,10 +141,14 @@ def display_row_analysis(
     df_display: pd.DataFrame,
     selected_index: int,
     selected_column_to_analyze: str,
-    probe_column: str,
+    probe_column: str | None,
 ) -> None:
     """Display detailed analysis for the selected row."""
     st.subheader("Selected Row Analysis")
+
+    if probe_column is None:
+        st.error("No probe column available for this dataset")
+        return
 
     # Get the selected row by index
     selected_row = df_display.iloc[selected_index]
@@ -175,57 +172,118 @@ def display_row_analysis(
 def display_word_level_visualization(
     text_value: str, selected_row: pd.Series, probe_column: str
 ) -> None:
-    """Display word-level visualization for text with probe values."""
+    """Display token-level visualization for text with probe values using a HuggingFace tokenizer."""
     if probe_column is None or not isinstance(text_value, str):
         return
 
-    st.subheader("Word-level Visualization")
+    st.subheader("Token-level Visualization")
 
     # Get the probe values
     probe_values = selected_row[probe_column]
 
-    # Check if probe values is a string representation of a list
-    if (
-        isinstance(probe_values, str)
-        and probe_values.startswith("[")
-        and probe_values.endswith("]")
-    ):
+    # Handle different formats of probe values
+    if isinstance(probe_values, (list, np.ndarray)):
+        # Already in the correct format
+        pass
+    elif isinstance(probe_values, str):
+        # Try to parse the string as a list
         try:
-            probe_values = eval(probe_values)
-        except (ValueError, SyntaxError):
-            st.warning("Could not parse probe values as a list.")
+            probe_values = json.loads(probe_values)
+
+        except Exception as e:
+            st.warning(f"Could not parse probe values as a list: {str(e)}")
+            st.write("Raw probe values:", probe_values)
             return
-
-    # Split the text into words
-    words = text_value.split()
-
-    # If we have valid probe values that match the number of words
-    if isinstance(probe_values, (list, np.ndarray)) and len(words) == len(probe_values):
-        # Create a visualization of colored words
-        min_val = min(probe_values)
-        max_val = max(probe_values)
-        range_val = max_val - min_val if max_val != min_val else 1
-
-        # Function to get color for a value
-        def get_color(val):
-            # Normalize to 0-1 scale
-            normalized = (val - min_val) / range_val
-            # Use a color scale from blue (low) to red (high)
-            return f"rgb({int(255 * normalized)}, 0, {int(255 * (1 - normalized))})"
-
-        # Build HTML for colored words
-        html = "<div style='font-size: 18px; line-height: 2;'>"
-        for word, val in zip(words, probe_values):
-            color = get_color(val)
-            html += f"<span style='background-color: {color}; padding: 3px; margin: 2px; border-radius: 3px;'>{word}</span> "
-        html += "</div>"
-
-        # Display colored words
-        st.markdown(html, unsafe_allow_html=True)
     else:
-        st.warning(
-            f"The number of words ({len(words)}) doesn't match the number of probe values or probe values are not in the correct format."
+        st.warning(f"Unexpected type for probe values: {type(probe_values)}")
+        st.write("Raw probe values:", probe_values)
+        return
+
+    # Import the tokenizer
+    try:
+        from transformers import AutoTokenizer
+
+        tokenizer_name = st.selectbox(
+            "Select tokenizer",
+            [
+                "meta-llama/Llama-3.2-1B-Instruct",
+            ],
+            index=0,
         )
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+
+        # Check if text value can be json loaded then tokenize with apply_chat_
+        try:
+            print("Tokenizing json loaded messages")
+            tokens = tokenizer.apply_chat_template(
+                json.loads(text_value), tokenize=True, add_generation_prompt=True
+            )
+
+        except Exception as e:
+            st.error(f"Error tokenizing text: {str(e)}, applying standard tokenization")
+            tokens = tokenizer.tokenize(text_value)
+
+        # If we have valid probe values that match the number of tokens
+        if isinstance(probe_values, (list, np.ndarray)) and len(tokens) == len(
+            probe_values
+        ):
+            # Create a visualization of colored tokens
+            min_val = min(probe_values)
+            max_val = max(probe_values)
+            range_val = max_val - min_val if max_val != min_val else 1
+
+            # Function to get color for a value
+            def get_color(val: float) -> str:
+                # Normalize to 0-1 scale
+                normalized = (val - min_val) / range_val
+                # Use a color scale from blue (low) to red (high)
+                return f"rgb({int(255 * normalized)}, 0, {int(255 * (1 - normalized))})"
+
+            # Build HTML for colored tokens
+            html = "<div style='font-size: 18px; line-height: 2;'>"
+            for token, val in zip(tokens, probe_values):
+                color = get_color(val)
+
+                # Convert token ID to display text
+                if isinstance(token, int):
+                    # For integer token IDs, convert to string representation
+                    display_token = tokenizer.decode([token], skip_special_tokens=False)
+                else:
+                    # For string tokens, handle special characters
+                    display_token = str(token).replace("Ġ", " ").replace("▁", " ")
+
+                html += f"<span style='background-color: {color}; color: white; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
+            html += "</div>"
+
+            # Display colored tokens
+            st.markdown(html, unsafe_allow_html=True)
+
+            # Display original tokens and their values in a table
+            with st.expander("Show token values"):
+                token_df = pd.DataFrame({"Token": tokens, "Value": probe_values})
+                st.dataframe(token_df)
+        else:
+            st.warning(
+                f"The number of tokens ({len(tokens)}) doesn't match the number of probe values ({len(probe_values) if isinstance(probe_values, (list, np.ndarray)) else 'unknown'})."
+            )
+
+            # Show tokens anyway for debugging
+            st.write("Tokens:", tokens)
+            st.write("Number of tokens:", len(tokens))
+            st.write(
+                "Number of probe values:",
+                len(probe_values)
+                if isinstance(probe_values, (list, np.ndarray))
+                else "unknown format",
+            )
+
+    except ImportError:
+        st.error(
+            "Please install the transformers library to use token-level visualization: `pip install transformers`"
+        )
+    except Exception as e:
+        st.error(f"Error in token visualization: {str(e)}")
+        st.exception(e)
 
 
 def display_numeric_analysis(

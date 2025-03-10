@@ -130,7 +130,7 @@ def load_train_test(
         split_path: Path to save/load the train-test split
 
     Returns:
-        tuple[Dataset, Dataset]: Train and test datasets
+        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
     dataset = LabelledDataset.load_from(
         dataset_path,

@@ -1,10 +1,16 @@
 from models_under_pressure.config import RunConfig
-from models_under_pressure.dataset.combine_situations import (
+from models_under_pressure.dataset_generation.combine_situations import (
     generate_combined_situations,
 )
-from models_under_pressure.dataset.medadata_generation import generate_metadata_file
-from models_under_pressure.dataset.prompt_generation import generate_prompts_file
-from models_under_pressure.dataset.situation_generation import generate_situations_file
+from models_under_pressure.dataset_generation.medadata_generation import (
+    generate_metadata_file,
+)
+from models_under_pressure.dataset_generation.prompt_generation import (
+    generate_prompts_file,
+)
+from models_under_pressure.dataset_generation.situation_generation import (
+    generate_situations_file,
+)
 
 
 def main(run_config: RunConfig):

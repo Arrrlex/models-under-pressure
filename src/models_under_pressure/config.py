@@ -25,7 +25,6 @@ LOCAL_MODELS = {
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
 }
 
-
 # Paths to input files
 INPUTS_DIR = DATA_DIR / "inputs"
 METADATA_FIELDS_FILE = INPUTS_DIR / "metadata_fields.csv"
@@ -41,7 +40,7 @@ OUTPUT_DIR = RESULTS_DIR / "outputs"
 TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
 GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
-
+PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
     "file_path": GENERATED_DATASET_PATH,
     "field_mapping": {
@@ -53,35 +52,12 @@ GENERATED_DATASET = {
 
 # Evals files
 EVALS_DIR = DATA_DIR / "evals"
-ANTHROPIC_SAMPLES_CSV = EVALS_DIR / "anthropic_samples.csv"
-TOOLACE_SAMPLES_CSV = EVALS_DIR / "toolace_samples.csv"
-MT_SAMPLES_CSV = EVALS_DIR / "mt_samples.csv"
 
 EVAL_DATASETS = {
-    "anthropic": {
-        "file_path": ANTHROPIC_SAMPLES_CSV,
-        "field_mapping": {
-            "id": "ids",
-            "messages": "inputs",
-            "high_stakes": "labels",
-        },
-    },
-    "toolace": {
-        "file_path": TOOLACE_SAMPLES_CSV,
-        "field_mapping": {
-            "inputs": "inputs",
-            "labels": "labels",
-            "ids": "ids",
-        },
-    },
-    "mt": {
-        "file_path": MT_SAMPLES_CSV,
-        "field_mapping": {
-            "inputs": "inputs",
-            "labels": "labels",
-            "ids": "ids",
-        },
-    },
+    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "toolace": EVALS_DIR / "toolace_samples.csv",
+    "mt": EVALS_DIR / "mt_samples.csv",
+    "mts": EVALS_DIR / "mts_samples.csv",
 }
 
 AIS_DATASETS = {
@@ -220,6 +196,3 @@ class SafetyRunConfig:
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
 
-    @property
-    def random_seed(self) -> int:
-        return 32

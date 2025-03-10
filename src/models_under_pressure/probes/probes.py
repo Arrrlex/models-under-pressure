@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+from pathlib import Path
+import pickle
 from typing import Protocol, Self, Sequence
 
 import numpy as np
@@ -10,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from models_under_pressure.config import (
     GENERATED_DATASET_PATH,
     LOCAL_MODELS,
+    PROBES_DIR,
     TRAIN_TEST_SPLIT,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
@@ -132,8 +135,6 @@ class LinearProbe(HighStakesClassifier):
             layer=self.layer,
         )
 
-        print("activations_obj.activations.shape", activations_obj.activations.shape)
-
         # TODO This can be done more efficiently
         predictions = []
         for i in range(len(activations_obj.activations)):
@@ -147,12 +148,74 @@ class LinearProbe(HighStakesClassifier):
             predicted_probs = self._classifier.predict_proba(X)[:, 1]
 
             # Set the values to -1 if they're attention masked out
-            print("attention_mask", attention_mask)
             predicted_probs[attention_mask == 0] = -1
 
             predictions.append(predicted_probs)
 
         return np.array(predictions)
+
+
+@dataclass
+class ProbeInfo:
+    model_name_short: str
+    dataset_path: str
+    layer: int
+
+    agg_type: AggregationType
+    seq_pos: int | str
+
+    @property
+    def name(self) -> str:
+        return f"{self.model_name_short}_{self.dataset_path}_l{self.layer}_{self.agg_type}_{self.seq_pos}"
+
+    @property
+    def path(self) -> Path:
+        return PROBES_DIR / f"{self.name}.pkl"
+
+
+def save_probe(probe: LinearProbe, probe_info: ProbeInfo):
+    output_path = probe_info.path
+
+    print(f"Saving probe to {output_path}")
+    with open(output_path, "wb") as f:
+        pickle.dump(probe._classifier, f)
+
+
+def load_probe(model: LLMModel, probe_info: ProbeInfo) -> LinearProbe:
+    probe_path = probe_info.path
+    print(f"Loading probe from {probe_path}")
+    with open(probe_path, "rb") as f:
+        classifier = pickle.load(f)
+    return LinearProbe(
+        _llm=model,
+        layer=probe_info.layer,
+        agg_type=probe_info.agg_type,
+        seq_pos=probe_info.seq_pos,
+        _classifier=classifier,
+    )
+
+
+def load_or_train_probe(
+    model: LLMModel,
+    train_dataset: LabelledDataset,
+    train_dataset_path: Path,
+    layer: int,
+    agg_type: AggregationType = AggregationType.MEAN,
+    seq_pos: int | str = "all",
+) -> LinearProbe:
+    probe_info = ProbeInfo(
+        model_name_short=model.name.split("/")[-1],
+        dataset_path=train_dataset_path.stem,
+        layer=layer,
+        agg_type=agg_type,
+        seq_pos=seq_pos,
+    )
+    if probe_info.path.exists():
+        probe = load_probe(model, probe_info)
+    else:
+        probe = LinearProbe(_llm=model, layer=layer).fit(train_dataset)
+        save_probe(probe, probe_info)
+    return probe
 
 
 def compute_accuracy(

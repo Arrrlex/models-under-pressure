@@ -34,8 +34,12 @@ class LLMModel:
         # Use num_hidden_layers for LLaMA models, otherwise n_layers
         if hasattr(self.model.config, "num_hidden_layers"):
             return self.model.config.num_hidden_layers
-        else:
+        elif hasattr(self.model.config, "n_layers"):
             return self.model.config.n_layers
+        else:
+            raise ValueError(
+                f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
+            )
 
     def __setattr__(self, key: str, value: Any) -> None:
         super().__setattr__(key, value)
@@ -67,6 +71,8 @@ class LLMModel:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
+        print("Model kwargs:", model_kwargs)
+
         model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, **tokenizer_kwargs)
 
@@ -97,10 +103,14 @@ class LLMModel:
         )
 
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
-
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
                 token_dict[k] = v.to(self.device)
+
+                if k == "input_ids":
+                    token_dict[k] = v[:, 1:].to(self.device)
+                elif k == "attention_mask":
+                    token_dict[k] = v[:, 1:].to(self.device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
