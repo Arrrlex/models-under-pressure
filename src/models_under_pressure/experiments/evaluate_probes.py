@@ -10,16 +10,15 @@ from sklearn.metrics import roc_auc_score
 from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
-    OUTPUT_DIR,
+    RESULTS_DIR,
     TRAIN_TEST_SPLIT,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import LinearProbe
+from models_under_pressure.probes.probes import LinearProbe, load_or_train_probe
 
 
 def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
@@ -52,44 +51,38 @@ def compute_auroc(probe: LinearProbe, dataset: LabelledDataset) -> float:
 
 def compute_aurocs(
     train_dataset: LabelledDataset,
-    eval_datasets: list[LabelledDataset],
+    train_dataset_path: Path,
+    eval_datasets: dict[str, LabelledDataset],
     model_name: str,
     layer: int,
-) -> list[float]:
-    aurocs = []
+) -> dict[str, float]:
     model = LLMModel.load(model_name, model_kwargs={"torch_dtype": torch.float16})
     # Train a linear probe on the train dataset
-    probes = train_probes(model, train_dataset, layers=[layer])[layer]
+    probe = load_or_train_probe(
+        model=model,
+        train_dataset=train_dataset,
+        train_dataset_path=train_dataset_path,
+        layer=layer,
+    )
 
-    torch.cuda.empty_cache()
-
-    # Evaluate on all eval datasets
-    for eval_dataset in eval_datasets:
-        aurocs.append(compute_auroc(probes, eval_dataset))
-        torch.cuda.empty_cache()
-
-    return aurocs
+    return {
+        name: compute_auroc(probe, eval_dataset)
+        for name, eval_dataset in eval_datasets.items()
+    }
 
 
 def load_eval_datasets(
     max_samples: int | None = None,
-) -> tuple[list[LabelledDataset], list[str]]:
-    eval_datasets = []
-    eval_dataset_names = []
-    for eval_dataset_name, eval_dataset_config in EVAL_DATASETS.items():
-        eval_dataset = LabelledDataset.load_from(**eval_dataset_config).filter(
+) -> dict[str, LabelledDataset]:
+    eval_datasets = {}
+    for path in EVAL_DATASETS.values():
+        dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
-        if max_samples is not None:
-            indices = np.random.choice(
-                range(len(eval_dataset.ids)),
-                size=max_samples,
-                replace=False,
-            )
-            eval_dataset = eval_dataset[list(indices)]  # type: ignore
-        eval_datasets.append(eval_dataset)
-        eval_dataset_names.append(eval_dataset_name)
-    return eval_datasets, eval_dataset_names
+        if max_samples:
+            dataset = dataset.sample(max_samples)
+        eval_datasets[str(path)] = dataset
+    return eval_datasets
 
 
 def run_evaluation(
@@ -139,16 +132,19 @@ def run_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets, eval_dataset_names = load_eval_datasets(max_samples=max_samples)
+    eval_datasets = load_eval_datasets(max_samples=max_samples)
 
     # Compute AUROCs
-    aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
-    for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
-        print(f"AUROC for {eval_dataset_name}: {auroc}")
+    aurocs = compute_aurocs(
+        train_dataset, dataset_path, eval_datasets, model_name, layer
+    )
+    for path, auroc in aurocs.items():
+        print(f"AUROC for {Path(path).stem}: {auroc}")
 
     results = ProbeEvaluationResults(
-        AUROC=aurocs,
-        datasets=eval_dataset_names,
+        AUROC=list(aurocs.values()),
+        train_dataset_path=str(dataset_path),
+        datasets=list(eval_datasets.keys()),
         model_name=model_name,
         layer=layer,
         variation_type=variation_type,
@@ -178,6 +174,9 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
+    output_dir = RESULTS_DIR / "evaluate_probes"
+    output_dir.mkdir(parents=True, exist_ok=True)
     json.dump(
-        dataclasses.asdict(results), open(OUTPUT_DIR / config.output_filename, "w")
+        dataclasses.asdict(results),
+        open(output_dir / config.output_filename, "w"),
     )

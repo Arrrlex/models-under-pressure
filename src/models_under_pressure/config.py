@@ -40,7 +40,7 @@ OUTPUT_DIR = RESULTS_DIR / "outputs"
 TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
 GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
-
+PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
     "file_path": GENERATED_DATASET_PATH,
     "field_mapping": {
