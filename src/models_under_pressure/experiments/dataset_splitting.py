@@ -3,11 +3,11 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
 def create_train_test_split(
-    dataset: LabelledDataset,
+    dataset: Dataset,
     test_size: float = 0.2,
     split_field: str | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
@@ -56,8 +56,8 @@ def create_train_test_split(
 
 
 def split_by_variation(
-    train_dataset: LabelledDataset,
-    test_dataset: LabelledDataset,
+    train_dataset: Dataset,
+    test_dataset: Dataset,
     variation_type: str,
     max_samples: int | None = None,
 ) -> tuple[list[LabelledDataset], list[LabelledDataset], list[str]]:
