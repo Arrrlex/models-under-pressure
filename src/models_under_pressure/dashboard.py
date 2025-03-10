@@ -252,7 +252,7 @@ def display_word_level_visualization(
                     # For string tokens, handle special characters
                     display_token = str(token).replace("Ġ", " ").replace("▁", " ")
 
-                html += f"<span style='background-color: {color}; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
+                html += f"<span style='background-color: {color}; color: white; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
             html += "</div>"
 
             # Display colored tokens
