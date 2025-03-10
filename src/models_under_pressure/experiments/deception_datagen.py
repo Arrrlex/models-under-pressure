@@ -9,18 +9,25 @@ import yaml
 from dotenv import load_dotenv
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from models_under_pressure.config import EVALS_DIR, OUTPUT_DIR
+from models_under_pressure.config import (
+    DEFAULT_GPU_MODEL,
+    DEFAULT_OTHER_MODEL,
+    DEVICE,
+    EVALS_DIR,
+    OUTPUT_DIR,
+)
 from models_under_pressure.evals.label_dataset import label_dataset
 from models_under_pressure.interfaces.dataset import Dataset, Message, Record
 from models_under_pressure.utils import call_llm
 
 load_dotenv()
+model_name = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "meta-llama/Llama-3.2-1B-Instruct", token=os.getenv("HUGGINGFACE_TOKEN")
+    model_name, token=os.getenv("HUGGINGFACE_TOKEN")
 )
 model = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.2-1B-Instruct", token=os.getenv("HUGGINGFACE_TOKEN")
+    model_name, token=os.getenv("HUGGINGFACE_TOKEN")
 )
 # read a yaml fille
 

@@ -4,7 +4,14 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.config import AIS_DATASETS, OUTPUT_DIR, SafetyRunConfig
+from models_under_pressure.config import (
+    AIS_DATASETS,
+    DEFAULT_GPU_MODEL,
+    DEFAULT_OTHER_MODEL,
+    DEVICE,
+    OUTPUT_DIR,
+    SafetyRunConfig,
+)
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
@@ -17,7 +24,7 @@ from models_under_pressure.interfaces.dataset import LabelledDataset
 
 def run_safety_evaluation(
     layer: int,
-    model_name: str = "meta-llama/Llama-3.2-1B-Instruct",
+    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL,
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
@@ -91,8 +98,8 @@ if __name__ == "__main__":
         layer=11,
     )
     results = run_safety_evaluation(
-        variation_type=config.variation_type,
-        variation_value=config.variation_value,
+        variation_type="prompt_style",
+        variation_value="Third Person",
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
