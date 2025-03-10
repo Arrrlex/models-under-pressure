@@ -98,8 +98,8 @@ if __name__ == "__main__":
         layer=11,
     )
     results = run_safety_evaluation(
-        variation_type="prompt_style",
-        variation_value="Third Person",
+        variation_type=config.variation_type,
+        variation_value=config.variation_value,
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
