@@ -195,4 +195,3 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
-

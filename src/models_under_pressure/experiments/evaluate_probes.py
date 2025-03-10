@@ -4,23 +4,17 @@ import json
 from pathlib import Path
 
 import numpy as np
-import torch
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
-    OUTPUT_DIR,
-    EvalRunConfig,
     LOCAL_MODELS,
     RESULTS_DIR,
-    TRAIN_TEST_SPLIT,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
-from models_under_pressure.experiments.train_probes import train_probes
-from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 from models_under_pressure.probes.model import LLMModel
@@ -60,7 +54,7 @@ def compute_aurocs(
     train_dataset_path: Path,
     eval_datasets: dict[str, LabelledDataset],
     model_name: str,
-    layer: int
+    layer: int,
 ) -> list[float]:
     model = LLMModel.load(model_name)
 
