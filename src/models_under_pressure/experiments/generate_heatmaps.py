@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-from models_under_pressure.config import OUTPUT_DIR, HeatmapRunConfig
+from models_under_pressure.config import LOCAL_MODELS, RESULTS_DIR, HeatmapRunConfig
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
@@ -70,14 +70,21 @@ def generate_heatmap(
 
 
 if __name__ == "__main__":
+    best_layers = {}
+    best_layer_accuracies = {}
+
     config = HeatmapRunConfig(
-        layers=[1, 10],
-        max_samples=20,
+        layers=list(range(1, 12)),
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-8b"],
     )
+
+    output_dir = RESULTS_DIR / "generate_heatmaps"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     for variation_type in config.variation_types:
         print(f"\nGenerating heatmap for {variation_type}...")
-        filename = OUTPUT_DIR / config.output_filename(variation_type)
+        out_path = output_dir / config.output_filename(variation_type)
 
         heatmap_results = generate_heatmap(
             config=config,
@@ -88,5 +95,19 @@ if __name__ == "__main__":
 
         json.dump(
             heatmap_results.to_dict(),
-            open(filename, "w"),
+            open(out_path, "w"),
+        )
+        # Calculate mean accuracy across all variations for each layer
+        layer_means = {
+            layer: np.mean(accuracies)
+            for layer, accuracies in heatmap_results.performances.items()
+        }
+
+        # Find best performing layer
+        best_layers[variation_type] = max(layer_means.items(), key=lambda x: x[1])[0]
+        best_layer_accuracies[variation_type] = layer_means[best_layers[variation_type]]
+
+    for variation_type, best_layer in best_layers.items():
+        print(
+            f"Best layer for {variation_type}: {best_layer} (mean accuracy: {best_layer_accuracies[variation_type]:.3f})"
         )

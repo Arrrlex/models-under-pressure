@@ -20,6 +20,9 @@ class ProbeEvaluationResults:
     layer: int
     """Layer number that was probed"""
 
+    train_dataset_path: str
+    """Path to the dataset used to train the probe"""
+
     variation_type: Optional[str] = None
     """Type of variation used in training data filtering, if any"""
 
@@ -57,6 +60,7 @@ class ProbeEvaluationResults:
             layer=data["layer"],
             variation_type=data.get("variation_type"),
             variation_value=data.get("variation_value"),
+            train_dataset_path=data["train_dataset_path"],
         )
 
 

@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import dotenv
@@ -23,6 +24,7 @@ from models_under_pressure.probes.probes import (
 # Set random seed for reproducibility
 RANDOM_SEED = 0
 np.random.seed(RANDOM_SEED)
+random.seed(RANDOM_SEED)
 
 dotenv.load_dotenv()
 
@@ -49,7 +51,7 @@ def cross_validate_probe(
 ) -> np.ndarray:
     accuracies = []
 
-    for i, dataset in enumerate(dataset_splits):
+    for dataset in dataset_splits:
         activations_obj = probe._llm.get_batched_activations(
             dataset=dataset,
             layer=probe.layer,
@@ -82,6 +84,7 @@ def train_probes_and_save_results(
     layers: list[int],
     output_dir: Path,
 ) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
     model = LLMModel.load(model_name)
     probes = {
         layer: load_or_train_probe(model, train_dataset, train_dataset_path, layer)
@@ -100,24 +103,30 @@ def train_probes_and_save_results(
                 inputs=eval_dataset.inputs,
             )
 
+            # TODO: Do something like this:
+            # df_eval['probe_probs'] = df_eval['predictions'].apply(lambda x: x[x != -1].tolist()).apply(json.dumps)
+
             probe_logits = np.log(probe_scores / (1 - probe_scores))
 
-            probe_logits_list = probe_logits.tolist()
+            probe_logits_list = [
+                [x for x in row if not np.isnan(x)] for row in probe_logits.tolist()
+            ]
 
             probe_scores_dict[eval_dataset_name][layer] = probe_logits_list
 
     for eval_dataset_name in eval_datasets.keys():
-        dataset_with_probe_scores = LabelledDataset.load_from(
-            output_dir / f"{eval_dataset_name}.jsonl"
-        )
-        extra_fields = {}
+        try:
+            dataset_with_probe_scores = LabelledDataset.load_from(
+                output_dir / f"{eval_dataset_name}.jsonl"
+            )
+        except FileNotFoundError:
+            dataset_with_probe_scores = eval_datasets[eval_dataset_name]
+
+        extra_fields = dict(**dataset_with_probe_scores.other_fields)
         for layer, probe_logits in probe_scores_dict[eval_dataset_name].items():
             col_name = f"probe_logits_{model.name.split('/')[-1]}_{train_dataset_path.stem}_l{layer}"
             extra_fields[col_name] = probe_logits
-        dataset_with_probe_scores.other_fields = {
-            **dataset_with_probe_scores.other_fields,
-            **extra_fields,
-        }
+        dataset_with_probe_scores.other_fields = extra_fields
         dataset_with_probe_scores.save_to(
             output_dir / f"{eval_dataset_name}.jsonl", overwrite=True
         )
