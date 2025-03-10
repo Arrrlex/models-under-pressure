@@ -101,7 +101,8 @@ def test_get_activations(llm_model):
 
     # Create a mock layernorm with a patchable register_forward_hook
     mock_layernorm = Mock()
-    mock_activation = torch.ones(2, 10, 512)  # batch_size=2, seq_len=10, hidden_dim=512
+    # Using sequence length 9 since tokenize() removes the first token (BOS token)
+    mock_activation = torch.ones(2, 9, 512)
 
     def mock_register_hook(hook_fn):
         print("Inside mock_register_hook")
@@ -120,9 +121,9 @@ def test_get_activations(llm_model):
 
     activation_obj = llm_model.get_activations(inputs, layers=[0])
 
-    assert activation_obj.activations.shape == (1, 2, 10, 512)
-    assert activation_obj.attention_mask.shape == (2, 10)
-    assert activation_obj.input_ids.shape == (2, 10)
+    assert activation_obj.activations.shape == (1, 2, 9, 512)
+    assert activation_obj.attention_mask.shape == (2, 9)
+    assert activation_obj.input_ids.shape == (2, 9)
 
 
 def test_get_batched_activations(llm_model):
