@@ -164,7 +164,7 @@ def process_deception_data(file_path: Path) -> list[dict]:
 
 dataset = process_deception_data(Path(OUTPUT_DIR / "deception_results.jsonl"))
 
-other_fields = {}
+
 data_records = []
 for record in dataset:
     messages = [
@@ -174,11 +174,9 @@ for record in dataset:
     ]
 
     feild_names = ["model_response", "deception_check", "question", "scenario"]
+    other_fields = {}
     for field in feild_names:
-        if field in other_fields:
-            other_fields[field].append(record[field])
-        else:
-            other_fields[field] = [record[field]]
+        other_fields[field] = record[field]
     data_records.append(
         Record(
             id=str(record["id"]),
@@ -192,5 +190,37 @@ dataset = Dataset.from_records(records=data_records)
 
 labelled_dataset = label_dataset(dataset)
 
-# Convert Label objects to their string representation before converting to pandas
-labelled_dataset.to_pandas().to_csv(EVALS_DIR / "deception_labelled.csv")
+
+def merge_deception_data(
+    labelled_dataset: Dataset, jsonl_file_path: Path, output_file_path: Path
+):
+    # Load the CSV file
+    df_csv = labelled_dataset.to_pandas()
+    jsonl_data = []
+    with open(jsonl_file_path, "r") as file:
+        for line in file:
+            jsonl_data.append(json.loads(line))
+
+    df_jsonl = pd.DataFrame(jsonl_data)
+    df_jsonl.drop(columns=["deception_check"], inplace=True)
+    df_csv.rename(columns={"ids": "id"}, inplace=True)
+
+    # Convert id columns to the same type (string) before merging
+    df_csv["id"] = df_csv["id"].astype(str)
+    df_jsonl["id"] = df_jsonl["id"].astype(str)
+
+    df_merged = pd.concat([df_csv, df_jsonl], axis=1)
+    df_merged["is_deceptive"] = df_merged["deception_check"] == "deceptive"
+    df_merged.to_csv(output_file_path, index=False)
+    print(f"Merged data saved to {output_file_path}")
+
+    # Convert Label objects to their string representation before converting to pandas
+
+
+# labelled_dataset.to_pandas().to_csv(EVALS_DIR / "deception_labelled_final.csv")
+
+merge_deception_data(
+    labelled_dataset,  # type: ignore
+    Path(OUTPUT_DIR / "deception_results.jsonl"),
+    Path(EVALS_DIR / "deception_labelled_final.csv"),
+)

@@ -95,7 +95,9 @@ AIS_DATASETS = {
     "deception": {
         "file_path": EVALS_DIR / "deception_labelled.csv",
         "field_mapping": {
-            "label": "is_deceptive",
+            "labels": "high_stakes",
+            "is_deceptive": "labels",
+            "id": "ids",
         },
     },
 }
