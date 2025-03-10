@@ -61,3 +61,6 @@ lint.extend-ignore = [
 [tool.pyright]
 reportMissingParameterType = true
 reportUnknownParameterType = false
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
