@@ -32,7 +32,10 @@ def generate_heatmap(
     )
 
     train_datasets, test_datasets, variation_values = split_by_variation(
-        train_dataset, test_dataset, variation_type, max_samples=config.max_samples
+        train_dataset,  # type: ignore
+        test_dataset,  # type: ignore
+        variation_type,
+        max_samples=config.max_samples,
     )
 
     # Now to get the heat map, we train on each train dataset and evaluate on each test dataset

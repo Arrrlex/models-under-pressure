@@ -42,8 +42,7 @@ def run_safety_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets = []
-    eval_dataset_names = []
+    eval_datasets = {}
 
     # Sandbagging dataset
     # TODO Make it possible to evaluate on high-stakes label as well
@@ -67,19 +66,24 @@ def run_safety_evaluation(
         )
         sandbagging_dataset = sandbagging_dataset[list(indices_sandbagging)]  # type: ignore
         deception_dataset = deception_dataset[list(indices_deception)]  # type: ignore
-    eval_datasets.append(sandbagging_dataset)
-    eval_dataset_names.append("Sandbagging")
-    eval_datasets.append(deception_dataset)
-    eval_dataset_names.append("Deception")
+    eval_datasets["Sandbagging"] = sandbagging_dataset
+    eval_datasets["Deception"] = deception_dataset
 
     # Compute AUROCs
-    aurocs = compute_aurocs(train_dataset, eval_datasets, model_name, layer)
-    for eval_dataset_name, auroc in zip(eval_dataset_names, aurocs):
+    aurocs = compute_aurocs(
+        train_dataset=train_dataset,
+        train_dataset_path=dataset_path,
+        eval_datasets=eval_datasets,
+        model_name=model_name,
+        layer=layer,
+    )
+    for eval_dataset_name, auroc in aurocs.items():
         print(f"AUROC for {eval_dataset_name}: {auroc}")
 
     results = ProbeEvaluationResults(
         AUROC=aurocs,
-        datasets=eval_dataset_names,
+        datasets=list(aurocs.keys()),
+        train_dataset_path=str(dataset_path),
         model_name=model_name,
         layer=layer,
         variation_type=variation_type,
