@@ -1,3 +1,5 @@
+import dataclasses
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -8,7 +10,7 @@ import numpy as np
 class ProbeEvaluationResults:
     """Results from evaluating probes across multiple datasets."""
 
-    AUROC: List[float]
+    AUROC: dict[str, float]
     """AUROC scores for each evaluated dataset"""
 
     datasets: List[str]
@@ -21,7 +23,7 @@ class ProbeEvaluationResults:
     """Layer number that was probed"""
 
     train_dataset_path: str
-    """Path to the dataset used to train the probe"""
+    """Path to the dataset used to train the probe (str format since Path is not JSON serializable)"""
 
     variation_type: Optional[str] = None
     """Type of variation used in training data filtering, if any"""
@@ -99,3 +101,15 @@ class HeatmapResults:
             layers=data["layers"],
             max_samples=data["max_samples"],
         )
+
+
+if __name__ == "__main__":
+    # Checking if things are JSON serializable
+    results = ProbeEvaluationResults(
+        AUROC={"Sandbagging": 0.5, "Deception": 0.6},
+        datasets=["Sandbagging", "Deception"],
+        model_name="gpt-4o",
+        layer=11,
+        train_dataset_path="data/results/prompts_28_02_25.jsonl",
+    )
+    print(json.dumps(dataclasses.asdict(results)))

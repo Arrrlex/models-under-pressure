@@ -62,14 +62,14 @@ EVAL_DATASETS = {
 
 AIS_DATASETS = {
     "mmlu_sandbagging": {
-        "file_path": EVALS_DIR / "mmlu_sandbagging_labelled_dataset.jsonl",
+        "file_path_or_name": EVALS_DIR / "mmlu_sandbagging_labelled_dataset.jsonl",
         "field_mapping": {
             "labels": "high_stakes",
             "is_sandbagging": "labels",
         },
     },
     "deception": {
-        "file_path": EVALS_DIR / "deception_labelled_.csv",
+        "file_path_or_name": EVALS_DIR / "deception_labelled_.csv",
         "field_mapping": {
             "labels": "high_stakes",
             "is_deceptive": "labels",
