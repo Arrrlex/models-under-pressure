@@ -1,9 +1,9 @@
 import asyncio
 import logging
-import random
 from typing import Any, Dict, List, Union
 
 import pandas as pd
+from tqdm.auto import tqdm
 
 from models_under_pressure.config import DEFAULT_MODEL, RunConfig
 from models_under_pressure.utils import call_llm_async
@@ -146,7 +146,6 @@ def generate_situations(
 async def generate_all_situations_async(
     run_config: RunConfig,
     samples_df: pd.DataFrame,
-    sample_seperately: bool = False,
     max_concurrent: int = 10,
 ) -> List[Dict[str, Union[bool, str]]]:
     """
@@ -171,17 +170,17 @@ async def generate_all_situations_async(
     for factor in factors_list:
         factors[factor] = samples_df[factor].unique().tolist()
 
-    if sample_seperately:
-        if (
-            run_config.num_topics_to_sample is not None
-            and run_config.num_topics_to_sample < len(topics)
-        ):
-            topics = random.sample(topics, run_config.num_topics_to_sample)
-        if run_config.num_factors_to_sample is not None:
-            for factor in factors:
-                factors[factor] = random.sample(
-                    factors[factor], run_config.num_factors_to_sample
-                )
+        # if sample_seperately:
+        #     if (
+        #         run_config.num_topics_to_sample is not None
+        #         and run_config.num_topics_to_sample < len(topics)
+        #     ):
+        #         topics = random.sample(topics, run_config.num_topics_to_sample)
+        #     if run_config.num_factors_to_sample is not None:
+        #         for factor in factors:
+        #             factors[factor] = random.sample(
+        #                 factors[factor], run_config.num_factors_to_sample
+        #             )
 
         logger.info(
             f"Generating situations for {len(topics)} categories and {len(factors[factors_list[0]])} factors"
@@ -190,6 +189,11 @@ async def generate_all_situations_async(
         all_situations = []
         # Create a queue to manage concurrent tasks
         queue = asyncio.Queue(maxsize=max_concurrent)
+        # Create progress bar
+        pbar = tqdm(
+            total=len(topics) * len(factors[factors_list[0]]),
+            desc="Generating situations",
+        )
 
         async def process_combination(topic: str, factor_ctr: int):
             logger.debug(f"Generating situations for category: {topic}")
@@ -221,6 +225,7 @@ async def generate_all_situations_async(
                 logger.warning(f"Failed to generate situations for category: {topic}")
 
             await queue.get()  # Signal task completion
+            pbar.update(1)  # Update progress bar
             return result
 
         tasks = []
@@ -238,8 +243,10 @@ async def generate_all_situations_async(
         all_situations = []
         # Create a queue to manage concurrent tasks
         queue = asyncio.Queue(maxsize=max_concurrent)
+        # Create progress bar
+        pbar = tqdm(total=len(samples_df), desc="Generating situations")
 
-        async def process_row(row):
+        async def process_row(row: pd.Series):
             logger.debug(f"Generating situations for category: {row['topic']}")
             situations = await generate_situations_async(
                 n_samples=run_config.num_situations_per_combination,
@@ -269,6 +276,7 @@ async def generate_all_situations_async(
                 )
 
             await queue.get()  # Signal task completion
+            pbar.update(1)  # Update progress bar
             return result
 
         tasks = []
@@ -282,22 +290,20 @@ async def generate_all_situations_async(
         for result in results:
             all_situations.extend(result)
 
+    pbar.close()  # Close the progress bar when done
     return all_situations
 
 
 def generate_all_situations(
     run_config: RunConfig,
     samples_df: pd.DataFrame,
-    sample_seperately: bool = False,
     max_concurrent: int = 10,
 ) -> List[Dict[str, Union[bool, str]]]:
     """
     Synchronous wrapper for generate_all_situations_async.
     """
     return asyncio.run(
-        generate_all_situations_async(
-            run_config, samples_df, sample_seperately, max_concurrent
-        )
+        generate_all_situations_async(run_config, samples_df, max_concurrent)
     )
 
 
@@ -401,25 +407,29 @@ def generate_situations_file(
     logging.basicConfig(level=logging.INFO)
 
     # Load and prepare data from the combined csv file
+    logger.info("Loading situations combinations from CSV...")
     situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
     #  If we want to sample directly from the csv file
+    logger.info(f"Sampling {run_config.num_situations_to_sample} combinations...")
     sampled_df = situations_combinations_df.sample(
         n=run_config.num_situations_to_sample,
         random_state=run_config.random_state,
     )
 
+    logger.info("Generating situations...")
     situations_results = generate_all_situations(
         run_config=run_config,
         samples_df=sampled_df,
-        sample_seperately=run_config.sample_seperately,
         max_concurrent=max_concurrent,
     )
     # Save results
+    logger.info("Saving generated situations...")
     save_situations(
         situations_results,
         run_config=run_config,
         factors_names=sampled_df.columns.tolist(),
     )
+    logger.info("Situation generation complete!")
 
 
 if __name__ == "__main__":
