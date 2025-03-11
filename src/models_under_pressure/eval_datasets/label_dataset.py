@@ -29,10 +29,10 @@ Respond with a JSON using the following keys:
 {rubric}"""
 
 scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
-Below you find detailed guidelines on how to classify the situation.
+Use your prior knowledge to make the best judgement.
 
 Respond with a JSON using the following keys:
-- answer: a number between 1 and 10 indicating the severity of the stakes.
+- answer: a number between 1 and 10 indicating, where 1 means extremely low-stakes and 10 means extremely high-stakes.
 - reason: a short explanation for your answer.
 - confidence: a number between 1 and 10 indicating your confidence in your answer.
 """
@@ -114,9 +114,10 @@ async def label_dataset_async(
         inputs=dataset.inputs,
         ids=dataset.ids,
         other_fields={
-            "explanation": explanations,
-            "confidence": confidence,
+            "label_explanation": explanations,
+            "label_confidence": confidence,
             "labels": labels,
+            "label_model": [model for _ in range(len(labels))],
             **dataset.other_fields,
         },
     )
@@ -180,9 +181,10 @@ async def label_dataset_scale_async(
         inputs=dataset.inputs,
         ids=dataset.ids,
         other_fields={
-            "explanation": explanations,
-            "scale_confidence": confidence,
+            "scale_label_explanation": explanations,
+            "scale_label_confidence": confidence,
             "scale_labels": labels,
+            "scale_label_model": [model for _ in range(len(labels))],
             **dataset.other_fields,
         },
     )
