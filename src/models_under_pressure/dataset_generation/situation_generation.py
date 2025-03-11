@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 from tqdm import tqdm
 
-from models_under_pressure.config import RunConfig
+from models_under_pressure.config import DEFAULT_MODEL, RunConfig
 from models_under_pressure.utils import call_llm
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ def generate_situations(
             + base_template.format(n_samples=n_samples),
         },
     ]
-    return call_llm(messages)
+    return call_llm(messages, model=DEFAULT_MODEL)
 
 
 def generate_all_situations(
@@ -341,7 +341,7 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
     #  If we want to sample directly from the csv file
     sampled_df = situations_combinations_df.sample(
         n=run_config.num_situations_to_sample,
-        random_state=run_config.random_seed,
+        random_state=run_config.random_state,
     )
 
     situations_results = generate_all_situations(

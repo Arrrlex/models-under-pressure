@@ -11,18 +11,15 @@ class Situation:
         self,
         id: int,
         topic: str,
-        factors: List[str],
-        factor_names: List[str],
+        factors: Dict[str, str],
         description: Optional[str] = None,
         high_stakes: Optional[bool] = None,
     ):
         self.id = id
         self.description = description
         self.topic = topic
-        self.factor_values = factors
+        self.factors = factors
         self.high_stakes = high_stakes
-        self.factor_names = factor_names
-        self._factors = dict(zip(self.factor_names, self.factor_values))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -38,11 +35,6 @@ class Situation:
             f"Situation(id={self.id}, description='{self.description}', "
             f"topic='{self.topic}', factors='{self.factors}')"
         )
-
-    @property
-    def factors(self) -> Dict[str, str]:
-        """Get the factors dictionary for the situation."""
-        return self._factors
 
 
 class SituationDataInterface:
@@ -63,7 +55,6 @@ class SituationDataInterface:
                 description=row["description"],
                 topic=row["topic"],
                 factors=row["factors"],
-                factor_names=row["factor_names"],
                 high_stakes=row["high_stakes"],
             )
             situations.append(situation)

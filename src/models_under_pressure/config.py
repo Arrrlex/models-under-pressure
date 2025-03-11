@@ -157,6 +157,10 @@ class RunConfig:
     def filtered_situations_file(self) -> Path:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
+    @property
+    def random_state(self) -> int:
+        return 32
+
 
 with open(INPUTS_DIR / "prompt_variations.json") as f:
     VARIATION_TYPES = list(json.load(f).keys())

@@ -1,7 +1,7 @@
 import abc
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class Prompt(abc.ABC):
@@ -14,8 +14,6 @@ class Prompt(abc.ABC):
         timestamp: str,
         topic: str | None = None,
         metadata: Dict[str, str] | None = None,
-        variation: Optional[str] = None,
-        variation_type: Optional[str] = None,
         **kwargs: Any,
     ):
         self.id = id
@@ -29,8 +27,7 @@ class Prompt(abc.ABC):
         self.timestamp = timestamp
 
         self.topic = topic
-        self.variation = variation
-        self.variation_type = variation_type
+
         if metadata is None:
             self.metadata = {}
         else:
@@ -47,8 +44,6 @@ class Prompt(abc.ABC):
             "topic": self.topic,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
-            "variation_type": self.variation_type,
-            "variation": self.variation,
             **self.kwargs,
         }
         if include_metadata:

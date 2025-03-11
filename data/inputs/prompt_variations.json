@@ -1,9 +1,9 @@
 {
   "prompt_style": {
-    "Q&A long": "This prompt should be a long detailed query containing lots of information from a generic user.",
-    "Q&A short": "This prompt should be a short query from a generic user.",
-    "Response to Situation": "This prompt should be a response to the respective high or low stakes situation. Don't end the prompt with a question!",
-    "Third Person": "This prompt should be a long or short response written in the third person."
+    "Q&A long": "long, detailed question",
+    "Q&A short": "short question",
+    "Response to Situation": "first-person opinion",
+    "Third Person": "third-person factual statement"
   },
   "tone": {
     "angry": "This prompt should be written in an angry tone.",
