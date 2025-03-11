@@ -1,6 +1,6 @@
+import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-import pickle
 from typing import Protocol, Self, Sequence
 
 import numpy as np
@@ -18,6 +18,7 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import Activation, AggregationType
 from models_under_pressure.interfaces.dataset import (
+    BaseDataset,
     Dataset,
     Input,
     Label,
@@ -108,13 +109,23 @@ class LinearProbe(HighStakesClassifier):
 
         return self
 
-    def predict(self, dataset: Dataset) -> list[Label]:
+    def predict(self, dataset: BaseDataset) -> list[Label]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
         predictions = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in predictions]
+
+    def predict_proba(self, dataset: BaseDataset) -> list[float]:
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+        X = self._preprocess_activations(activations_obj)
+        predictions = self._classifier.predict_proba(X)
+
+        return predictions[:, 1].tolist()
 
     def _predict(
         self,

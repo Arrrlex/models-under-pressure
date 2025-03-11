@@ -41,10 +41,9 @@ class LLMModel:
                 f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
             )
 
-    def __setattr__(self, key: str, value: Any) -> None:
-        super().__setattr__(key, value)
-        if key == "device":
-            self.model.to(value)
+    def to(self, device: str) -> None:
+        self.device = device
+        self.model.to(device)
 
     @classmethod
     def load(
@@ -105,12 +104,12 @@ class LLMModel:
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
         for k, v in token_dict.items():
             if isinstance(v, torch.Tensor):
-                token_dict[k] = v.to(self.device)
+                token_dict[k] = v.to(next(self.model.parameters()).device)
 
                 if k == "input_ids":
-                    token_dict[k] = v[:, 1:].to(self.device)
+                    token_dict[k] = v[:, 1:].to(next(self.model.parameters()).device)
                 elif k == "attention_mask":
-                    token_dict[k] = v[:, 1:].to(self.device)
+                    token_dict[k] = v[:, 1:].to(next(self.model.parameters()).device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
