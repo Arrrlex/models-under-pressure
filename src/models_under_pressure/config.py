@@ -119,7 +119,7 @@ class RunConfig:
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
-    num_combinations_for_prompts: int = 5
+    num_combinations_for_prompts: int = 3
     combination_variation: bool = False  # If None, all factors are used
 
     sample_seperately: bool = False

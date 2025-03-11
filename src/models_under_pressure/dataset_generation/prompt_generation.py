@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 from datetime import UTC, datetime
@@ -5,12 +6,12 @@ from pathlib import Path
 from typing import Dict, List
 
 import pandas as pd
-from tqdm import tqdm
+import tqdm
 
 from models_under_pressure.config import DEFAULT_MODEL, RunConfig
 from models_under_pressure.interfaces.prompt import Prompt
 from models_under_pressure.interfaces.situation import Situation
-from models_under_pressure.utils import call_llm
+from models_under_pressure.utils import call_llm_async
 
 
 # --------------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def make_prompt_generation_prompt(
     return base_prompt_template
 
 
-def generate_prompts(
+async def generate_prompts_async(
     high_stakes_situation: Situation,
     low_stakes_situation: Situation,
     tone: str,
@@ -106,7 +107,7 @@ def generate_prompts(
     model: str = DEFAULT_MODEL,
 ) -> List[Prompt]:
     """
-    Generate prompts for a given variation of a situation.
+    Generate prompts for a given variation of a situation asynchronously.
     """
     try:
         if (
@@ -136,8 +137,10 @@ def generate_prompts(
         language=variations["language"][language],
         prompt_style=variations["prompt_style"][prompt_style],
     )
-    # Call LLM with prompt
-    prompt_dicts = call_llm([{"role": "user", "content": prompt}], model=model)
+    # Call LLM with prompt asynchronously
+    prompt_dicts = await call_llm_async(
+        [{"role": "user", "content": prompt}], model=model
+    )
     if prompt_dicts is None:
         raise ValueError("No prompts returned from LLM")
 
@@ -179,6 +182,35 @@ def generate_prompts(
     return prompts
 
 
+def generate_prompts(
+    high_stakes_situation: Situation,
+    low_stakes_situation: Situation,
+    tone: str,
+    language: str,
+    prompt_style: str,
+    num_prompts: int,
+    next_prompt_id: int,
+    variations: Dict[str, Dict[str, str]],
+    model: str = DEFAULT_MODEL,
+) -> List[Prompt]:
+    """
+    Synchronous wrapper for generate_prompts_async.
+    """
+    return asyncio.run(
+        generate_prompts_async(
+            high_stakes_situation,
+            low_stakes_situation,
+            tone,
+            language,
+            prompt_style,
+            num_prompts,
+            next_prompt_id,
+            variations,
+            model,
+        )
+    )
+
+
 def extract_factor_names(df: pd.DataFrame) -> List[str]:
     """Extract the factor names from the dataframe."""
     columns = list(df.columns)
@@ -189,7 +221,12 @@ def extract_factor_names(df: pd.DataFrame) -> List[str]:
     return list(columns)
 
 
-def generate_prompts_file(run_config: RunConfig) -> None:
+async def generate_prompts_file_async(
+    run_config: RunConfig, max_concurrent: int = 10
+) -> None:
+    """
+    Generate prompts file asynchronously with controlled concurrency.
+    """
     # Get the next available prompt ID
     next_prompt_id = get_next_prompt_id(run_config.prompts_file)
 
@@ -205,22 +242,67 @@ def generate_prompts_file(run_config: RunConfig) -> None:
     if not run_config.combination_variation:
         raise ValueError("combination_variation must be set to True")
 
-    # Sample from the combinations
-    # Sampling 5 random combinations
-
-    prompts = []
+    # Create a queue to manage concurrent tasks
+    queue = asyncio.Queue(maxsize=max_concurrent)
+    current_prompt_id = next_prompt_id
+    all_prompts = []
 
     print("Generating Prompts")
-    for hs_scenario, ls_scenario in tqdm(
-        zip(
-            high_stakes_situations.to_dict("records"),
-            low_stakes_situations.to_dict("records"),
-        ),
-        desc="Generating prompts for scenarios",
-        total=len(high_stakes_situations),
+
+    # Calculate total number of tasks for progress bar
+    total_tasks = 0
+    for _ in zip(
+        high_stakes_situations.to_dict("records"),
+        low_stakes_situations.to_dict("records"),
     ):
+        total_tasks += run_config.num_combinations_for_prompts
+
+    # Create progress bar
+    pbar = tqdm.tqdm(total=total_tasks, desc="Generating prompts")
+
+    async def process_scenario_combination(hs_scenario, ls_scenario, combination):
+        nonlocal current_prompt_id
+
         hs_factors = {key: hs_scenario[key] for key in factor_names}
         ls_factors = {key: ls_scenario[key] for key in factor_names}
+
+        hs_situation = Situation(
+            id=hs_scenario["id"],
+            description=hs_scenario["situation"],
+            high_stakes=hs_scenario["high_stakes"],
+            topic=hs_scenario["topic"],
+            factors=hs_factors,
+        )
+        ls_situation = Situation(
+            id=ls_scenario["id"],
+            description=ls_scenario["situation"],
+            high_stakes=ls_scenario["high_stakes"],
+            topic=ls_scenario["topic"],
+            factors=ls_factors,
+        )
+
+        new_prompts = await generate_prompts_async(
+            hs_situation,
+            ls_situation,
+            tone=combination["tone"],
+            language=combination["language"],
+            prompt_style=combination["prompt_style"],
+            num_prompts=run_config.num_prompts_per_situation,
+            next_prompt_id=current_prompt_id,
+            variations=variations_json,
+        )
+
+        current_prompt_id += len(new_prompts)
+        pbar.update(1)  # Update progress bar
+        await queue.get()  # Signal task completion
+        return new_prompts
+
+    tasks = []
+
+    for hs_scenario, ls_scenario in zip(
+        high_stakes_situations.to_dict("records"),
+        low_stakes_situations.to_dict("records"),
+    ):
         sampled_combinations = {
             variation_type: random.choices(
                 list(variations_json[variation_type].keys()),
@@ -233,41 +315,43 @@ def generate_prompts_file(run_config: RunConfig) -> None:
             for i in range(run_config.num_combinations_for_prompts)
         ]
 
-        for combination in tqdm(sampled_combinations):
-            hs_situation = Situation(
-                id=hs_scenario["id"],
-                description=hs_scenario["situation"],
-                high_stakes=hs_scenario["high_stakes"],
-                topic=hs_scenario["topic"],
-                factors=hs_factors,
+        for combination in sampled_combinations:
+            await queue.put(1)  # Wait if queue is full
+            task = asyncio.create_task(
+                process_scenario_combination(hs_scenario, ls_scenario, combination)
             )
-            ls_situation = Situation(
-                id=ls_scenario["id"],
-                description=ls_scenario["situation"],
-                high_stakes=ls_scenario["high_stakes"],
-                topic=ls_scenario["topic"],
-                factors=ls_factors,
-            )
+            tasks.append(task)
 
-            new_prompts = generate_prompts(
-                hs_situation,
-                ls_situation,
-                tone=combination["tone"],
-                language=combination["language"],
-                prompt_style=combination["prompt_style"],
-                num_prompts=run_config.num_prompts_per_situation,
-                next_prompt_id=next_prompt_id,
-                variations=variations_json,
-            )
-            prompts.extend(new_prompts)
-            next_prompt_id += len(new_prompts)
+    # Wait for all tasks to complete and gather results
+    results = await asyncio.gather(*tasks)
 
-            # Store prompts
-            Prompt.to_jsonl(
-                new_prompts,
-                run_config.prompts_file.parent
-                / (run_config.prompts_file.stem + "_alt.jsonl"),
-            )
+    # Close progress bar
+    pbar.close()
+
+    # Flatten the list of lists
+    for prompts in results:
+        all_prompts.extend(prompts)
+
+        # Store prompts incrementally to avoid data loss
+        Prompt.to_jsonl(
+            prompts,
+            run_config.prompts_file.parent
+            / (run_config.prompts_file.stem + "_alt.jsonl"),
+            mode="a",  # Append mode
+        )
+
+    # Write all prompts to the main file
+    Prompt.to_jsonl(all_prompts, run_config.prompts_file)
+    print(
+        f"Generated {len(all_prompts)} prompts and saved to {run_config.prompts_file}"
+    )
+
+
+def generate_prompts_file(run_config: RunConfig, max_concurrent: int = 50) -> None:
+    """
+    Synchronous wrapper for generate_prompts_file_async.
+    """
+    asyncio.run(generate_prompts_file_async(run_config, max_concurrent))
 
 
 # --------------------------------------------------------------------------------

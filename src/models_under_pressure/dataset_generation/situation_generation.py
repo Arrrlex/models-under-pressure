@@ -1,12 +1,12 @@
+import asyncio
 import logging
 import random
 from typing import Any, Dict, List, Union
 
 import pandas as pd
-from tqdm import tqdm
 
 from models_under_pressure.config import DEFAULT_MODEL, RunConfig
-from models_under_pressure.utils import call_llm
+from models_under_pressure.utils import call_llm_async
 
 logger = logging.getLogger(__name__)
 
@@ -52,19 +52,20 @@ for people having roles similar to {role} and considering the impact on them is 
 """
 
 
-def generate_situations(
+async def generate_situations_async(
     n_samples: int,
     category: str,
     factors: Dict[str, List[str]],
     factor_id: int,
 ) -> Dict[str, Any] | None:
     """
-    Generate situations using LLM for a specific category and factor.
+    Generate situations using LLM for a specific category and factor asynchronously.
 
     Args:
         n_samples: Number of samples to generate
         category: Category of the situation
-        factor: Factor influencing the situation
+        factors: Factors influencing the situation
+        factor_id: Index of the factor to use
 
     Returns:
         Dictionary containing generated situations or None if generation fails
@@ -125,21 +126,37 @@ def generate_situations(
             + base_template.format(n_samples=n_samples),
         },
     ]
-    return call_llm(messages, model=DEFAULT_MODEL)
+    return await call_llm_async(messages, model=DEFAULT_MODEL)
 
 
-def generate_all_situations(
+def generate_situations(
+    n_samples: int,
+    category: str,
+    factors: Dict[str, List[str]],
+    factor_id: int,
+) -> Dict[str, Any] | None:
+    """
+    Synchronous wrapper for generate_situations_async.
+    """
+    return asyncio.run(
+        generate_situations_async(n_samples, category, factors, factor_id)
+    )
+
+
+async def generate_all_situations_async(
     run_config: RunConfig,
     samples_df: pd.DataFrame,
     sample_seperately: bool = False,
+    max_concurrent: int = 10,
 ) -> List[Dict[str, Union[bool, str]]]:
     """
-    Generate situations for all combinations of categories and factors.
+    Generate situations for all combinations of categories and factors asynchronously.
 
     Args:
         run_config: Run configuration including number of samples to generate
-        categories: List of categories
-        factors: List of factors
+        samples_df: DataFrame containing samples to generate situations for
+        sample_seperately: Whether to sample categories and factors separately
+        max_concurrent: Maximum number of concurrent API calls
 
     Returns:
         List of generated situations as dictionaries
@@ -171,73 +188,117 @@ def generate_all_situations(
         )
 
         all_situations = []
-        for topic in tqdm(topics, desc="Generating situations for topics"):
-            for factor_ctr in tqdm(
-                range(len(factors[factors_list[0]])),
-                desc=f"Generating situations for factors in {topic}",
-            ):
-                logger.debug(f"Generating situations for category: {topic}")
-                situations = generate_situations(
-                    n_samples=run_config.num_situations_per_combination,
-                    category=topic,
-                    factors=factors,
-                    factor_id=factor_ctr,
-                )
+        # Create a queue to manage concurrent tasks
+        queue = asyncio.Queue(maxsize=max_concurrent)
 
-                if situations is not None:
-                    keys = [key for key in situations.keys()]
-                    # if situations is a list, take all elements and assign topic and factors to each element
+        async def process_combination(topic: str, factor_ctr: int):
+            logger.debug(f"Generating situations for category: {topic}")
+            situations = await generate_situations_async(
+                n_samples=run_config.num_situations_per_combination,
+                category=topic,
+                factors=factors,
+                factor_id=factor_ctr,
+            )
 
-                    if isinstance(situations[keys[0]], list):
-                        for sit in situations[keys[0]]:
-                            sit["topic"] = topic
-                            for i in range(len(factors_list)):
-                                sit[factors_list[i]] = factors[factors_list[i]][
-                                    factor_ctr
-                                ]
-                            all_situations.append(sit)
-                    else:
-                        situations["topic"] = topic
+            result = []
+            if situations is not None:
+                keys = [key for key in situations.keys()]
+                # if situations is a list, take all elements and assign topic and factors to each element
+                if isinstance(situations[keys[0]], list):
+                    for sit in situations[keys[0]]:
+                        sit["topic"] = topic
                         for i in range(len(factors_list)):
-                            situations[factors_list[i]] = factors[factors_list[i]][
-                                factor_ctr
-                            ]
-                        all_situations.append(situations)
+                            sit[factors_list[i]] = factors[factors_list[i]][factor_ctr]
+                        result.append(sit)
                 else:
-                    logger.warning(
-                        f"Failed to generate situations for category: {topic}"
-                    )
+                    situations["topic"] = topic
+                    for i in range(len(factors_list)):
+                        situations[factors_list[i]] = factors[factors_list[i]][
+                            factor_ctr
+                        ]
+                    result.append(situations)
+            else:
+                logger.warning(f"Failed to generate situations for category: {topic}")
+
+            await queue.get()  # Signal task completion
+            return result
+
+        tasks = []
+        for topic in topics:
+            for factor_ctr in range(len(factors[factors_list[0]])):
+                await queue.put(1)  # Wait if queue is full
+                task = asyncio.create_task(process_combination(topic, factor_ctr))
+                tasks.append(task)
+
+        # Wait for all tasks to complete and gather results
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            all_situations.extend(result)
     else:
         all_situations = []
-        for index, row in tqdm(samples_df.iterrows(), desc="Generating situations"):
+        # Create a queue to manage concurrent tasks
+        queue = asyncio.Queue(maxsize=max_concurrent)
+
+        async def process_row(row):
             logger.debug(f"Generating situations for category: {row['topic']}")
-            situations = generate_situations(
+            situations = await generate_situations_async(
                 n_samples=run_config.num_situations_per_combination,
                 category=row["topic"],
                 factors={str(k): [v] for k, v in row[factors_list].items()},
                 factor_id=0,
             )
 
+            result = []
             if situations is not None:
                 keys = [key for key in situations.keys()]
                 # if situations is a list, take all elements and assign topic and factors to each element
-
                 if isinstance(situations[keys[0]], list):
                     for sit in situations[keys[0]]:
                         sit["topic"] = row["topic"]
                         for i in range(len(factors_list)):
                             sit[factors_list[i]] = row[factors_list[i]]
-                        all_situations.append(sit)
+                        result.append(sit)
                 else:
                     situations["topic"] = row["topic"]
                     for i in range(len(factors_list)):
-                        situations[factors_list[i]] = factors[factors_list[i]][index]
-                    all_situations.append(situations)
+                        situations[factors_list[i]] = row[factors_list[i]]
+                    result.append(situations)
             else:
                 logger.warning(
                     f"Failed to generate situations for category: {row['topic']}"
                 )
+
+            await queue.get()  # Signal task completion
+            return result
+
+        tasks = []
+        for _, row in samples_df.iterrows():
+            await queue.put(1)  # Wait if queue is full
+            task = asyncio.create_task(process_row(row))
+            tasks.append(task)
+
+        # Wait for all tasks to complete and gather results
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            all_situations.extend(result)
+
     return all_situations
+
+
+def generate_all_situations(
+    run_config: RunConfig,
+    samples_df: pd.DataFrame,
+    sample_seperately: bool = False,
+    max_concurrent: int = 10,
+) -> List[Dict[str, Union[bool, str]]]:
+    """
+    Synchronous wrapper for generate_all_situations_async.
+    """
+    return asyncio.run(
+        generate_all_situations_async(
+            run_config, samples_df, sample_seperately, max_concurrent
+        )
+    )
 
 
 def save_situations(
@@ -325,13 +386,16 @@ def save_situations(
     logger.info(f"Saved {len(filtered_df)} situations to {run_config.situations_file}")
 
 
-def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> None:
+def generate_situations_file(
+    run_config: RunConfig, is_json: bool = True, max_concurrent: int = 10
+) -> None:
     """
     Main function to orchestrate situation generation process.
 
     Args:
-        n_samples: Number of total samples to generate
-        output_path: Path to save the output CSV file
+        run_config: Configuration for the run
+        is_json: Whether to save as JSON
+        max_concurrent: Maximum number of concurrent API calls
     """
     # Setup logging
     logging.basicConfig(level=logging.INFO)
@@ -348,6 +412,7 @@ def generate_situations_file(run_config: RunConfig, is_json: bool = True) -> Non
         run_config=run_config,
         samples_df=sampled_df,
         sample_seperately=run_config.sample_seperately,
+        max_concurrent=max_concurrent,
     )
     # Save results
     save_situations(
