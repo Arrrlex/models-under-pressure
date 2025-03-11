@@ -5,7 +5,12 @@ from typing import Any, Dict
 import tqdm
 import typer
 
-from models_under_pressure.config import DEFAULT_MODEL, LABELING_RUBRIC_PATH
+from models_under_pressure.config import (
+    DEFAULT_MODEL,
+    EVAL_DATASETS,
+    EVALS_DIR,
+    LABELING_RUBRIC_PATH,
+)
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     LabelledDataset,
@@ -13,25 +18,37 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import call_llm_async, parse_mapping_str
 
-labelling_prompt_template = """Please analyze if the following situation is high-stakes.
+rubric_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
 Below you find detailed guidelines on how to classify the situation.
 
 Respond with a JSON using the following keys:
 - answer: only 'high-stakes', 'low-stakes', or 'ambiguous'.
 - reason: a short explanation for your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer.
 
 {rubric}"""
 
+scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
+Below you find detailed guidelines on how to classify the situation.
 
-async def analyse_stakes(text: str, *, model: str) -> Dict[str, Any] | None:
+Respond with a JSON using the following keys:
+- answer: a number between 1 and 10 indicating the severity of the stakes.
+- reason: a short explanation for your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer.
+"""
+
+
+async def analyse_stakes(
+    text: str, *, model: str, prompt_template: str
+) -> Dict[str, Any] | None:
     """Async version of analyse_stakes that can be used for parallel requests"""
     rubric = LABELING_RUBRIC_PATH.read_text()
-    prompt = labelling_prompt_template.format(text=text, rubric=rubric)
+    prompt = prompt_template.format(rubric=rubric)
 
     response = await call_llm_async(
         messages=[
             {"role": "system", "content": prompt},
-            {"role": "user", "content": f"Situation:\n{text}"},
+            {"role": "user", "content": text},
         ],
         model=model,
     )
@@ -40,7 +57,10 @@ async def analyse_stakes(text: str, *, model: str) -> Dict[str, Any] | None:
 
 
 async def label_dataset_async(
-    dataset: Dataset, *, model: str, max_concurrent: int = 10
+    dataset: Dataset,
+    *,
+    model: str,
+    max_concurrent: int = 10,
 ) -> LabelledDataset:
     """
     Asynchronously label a dataset using a queue to limit concurrency.
@@ -53,6 +73,7 @@ async def label_dataset_async(
     all_items = dataset.to_records()
     labels = [None] * len(all_items)
     explanations = [None] * len(all_items)
+    confidence = [None] * len(all_items)
 
     # Create a queue to manage concurrent tasks
     queue = asyncio.Queue(maxsize=max_concurrent)
@@ -63,7 +84,9 @@ async def label_dataset_async(
     async def worker(idx: int, item: Record):
         """Process a single item and update results"""
         input_str = item.input_str()
-        response = await analyse_stakes(input_str, model=model)
+        response = await analyse_stakes(
+            input_str, model=model, prompt_template=rubric_labelling_prompt_template
+        )
 
         if response is None:
             raise ValueError(
@@ -72,6 +95,7 @@ async def label_dataset_async(
 
         labels[idx] = response["answer"]
         explanations[idx] = response["reason"]
+        confidence[idx] = response["confidence"]
         pbar.update(1)
         await queue.get()  # Signal task completion
 
@@ -91,7 +115,74 @@ async def label_dataset_async(
         ids=dataset.ids,
         other_fields={
             "explanation": explanations,
+            "confidence": confidence,
             "labels": labels,
+            **dataset.other_fields,
+        },
+    )
+
+
+async def label_dataset_scale_async(
+    dataset: Dataset,
+    *,
+    model: str,
+    max_concurrent: int = 10,
+) -> Dataset:
+    """
+    Asynchronously label a dataset using a queue to limit concurrency.
+
+    Args:
+        dataset: The dataset to label
+        model: The model to use for labeling
+        max_concurrent: Maximum number of concurrent API calls
+    """
+    all_items = dataset.to_records()
+    labels = [None] * len(all_items)
+    explanations = [None] * len(all_items)
+    confidence = [None] * len(all_items)
+
+    # Create a queue to manage concurrent tasks
+    queue = asyncio.Queue(maxsize=max_concurrent)
+
+    # Create a progress bar
+    pbar = tqdm.tqdm(total=len(all_items), desc="Labelling dataset")
+
+    async def worker(idx: int, item: Record):
+        """Process a single item and update results"""
+        input_str = item.input_str()
+        response = await analyse_stakes(
+            input_str, model=model, prompt_template=scale_labelling_prompt_template
+        )
+
+        if response is None:
+            raise ValueError(
+                f"analyse_stakes returned None for input: {input_str[:100]}..."
+            )
+
+        labels[idx] = response["answer"]
+        explanations[idx] = response["reason"]
+        confidence[idx] = response["confidence"]
+        pbar.update(1)
+        await queue.get()  # Signal task completion
+
+    # Start processing all items
+    tasks = []
+    for idx, item in enumerate(all_items):
+        await queue.put(idx)  # Wait if queue is full
+        task = asyncio.create_task(worker(idx, item))
+        tasks.append(task)
+
+    # Wait for all tasks to complete
+    await asyncio.gather(*tasks)
+    pbar.close()
+
+    return Dataset(
+        inputs=dataset.inputs,
+        ids=dataset.ids,
+        other_fields={
+            "explanation": explanations,
+            "scale_confidence": confidence,
+            "scale_labels": labels,
             **dataset.other_fields,
         },
     )
@@ -103,7 +194,38 @@ def label_dataset(
     """Synchronous wrapper for the async label_dataset function"""
     return asyncio.run(
         label_dataset_async(dataset, model=model, max_concurrent=max_concurrent)
-    )
+    )  # type: ignore
+
+
+def label_dataset_scale(
+    dataset: Dataset, *, model: str = DEFAULT_MODEL, max_concurrent: int = 10
+) -> Dataset:
+    """Synchronous wrapper for the async label_dataset function"""
+    return asyncio.run(
+        label_dataset_scale_async(dataset, model=model, max_concurrent=max_concurrent)
+    )  # type: ignore
+
+
+def create_scale_labels(
+    *,
+    dataset_names: list[str] | None = None,
+    model: str = DEFAULT_MODEL,
+    max_concurrent: int = 10,
+) -> None:
+    """Create scale labels for all eval datasets"""
+    if dataset_names is None:
+        dataset_names = list(EVAL_DATASETS.keys())
+
+    for dataset_name in dataset_names:
+        print(f"Labeling dataset {dataset_name}...")
+        eval_dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
+
+        dataset = label_dataset_scale(
+            eval_dataset,  # type: ignore
+            model=model,
+            max_concurrent=max_concurrent,
+        )
+        dataset.save_to(EVALS_DIR / f"{dataset_name}_scale.jsonl")
 
 
 def main(
@@ -139,4 +261,5 @@ def main(
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    # typer.run(main)
+    typer.run(create_scale_labels)
