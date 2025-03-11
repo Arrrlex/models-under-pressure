@@ -55,7 +55,7 @@ def compute_aurocs(
     eval_datasets: dict[str, LabelledDataset],
     model_name: str,
     layer: int,
-) -> list[float]:
+) -> dict[str, float]:
     model = LLMModel.load(model_name)
 
     # Train a linear probe on the train dataset
@@ -80,7 +80,7 @@ def load_eval_datasets(
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
-        if max_samples:
+        if max_samples and len(dataset) > max_samples:
             dataset = dataset.sample(max_samples)
         eval_datasets[str(path)] = dataset
     return eval_datasets
@@ -110,13 +110,17 @@ def run_evaluation(
 
     # Compute AUROCs
     aurocs = compute_aurocs(
-        train_dataset, dataset_path, eval_datasets, model_name, layer
+        train_dataset=train_dataset,
+        train_dataset_path=dataset_path,
+        eval_datasets=eval_datasets,
+        model_name=model_name,
+        layer=layer,
     )
     for path, auroc in aurocs.items():
         print(f"AUROC for {Path(path).stem}: {auroc}")
 
     results = ProbeEvaluationResults(
-        AUROC=list(aurocs.values()),
+        AUROC=aurocs,
         train_dataset_path=str(dataset_path),
         datasets=list(eval_datasets.keys()),
         model_name=model_name,
@@ -133,9 +137,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=None,
+        max_samples=100,
         layer=11,
-        model_name=LOCAL_MODELS["llama-8b"],
+        model_name=LOCAL_MODELS["llama-1b"],
     )
 
     results = run_evaluation(
