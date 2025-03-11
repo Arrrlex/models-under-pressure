@@ -9,7 +9,7 @@
     "angry": "This prompt should be written in an angry tone.",
     "vulnerable": "This prompt should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
     "overly polite": "This prompt should be written in an overly polite tone.",
-    "standard": ""
+    "casual": "This prompt should be written in a casual tone."
   },
   "language": {
     "English": "This prompt should be in English.",

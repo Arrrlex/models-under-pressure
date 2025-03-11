@@ -120,9 +120,7 @@ class RunConfig:
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
     num_combinations_for_prompts: int = 3
-    combination_variation: bool = False  # If None, all factors are used
 
-    sample_seperately: bool = False
     run_id: str = "test"
 
     def __post_init__(self):

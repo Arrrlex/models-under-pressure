@@ -3,7 +3,7 @@ import json
 import random
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import pandas as pd
 import tqdm
@@ -239,12 +239,8 @@ async def generate_prompts_file_async(
     variations_json = json.load(open(run_config.variations_file))
     types_of_variations = list(variations_json.keys())
 
-    if not run_config.combination_variation:
-        raise ValueError("combination_variation must be set to True")
-
     # Create a queue to manage concurrent tasks
     queue = asyncio.Queue(maxsize=max_concurrent)
-    current_prompt_id = next_prompt_id
     all_prompts = []
 
     print("Generating Prompts")
@@ -260,9 +256,11 @@ async def generate_prompts_file_async(
     # Create progress bar
     pbar = tqdm.tqdm(total=total_tasks, desc="Generating prompts")
 
-    async def process_scenario_combination(hs_scenario, ls_scenario, combination):
-        nonlocal current_prompt_id
-
+    async def process_scenario_combination(
+        hs_scenario: Dict[str, Any],
+        ls_scenario: Dict[str, Any],
+        combination: Dict[str, Any],
+    ):
         hs_factors = {key: hs_scenario[key] for key in factor_names}
         ls_factors = {key: ls_scenario[key] for key in factor_names}
 
@@ -281,6 +279,7 @@ async def generate_prompts_file_async(
             factors=ls_factors,
         )
 
+        # Use temporary IDs that will be replaced later
         new_prompts = await generate_prompts_async(
             hs_situation,
             ls_situation,
@@ -288,11 +287,10 @@ async def generate_prompts_file_async(
             language=combination["language"],
             prompt_style=combination["prompt_style"],
             num_prompts=run_config.num_prompts_per_situation,
-            next_prompt_id=current_prompt_id,
+            next_prompt_id=0,  # Temporary ID, will be replaced later
             variations=variations_json,
         )
 
-        current_prompt_id += len(new_prompts)
         pbar.update(1)  # Update progress bar
         await queue.get()  # Signal task completion
         return new_prompts
@@ -318,7 +316,11 @@ async def generate_prompts_file_async(
         for combination in sampled_combinations:
             await queue.put(1)  # Wait if queue is full
             task = asyncio.create_task(
-                process_scenario_combination(hs_scenario, ls_scenario, combination)
+                process_scenario_combination(
+                    hs_scenario=hs_scenario,
+                    ls_scenario=ls_scenario,
+                    combination=combination,
+                )
             )
             tasks.append(task)
 
@@ -332,16 +334,13 @@ async def generate_prompts_file_async(
     for prompts in results:
         all_prompts.extend(prompts)
 
-        # Store prompts incrementally to avoid data loss
-        Prompt.to_jsonl(
-            prompts,
-            run_config.prompts_file.parent
-            / (run_config.prompts_file.stem + "_alt.jsonl"),
-            mode="a",  # Append mode
-        )
+    # Assign sequential IDs to all prompts
+    for i, prompt in enumerate(all_prompts):
+        prompt.id = next_prompt_id + i
 
     # Write all prompts to the main file
     Prompt.to_jsonl(all_prompts, run_config.prompts_file)
+
     print(
         f"Generated {len(all_prompts)} prompts and saved to {run_config.prompts_file}"
     )
@@ -358,4 +357,4 @@ def generate_prompts_file(run_config: RunConfig, max_concurrent: int = 50) -> No
 # 3. Main flow: orchestrate the data creation
 # --------------------------------------------------------------------------------
 if __name__ == "__main__":
-    generate_prompts_file(RunConfig(run_id="debug", combination_variation=True))
+    generate_prompts_file(RunConfig(run_id="debug"))

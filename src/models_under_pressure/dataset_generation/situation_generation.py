@@ -36,15 +36,6 @@ and they express feelings of losing control. The therapist must provide immediat
 Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
 """
 
-situation_generation_template_impact_factor = """
-Generate {n_samples} distinct situations with respect to the domain of {category} considering the impact related to {impact_factor}.
-
-"""
-situation_generation_template_role_geography = """
-Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
-for people having roles similar to {role} considering that they are belonging to the geography of {geography}.
-
-"""
 situation_generation_template_role_impact = """
 Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
 for people having roles similar to {role} and considering the impact on them is related to {impact_factor}.
@@ -78,17 +69,7 @@ async def generate_situations_async(
 
     situation_generation_prompt = ""
     # using different templates
-    if len(roles) == 0 and len(languages) == 0 and len(geographies) == 0:
-        situation_generation_prompt = (
-            situation_generation_template_impact_factor.format(
-                n_samples=n_samples,
-                category=category,
-                impact_factor=impact_factors[factor_id]
-                if len(impact_factors) > factor_id
-                else impact_factors[-1],
-            )
-        )
-    elif len(geographies) == 0 and len(languages) == 0:
+    if len(geographies) == 0 and len(languages) == 0:
         situation_generation_prompt = situation_generation_template_role_impact.format(
             n_samples=n_samples,
             category=category,
@@ -96,18 +77,6 @@ async def generate_situations_async(
             impact_factor=impact_factors[factor_id]
             if len(impact_factors) > factor_id
             else impact_factors[-1],
-        )
-
-    elif len(impact_factors) == 0 and len(languages) == 0:
-        situation_generation_prompt = (
-            situation_generation_template_role_geography.format(
-                n_samples=n_samples,
-                category=category,
-                role=roles[factor_id] if len(roles) > factor_id else roles[-1],
-                geography=geographies[factor_id]
-                if len(geographies) > factor_id
-                else geographies[-1],
-            )
         )
 
     messages = [
@@ -161,136 +130,47 @@ async def generate_all_situations_async(
         List of generated situations as dictionaries
     """
     # Get topics and factors from DataFrame
-    topics = samples_df["topic"].unique().tolist()
-
-    # Get factor columns (all columns except topic)
+    all_situations = []
+    queue = asyncio.Queue(maxsize=max_concurrent)
+    pbar = tqdm(
+        total=len(samples_df),
+        desc="Generating situations",
+    )
     factors_list = [col for col in samples_df.columns if col != "topic"]
     factors_list.remove("id")
-    factors = {}
-    for factor in factors_list:
-        factors[factor] = samples_df[factor].unique().tolist()
 
-        # if sample_seperately:
-        #     if (
-        #         run_config.num_topics_to_sample is not None
-        #         and run_config.num_topics_to_sample < len(topics)
-        #     ):
-        #         topics = random.sample(topics, run_config.num_topics_to_sample)
-        #     if run_config.num_factors_to_sample is not None:
-        #         for factor in factors:
-        #             factors[factor] = random.sample(
-        #                 factors[factor], run_config.num_factors_to_sample
-        #             )
-
-        logger.info(
-            f"Generating situations for {len(topics)} categories and {len(factors[factors_list[0]])} factors"
+    async def process_combination(row: pd.Series):
+        logger.debug(f"Generating situations for category: {row['topic']}")
+        situations = await generate_situations_async(
+            n_samples=run_config.num_situations_per_combination,
+            category=row["topic"],
+            factors={str(k): [v] for k, v in row[factors_list].items()},
+            factor_id=0,
         )
+        await queue.get()  # Signal task completion
+        pbar.update(1)  # Update progress bar
+        return situations
 
-        all_situations = []
+    tasks = []
+    for idx, row in samples_df.iterrows():
         # Create a queue to manage concurrent tasks
-        queue = asyncio.Queue(maxsize=max_concurrent)
         # Create progress bar
-        pbar = tqdm(
-            total=len(topics) * len(factors[factors_list[0]]),
-            desc="Generating situations",
-        )
 
-        async def process_combination(topic: str, factor_ctr: int):
-            logger.debug(f"Generating situations for category: {topic}")
-            situations = await generate_situations_async(
-                n_samples=run_config.num_situations_per_combination,
-                category=topic,
-                factors=factors,
-                factor_id=factor_ctr,
-            )
+        await queue.put(1)  # Wait if queue is full
+        task = asyncio.create_task(process_combination(row))
 
-            result = []
-            if situations is not None:
-                keys = [key for key in situations.keys()]
-                # if situations is a list, take all elements and assign topic and factors to each element
-                if isinstance(situations[keys[0]], list):
-                    for sit in situations[keys[0]]:
-                        sit["topic"] = topic
-                        for i in range(len(factors_list)):
-                            sit[factors_list[i]] = factors[factors_list[i]][factor_ctr]
-                        result.append(sit)
-                else:
-                    situations["topic"] = topic
-                    for i in range(len(factors_list)):
-                        situations[factors_list[i]] = factors[factors_list[i]][
-                            factor_ctr
-                        ]
-                    result.append(situations)
-            else:
-                logger.warning(f"Failed to generate situations for category: {topic}")
-
-            await queue.get()  # Signal task completion
-            pbar.update(1)  # Update progress bar
-            return result
-
-        tasks = []
-        for topic in topics:
-            for factor_ctr in range(len(factors[factors_list[0]])):
-                await queue.put(1)  # Wait if queue is full
-                task = asyncio.create_task(process_combination(topic, factor_ctr))
-                tasks.append(task)
+        tasks.append(task)
 
         # Wait for all tasks to complete and gather results
-        results = await asyncio.gather(*tasks)
-        for result in results:
-            all_situations.extend(result)
-    else:
-        all_situations = []
-        # Create a queue to manage concurrent tasks
-        queue = asyncio.Queue(maxsize=max_concurrent)
-        # Create progress bar
-        pbar = tqdm(total=len(samples_df), desc="Generating situations")
+    results = await asyncio.gather(*tasks)
+    for result, (idx, row) in zip(results, samples_df.iterrows()):
+        for situation in result["situations"]:
+            situation["topic"] = row["topic"]
+            situation["role_of_user"] = row["role_of_user"]
+            situation["impact_factors"] = row["impact_factors"]
+            all_situations.append(situation)
 
-        async def process_row(row: pd.Series):
-            logger.debug(f"Generating situations for category: {row['topic']}")
-            situations = await generate_situations_async(
-                n_samples=run_config.num_situations_per_combination,
-                category=row["topic"],
-                factors={str(k): [v] for k, v in row[factors_list].items()},
-                factor_id=0,
-            )
-
-            result = []
-            if situations is not None:
-                keys = [key for key in situations.keys()]
-                # if situations is a list, take all elements and assign topic and factors to each element
-                if isinstance(situations[keys[0]], list):
-                    for sit in situations[keys[0]]:
-                        sit["topic"] = row["topic"]
-                        for i in range(len(factors_list)):
-                            sit[factors_list[i]] = row[factors_list[i]]
-                        result.append(sit)
-                else:
-                    situations["topic"] = row["topic"]
-                    for i in range(len(factors_list)):
-                        situations[factors_list[i]] = row[factors_list[i]]
-                    result.append(situations)
-            else:
-                logger.warning(
-                    f"Failed to generate situations for category: {row['topic']}"
-                )
-
-            await queue.get()  # Signal task completion
-            pbar.update(1)  # Update progress bar
-            return result
-
-        tasks = []
-        for _, row in samples_df.iterrows():
-            await queue.put(1)  # Wait if queue is full
-            task = asyncio.create_task(process_row(row))
-            tasks.append(task)
-
-        # Wait for all tasks to complete and gather results
-        results = await asyncio.gather(*tasks)
-        for result in results:
-            all_situations.extend(result)
-
-    pbar.close()  # Close the progress bar when done
+    pbar.close()
     return all_situations
 
 
@@ -324,28 +204,11 @@ def save_situations(
 
     factors_names = [col for col in factors_names if col not in situation_columns]
     situation_columns.extend(factors_names)
-    # DON'T DELETE THIS COMMENTED CODE
-    # # Check if file exists and get the next ID
+
     next_id = 1
-    # existing_df = None
-    # if output_path.exists():
-    #     try:
-    #         existing_df = pd.read_csv(output_path)
-    #         if not existing_df.empty:
-    #             next_id = existing_df["id"].max() + 1
-    #             logger.info(
-    #                 f"Found existing situations file. Next ID will be {next_id}"
-    #             )
-    #     except Exception as e:
-    #         logger.warning(f"Error reading existing situations file: {e}")
-    #         next_id = 1
 
     # # Assign sequential IDs starting from next_id
     situations_df["id"] = range(next_id, next_id + len(situations_df))
-
-    # # If file exists, append new situations
-    # if output_path.exists() and existing_df is not None:
-    #     situations_df = pd.concat([existing_df, situations_df], ignore_index=True)
 
     # shift id column to the first position
     situations_df = situations_df[
