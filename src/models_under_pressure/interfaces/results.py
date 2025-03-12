@@ -30,7 +30,7 @@ class ProbeEvaluationResults(BaseModel):
     """Name of the model that was evaluated"""
 
     train_dataset_path: str
-    """Path to the dataset used to train the probe"""
+    """Path to the dataset used to train the probe (str format since Path is not JSON serializable)"""
 
     metrics: list[DatasetResults]
     """Global metrics for each evaluated dataset"""
