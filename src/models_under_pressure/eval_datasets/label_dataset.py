@@ -9,7 +9,11 @@ from models_under_pressure.config import (
     DEFAULT_MODEL,
     EVAL_DATASETS,
     EVALS_DIR,
+    GENERATED_DATASET_PATH,
     LABELING_RUBRIC_PATH,
+)
+from models_under_pressure.experiments.dataset_splitting import (
+    load_filtered_train_dataset,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -230,6 +234,33 @@ def create_scale_labels(
         dataset.save_to(EVALS_DIR / f"{dataset_name}_scale.jsonl")
 
 
+def create_training_scale_labels(
+    *,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    model: str = DEFAULT_MODEL,
+    max_concurrent: int = 10,
+    max_samples: int = 500,
+) -> None:
+    """Create scale labels for all eval datasets"""
+    # Load filtered training dataset
+    dataset = load_filtered_train_dataset(
+        dataset_path=GENERATED_DATASET_PATH,
+        variation_type=variation_type,
+        variation_value=variation_value,
+        max_samples=max_samples,
+    )
+
+    print(f"Labeling {max_samples} samples from training dataset...")
+
+    new_dataset = label_dataset_scale(
+        dataset,  # type: ignore
+        model=model,
+        max_concurrent=max_concurrent,
+    )
+    new_dataset.save_to(EVALS_DIR / "training_dataset_scale.jsonl")
+
+
 def main(
     path: Path = typer.Argument(..., help="Path to the dataset file"),
     save_path: Path = typer.Option(..., help="Path to save the labelled dataset"),
@@ -264,4 +295,9 @@ def main(
 
 if __name__ == "__main__":
     # typer.run(main)
-    typer.run(create_scale_labels)
+
+    # Create scale labels for all eval datasets
+    # create_scale_labels()
+
+    # Label random samples from the training dataset
+    create_training_scale_labels()

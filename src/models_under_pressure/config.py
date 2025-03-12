@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"

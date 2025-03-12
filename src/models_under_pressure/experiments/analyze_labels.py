@@ -4,16 +4,18 @@ import numpy as np
 from models_under_pressure.config import EVALS_DIR, PLOTS_DIR
 from models_under_pressure.interfaces.dataset import Dataset
 
-dataset_files = [f for f in EVALS_DIR.glob("*_scale.jsonl")]
-
-datasets = {f.stem: Dataset.load_from(f) for f in dataset_files}
-
 
 def analyze_scale_labels(
     dataset: Dataset, dataset_name: str, confidence_threshold: float = 0.0
 ):
     # Dictionary to store scale labels for each label type
-    label_types = ["high-stakes", "ambiguous", "low-stakes"]
+    label_types = list(
+        set(
+            record.other_fields.get("labels")
+            for record in dataset.to_records()
+            if record.other_fields.get("labels") is not None
+        )
+    )
     scale_labels_by_type = {label_type: [] for label_type in label_types}
 
     # Collect scale labels for all label types
@@ -53,7 +55,7 @@ def analyze_scale_labels(
             x + (i - 1) * bar_width,
             histograms[label_type],
             width=bar_width,
-            label=label_type.title(),
+            label=label_type.title() if isinstance(label_type, str) else label_type,
         )
 
     # Add labels and title
@@ -87,6 +89,17 @@ def analyze_scale_labels(
 if __name__ == "__main__":
     # Define confidence thresholds to analyze
     confidence_thresholds = [0, 6, 9]
+
+    dataset_files = [
+        f
+        for f in EVALS_DIR.glob(
+            "*_scale.jsonl"
+        )  # if str(f.stem).startswith("training")
+    ]
+
+    datasets = {f.stem: Dataset.load_from(f) for f in dataset_files}
+
+    print(f"Processing {len(datasets)} datasets...")
 
     for dataset_name, dataset in datasets.items():
         print(f"Dataset: {dataset_name}")
