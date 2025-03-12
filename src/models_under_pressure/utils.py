@@ -1,6 +1,7 @@
+import asyncio
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import openai
 import torch
@@ -14,6 +15,12 @@ from models_under_pressure.config import DEFAULT_MODEL
 load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
+
+
+def _get_async_client() -> AsyncOpenAI:
+    if not hasattr(_get_async_client, "_instance"):
+        _get_async_client._instance = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
+    return _get_async_client._instance
 
 
 # TODO Change messages type to Dialogue type?
@@ -30,19 +37,29 @@ def call_llm(messages: List[Any], model: str) -> Dict[str, Any] | None:
 
 
 async def call_llm_async(
-    messages: List[Any], model: str = DEFAULT_MODEL
-) -> Dict[str, Any] | None:
+    messages: List[Any],
+    model: str = DEFAULT_MODEL,
+    json_schema: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Async version of call_llm that can be used for parallel requests"""
-    client = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
+    client = _get_async_client()
+    if json_schema is not None:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": json_schema,
+        }
+    else:
+        response_format = {"type": "json_object"}
+
     response = await client.chat.completions.create(
         model=model,
         messages=messages,
-        response_format={"type": "json_object"},
+        response_format=response_format,  # type: ignore
     )
     content = response.choices[0].message.content
     if content is None:
-        return None
-    return json.loads(content) if len(content) > 0 else None
+        raise ValueError("No content returned from LLM")
+    return json.loads(content)
 
 
 def generate_completions(
@@ -123,3 +140,62 @@ def parse_mapping_str(mapping_str: str) -> dict[str, str]:
             key, value = pair.split(":", 1)
             mapping_dict[key.strip()] = value.strip()
     return mapping_dict
+
+
+async def call_concurrently(
+    callables: list[Callable[[], Awaitable[Any]]],
+    max_concurrent_tasks: int = 50,
+    pbar: Optional[tqdm] = None,
+    task_timeout: Optional[float] = None,
+) -> list[Any]:
+    """
+    Call a list of tasks concurrently with a limit on the number of concurrent tasks.
+
+    Args:
+        callables: List of async callables to execute
+        max_concurrent_tasks: Maximum number of tasks to run concurrently
+        pbar: Optional progress bar to update
+        task_timeout: Optional timeout in seconds for each individual task
+    """
+    queue = asyncio.Queue(maxsize=max_concurrent_tasks)
+
+    tasks = []
+
+    async def worker(callable: Callable[[], Awaitable[Any]]):
+        await queue.get()
+        try:
+            if task_timeout is not None:
+                result = await asyncio.wait_for(callable(), timeout=task_timeout)
+            else:
+                result = await callable()
+            if pbar is not None:
+                pbar.update(1)
+            return result
+        finally:
+            await queue.put(1)
+
+    for callable in callables:
+        await queue.put(1)
+        task = asyncio.create_task(worker(callable))
+        tasks.append(task)
+
+    results = []
+    for task in asyncio.as_completed(tasks):
+        try:
+            result = await task
+            results.append(result)
+        except asyncio.TimeoutError:
+            # Cancel all remaining tasks on timeout
+            for t in tasks:
+                t.cancel()
+            raise  # Re-raise the timeout
+        except Exception as e:
+            # Cancel all remaining tasks on other exceptions
+            for t in tasks:
+                t.cancel()
+            raise e  # Re-raise the exception
+
+    if pbar is not None:
+        pbar.close()
+
+    return results

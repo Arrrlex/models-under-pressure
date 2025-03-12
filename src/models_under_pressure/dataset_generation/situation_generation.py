@@ -33,8 +33,7 @@ and they express feelings of losing control. The therapist must provide immediat
 Please do not use obvious words or phrases that clearly imply the high stake or low stake situation. The distinction between high-stakes and low-stakes situations should be based on meaning and context rather than the intensity or usage of the words themselves."""
 
 
-async def generate_situations_async(
-    n_samples: int,
+async def generate_situations(
     category: str,
     factors: Dict[str, List[str]],
     factor_id: int,
@@ -43,7 +42,6 @@ async def generate_situations_async(
     Generate situations using LLM for a specific category and factor asynchronously.
 
     Args:
-        n_samples: Number of samples to generate
         category: Category of the situation
         factors: Factors influencing the situation
         factor_id: Index of the factor to use
@@ -83,24 +81,9 @@ async def generate_situations_async(
     return await call_llm_async(messages, model=DEFAULT_MODEL)
 
 
-def generate_situations(
-    n_samples: int,
-    category: str,
-    factors: Dict[str, List[str]],
-    factor_id: int,
-) -> Dict[str, Any] | None:
-    """
-    Synchronous wrapper for generate_situations_async.
-    """
-    return asyncio.run(
-        generate_situations_async(n_samples, category, factors, factor_id)
-    )
-
-
-async def generate_all_situations_async(
+async def generate_all_situations(
     run_config: RunConfig,
     samples_df: pd.DataFrame,
-    max_concurrent: int = 10,
 ) -> List[Dict[str, Union[bool, str]]]:
     """
     Generate situations for all combinations of categories and factors asynchronously.
@@ -116,7 +99,7 @@ async def generate_all_situations_async(
     """
     # Get topics and factors from DataFrame
     all_situations = []
-    queue = asyncio.Queue(maxsize=max_concurrent)
+    queue = asyncio.Queue(maxsize=run_config.max_concurrent_llm_calls)
     pbar = tqdm(
         total=len(samples_df),
         desc="Generating situations",
@@ -126,8 +109,7 @@ async def generate_all_situations_async(
 
     async def process_combination(row: pd.Series):
         logger.debug(f"Generating situations for category: {row['topic']}")
-        situations = await generate_situations_async(
-            n_samples=run_config.num_situations_per_combination,
+        situations = await generate_situations(
             category=row["topic"],
             factors={str(k): [v] for k, v in row[factors_list].items()},
             factor_id=0,
@@ -157,19 +139,6 @@ async def generate_all_situations_async(
 
     pbar.close()
     return all_situations
-
-
-def generate_all_situations(
-    run_config: RunConfig,
-    samples_df: pd.DataFrame,
-    max_concurrent: int = 10,
-) -> List[Dict[str, Union[bool, str]]]:
-    """
-    Synchronous wrapper for generate_all_situations_async.
-    """
-    return asyncio.run(
-        generate_all_situations_async(run_config, samples_df, max_concurrent)
-    )
 
 
 def save_situations(
@@ -240,9 +209,7 @@ def save_situations(
     logger.info(f"Saved {len(filtered_df)} situations to {run_config.situations_file}")
 
 
-def generate_situations_file(
-    run_config: RunConfig, is_json: bool = True, max_concurrent: int = 10
-) -> None:
+async def generate_situations_file(run_config: RunConfig) -> None:
     """
     Main function to orchestrate situation generation process.
 
@@ -252,10 +219,9 @@ def generate_situations_file(
         max_concurrent: Maximum number of concurrent API calls
     """
     # Setup logging
-    logging.basicConfig(level=logging.INFO)
 
     # Load and prepare data from the combined csv file
-    logger.info("Loading situations combinations from CSV...")
+    print("Loading situations combinations from CSV...")
     situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
     #  If we want to sample directly from the csv file
     logger.info(f"Sampling {run_config.num_situations_to_sample} combinations...")
@@ -264,21 +230,20 @@ def generate_situations_file(
         random_state=run_config.random_state,
     )
 
-    logger.info("Generating situations...")
-    situations_results = generate_all_situations(
+    situations_results = await generate_all_situations(
         run_config=run_config,
         samples_df=sampled_df,
-        max_concurrent=max_concurrent,
     )
     # Save results
-    logger.info("Saving generated situations...")
+    print("Saving generated situations...")
     save_situations(
         situations_results,
         run_config=run_config,
         factors_names=sampled_df.columns.tolist(),
     )
-    logger.info("Situation generation complete!")
+    print("Situation generation complete!")
 
 
 if __name__ == "__main__":
-    generate_situations_file(RunConfig(run_id="debug"))
+    config = RunConfig(run_id="debug")
+    asyncio.run(generate_situations_file(config))

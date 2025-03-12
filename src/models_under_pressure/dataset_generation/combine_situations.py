@@ -51,7 +51,9 @@ def generate_situations(
     for topic, factors in situation_combinations:
         generated_situations.append(
             Situation(
-                id=idx, topic=topic, factors=list(factors), factor_names=factor_names
+                id=idx,
+                topic=topic,
+                factors=dict(zip(factor_names, list(factors))),
             )
         )
         idx += 1
