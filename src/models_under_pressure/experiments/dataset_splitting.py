@@ -192,14 +192,7 @@ def load_filtered_train_dataset(
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
         lambda x: (
-            (
-                variation_type is None
-                or x.other_fields["variation_type"] == variation_type
-            )
-            and (
-                variation_value is None
-                or x.other_fields["variation"] == variation_value
-            )
+            variation_type is None or x.other_fields[variation_type] == variation_value
         )
     )
 
