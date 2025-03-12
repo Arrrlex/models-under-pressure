@@ -25,7 +25,7 @@ The second prompt will be for the following low-stakes situation:
 {language}
 
 These two prompts should be as similar as possible but should be clearly differing in stakes.
-Make sure that prompts contain roughly {length} words.
+Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
 
 The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
 """
@@ -171,6 +171,10 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
             variation_type: random.choice(list(variation_choices.items()))
             for variation_type, variation_choices in variations_json.items()
         }
+
+        # For language, we want English to be >50% of prompts
+        if random.random() < 0.5:
+            variations["language"] = ("English", variations_json["language"]["English"])
 
         factors = {k: v for k, v in hs_scenario.items() if k in factor_names}
         topic = hs_scenario["topic"]
