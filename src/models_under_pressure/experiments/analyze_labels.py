@@ -65,7 +65,7 @@ def analyze_scale_labels(
     plt.title(f"Distribution of Scale Labels for {dataset_name}{confidence_info}")
     plt.xlabel("Scale Label (1-10)")
     plt.ylabel("Count")
-    plt.xticks(x, bins)
+    plt.xticks(x, bins)  # type: ignore
     plt.legend()
     plt.grid(True, alpha=0.3)
 
