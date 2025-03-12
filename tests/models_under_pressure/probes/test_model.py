@@ -15,6 +15,18 @@ def mock_model():
     # Mock the config attributes
     model.config = Mock()
     model.config.num_hidden_layers = 12
+
+    # Create a mock parameter with 'cpu' device
+    mock_param = Mock()
+    mock_param.device = "cpu"
+
+    # Create a function that returns a fresh list each time
+    def get_parameters():
+        return iter([mock_param])
+
+    # Use this function for the parameters method
+    model.parameters = get_parameters
+
     return model
 
 
@@ -58,7 +70,8 @@ def test_device_setter(llm_model):
     llm_model.model.to.reset_mock()
 
     # Now test setting the device
-    llm_model.device = "cuda"
+    llm_model.to("cuda")
+    assert llm_model.device == "cuda"
     llm_model.model.to.assert_called_once_with("cuda")
 
 

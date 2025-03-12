@@ -206,22 +206,22 @@ def display_word_level_visualization(
         tokenizer_name = st.selectbox(
             "Select tokenizer",
             [
+                "meta-llama/Llama-3.3-70B-Instruct",
                 "meta-llama/Llama-3.2-1B-Instruct",
             ],
             index=0,
         )
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-        # Check if text value can be json loaded then tokenize with apply_chat_
-        try:
-            print("Tokenizing json loaded messages")
-            tokens = tokenizer.apply_chat_template(
-                json.loads(text_value), tokenize=True, add_generation_prompt=True
-            )
+        try:  # Load via JSON:
+            tokenizer_input = json.loads(text_value)
 
-        except Exception as e:
-            st.error(f"Error tokenizing text: {str(e)}, applying standard tokenization")
-            tokens = tokenizer.tokenize(text_value)
+        except json.JSONDecodeError:  # Load via messages
+            tokenizer_input = [{"role": "user", "content": text_value}]
+
+        tokens = tokenizer.apply_chat_template(
+            tokenizer_input, tokenize=True, add_generation_prompt=True
+        )
 
         # If we have valid probe values that match the number of tokens
         if isinstance(probe_values, (list, np.ndarray)) and len(tokens) == len(
@@ -254,6 +254,21 @@ def display_word_level_visualization(
 
                 html += f"<span style='background-color: {color}; color: white; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
             html += "</div>"
+
+            # Add color legend
+            html += f"""
+            <div style='margin-top: 20px;'>
+                <p><strong>Color Legend:</strong></p>
+                <div style='display: flex; align-items: center; margin-bottom: 10px;'>
+                    <div style='width: 300px; height: 30px; background: linear-gradient(to right, rgb(0, 0, 255), rgb(128, 0, 128), rgb(255, 0, 0));'></div>
+                </div>
+                <div style='display: flex; justify-content: space-between; width: 300px;'>
+                    <span>{min_val:.4f}</span>
+                    <span>{(min_val + max_val) / 2:.4f}</span>
+                    <span>{max_val:.4f}</span>
+                </div>
+            </div>
+            """
 
             # Display colored tokens
             st.markdown(html, unsafe_allow_html=True)
