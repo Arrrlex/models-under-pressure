@@ -12,6 +12,8 @@ from models_under_pressure.interfaces.dataset import Dataset
 def load_mt_samples() -> Dataset:
     ds = load_dataset("NickyNicky/medical_mtsamples", split="train")
     df = pd.DataFrame(ds)  # type: ignore
+    # Rename "Unnamed: 0" column to "ids" right after loading so we have fixed IDs
+    df = df.rename(columns={"Unnamed: 0": "ids"})
     # Filter out rows with empty transcriptions
     df = df[df["transcription"].notna() & (df["transcription"] != "")]
     return Dataset.from_pandas(df, field_mapping={"transcription": "inputs"})
