@@ -9,7 +9,7 @@ from sklearn.metrics import roc_auc_score
 from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
-    RESULTS_DIR,
+    OUTPUT_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -76,24 +76,24 @@ def load_eval_datasets(
     max_samples: int | None = None,
 ) -> dict[str, LabelledDataset]:
     eval_datasets = {}
-    for path in EVAL_DATASETS.values():
+    for name, path in EVAL_DATASETS.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples and len(dataset) > max_samples:
             dataset = dataset.sample(max_samples)
-        eval_datasets[str(path)] = dataset
+        eval_datasets[name] = dataset
     return eval_datasets
 
 
 def run_evaluation(
     layer: int,
     model_name: str,
+    dataset_path: Path,
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
@@ -116,8 +116,8 @@ def run_evaluation(
         model_name=model_name,
         layer=layer,
     )
-    for path, auroc in aurocs.items():
-        print(f"AUROC for {Path(path).stem}: {auroc}")
+    for name, auroc in aurocs.items():
+        print(f"AUROC for {name}: {auroc}")
 
     results = ProbeEvaluationResults(
         AUROC=aurocs,
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=100,
+        max_samples=10,
         layer=11,
         model_name=LOCAL_MODELS["llama-1b"],
     )
@@ -152,9 +152,7 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
-    output_dir = RESULTS_DIR / "evaluate_probes"
-    output_dir.mkdir(parents=True, exist_ok=True)
     json.dump(
         dataclasses.asdict(results),
-        open(output_dir / config.output_filename, "w"),
+        open(OUTPUT_DIR / config.output_filename, "w"),
     )
