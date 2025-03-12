@@ -3,11 +3,18 @@ import io
 import pandas as pd
 import requests
 
-from models_under_pressure.config import EVAL_DATASETS
-from models_under_pressure.eval_datasets.label_dataset import label_dataset
+from models_under_pressure.config import (
+    EVAL_DATASETS_BALANCED,
+    EVAL_DATASETS_RAW,
+)
+from models_under_pressure.eval_datasets.label_dataset import (
+    create_eval_dataset,
+)
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
-URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/db552cde9da99ff6e24cc6b1b5de5415d83f1850/Main-Dataset/MTS-Dialog-ValidationSet.csv"
+# URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/db552cde9da99ff6e24cc6b1b5de5415d83f1850/Main-Dataset/MTS-Dialog-ValidationSet.csv"
+# TODO Also use the training set:
+# URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/refs/heads/main/Main-Dataset/MTS-Dialog-TrainingSet.csv"
 
 
 def parse_conversation(row: pd.Series) -> list[Message]:
@@ -31,23 +38,48 @@ def parse_conversation(row: pd.Series) -> list[Message]:
     return messages
 
 
-def load_mts_dataset() -> Dataset:
+def load_mts_raw_dataset(split: str = "validation") -> Dataset:
     print("Downloading MTS dataset")
+    if split == "validation":
+        URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/refs/heads/main/Main-Dataset/MTS-Dialog-ValidationSet.csv"
+    elif split == "training":
+        URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/refs/heads/main/Main-Dataset/MTS-Dialog-TrainingSet.csv"
+    else:
+        raise ValueError(f"Invalid split: {split}")
     response = requests.get(URL)
     response.raise_for_status()
     df = pd.read_csv(io.BytesIO(response.content))
 
+    df = df.rename(columns={"ID": "original_id"})
+    df["ids"] = f"{split}_" + df["original_id"].astype(str)
+
     df["inputs"] = "Context: " + df["section_text"] + "\n" + df["dialogue"]
 
-    return Dataset.from_pandas(df, field_mapping={"ids": "ID"})
+    return Dataset.from_pandas(df)
 
 
-def main(overwrite: bool = False):
-    dataset = load_mts_dataset()
-    dataset = label_dataset(dataset)
-    print(f"High-stakes vs low-stakes: {pd.Series(dataset.labels).value_counts()}")
-    dataset.save_to(EVAL_DATASETS["mts"], overwrite=overwrite)
+def create_mts_dataset(
+    num_samples: int = 100, recompute: bool = False, split: str | None = None
+):
+    if split is None:
+        val_dataset = load_mts_raw_dataset(split="validation")
+        train_dataset = load_mts_raw_dataset(split="training")
+        val_records = list(val_dataset.to_records())
+        train_records = list(train_dataset.to_records())
+        combined_records = val_records + train_records
+        dataset = Dataset.from_records(combined_records)  # type: ignore
+    else:
+        dataset = load_mts_raw_dataset(split=split)
+    print(f"Loaded {len(dataset)} samples.")
+
+    dataset = dataset.sample(num_samples)
+    return create_eval_dataset(
+        dataset,
+        raw_output_path=EVAL_DATASETS_RAW["mts"],
+        balanced_output_path=EVAL_DATASETS_BALANCED["mts"],
+        recompute=recompute,
+    )
 
 
 if __name__ == "__main__":
-    main(overwrite=True)
+    create_mts_dataset(num_samples=20)

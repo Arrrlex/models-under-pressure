@@ -6,7 +6,7 @@ import numpy as np
 from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
-    RESULTS_DIR,
+    OUTPUT_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -21,24 +21,24 @@ def load_eval_datasets(
     max_samples: int | None = None,
 ) -> dict[str, LabelledDataset]:
     eval_datasets = {}
-    for path in EVAL_DATASETS.values():
+    for name, path in EVAL_DATASETS.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples and len(dataset) > max_samples:
             dataset = dataset.sample(max_samples)
-        eval_datasets[str(path)] = dataset
+        eval_datasets[name] = dataset
     return eval_datasets
 
 
 def run_evaluation(
     layer: int,
     model_name: str,
+    dataset_path: Path,
     split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
@@ -61,7 +61,6 @@ def run_evaluation(
         layer=layer,
         output_dir=RESULTS_DIR / "evaluate_probes",
     )
-
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
 
@@ -97,6 +96,4 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
-    output_dir = RESULTS_DIR / "evaluate_probes"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    results.save_to(output_dir / config.output_filename)
+    results.save_to(OUTPUT_DIR / config.output_filename)

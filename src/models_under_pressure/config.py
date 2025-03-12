@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
@@ -57,14 +57,24 @@ GENERATED_DATASET = {
 }
 
 # Evals files
+USE_BALANCED_DATASETS = False
 EVALS_DIR = DATA_DIR / "evals"
 
-EVAL_DATASETS = {
+EVAL_DATASETS_RAW = {
     "anthropic": EVALS_DIR / "anthropic_samples.csv",
     "toolace": EVALS_DIR / "toolace_samples.csv",
     "mt": EVALS_DIR / "mt_samples.csv",
     "mts": EVALS_DIR / "mts_samples.csv",
 }
+
+EVAL_DATASETS_BALANCED = {
+    "toolace": EVALS_DIR / "toolace_samples_balanced.csv",
+    "anthropic": EVALS_DIR / "anthropic_samples_balanced.csv",
+    "mt": EVALS_DIR / "mt_samples_balanced.csv",
+    "mts": EVALS_DIR / "mts_samples_balanced.csv",
+}
+
+EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 
 AIS_DATASETS = {
     "mmlu_sandbagging": {

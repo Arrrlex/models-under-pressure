@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from models_under_pressure.eval_datasets.anthropic_dataset import (
-    load_anthropic_dataset,
+    load_anthropic_raw_data,
     parse_messages,
 )
 
@@ -105,7 +105,7 @@ class TestLoadAnthropicDataset:
         mock_load_dataset.return_value = mock_dataset
 
         # Call the function
-        dataset = load_anthropic_dataset(split="test")
+        dataset = load_anthropic_raw_data(split="test")
 
         # Verify load_dataset was called correctly
         mock_load_dataset.assert_called_once_with("Anthropic/hh-rlhf", split="test")

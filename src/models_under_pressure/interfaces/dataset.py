@@ -350,6 +350,55 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
 
+    def print_label_distribution(self) -> Dict[str, float]:
+        """
+        Calculates and prints the distribution of labels in the dataset.
+
+        Returns:
+            A dictionary mapping label names to their percentage in the dataset
+        """
+        if len(self) == 0:
+            print("Dataset is empty")
+            return {}
+
+        # Count occurrences of each label
+        label_counts = {}
+        for label in self.labels:
+            label_name = label.value
+            label_counts[label_name] = label_counts.get(label_name, 0) + 1
+
+        # Calculate percentages
+        total = len(self)
+        label_percentages = {
+            label: (count / total) * 100 for label, count in label_counts.items()
+        }
+
+        # Print the distribution
+        print(f"Label distribution (total: {total} examples):")
+        for label, percentage in sorted(label_percentages.items()):
+            count = label_counts[label]
+            print(f"  {label}: {count} examples ({percentage:.2f}%)")
+
+        return label_percentages
+
+
+def subsample_balanced_subset(dataset: LabelledDataset) -> LabelledDataset:
+    """Subsample a balanced subset of the dataset"""
+    high_stakes = dataset.filter(lambda r: r.label == Label.HIGH_STAKES)
+    low_stakes = dataset.filter(lambda r: r.label == Label.LOW_STAKES)
+
+    if len(high_stakes) > len(low_stakes):
+        high_stakes_sample = list(high_stakes.sample(len(low_stakes)).to_records())
+        low_stakes_sample = list(low_stakes.to_records())
+    else:
+        high_stakes_sample = list(high_stakes.to_records())
+        low_stakes_sample = list(low_stakes.sample(len(high_stakes)).to_records())
+
+    balanced_records = high_stakes_sample + low_stakes_sample
+    random.shuffle(balanced_records)
+
+    return LabelledDataset.from_records(balanced_records)
+
 
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
