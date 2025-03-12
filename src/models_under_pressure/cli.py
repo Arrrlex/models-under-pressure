@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 
-def dash_command():
+def dashboard_command():
     """Run the Streamlit dashboard with any provided arguments."""
     dashboard_path = Path(__file__).parent / "dashboard.py"
 
