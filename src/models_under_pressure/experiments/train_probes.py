@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
+from models_under_pressure.config import MODEL_MAX_MEMORY
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -86,7 +87,7 @@ def train_probes_and_save_results(
         model_name,
         model_kwargs={
             "device_map": "auto",
-            "max_memory": {2: "80GB", 3: "40GB", 1: "40GB"},
+            "max_memory": MODEL_MAX_MEMORY[model_name],
             "cache_dir": "/scratch/ucabwjn/.cache",
         },
     )

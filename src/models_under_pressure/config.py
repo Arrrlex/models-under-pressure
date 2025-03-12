@@ -9,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
-    BATCH_SIZE = 16
+    BATCH_SIZE = 8
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
@@ -23,6 +23,12 @@ LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
+}
+
+MODEL_MAX_MEMORY = {
+    "meta-llama/Llama-3.2-1B-Instruct": None,
+    "meta-llama/Llama-3.1-8B-Instruct": None,
+    "meta-llama/Llama-3.3-70B-Instruct": {1: "80GB", 2: "40GB", 3: "40GB"},
 }
 
 # Paths to input files

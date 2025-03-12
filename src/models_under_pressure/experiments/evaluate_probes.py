@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         max_samples=None,
-        layer=11,
+        layer=30,
         model_name=LOCAL_MODELS["llama-70b"],
     )
 
