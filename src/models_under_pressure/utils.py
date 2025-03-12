@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 import openai
 import torch
@@ -143,7 +143,7 @@ def parse_mapping_str(mapping_str: str) -> dict[str, str]:
 
 
 async def call_concurrently(
-    callables: list[Callable[[], Awaitable[Any]]],
+    callables: Sequence[Callable[[], Awaitable[Any]]],
     max_concurrent_tasks: int = 50,
     pbar: Optional[tqdm] = None,
     task_timeout: Optional[float] = None,
@@ -158,8 +158,7 @@ async def call_concurrently(
         task_timeout: Optional timeout in seconds for each individual task
     """
     queue = asyncio.Queue(maxsize=max_concurrent_tasks)
-
-    tasks = []
+    results = []
 
     async def worker(callable: Callable[[], Awaitable[Any]]):
         await queue.get()
@@ -171,31 +170,23 @@ async def call_concurrently(
             if pbar is not None:
                 pbar.update(1)
             return result
+        except (asyncio.TimeoutError, Exception) as e:
+            print(f"Task failed with error: {e}")
+            if pbar is not None:
+                pbar.update(1)
+            return None
         finally:
-            await queue.put(1)
+            queue.put_nowait(1)
 
-    for callable in callables:
-        await queue.put(1)
-        task = asyncio.create_task(worker(callable))
-        tasks.append(task)
+    # Initialize the queue
+    for _ in range(max_concurrent_tasks):
+        queue.put_nowait(1)
 
-    results = []
-    for task in asyncio.as_completed(tasks):
-        try:
-            result = await task
-            results.append(result)
-        except asyncio.TimeoutError:
-            # Cancel all remaining tasks on timeout
-            for t in tasks:
-                t.cancel()
-            raise  # Re-raise the timeout
-        except Exception as e:
-            # Cancel all remaining tasks on other exceptions
-            for t in tasks:
-                t.cancel()
-            raise e  # Re-raise the exception
+    # Create and gather all tasks
+    tasks = [asyncio.create_task(worker(callable)) for callable in callables]
+    results = await asyncio.gather(*tasks, return_exceptions=False)
 
     if pbar is not None:
         pbar.close()
 
-    return results
+    return [r for r in results if r is not None]

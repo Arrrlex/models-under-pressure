@@ -9,8 +9,7 @@ import tqdm
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.interfaces.prompt import Prompt
-from models_under_pressure.interfaces.situation import Situation
-from models_under_pressure.utils import call_llm_async
+from models_under_pressure.utils import call_concurrently, call_llm_async
 
 PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style} that could be prompted to an LLM by someone in that situation.
 
@@ -32,32 +31,31 @@ The distinction between high-stakes and low-stakes prompts should be based on me
 
 
 async def generate_prompts(
-    high_stakes_situation: Situation,
-    low_stakes_situation: Situation,
+    high_stakes_situation: str,
+    low_stakes_situation: str,
     tone: tuple[str, str],
     language: tuple[str, str],
     prompt_style: tuple[str, str],
+    factors: dict[str, Any],
+    situation_ids: dict[str, int],
+    topic: str,
     model: str,
 ) -> List[Prompt]:
     """
     Generate prompts for a given variation of a situation asynchronously.
     """
-    assert high_stakes_situation.topic == low_stakes_situation.topic
-    assert high_stakes_situation.factors == low_stakes_situation.factors
-
-    topic = high_stakes_situation.topic
-    factors = high_stakes_situation.factors
 
     prompt = PROMPT_TEMPLATE.format(
         tone=tone[1],
         language=language[1],
         prompt_style=prompt_style[1],
-        high_stakes_description=high_stakes_situation.description,
-        low_stakes_description=low_stakes_situation.description,
+        high_stakes_description=high_stakes_situation,
+        low_stakes_description=low_stakes_situation,
     )
 
     json_schema = {
-        "name": "PromptResponse",
+        "name": "PromptPair",
+        "strict": True,
         "schema": {
             "type": "object",
             "properties": {
@@ -67,13 +65,14 @@ async def generate_prompts(
             "required": ["high_stakes_prompt", "low_stakes_prompt"],
             "additionalProperties": False,
         },
-        "strict": True,
     }
 
     # Call LLM with prompt asynchronously
     try:
-        prompt_dicts = await call_llm_async(
-            [{"role": "user", "content": prompt}], model=model, json_schema=json_schema
+        prompt_pair = await call_llm_async(
+            [{"role": "user", "content": prompt}],
+            model=model,
+            json_schema=json_schema,
         )
     except Exception as e:
         print(f"Error generating prompts: {e}")
@@ -86,23 +85,16 @@ async def generate_prompts(
         "language": language[0],
         "prompt_style": prompt_style[0],
         "topic": topic,
-        "situations": {
-            "high_stakes": high_stakes_situation.id,
-            "low_stakes": low_stakes_situation.id,
-        },
+        "situations": situation_ids,
         **factors,  # type: ignore
     }
 
     high_stakes_prompt = Prompt(
-        **kwargs,
-        prompt=prompt_dicts["high_stakes_prompt"],
-        high_stakes=True,
+        **kwargs, prompt=prompt_pair["high_stakes_prompt"], high_stakes=True
     )
 
     low_stakes_prompt = Prompt(
-        **kwargs,
-        prompt=prompt_dicts["low_stakes_prompt"],
-        high_stakes=False,
+        **kwargs, prompt=prompt_pair["low_stakes_prompt"], high_stakes=False
     )
 
     return [high_stakes_prompt, low_stakes_prompt]
@@ -117,7 +109,6 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
     """
     Generate prompts file asynchronously with controlled concurrency.
     """
-
     if run_config.write_mode == "overwrite":
         run_config.prompts_file.unlink(missing_ok=True)
     elif run_config.prompts_file.exists():
@@ -137,16 +128,20 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
 
     assert len(high_stakes_situations) == len(low_stakes_situations)
 
-    variations_json = json.load(open(run_config.variations_file))
+    for hs, ls in zip(
+        high_stakes_situations.to_dict("records"),
+        low_stakes_situations.to_dict("records"),
+    ):
+        assert hs["topic"] == ls["topic"]
+        for factor_name in factor_names:
+            assert hs[factor_name] == ls[factor_name]
 
-    # Create a queue to manage concurrent tasks
-    queue = asyncio.Queue(maxsize=run_config.max_concurrent_llm_calls)
+    variations_json = json.load(open(run_config.variations_file))
 
     # Calculate total number of tasks for progress bar
     total_tasks = len(high_stakes_situations) * run_config.num_combinations_for_prompts
 
     # Create progress bar
-    pbar = tqdm.tqdm(total=total_tasks, desc="Generating prompts")
 
     async def worker(
         hs_scenario: Dict[Hashable, Any],
@@ -158,68 +153,45 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
             for variation_type, variation_choices in variations_json.items()
         }
 
-        hs_situation = Situation(
-            id=hs_scenario["id"],
-            description=hs_scenario["situation"],
-            high_stakes=True,
-            topic=hs_scenario["topic"],
-            factors={k: v for k, v in hs_scenario.items() if k in factor_names},
-        )
+        factors = {k: v for k, v in hs_scenario.items() if k in factor_names}
+        topic = hs_scenario["topic"]
+        situation_ids = {
+            "high_stakes": hs_scenario["id"],
+            "low_stakes": ls_scenario["id"],
+        }
 
-        ls_situation = Situation(
-            id=ls_scenario["id"],
-            description=ls_scenario["situation"],
-            high_stakes=False,
-            topic=ls_scenario["topic"],
-            factors={k: v for k, v in ls_scenario.items() if k in factor_names},
-        )
-
-        new_prompts = await generate_prompts(
-            hs_situation,
-            ls_situation,
+        return await generate_prompts(
+            high_stakes_situation=hs_scenario["situation"],
+            low_stakes_situation=ls_scenario["situation"],
             tone=variations["tone"],
             language=variations["language"],
             prompt_style=variations["prompt_style"],
+            factors=factors,
+            situation_ids=situation_ids,
+            topic=topic,
             model=run_config.model,
         )
 
-        pbar.update(1)  # Update progress bar
-        await queue.get()  # Signal task completion
-        return new_prompts
-
-    tasks = []
-    try:
-        for hs_scenario, ls_scenario in zip(
+    # Create list of tasks
+    callables = [
+        (lambda: worker(hs, ls))
+        for hs, ls in zip(
             high_stakes_situations.to_dict("records"),
             low_stakes_situations.to_dict("records"),
-        ):
-            for _ in range(run_config.num_combinations_for_prompts):
-                await queue.put(1)  # Wait if queue is full
-                task = asyncio.create_task(
-                    worker(
-                        hs_scenario=hs_scenario,
-                        ls_scenario=ls_scenario,
-                    )
-                )
-                tasks.append(task)
+        )
+        for _ in range(run_config.num_combinations_for_prompts)
+    ]
 
-        # Wait for all tasks to complete and gather results
-        results = []
-        for task in asyncio.as_completed(tasks):
-            try:
-                result = await task
-                results.append(result)
-            except Exception as e:
-                # Cancel all remaining tasks
-                for t in tasks:
-                    t.cancel()
-                raise e  # Re-raise the exception
+    # Run tasks concurrently
+    results = await call_concurrently(
+        callables,
+        max_concurrent_tasks=run_config.max_concurrent_llm_calls,
+        pbar=tqdm.tqdm(total=total_tasks, desc="Generating prompts"),
+        task_timeout=60,
+    )
 
-        all_prompts = [prompt for prompts in results for prompt in prompts]
-
-    finally:
-        # Close progress bar in case of error
-        pbar.close()
+    # Flatten results and filter out empty lists
+    all_prompts = [prompt for result in results if result for prompt in result]
 
     # Assign sequential IDs to all prompts
     for i, prompt in enumerate(all_prompts):
