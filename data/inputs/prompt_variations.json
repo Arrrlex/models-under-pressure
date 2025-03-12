@@ -3,7 +3,9 @@
     "Q&A long": "long, detailed question",
     "Q&A short": "short question",
     "Response to Situation": "first-person opinion",
-    "Third Person": "third-person factual statement"
+    "Third Person": "third-person factual statement",
+    "character_perspective": "character's perspective",
+    "prompt_to_llm": "LLM prompt"
   },
   "tone": {
     "angry": "This prompt should be written in an angry tone.",

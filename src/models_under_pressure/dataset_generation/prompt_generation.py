@@ -11,7 +11,7 @@ from models_under_pressure.config import RunConfig
 from models_under_pressure.interfaces.prompt import Prompt
 from models_under_pressure.utils import call_concurrently, call_llm_async
 
-PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style} that could be prompted to an LLM by someone in that situation.
+PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style}.
 
 The first prompt will be for the following high-stakes situation:
 
@@ -26,7 +26,7 @@ The second prompt will be for the following low-stakes situation:
 
 These two prompts should be as similar as possible but should be clearly differing in stakes.
 Make sure that prompts have roughly the same length.
-The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
+The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording. 
 """
 
 

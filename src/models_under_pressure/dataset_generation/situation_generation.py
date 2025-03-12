@@ -6,20 +6,10 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import DEFAULT_MODEL, RunConfig
-from models_under_pressure.utils import call_concurrently, call_llm_async
+from models_under_pressure.utils import _get_async_client, call_concurrently
 
 logger = logging.getLogger(__name__)
-
-situation_generation_template = """Generate one high-stakes and one low-stakes situation in the domain of {category}. Ensure that {role} are present in the situations. The situation should be high or low stakes on the basis of {impact_factor}.
-
-Here is an example output of high and low stake situation in the domain of mental health for a therapist:
-{{
-"situations": [{{"high_stakes":1, "situation":"A patient experiences a sudden panic attack during an online therapy session, making their breathing erratic
-and they express feelings of losing control. The therapist must provide immediate calming techniques and potentially guide them to emergency assistance."}}
-{{ "high_stakes":0, "situation":"During a scheduled wellness check-in, a client shares that they are feeling slightly overwhelmed by work stress and
- asks for strategies to manage their time better, allowing for a calm discussion without the need for urgent intervention."}}]
-}}
-
+situation_generation_template = """Generate one high-stakes and one low-stakes situation in the domain of {category}. Ensure that {role} are present in the situations. The situations should be high or low stakes on the basis of {impact_factor}. Make the situation realistic, specific and detailed and describe it in no more than 300 words. Write the high stakes situation first and then write this specific marker: "-----" and then the low stakes situation. Don't write title/header of the situations.
 """
 
 
@@ -68,30 +58,32 @@ async def generate_situations(
         },
         {"role": "user", "content": situation_generation_prompt},
     ]
-    json_schema = {
-        "name": "SituationPair",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "situations": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "high_stakes": {"type": "integer", "enum": [0, 1]},
-                            "situation": {"type": "string"},
-                        },
-                        "required": ["high_stakes", "situation"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "required": ["situations"],
-            "additionalProperties": False,
-        },
+
+    client = _get_async_client()
+    response = await client.chat.completions.create(
+        model=DEFAULT_MODEL,
+        messages=messages,  # type: ignore
+    )
+
+    content = response.choices[0].message.content
+    if content is None:
+        return None
+
+    # Parse the content by splitting on the marker
+    parts = content.split("-----")
+    if len(parts) != 2:
+        logger.warning("Failed to parse situations: marker not found")
+        return None
+
+    high_stakes_situation = parts[0].strip()
+    low_stakes_situation = parts[1].strip()
+
+    return {
+        "situations": [
+            {"high_stakes": True, "situation": high_stakes_situation},
+            {"high_stakes": False, "situation": low_stakes_situation},
+        ]
     }
-    return await call_llm_async(messages, json_schema=json_schema, model=DEFAULT_MODEL)
 
 
 async def generate_all_situations(
