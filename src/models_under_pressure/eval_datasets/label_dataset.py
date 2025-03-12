@@ -45,17 +45,18 @@ Respond with a JSON using the following keys:
 
 
 async def analyse_stakes(
-    text: str, *, model: str, prompt_template: str
+    text: str, *, model: str, prompt_template: str | None = None
 ) -> Dict[str, Any] | None:
     """Async version of analyse_stakes that can be used for parallel requests"""
     rubric = LABELING_RUBRIC_PATH.read_text()
-    prompt = prompt_template.format(rubric=rubric)
+    messages = []
+    if prompt_template is not None:
+        prompt = prompt_template.format(rubric=rubric)
+        messages.append({"role": "system", "content": prompt})
+    messages.append({"role": "user", "content": text})
 
     response = await call_llm_async(
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": text},
-        ],
+        messages=messages,
         model=model,
     )
 
@@ -67,7 +68,7 @@ async def label_dataset_async(
     *,
     model: str,
     max_concurrent: int,
-    use_rubric: bool,
+    use_rubric: bool = False,
     confidence_threshold: int = 7,
     high_stakes_threshold: int = 8,
     low_stakes_threshold: int = 3,
