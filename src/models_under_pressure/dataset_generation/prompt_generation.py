@@ -25,8 +25,9 @@ The second prompt will be for the following low-stakes situation:
 {language}
 
 These two prompts should be as similar as possible but should be clearly differing in stakes.
-Make sure that prompts have roughly the same length.
-The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording. 
+Make sure that prompts contain roughly {length} words.
+
+The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
 """
 
 
@@ -36,6 +37,7 @@ async def generate_prompts(
     tone: tuple[str, str],
     language: tuple[str, str],
     prompt_style: tuple[str, str],
+    length: tuple[str, str],
     factors: dict[str, Any],
     situation_ids: dict[str, int],
     topic: str,
@@ -51,6 +53,7 @@ async def generate_prompts(
         prompt_style=prompt_style[1],
         high_stakes_description=high_stakes_situation,
         low_stakes_description=low_stakes_situation,
+        length=length[1],
     )
 
     json_schema = {
@@ -84,6 +87,7 @@ async def generate_prompts(
         "tone": tone[0],
         "language": language[0],
         "prompt_style": prompt_style[0],
+        "length": length[0],
         "topic": topic,
         "situations": situation_ids,
         **factors,  # type: ignore
@@ -103,6 +107,21 @@ async def generate_prompts(
 def extract_factor_names(df: pd.DataFrame) -> List[str]:
     """Extract the factor names from the dataframe."""
     return list(set(df.columns) - {"id", "situation", "topic", "high_stakes"})
+
+
+def add_split_column(prompts: List[Prompt], train_frac: float = 0.8) -> List[Prompt]:
+    """Add a split column to the prompts."""
+    situation_ids = [prompt.situations["high_stakes"] for prompt in prompts]
+
+    situation_splits = {
+        id: "train" if random.random() < train_frac else "test" for id in situation_ids
+    }
+
+    for prompt in prompts:
+        situation_id = prompt.situations["high_stakes"]
+        prompt.add_kwargs(split=situation_splits[situation_id])
+
+    return prompts
 
 
 async def generate_prompts_file_async(run_config: RunConfig) -> None:
@@ -166,6 +185,7 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
             tone=variations["tone"],
             language=variations["language"],
             prompt_style=variations["prompt_style"],
+            length=variations["length"],
             factors=factors,
             situation_ids=situation_ids,
             topic=topic,
@@ -197,8 +217,10 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
     for i, prompt in enumerate(all_prompts):
         prompt.id = i
 
+    prompts_with_split_col = add_split_column(all_prompts)
+
     # Write all prompts to the main file
-    Prompt.to_jsonl(all_prompts, run_config.prompts_file)
+    Prompt.to_jsonl(prompts_with_split_col, run_config.prompts_file)
 
     print(
         f"Generated {len(all_prompts)} prompts and saved to {run_config.prompts_file}"
@@ -206,5 +228,5 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
 
 
 if __name__ == "__main__":
-    config = RunConfig(run_id="debug", model="gpt-4o-mini")
+    config = RunConfig(run_id="debug")
     asyncio.run(generate_prompts_file_async(config))

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 from tqdm.auto import tqdm
 
-from models_under_pressure.config import DEFAULT_MODEL, RunConfig
+from models_under_pressure.config import RunConfig
 from models_under_pressure.utils import _get_async_client, call_concurrently
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ async def generate_situations(
     category: str,
     factors: Dict[str, List[str]],
     factor_id: int,
+    model: str,
 ) -> Dict[str, Any] | None:
     """
     Generate situations using LLM for a specific category and factor asynchronously.
@@ -61,7 +62,7 @@ async def generate_situations(
 
     client = _get_async_client()
     response = await client.chat.completions.create(
-        model=DEFAULT_MODEL,
+        model=model,
         messages=messages,  # type: ignore
     )
 

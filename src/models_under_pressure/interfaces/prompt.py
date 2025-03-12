@@ -1,7 +1,7 @@
 import abc
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Self
 
 
 class Prompt(abc.ABC):
@@ -33,8 +33,13 @@ class Prompt(abc.ABC):
         else:
             self.metadata = metadata
 
-    def add_metadata(self, metadata: Dict[str, str]) -> None:
+    def add_metadata(self, metadata: Dict[str, str]) -> Self:
         self.metadata.update(metadata)
+        return self
+
+    def add_kwargs(self, **kwargs: str) -> Self:
+        self.kwargs.update(kwargs)
+        return self
 
     def to_dict(self, include_metadata: bool = True) -> Dict[str, Any]:
         prompt_dict = {

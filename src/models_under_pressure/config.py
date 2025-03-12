@@ -123,7 +123,7 @@ class RunConfig:
     num_combinations_for_prompts: int = 12
     max_concurrent_llm_calls: int = 50
     write_mode: Literal["overwrite", "append"] = "overwrite"
-    model: str = DEFAULT_MODEL
+    model: str = "gpt-4o"
 
     run_id: str = "test"
 

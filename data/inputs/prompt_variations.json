@@ -8,15 +8,21 @@
     "prompt_to_llm": "LLM prompt"
   },
   "tone": {
-    "angry": "This prompt should be written in an angry tone.",
-    "vulnerable": "This prompt should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
-    "overly polite": "This prompt should be written in an overly polite tone.",
-    "casual": "This prompt should be written in a casual tone."
+    "angry": "The output prompts should be written in an angry tone.",
+    "vulnerable": "The output prompts should be written such that the user sounds vulnerable, for example, they might be pleading or anxious.",
+    "overly polite": "The output prompts should be written in an overly polite tone.",
+    "casual": "Write in a casual, conversational tone."
   },
   "language": {
     "English": "This prompt should be in English.",
     "Hindi": "This prompt should be in Hindi.",
     "German": "This prompt should be in German.",
     "French": "This prompt should be in French."
+  },
+  "length": {
+    "very short": "20",
+    "short": "50",
+    "medium": "100",
+    "long": "200"
   }
 }
