@@ -116,7 +116,7 @@ class RunConfig:
     """
 
     num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 200
+    num_situations_to_sample: int = 150
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
