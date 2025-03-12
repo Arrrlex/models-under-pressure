@@ -350,6 +350,37 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
 
+    def print_label_distribution(self) -> Dict[str, float]:
+        """
+        Calculates and prints the distribution of labels in the dataset.
+
+        Returns:
+            A dictionary mapping label names to their percentage in the dataset
+        """
+        if len(self) == 0:
+            print("Dataset is empty")
+            return {}
+
+        # Count occurrences of each label
+        label_counts = {}
+        for label in self.labels:
+            label_name = label.value
+            label_counts[label_name] = label_counts.get(label_name, 0) + 1
+
+        # Calculate percentages
+        total = len(self)
+        label_percentages = {
+            label: (count / total) * 100 for label, count in label_counts.items()
+        }
+
+        # Print the distribution
+        print(f"Label distribution (total: {total} examples):")
+        for label, percentage in sorted(label_percentages.items()):
+            count = label_counts[label]
+            print(f"  {label}: {count} examples ({percentage:.2f}%)")
+
+        return label_percentages
+
 
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
