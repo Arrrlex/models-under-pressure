@@ -174,7 +174,7 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
 
     # Create list of tasks
     callables = [
-        (lambda: worker(hs, ls))
+        (lambda hs=hs, ls=ls: worker(hs, ls))
         for hs, ls in zip(
             high_stakes_situations.to_dict("records"),
             low_stakes_situations.to_dict("records"),

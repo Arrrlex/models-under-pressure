@@ -120,7 +120,7 @@ class RunConfig:
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
-    num_combinations_for_prompts: int = 6
+    num_combinations_for_prompts: int = 12
     max_concurrent_llm_calls: int = 50
     write_mode: Literal["overwrite", "append"] = "overwrite"
     model: str = DEFAULT_MODEL

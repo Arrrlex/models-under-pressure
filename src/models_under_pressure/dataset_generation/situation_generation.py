@@ -138,7 +138,7 @@ async def generate_all_situations(
         return result_situations
 
     # Create a list of callables for concurrent execution
-    callables = [lambda: process_row(row) for _, row in samples_df.iterrows()]
+    callables = [lambda row=row: process_row(row) for _, row in samples_df.iterrows()]
 
     # Use tqdm for progress tracking
     pbar = tqdm(total=len(callables), desc="Generating situations")
