@@ -1,17 +1,27 @@
-import dataclasses
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from pydantic import BaseModel
 
 
-@dataclass
-class ProbeEvaluationResults:
+class DatasetResults(BaseModel):
+    layer: int
+    metrics: dict[str, float]
+    """AUROC and other metric scores for each evaluated dataset"""
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "w") as f:
+            json.dump(self.to_dict(), f)
+
+
+class ProbeEvaluationResults(BaseModel):
     """Results from evaluating probes across multiple datasets."""
-
-    AUROC: dict[str, float]
-    """AUROC scores for each evaluated dataset"""
 
     datasets: List[str]
     """Names of the datasets that were evaluated"""
@@ -19,11 +29,11 @@ class ProbeEvaluationResults:
     model_name: str
     """Name of the model that was evaluated"""
 
-    layer: int
-    """Layer number that was probed"""
-
     train_dataset_path: str
     """Path to the dataset used to train the probe (str format since Path is not JSON serializable)"""
+
+    metrics: list[DatasetResults]
+    """Global metrics for each evaluated dataset"""
 
     variation_type: Optional[str] = None
     """Type of variation used in training data filtering, if any"""
@@ -38,32 +48,19 @@ class ProbeEvaluationResults:
         Returns:
             String containing layer and variation type info for the run
         """
-        run_name = "layer=" + str(self.layer)
+        run_name = "layer=" + str(self.metrics[0].layer)
         if self.variation_type is not None:
             run_name += ",variation_type=" + self.variation_type
         if self.variation_value is not None:
             run_name += ",variation_value=" + self.variation_value
         return run_name
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProbeEvaluationResults":
-        """Create a ProbeEvaluationResults instance from a dictionary.
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
 
-        Args:
-            data: Dictionary containing the serialized ProbeEvaluationResults data
-
-        Returns:
-            A new ProbeEvaluationResults instance
-        """
-        return cls(
-            AUROC=data["AUROC"],
-            datasets=data["datasets"],
-            model_name=data["model_name"],
-            layer=data["layer"],
-            variation_type=data.get("variation_type"),
-            variation_value=data.get("variation_value"),
-            train_dataset_path=data["train_dataset_path"],
-        )
+    def save_to(self, path: Path) -> None:
+        with open(path, "w") as f:
+            json.dump(self.to_dict(), f)
 
 
 @dataclass
@@ -101,15 +98,3 @@ class HeatmapResults:
             layers=data["layers"],
             max_samples=data["max_samples"],
         )
-
-
-if __name__ == "__main__":
-    # Checking if things are JSON serializable
-    results = ProbeEvaluationResults(
-        AUROC={"Sandbagging": 0.5, "Deception": 0.6},
-        datasets=["Sandbagging", "Deception"],
-        model_name="gpt-4o",
-        layer=11,
-        train_dataset_path="data/results/prompts_28_02_25.jsonl",
-    )
-    print(json.dumps(dataclasses.asdict(results)))
