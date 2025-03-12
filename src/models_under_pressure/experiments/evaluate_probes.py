@@ -7,6 +7,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
     OUTPUT_DIR,
+    RESULTS_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
