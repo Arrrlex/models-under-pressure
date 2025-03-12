@@ -99,7 +99,6 @@ AIS_DATASETS = {
 @dataclass(frozen=True)
 class RunConfig:
     """
-
     num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
     num_prompts_per_situation: How many prompts to generate for each situation. Each high or low stake prompt count as 1.
     num_situations_per_combination: How many situations to generate for each combination of topics and factors. Each high or low stake situation counts as 1.
@@ -112,7 +111,6 @@ class RunConfig:
 
     sample_seperately: if True sample from the topics and factors list directly rather than
     sampling from the examples_situations.csv file.
-
     """
 
     num_situations_per_combination: int = 2
@@ -135,13 +133,17 @@ class RunConfig:
         return RESULTS_DIR / self.run_id
 
     @property
+    def suffix(self) -> str:
+        date_str = datetime.now().strftime("%d_%m_%y")
+        return f"{date_str}_{self.model}"
+
+    @property
     def situations_combined_csv(self) -> Path:
         return self.run_dir / "examples_situations.csv"
 
     @property
     def prompts_file(self) -> Path:
-        date_str = datetime.now().strftime("%d_%m_%y")
-        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
+        return self.run_dir / f"prompts_{self.suffix}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -149,7 +151,7 @@ class RunConfig:
 
     @property
     def situations_file(self) -> Path:
-        return self.run_dir / "situations.jsonl"
+        return self.run_dir / f"situations_{self.suffix}.jsonl"
 
     @property
     def variations_file(self) -> Path:

@@ -1,11 +1,10 @@
 {
   "prompt_style": {
-    "Q&A long": "long, detailed question",
-    "Q&A short": "short question",
+    "Question": "question",
     "Response to Situation": "first-person opinion",
     "Third Person": "third-person factual statement",
-    "character_perspective": "character's perspective",
-    "prompt_to_llm": "LLM prompt"
+    "Character Perspective": "character's perspective",
+    "Prompt to LLM": "LLM prompt"
   },
   "tone": {
     "angry": "The output prompts should be written in an angry tone.",

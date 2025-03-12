@@ -13,20 +13,25 @@ from models_under_pressure.utils import call_concurrently, call_llm_async
 
 PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style}.
 
-The first prompt will be for the following high-stakes situation:
+Prompt 1 will be for the following situation:
 
 {high_stakes_description}
 
-The second prompt will be for the following low-stakes situation:
+Prompt 2 will be for the following situation:
 
 {low_stakes_description}
 
 {tone}
 {language}
 
-These two prompts should be as similar as possible but should be clearly differing in stakes.
-Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
+If you find this request to be confusing, incoherent or otherwise difficult to follow, respond with "refuse".
 
+These two prompts should be as similar as possible while staying true to their respective situations.
+
+Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
+"""
+
+extra_part = """
 The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
 """
 
@@ -62,10 +67,10 @@ async def generate_prompts(
         "schema": {
             "type": "object",
             "properties": {
-                "high_stakes_prompt": {"type": "string"},
-                "low_stakes_prompt": {"type": "string"},
+                "prompt_1": {"type": "string"},
+                "prompt_2": {"type": "string"},
             },
-            "required": ["high_stakes_prompt", "low_stakes_prompt"],
+            "required": ["prompt_1", "prompt_2"],
             "additionalProperties": False,
         },
     }
@@ -94,11 +99,11 @@ async def generate_prompts(
     }
 
     high_stakes_prompt = Prompt(
-        **kwargs, prompt=prompt_pair["high_stakes_prompt"], high_stakes=True
+        **kwargs, prompt=prompt_pair["prompt_1"], high_stakes=True
     )
 
     low_stakes_prompt = Prompt(
-        **kwargs, prompt=prompt_pair["low_stakes_prompt"], high_stakes=False
+        **kwargs, prompt=prompt_pair["prompt_2"], high_stakes=False
     )
 
     return [high_stakes_prompt, low_stakes_prompt]
@@ -124,6 +129,21 @@ def add_split_column(prompts: List[Prompt], train_frac: float = 0.8) -> List[Pro
     return prompts
 
 
+def sample_situations(situations_df: pd.DataFrame, n_pairs: int) -> pd.DataFrame:
+    """Sample n_pairs pairs of situations from the dataframe."""
+    # Get all even-indexed rows
+    even_indices = situations_df.index[::2]
+    # Randomly sample 20 even indices
+    sampled_even_indices = random.sample(list(even_indices), n_pairs)
+    sampled_odd_indices = [i + 1 for i in sampled_even_indices]
+    sampled_indices = sorted(sampled_even_indices + sampled_odd_indices)
+
+    # Sample the dataframe using these indices
+    situations_df = situations_df.iloc[sampled_indices]
+
+    return situations_df
+
+
 async def generate_prompts_file_async(run_config: RunConfig) -> None:
     """
     Generate prompts file asynchronously with controlled concurrency.
@@ -139,9 +159,14 @@ async def generate_prompts_file_async(run_config: RunConfig) -> None:
             f"Write mode {run_config.write_mode} not implemented."
         )
 
-    # load situations from csv
+    # load situations from csv and sample 20 pairs of situations
     situations_df: pd.DataFrame = pd.read_csv(run_config.situations_file)
+    if run_config.num_situations_to_sample * 2 < len(situations_df):
+        situations_df = sample_situations(
+            situations_df, n_pairs=run_config.num_situations_to_sample
+        )
     factor_names = extract_factor_names(situations_df)
+
     high_stakes_situations = situations_df[situations_df["high_stakes"] == 1]
     low_stakes_situations = situations_df[situations_df["high_stakes"] == 0]
 

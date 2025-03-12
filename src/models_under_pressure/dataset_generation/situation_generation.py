@@ -112,6 +112,7 @@ async def generate_all_situations(
             category=row["topic"],
             factors={str(k): [v] for k, v in row[factors_list].items()},
             factor_id=0,
+            model=run_config.model,
         )
 
         if situations is None:
