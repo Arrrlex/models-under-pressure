@@ -382,6 +382,24 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
         return label_percentages
 
 
+def subsample_balanced_subset(dataset: LabelledDataset) -> LabelledDataset:
+    """Subsample a balanced subset of the dataset"""
+    high_stakes = dataset.filter(lambda r: r.label == Label.HIGH_STAKES)
+    low_stakes = dataset.filter(lambda r: r.label == Label.LOW_STAKES)
+
+    if len(high_stakes) > len(low_stakes):
+        high_stakes_sample = list(high_stakes.sample(len(low_stakes)).to_records())
+        low_stakes_sample = list(low_stakes.to_records())
+    else:
+        high_stakes_sample = list(high_stakes.to_records())
+        low_stakes_sample = list(low_stakes.sample(len(high_stakes)).to_records())
+
+    balanced_records = high_stakes_sample + low_stakes_sample
+    random.shuffle(balanced_records)
+
+    return LabelledDataset.from_records(balanced_records)
+
+
 if __name__ == "__main__":
     from models_under_pressure.config import EVAL_DATASETS
 

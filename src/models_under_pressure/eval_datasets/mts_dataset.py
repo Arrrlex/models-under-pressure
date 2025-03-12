@@ -3,11 +3,17 @@ import io
 import pandas as pd
 import requests
 
-from models_under_pressure.config import EVAL_DATASETS
-from models_under_pressure.eval_datasets.label_dataset import label_dataset
+from models_under_pressure.config import (
+    EVAL_DATASETS_BALANCED,
+    EVAL_DATASETS_RAW,
+)
+from models_under_pressure.eval_datasets.label_dataset import (
+    create_eval_dataset,
+)
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
 URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/db552cde9da99ff6e24cc6b1b5de5415d83f1850/Main-Dataset/MTS-Dialog-ValidationSet.csv"
+# TODO Also use the training set: https://github.com/abachaa/MTS-Dialog/blob/main/Main-Dataset/MTS-Dialog-TrainingSet.csv
 
 
 def parse_conversation(row: pd.Series) -> list[Message]:
@@ -31,7 +37,7 @@ def parse_conversation(row: pd.Series) -> list[Message]:
     return messages
 
 
-def load_mts_dataset() -> Dataset:
+def load_mts_raw_dataset() -> Dataset:
     print("Downloading MTS dataset")
     response = requests.get(URL)
     response.raise_for_status()
@@ -42,12 +48,16 @@ def load_mts_dataset() -> Dataset:
     return Dataset.from_pandas(df, field_mapping={"ids": "ID"})
 
 
-def main(overwrite: bool = False):
-    dataset = load_mts_dataset()
-    dataset = label_dataset(dataset)
-    print(f"High-stakes vs low-stakes: {pd.Series(dataset.labels).value_counts()}")
-    dataset.save_to(EVAL_DATASETS["mts"], overwrite=overwrite)
+def create_mts_dataset(num_samples: int = 100, recompute: bool = False):
+    dataset = load_mts_raw_dataset()
+    dataset = dataset.sample(num_samples)
+    return create_eval_dataset(
+        dataset,
+        raw_output_path=EVAL_DATASETS_RAW["mts"],
+        balanced_output_path=EVAL_DATASETS_BALANCED["mts"],
+        recompute=recompute,
+    )
 
 
 if __name__ == "__main__":
-    main(overwrite=True)
+    create_mts_dataset(num_samples=20)

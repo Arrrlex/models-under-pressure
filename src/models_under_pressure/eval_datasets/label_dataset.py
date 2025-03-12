@@ -20,6 +20,7 @@ from models_under_pressure.interfaces.dataset import (
     Dataset,
     LabelledDataset,
     Record,
+    subsample_balanced_subset,
 )
 from models_under_pressure.utils import call_llm_async, parse_mapping_str
 
@@ -67,6 +68,9 @@ async def label_dataset_async(
     model: str,
     max_concurrent: int,
     use_rubric: bool,
+    confidence_threshold: int = 7,
+    high_stakes_threshold: int = 8,
+    low_stakes_threshold: int = 3,
 ) -> LabelledDataset:
     """
     Asynchronously label a dataset using a queue to limit concurrency.
@@ -134,11 +138,17 @@ async def label_dataset_async(
     if not use_rubric:
         # In this case the labels field is not populated yet
         other_fields["labels"] = [
-            "low-stakes" if score <= 3 else "ambiguous" if score <= 7 else "high-stakes"
-            for score in other_fields["scale_labels"]
+            "low-stakes"
+            if (score <= low_stakes_threshold and conf >= confidence_threshold)
+            else "high-stakes"
+            if (score >= high_stakes_threshold and conf >= confidence_threshold)
+            else "ambiguous"
+            for score, conf in zip(
+                other_fields["scale_labels"], other_fields["scale_label_confidence"]
+            )
         ]
         other_fields["label_explanation"] = [
-            "Filled in based on scale_labels"
+            "Filled in based on scale_labels and scale_label_confidence"
             for _ in range(len(other_fields["scale_labels"]))
         ]
 
@@ -157,11 +167,13 @@ def label_dataset(
     use_rubric: bool = False,
 ) -> LabelledDataset:
     """Synchronous wrapper for the async label_dataset function"""
-    return asyncio.run(
+    labelled_dataset = asyncio.run(
         label_dataset_async(
             dataset, model=model, max_concurrent=max_concurrent, use_rubric=use_rubric
         )
     )
+    labelled_dataset.print_label_distribution()
+    return labelled_dataset
 
 
 @deprecated(
@@ -217,6 +229,44 @@ def create_training_scale_labels(
         use_rubric=False,
     )
     new_dataset.save_to(EVALS_DIR / "training_dataset_scale.jsonl")
+
+
+def create_eval_dataset(
+    unlabelled_dataset: Dataset,
+    raw_output_path: Path,
+    balanced_output_path: Path,
+    recompute: bool = False,
+):
+    if not recompute and raw_output_path.exists():
+        existing_dataset = Dataset.load_from(raw_output_path)
+        unlabelled_dataset = unlabelled_dataset.filter(
+            lambda r: r.id not in existing_dataset.ids
+        )
+        print(f"{len(unlabelled_dataset)} samples remaining to be labelled.")
+    else:
+        existing_dataset = None
+
+    # Label the data
+    dataset = label_dataset(unlabelled_dataset)
+
+    if existing_dataset is not None:
+        # Combine the dataset with the existing dataset
+        existing_records = list(existing_dataset.to_records())
+        new_records = list(dataset.to_records())
+        combined_records = existing_records + new_records
+        dataset = LabelledDataset.from_records(combined_records)  # type: ignore
+
+    # Save the data
+    print(f"Saving the data to {raw_output_path}")
+    dataset.save_to(raw_output_path, overwrite=True)
+
+    # Subsample the data
+    print("Subsampling the data to get a balanced dataset")
+    dataset = subsample_balanced_subset(dataset)
+
+    # Save the balanced data
+    print(f"Saving the balanced data to {balanced_output_path}")
+    dataset.save_to(balanced_output_path, overwrite=True)
 
 
 def main(

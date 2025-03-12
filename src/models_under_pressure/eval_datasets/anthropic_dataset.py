@@ -2,8 +2,8 @@ from collections import defaultdict
 
 from datasets import load_dataset
 
-from models_under_pressure.config import EVAL_DATASETS
-from models_under_pressure.eval_datasets.label_dataset import label_dataset
+from models_under_pressure.config import EVAL_DATASETS_BALANCED, EVAL_DATASETS_RAW
+from models_under_pressure.eval_datasets.label_dataset import create_eval_dataset
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
 
@@ -44,7 +44,7 @@ def parse_messages(text: str) -> list[Message]:
     return messages
 
 
-def load_anthropic_dataset(split: str = "train") -> Dataset:
+def load_anthropic_raw_data(split: str = "train") -> Dataset:
     dataset = load_dataset("Anthropic/hh-rlhf", split=split)
     ids = []
     inputs = []
@@ -69,16 +69,16 @@ def load_anthropic_dataset(split: str = "train") -> Dataset:
     )
 
 
-def main(
-    split: str = "train",
-    num_samples: int = 100,
-    overwrite: bool = False,
-):
-    dataset = load_anthropic_dataset(split=split)
+def create_anthropic_dataset(num_samples: int = 100, recompute: bool = False):
+    dataset = load_anthropic_raw_data()
     dataset = dataset.sample(num_samples)
-    dataset = label_dataset(dataset)
-    dataset.save_to(EVAL_DATASETS["anthropic"], overwrite=overwrite)
+    return create_eval_dataset(
+        dataset,
+        raw_output_path=EVAL_DATASETS_RAW["anthropic"],
+        balanced_output_path=EVAL_DATASETS_BALANCED["anthropic"],
+        recompute=recompute,
+    )
 
 
 if __name__ == "__main__":
-    main(num_samples=100, overwrite=True)
+    create_anthropic_dataset(num_samples=100)
