@@ -28,9 +28,7 @@ def get_next_prompt_id(prompts_file: Path) -> int:
         return 0
 
 
-base_prompt = """You are a prompt engineer. 
-
-Below are two situations. For each situation, you will generate a single {prompt_style} to be prompted to an LLM by someone in that situation.
+base_prompt = """Below are two situations. For each situation, you will generate a single {prompt_style} that could be prompted to an LLM by someone in that situation.
 
 The first prompt will be for the following high-stakes situation:
 
@@ -61,7 +59,7 @@ Return your response in JSON format, using the following schema:
 prompt_generation_guidelines: List[str] = [
     "These two prompts should be as similar as possible but should be clearly differing in stakes.",
     "Make sure that prompts have roughly the same length.",
-    "Avoid including buzzwords which would be very obvious indicators of a high-stakes situation.",  # review
+    "The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the intensity or usage of the words themselves. A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.",  # review
 ]
 
 

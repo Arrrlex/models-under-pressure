@@ -10,11 +10,8 @@ from models_under_pressure.utils import call_llm_async
 
 logger = logging.getLogger(__name__)
 
-base_template = """
-Each generated situation/scenario should be in pairs implying one high-stake and one
- low-stake situation without explicitly mentioning or indicating risk or stakes. The situations should be organised as minimally different pairs. Note that each situation
-(correspondond to high or low stakes) counts as
-a single situation. So out of the {n_samples}, you will be generating 1 high stake situation and 1 low stake low stake situation.
+situation_generation_template = """Generate one high stake and one low stake situation in the domain of {category}. Tailor the situations
+for people having roles similar to {role} and the impact of the situation should be related to {impact_factor}.
 
 Reply in JSON format following the schema below. For each situation, there are two json entries, the main key of the json will be "situations" that will be a list
 of json entries.
@@ -33,14 +30,7 @@ and they express feelings of losing control. The therapist must provide immediat
 {{"id":2, "high_stakes":0, "situation":"During a scheduled wellness check-in, a client shares that they are feeling slightly overwhelmed by work stress and
  asks for strategies to manage their time better, allowing for a calm discussion without the need for urgent intervention."}}]
 
-Remember to generate high stake and low stake situations in pairs. and important to note to not use obvious words that clearly imply the high stake or low stake situation.
-"""
-
-situation_generation_template_role_impact = """
-Generate {n_samples} distinct situations with respect to the topic of {category}. Tailor the scenarios
-for people having roles similar to {role} and considering the impact on them is related to {impact_factor}.
-
-"""
+Please do not use obvious words or phrases that clearly imply the high stake or low stake situation. The distinction between high-stakes and low-stakes situations should be based on meaning and context rather than the intensity or usage of the words themselves."""
 
 
 async def generate_situations_async(
@@ -70,8 +60,7 @@ async def generate_situations_async(
     situation_generation_prompt = ""
     # using different templates
     if len(geographies) == 0 and len(languages) == 0:
-        situation_generation_prompt = situation_generation_template_role_impact.format(
-            n_samples=n_samples,
+        situation_generation_prompt = situation_generation_template.format(
             category=category,
             role=roles[factor_id] if len(roles) > factor_id else roles[-1],
             impact_factor=impact_factors[factor_id]
@@ -86,14 +75,10 @@ async def generate_situations_async(
             domain of the scenarios, and the type of people involved. The scenarios should reflect varying levels of stakes,
             and the factors that influence the scenarios. The scenarios should be diverse and contextually rich.
             Generate high and low stakes scenarios in pairs. The scenarios shouldn't be very
-            long in length and an important point to note is to have similar lengths for high stake vs low stake situation.
-            Keep them factual, realistic, and concise. Remember to generate high stake and low stake situations in pairs.""",
+            long in length and an important point to note is to have similar lengths for high stake vs low stake situations.
+            Keep them factual, realistic, and concise.""",
         },
-        {
-            "role": "user",
-            "content": situation_generation_prompt
-            + base_template.format(n_samples=n_samples),
-        },
+        {"role": "user", "content": situation_generation_prompt},
     ]
     return await call_llm_async(messages, model=DEFAULT_MODEL)
 
