@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import torch
 
@@ -99,31 +100,24 @@ AIS_DATASETS = {
 @dataclass(frozen=True)
 class RunConfig:
     """
+    Configuration for a dataset generation run.
 
-    num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
-    num_prompts_per_situation: How many prompts to generate for each situation. Each high or low stake prompt count as 1.
-    num_situations_per_combination: How many situations to generate for each combination of topics and factors. Each high or low stake situation counts as 1.
-
-    if num_situations_to_sample is 4 and num_situations_per_combination is 2, then 4*2 = 8 situations will be generated in the situations.jsonl file.
-    Try to keep num_situations_per_combination as 2 to minimise weird behavior cause then LLM sometimesthinks of High and low stakes as seperate situations.
-    The above is applicable for num_prompts_per_situation too.
-
-    Based on the prompt variations, we need to decide num prompts per situation to sample.
-
-    sample_seperately: if True sample from the topics and factors list directly rather than
-    sampling from the examples_situations.csv file.
-
+    Args:
+        num_situations_to_sample: How many pairs of high- and low-stakes situations to sample from the examples_situations.csv file.
+        num_combinations_for_prompts: How many pairs of prompts to generate for each situation.
+        max_concurrent_llm_calls: Maximum number of concurrent LLM calls.
+        write_mode: Whether to overwrite or append to the output file.
+        model: The model to use for the generation.
+        train_frac: The fraction of the data to use for the training set.
     """
 
-    num_situations_per_combination: int = 2
     num_situations_to_sample: int = 150
-    num_prompts_per_situation: int = 2
-    num_topics_to_sample: int | None = 2  # If None, all topics are used
-    num_factors_to_sample: int | None = 2
-    num_combinations_for_prompts: int = 5
-    combination_variation: bool = False  # If None, all factors are used
+    num_combinations_for_prompts: int = 12
+    max_concurrent_llm_calls: int = 50
+    write_mode: Literal["overwrite", "append"] = "overwrite"
+    model: str = "gpt-4o"
+    train_frac: float = 0.8
 
-    sample_seperately: bool = False
     run_id: str = "test"
 
     def __post_init__(self):
@@ -134,13 +128,17 @@ class RunConfig:
         return RESULTS_DIR / self.run_id
 
     @property
+    def suffix(self) -> str:
+        date_str = datetime.now().strftime("%d_%m_%y")
+        return f"{date_str}_{self.model}"
+
+    @property
     def situations_combined_csv(self) -> Path:
         return self.run_dir / "examples_situations.csv"
 
     @property
     def prompts_file(self) -> Path:
-        date_str = datetime.now().strftime("%d_%m_%y")
-        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
+        return self.run_dir / f"prompts_{self.suffix}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -148,7 +146,7 @@ class RunConfig:
 
     @property
     def situations_file(self) -> Path:
-        return self.run_dir / "situations.jsonl"
+        return self.run_dir / f"situations_{self.suffix}.jsonl"
 
     @property
     def variations_file(self) -> Path:
@@ -157,6 +155,10 @@ class RunConfig:
     @property
     def filtered_situations_file(self) -> Path:
         return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
+
+    @property
+    def random_state(self) -> int:
+        return 32
 
 
 with open(INPUTS_DIR / "prompt_variations.json") as f:

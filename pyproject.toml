@@ -49,7 +49,7 @@ dev = [
 ]
 
 [project.scripts]
-dash = "models_under_pressure.cli:dash_command"
+dashboard = "models_under_pressure.cli:dashboard_command"
 
 [tool.ruff]
 line-length = 88

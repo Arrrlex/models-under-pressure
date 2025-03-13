@@ -1,13 +1,9 @@
 # Repo-specific
 temp_data/*
 plots/*.png
-.data/results/
 **/wandb
-data/results/*.csv
-data/results/*.json
-data/results/*.jsonl
-data/results/debug
-data/previous/
+data/probes/
+data/results/
 *.npy
 *.npz
 uv.lock
