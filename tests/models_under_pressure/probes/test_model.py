@@ -50,13 +50,13 @@ def mock_tokenizer():
 
 
 @pytest.fixture
-def llm_model(mock_model, mock_tokenizer):
+def llm_model(mock_model: Mock, mock_tokenizer: PreTrainedTokenizerBase):
     return LLMModel(
         name="test_model", model=mock_model, tokenizer=mock_tokenizer, device="cpu"
     )
 
 
-def test_n_layers_property(llm_model):
+def test_n_layers_property(llm_model: LLMModel):
     assert llm_model.n_layers == 12
 
     # Test fallback to n_layer
@@ -65,7 +65,7 @@ def test_n_layers_property(llm_model):
     assert llm_model.n_layers == 24
 
 
-def test_device_setter(llm_model):
+def test_device_setter(llm_model: LLMModel):
     # Reset the mock to clear the call from initialization
     llm_model.model.to.reset_mock()
 
@@ -77,7 +77,7 @@ def test_device_setter(llm_model):
 
 @patch("models_under_pressure.probes.model.AutoModelForCausalLM")
 @patch("models_under_pressure.probes.model.AutoTokenizer")
-def test_load_model(mock_auto_tokenizer, mock_auto_model):
+def test_load_model(mock_auto_tokenizer: Mock, mock_auto_model: Mock):
     mock_auto_model.from_pretrained.return_value = Mock()
     mock_auto_tokenizer.from_pretrained.return_value = Mock(
         pad_token_id=None, eos_token_id=2
@@ -90,7 +90,7 @@ def test_load_model(mock_auto_tokenizer, mock_auto_model):
     mock_auto_tokenizer.from_pretrained.assert_called_once()
 
 
-def test_tokenize(llm_model):
+def test_tokenize(llm_model: LLMModel):
     dialogues = [[Message(role="user", content="Hello")]]
 
     # Mock the chat template to return a string
@@ -107,7 +107,7 @@ def test_tokenize(llm_model):
     )
 
 
-def test_get_activations(llm_model):
+def test_get_activations(llm_model: LLMModel):
     # Mock the layer structure for LLaMA-style architecture
     llm_model.model.model = Mock()
     llm_model.model.model.layers = [Mock() for _ in range(12)]
@@ -139,7 +139,7 @@ def test_get_activations(llm_model):
     assert activation_obj.input_ids.shape == (2, 9)
 
 
-def test_get_batched_activations(llm_model):
+def test_get_batched_activations(llm_model: LLMModel):
     # Mock dataset with list of messages
     mock_dataset = Mock()
     mock_dataset.inputs = [[Message(role="user", content="test")] for _ in range(3)]

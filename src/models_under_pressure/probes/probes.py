@@ -13,7 +13,6 @@ from models_under_pressure.config import (
     GENERATED_DATASET_PATH,
     LOCAL_MODELS,
     PROBES_DIR,
-    TRAIN_TEST_SPLIT,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import Activation, AggregationType
@@ -242,10 +241,7 @@ if __name__ == "__main__":
     model = LLMModel.load(model_name=LOCAL_MODELS["llama-8b"])
 
     # Train a probe
-    train_dataset, _ = load_train_test(
-        dataset_path=GENERATED_DATASET_PATH,
-        split_path=TRAIN_TEST_SPLIT,
-    )
+    train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
     probe = LinearProbe(_llm=model, layer=11)
     probe.fit(train_dataset[:10])
 
