@@ -9,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
-    BATCH_SIZE = 8
+    BATCH_SIZE = 16
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
@@ -28,7 +28,7 @@ LOCAL_MODELS = {
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": {1: "80GB", 2: "40GB", 3: "40GB"},
+    "meta-llama/Llama-3.3-70B-Instruct": {1: "80GB", 3: "80GB"},
 }
 
 # Paths to input files
@@ -43,8 +43,9 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-TRAIN_TEST_SPLIT = OUTPUT_DIR / "train_test_split.json"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_04_03_25_model-4o.jsonl"
+GENERATED_DATASET_PATH = (
+    OUTPUT_DIR / "prompts_12_03_25_gpt-4o.jsonl"
+)  # "prompts_04_03_25_model-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
@@ -57,7 +58,7 @@ GENERATED_DATASET = {
 }
 
 # Evals files
-USE_BALANCED_DATASETS = False
+USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals"
 
 EVAL_DATASETS_RAW = {
@@ -173,7 +174,6 @@ class HeatmapRunConfig:
     dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
-    split_path: Path = TRAIN_TEST_SPLIT
 
     def output_filename(self, variation_type: str) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
@@ -187,7 +187,6 @@ class EvalRunConfig:
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
-    split_path: Path = TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:
@@ -206,7 +205,6 @@ class SafetyRunConfig:
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
-    split_path: Path = TRAIN_TEST_SPLIT
 
     @property
     def output_filename(self) -> str:

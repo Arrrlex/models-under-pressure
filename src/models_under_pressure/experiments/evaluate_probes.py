@@ -43,11 +43,10 @@ def run_evaluation(
 ) -> ProbeEvaluationResults:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
-        dataset_path,
-        split_path,
-        variation_type,
-        variation_value,
-        max_samples,
+        dataset_path=dataset_path,
+        variation_type=variation_type,
+        variation_value=variation_value,
+        max_samples=max_samples,
     )
 
     # Load eval datasets
@@ -93,7 +92,6 @@ if __name__ == "__main__":
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
-        split_path=config.split_path,
         model_name=config.model_name,
     )
 

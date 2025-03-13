@@ -1,9 +1,7 @@
-import json
 from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.config import TRAIN_TEST_SPLIT
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -121,13 +119,11 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 def load_train_test(
     dataset_path: Path,
-    split_path: Path,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
     Args:
         dataset_path: Path to the generated dataset
-        split_path: Path to save/load the train-test split
 
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
@@ -137,57 +133,20 @@ def load_train_test(
         field_mapping={"prompt": "inputs", "id": "ids", "high_stakes": "labels"},
     )
 
-    # Add a situations_ids field to the dataset (situations isn't hashable)
-    dataset.other_fields["situations_ids"] = [  # type: ignore
-        f"high_stakes_{s['high_stakes']}_low_stakes_{s['low_stakes']}"
-        for s in dataset.other_fields["situations"]
-    ]
-    # TODO Check if there is no overlap between high and low stake situations
-
-    if split_path.exists():
-        split_dict = json.load(open(split_path))
-        assert split_dict["dataset"] == dataset_path.stem
-
-        train_indices = [
-            dataset.ids.index(item_id) for item_id in split_dict["train_dataset"]
-        ]
-        test_indices = [
-            dataset.ids.index(item_id) for item_id in split_dict["test_dataset"]
-        ]
-        train_dataset = dataset[train_indices]  # type: ignore
-        test_dataset = dataset[test_indices]  # type: ignore
-    else:
-        # Create a train-test split with all data
-        train_dataset, test_dataset = create_train_test_split(
-            dataset,  # type: ignore
-            split_field="situations_ids",
-        )
-        split_dict = {
-            "train_dataset": train_dataset.ids,
-            "test_dataset": test_dataset.ids,
-            "dataset": dataset_path.stem,
-        }
-        with open(split_path, "w") as f:
-            json.dump(split_dict, f)
+    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
+    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
 
     return train_dataset, test_dataset
 
 
 def load_filtered_train_dataset(
     dataset_path: Path,
-    split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
 ) -> LabelledDataset:
-    if split_path is None:
-        split_path = TRAIN_TEST_SPLIT
-
     # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(
-        dataset_path,
-        split_path,
-    )
+    train_dataset, _ = load_train_test(dataset_path)
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
