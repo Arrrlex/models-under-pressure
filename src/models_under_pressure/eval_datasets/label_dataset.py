@@ -72,6 +72,7 @@ async def label_dataset_async(
     confidence_threshold: int = 7,
     high_stakes_threshold: int = 8,
     low_stakes_threshold: int = 3,
+    force_override: bool = False,
 ) -> LabelledDataset:
     """
     Asynchronously label a dataset using a queue to limit concurrency.
@@ -136,7 +137,7 @@ async def label_dataset_async(
             f"{prefix}_model": [model for _ in range(len(labels))],
         }
     )
-    if not use_rubric:
+    if not use_rubric and ("labels" not in other_fields or force_override):
         # In this case the labels field is not populated yet
         other_fields["labels"] = [
             "low-stakes"
