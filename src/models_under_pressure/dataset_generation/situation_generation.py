@@ -37,15 +37,16 @@ async def generate_situation_pair(
     model: str,
 ) -> Optional[SituationPair]:
     """
-    Generate situations using LLM for a specific category and factor asynchronously.
+    Generate pair of high- and low-stakes situations using LLM.
 
     Args:
-        category: Category of the situation
-        factors: Factors influencing the situation
-        factor_id: Index of the factor to use
+        topic: Topic of the situation
+        role_of_user: Role of the user in the situation
+        impact_factor: Factor influencing the situation
+        model: Model to use for generation
 
     Returns:
-        Dictionary containing generated situations or None if generation fails
+        Pair of high- and low-stakes situations or None if generation fails
     """
 
     separator = "-----"

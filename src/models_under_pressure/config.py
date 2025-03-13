@@ -99,12 +99,15 @@ AIS_DATASETS = {
 @dataclass(frozen=True)
 class RunConfig:
     """
-    num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
+    Configuration for a dataset generation run.
 
-    Based on the prompt variations, we need to decide num prompts per situation to sample.
-
-    sample_seperately: if True sample from the topics and factors list directly rather than
-    sampling from the examples_situations.csv file.
+    Args:
+        num_situations_to_sample: How many pairs of high- and low-stakes situations to sample from the examples_situations.csv file.
+        num_combinations_for_prompts: How many pairs of prompts to generate for each situation.
+        max_concurrent_llm_calls: Maximum number of concurrent LLM calls.
+        write_mode: Whether to overwrite or append to the output file.
+        model: The model to use for the generation.
+        train_frac: The fraction of the data to use for the training set.
     """
 
     num_situations_to_sample: int = 150

@@ -42,7 +42,16 @@ async def generate_prompt_pair(
     split: str,
 ) -> Optional[tuple[Prompt, Prompt]]:
     """
-    Generate prompts for a given variation of a situation asynchronously.
+    Generate pair of prompts for a given pair of high- and low-stakes situations.
+
+    Args:
+        situation_pair: Pair of high- and low-stakes situations
+        variations: Variations to use for the prompts
+        model: Model to use for generation
+        split: Split to use for the prompts
+
+    Returns:
+        Pair of prompts or None if generation fails
     """
 
     prompt = PROMPT_TEMPLATE.format(
@@ -105,6 +114,19 @@ async def generate_prompt_pair(
 
 
 def choose_variations(variations_json: dict[str, Any]) -> dict[str, Any]:
+    """
+    Randomly choose variations for the prompts.
+
+    Choose English 70% of the time, other languages split evenly for remaining 30%.
+
+    For all other variation types, choose uniformly at random from the available choices.
+
+    Args:
+        variations_json: Variations to choose from
+
+    Returns:
+        Variations for the prompts
+    """
     variations = {}
     for variation_type, variation_choices in variations_json.items():
         if variation_type == "language":
@@ -128,12 +150,24 @@ def choose_variations(variations_json: dict[str, Any]) -> dict[str, Any]:
 
 
 def choose_split(run_config: RunConfig) -> Literal["train", "test"]:
+    """
+    Randomly choose a split for the prompts, according to the train fraction in the config.
+
+    Args:
+        run_config: Run configuration
+
+    Returns:
+        Split for the prompts
+    """
     return "train" if random.random() < run_config.train_frac else "test"
 
 
 async def generate_prompts_file(run_config: RunConfig) -> None:
     """
-    Generate prompts file asynchronously with controlled concurrency.
+    Generate prompts file.
+
+    Args:
+        run_config: Run configuration
     """
     if run_config.write_mode == "overwrite":
         run_config.prompts_file.unlink(missing_ok=True)
