@@ -149,7 +149,9 @@ def choose_variations(variations_json: dict[str, Any]) -> dict[str, Any]:
     return variations
 
 
-def choose_split(run_config: RunConfig) -> Literal["train", "test"]:
+def choose_split(
+    situation_pair_id: str, run_config: RunConfig
+) -> Literal["train", "test"]:
     """
     Randomly choose a split for the prompts, according to the train fraction in the config.
 
@@ -159,7 +161,12 @@ def choose_split(run_config: RunConfig) -> Literal["train", "test"]:
     Returns:
         Split for the prompts
     """
-    return "train" if random.random() < run_config.train_frac else "test"
+    # Use the situation pair ID as seed to ensure consistent splits
+    random.seed(hash(situation_pair_id))
+    split = "train" if random.random() < run_config.train_frac else "test"
+    # Reset the random seed to avoid affecting other random choices
+    random.seed()
+    return split
 
 
 async def generate_prompts_file(run_config: RunConfig) -> None:
@@ -197,7 +204,7 @@ async def generate_prompts_file(run_config: RunConfig) -> None:
             "situation_pair": pair,
             "variations": choose_variations(variations_json),
             "model": run_config.model,
-            "split": choose_split(run_config),
+            "split": choose_split(pair.id, run_config),
         }
         for pair in situation_pairs
         for _ in range(run_config.num_combinations_for_prompts)

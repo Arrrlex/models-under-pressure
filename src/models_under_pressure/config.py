@@ -114,7 +114,7 @@ class RunConfig:
     num_combinations_for_prompts: int = 12
     max_concurrent_llm_calls: int = 50
     write_mode: Literal["overwrite", "append"] = "overwrite"
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-4o"
     train_frac: float = 0.8
 
     run_id: str = "test"
