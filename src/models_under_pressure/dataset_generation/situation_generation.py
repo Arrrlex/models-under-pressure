@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from typing import Optional
 
@@ -144,10 +143,7 @@ async def generate_situations_file(run_config: RunConfig) -> None:
     # Save results
     print("Saving generated situations...")
     with open(run_config.situations_file, "w") as f:
-        json.dump(
-            [sit_pair.model_dump() for sit_pair in situation_pairs],
-            f,
-        )
+        f.write("\n".join([sit_pair.model_dump_json() for sit_pair in situation_pairs]))
 
     print("Situation generation complete!")
 
