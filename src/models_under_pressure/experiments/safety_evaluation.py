@@ -1,15 +1,13 @@
-import dataclasses
-import json
 from pathlib import Path
 
 import numpy as np
 
 from models_under_pressure.config import (
     AIS_DATASETS,
+    AIS_DIR,
     DEFAULT_GPU_MODEL,
     DEFAULT_OTHER_MODEL,
     DEVICE,
-    OUTPUT_DIR,
     SafetyRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -17,24 +15,22 @@ from models_under_pressure.experiments.dataset_splitting import (
 )
 from models_under_pressure.experiments.evaluate_probes import (
     ProbeEvaluationResults,
-    compute_aurocs,
 )
+from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import LabelledDataset
 
 
 def run_safety_evaluation(
     layer: int,
+    dataset_path: Path,
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL,
-    split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
-    dataset_path: Path = Path("data/results/prompts_28_02_25.jsonl"),
 ) -> ProbeEvaluationResults:
     """Compute AUROCs for figure 1."""
     train_dataset = load_filtered_train_dataset(
         dataset_path,
-        split_path,
         variation_type,
         variation_value,
         max_samples,
@@ -69,23 +65,26 @@ def run_safety_evaluation(
     eval_datasets["Sandbagging"] = sandbagging_dataset
     eval_datasets["Deception"] = deception_dataset
 
-    # Compute AUROCs
-    aurocs = compute_aurocs(
+    results_dict = train_probes_and_save_results(
+        model_name=model_name,
         train_dataset=train_dataset,
         train_dataset_path=dataset_path,
         eval_datasets=eval_datasets,
-        model_name=model_name,
         layer=layer,
+        output_dir=AIS_DIR,
     )
-    for eval_dataset_name, auroc in aurocs.items():
-        print(f"AUROC for {eval_dataset_name}: {auroc}")
+    metrics = []
+    dataset_names = []
+    for path, (_, results) in results_dict.items():
+        print(f"Metrics for {Path(path).stem}: {results.metrics}")
+        metrics.append(results.metrics)
+        dataset_names.append(Path(path).stem)
 
     results = ProbeEvaluationResults(
-        AUROC=aurocs,
-        datasets=list(aurocs.keys()),
+        metrics=[results for _, (_, results) in results_dict.items()],
         train_dataset_path=str(dataset_path),
+        datasets=list(eval_datasets.keys()),
         model_name=model_name,
-        layer=layer,
         variation_type=variation_type,
         variation_value=variation_value,
     )
@@ -98,7 +97,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = SafetyRunConfig(
-        max_samples=100,
+        max_samples=40,
         layer=11,
     )
     results = run_safety_evaluation(
@@ -107,10 +106,7 @@ if __name__ == "__main__":
         max_samples=config.max_samples,
         layer=config.layer,
         dataset_path=config.dataset_path,
-        split_path=config.split_path,
         model_name=config.model_name,
     )
 
-    json.dump(
-        dataclasses.asdict(results), open(OUTPUT_DIR / config.output_filename, "w")
-    )
+    results.save_to(AIS_DIR / config.output_filename)
