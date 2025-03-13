@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 
-from models_under_pressure.config import LOCAL_MODELS, RESULTS_DIR, HeatmapRunConfig
+from models_under_pressure.config import HEATMAPS_DIR, LOCAL_MODELS, HeatmapRunConfig
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
@@ -28,7 +28,6 @@ def generate_heatmap(
     """
     train_dataset, test_dataset = load_train_test(
         dataset_path=config.dataset_path,
-        split_path=config.split_path,
     )
 
     train_datasets, test_datasets, variation_values = split_by_variation(
@@ -73,16 +72,15 @@ def generate_heatmap(
 
 
 if __name__ == "__main__":
-    best_layers = {}
-    best_layer_accuracies = {}
-
     config = HeatmapRunConfig(
-        layers=list(range(1, 12)),
-        max_samples=None,
-        model_name=LOCAL_MODELS["llama-8b"],
+        # layers=list(range(1, 11)),
+        layers=[11],
+        max_samples=20,
+        model_name=LOCAL_MODELS["llama-1b"],
+        variation_types=("language",),
     )
 
-    output_dir = RESULTS_DIR / "generate_heatmaps"
+    output_dir = HEATMAPS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for variation_type in config.variation_types:
