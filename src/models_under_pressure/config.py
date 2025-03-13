@@ -100,12 +100,6 @@ AIS_DATASETS = {
 class RunConfig:
     """
     num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
-    num_prompts_per_situation: How many prompts to generate for each situation. Each high or low stake prompt count as 1.
-    num_situations_per_combination: How many situations to generate for each combination of topics and factors. Each high or low stake situation counts as 1.
-
-    if num_situations_to_sample is 4 and num_situations_per_combination is 2, then 4*2 = 8 situations will be generated in the situations.jsonl file.
-    Try to keep num_situations_per_combination as 2 to minimise weird behavior cause then LLM sometimesthinks of High and low stakes as seperate situations.
-    The above is applicable for num_prompts_per_situation too.
 
     Based on the prompt variations, we need to decide num prompts per situation to sample.
 
@@ -113,15 +107,12 @@ class RunConfig:
     sampling from the examples_situations.csv file.
     """
 
-    num_situations_per_combination: int = 2
     num_situations_to_sample: int = 150
-    num_prompts_per_situation: int = 2
-    num_topics_to_sample: int | None = 2  # If None, all topics are used
-    num_factors_to_sample: int | None = 2
     num_combinations_for_prompts: int = 12
     max_concurrent_llm_calls: int = 50
     write_mode: Literal["overwrite", "append"] = "overwrite"
-    model: str = "gpt-4o"
+    model: str = "gpt-4o-mini"
+    train_frac: float = 0.8
 
     run_id: str = "test"
 

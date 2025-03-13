@@ -3,20 +3,22 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Self
 
+from models_under_pressure.utils import generate_short_id
+
 
 class Prompt(abc.ABC):
     def __init__(
         self,
-        id: int,
         prompt: str,
         situations: Dict[str, int],
         high_stakes: bool,
         timestamp: str,
         topic: str | None = None,
         metadata: Dict[str, str] | None = None,
+        id: str | None = None,
         **kwargs: Any,
     ):
-        self.id = id
+        self.id = id or generate_short_id()
         self.prompt = prompt
         assert "high_stakes" in situations
         assert "low_stakes" in situations

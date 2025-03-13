@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import random
+import string
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 import openai
@@ -142,51 +144,64 @@ def parse_mapping_str(mapping_str: str) -> dict[str, str]:
     return mapping_dict
 
 
-async def call_concurrently(
-    callables: Sequence[Callable[[], Awaitable[Any]]],
-    max_concurrent_tasks: int = 50,
-    pbar: Optional[tqdm] = None,
+async def async_map(
+    func: Callable[..., Awaitable[Any]],
+    items: Sequence[Any],
+    max_concurrent: int,
+    with_pbar: bool = True,
     task_timeout: Optional[float] = None,
 ) -> list[Any]:
     """
-    Call a list of tasks concurrently with a limit on the number of concurrent tasks.
+    Asynchronously map a function over a sequence of items with concurrency control.
 
     Args:
-        callables: List of async callables to execute
-        max_concurrent_tasks: Maximum number of tasks to run concurrently
-        pbar: Optional progress bar to update
-        task_timeout: Optional timeout in seconds for each individual task
+        func: Async function to apply to each item
+        items: Sequence of items to process
+        max_concurrent: Maximum number of concurrent tasks
+        with_pbar: Whether to show a progress bar
+        task_timeout: Optional timeout in seconds for each task
+
+    Returns:
+        List of results in the same order as input items
     """
-    queue = asyncio.Queue(maxsize=max_concurrent_tasks)
+    if with_pbar:
+        pbar = tqdm(
+            total=len(items),
+            desc=f"Running {func.__name__} on {len(items)} items ...",
+        )
+    else:
+        pbar = None
+
+    sem = asyncio.Semaphore(max_concurrent)
     results = []
 
-    async def worker(callable: Callable[[], Awaitable[Any]]):
-        await queue.get()
-        try:
-            if task_timeout is not None:
-                result = await asyncio.wait_for(callable(), timeout=task_timeout)
-            else:
-                result = await callable()
-            if pbar is not None:
-                pbar.update(1)
-            return result
-        except (asyncio.TimeoutError, Exception) as e:
-            print(f"Task failed with error: {e}")
-            if pbar is not None:
-                pbar.update(1)
-            return None
-        finally:
-            queue.put_nowait(1)
-
-    # Initialize the queue
-    for _ in range(max_concurrent_tasks):
-        queue.put_nowait(1)
+    async def worker(item: Any) -> Any:
+        async with sem:
+            try:
+                if task_timeout is not None:
+                    result = await asyncio.wait_for(func(**item), timeout=task_timeout)
+                else:
+                    result = await func(**item)
+                if pbar is not None:
+                    pbar.update(1)
+                return result
+            except (asyncio.TimeoutError, Exception) as e:
+                print(f"Task failed with error: {e}")
+                if pbar is not None:
+                    pbar.update(1)
+                return None
 
     # Create and gather all tasks
-    tasks = [asyncio.create_task(worker(callable)) for callable in callables]
+    tasks = [asyncio.create_task(worker(item)) for item in items]
     results = await asyncio.gather(*tasks, return_exceptions=False)
 
     if pbar is not None:
         pbar.close()
 
     return [r for r in results if r is not None]
+
+
+def generate_short_id(length: int = 8) -> str:
+    """Generate a short, random ID using base62 encoding."""
+    characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
+    return "".join(random.choices(characters, k=length))
