@@ -3,11 +3,12 @@ import itertools as it
 import json
 import random
 from datetime import UTC, datetime
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 from models_under_pressure.config import RunConfig
 from models_under_pressure.interfaces.prompt import Prompt
 from models_under_pressure.interfaces.situation import SituationPair
+from models_under_pressure.interfaces.variation import Variation
 from models_under_pressure.utils import async_map, call_llm_async
 
 PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style}.
@@ -37,7 +38,7 @@ The distinction between high-stakes and low-stakes prompts should be based on me
 
 async def generate_prompt_pair(
     situation_pair: SituationPair,
-    variations: dict[str, tuple[str, str]],
+    variations: dict[str, Variation],
     model: str,
     split: str,
 ) -> Optional[tuple[Prompt, Prompt]]:
@@ -55,12 +56,12 @@ async def generate_prompt_pair(
     """
 
     prompt = PROMPT_TEMPLATE.format(
-        tone=variations["tone"][1],
-        language=variations["language"][1],
-        prompt_style=variations["prompt_style"][1],
-        high_stakes_description=situation_pair.high_stakes_situation.description,
-        low_stakes_description=situation_pair.low_stakes_situation.description,
-        length=variations["length"][1],
+        tone=variations["tone"].value,
+        language=variations["language"].value,
+        prompt_style=variations["prompt_style"].value,
+        high_stakes_description=situation_pair.high_stakes,
+        low_stakes_description=situation_pair.low_stakes,
+        length=variations["length"].value,
     )
 
     json_schema = {
@@ -91,10 +92,10 @@ async def generate_prompt_pair(
     kwargs = {
         "id": 0,
         "timestamp": datetime.now(UTC).isoformat(),
-        "tone": variations["tone"][0],
-        "language": variations["language"][0],
-        "prompt_style": variations["prompt_style"][0],
-        "length": variations["length"][0],
+        "tone": variations["tone"].name,
+        "language": variations["language"].name,
+        "prompt_style": variations["prompt_style"].name,
+        "length": variations["length"].name,
         "topic": situation_pair.topic,
         "situations": situation_pair.situation_ids,
         "pair_id": situation_pair.id,
@@ -113,7 +114,9 @@ async def generate_prompt_pair(
     return high_stakes_prompt, low_stakes_prompt
 
 
-def choose_variations(variations_json: dict[str, Any]) -> dict[str, Any]:
+def choose_variations(
+    variations_json: dict[str, list[Variation]],
+) -> dict[str, Variation]:
     """
     Randomly choose variations for the prompts.
 
@@ -128,24 +131,20 @@ def choose_variations(variations_json: dict[str, Any]) -> dict[str, Any]:
         Variations for the prompts
     """
     variations = {}
+
     for variation_type, variation_choices in variations_json.items():
         if variation_type == "language":
+            english = next(v for v in variation_choices if v.name == "English")
             # Choose English 70% of the time, other languages split evenly for remaining 30%
             if random.random() < 0.7:
-                variations[variation_type] = (
-                    "English",
-                    variation_choices["English"],
-                )
+                variations[variation_type] = english
             else:
-                # Get all languages except English
-                other_languages = {
-                    k: v for k, v in variation_choices.items() if k != "English"
-                }
                 variations[variation_type] = random.choice(
-                    list(other_languages.items())
+                    list(filter(lambda v: v.name != "English", variation_choices))
                 )
         else:
-            variations[variation_type] = random.choice(list(variation_choices.items()))
+            variations[variation_type] = random.choice(variation_choices)
+
     return variations
 
 
@@ -189,7 +188,7 @@ async def generate_prompts_file(run_config: RunConfig) -> None:
 
     # load situations from csv and sample 20 pairs of situations
     with open(run_config.situations_file, "r") as f:
-        situation_pairs = [SituationPair(**pair) for pair in json.load(f)]
+        situation_pairs = [SituationPair(**json.loads(line)) for line in f.readlines()]
 
     if run_config.num_situations_to_sample * 2 < len(situation_pairs):
         situation_pairs = random.sample(
@@ -197,7 +196,13 @@ async def generate_prompts_file(run_config: RunConfig) -> None:
         )
 
     with open(run_config.variations_file, "r") as f:
-        variations_json = json.load(f)
+        variations_json = {
+            typ: [
+                Variation(type=typ, name=name, value=value)
+                for name, value in variations.items()
+            ]
+            for typ, variations in json.load(f).items()
+        }
 
     generate_args = [
         {

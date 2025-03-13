@@ -1,11 +1,12 @@
 import asyncio
+import itertools as it
+import json
 import logging
-from typing import Optional
+import random
+from typing import Any, Optional
 
-import pandas as pd
-
-from models_under_pressure.config import RunConfig
-from models_under_pressure.interfaces.situation import Situation, SituationPair
+from models_under_pressure.config import SITUATION_FACTORS_JSON, RunConfig
+from models_under_pressure.interfaces.situation import SituationPair
 from models_under_pressure.utils import (
     _get_async_client,
     async_map,
@@ -51,7 +52,7 @@ async def generate_situation_pair(
 
     separator = "-----"
 
-    situation_generation_prompt = SITUATION_GENERATION_PROMPT_TEMPLATE.format(
+    prompt = SITUATION_GENERATION_PROMPT_TEMPLATE.format(
         topic=topic,
         role=role_of_user,
         impact_factor=impact_factor,
@@ -60,7 +61,7 @@ async def generate_situation_pair(
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": situation_generation_prompt},
+        {"role": "user", "content": prompt},
     ]
 
     client = _get_async_client()
@@ -75,35 +76,28 @@ async def generate_situation_pair(
 
     # Parse the content by splitting on the marker
     try:
-        high_stakes_situation, low_stakes_situation = content.split(separator)
+        hs, ls = content.split(separator)
     except ValueError:
         logger.warning("Failed to parse situations: wrong number of parts found")
         return None
 
-    hs = Situation(
-        topic=topic,
-        factors={
-            "role_of_user": role_of_user,
-            "impact_factor": impact_factor,
-        },
-        description=high_stakes_situation.strip(),
-        high_stakes=True,
-    )
-
-    ls = Situation(
-        topic=topic,
-        factors={
-            "role_of_user": role_of_user,
-            "impact_factor": impact_factor,
-        },
-        description=low_stakes_situation.strip(),
-        high_stakes=False,
-    )
-
     return SituationPair(
-        high_stakes_situation=hs,
-        low_stakes_situation=ls,
+        high_stakes=hs.strip(),
+        low_stakes=ls.strip(),
+        factors={"role_of_user": role_of_user, "impact_factor": impact_factor},
+        topic=topic,
     )
+
+
+def sample_situation_specs(num_situations: int) -> list[dict[str, Any]]:
+    with open(SITUATION_FACTORS_JSON) as f:
+        factors = json.load(f)
+
+    all_situation_specs = [
+        dict(zip(factors.keys(), values)) for values in it.product(*factors.values())
+    ]
+
+    return random.sample(all_situation_specs, num_situations)
 
 
 async def generate_situations_file(run_config: RunConfig) -> None:
@@ -113,30 +107,13 @@ async def generate_situations_file(run_config: RunConfig) -> None:
     Args:
         run_config: Configuration for the run
     """
-    print("Loading situations combinations from CSV...")
-    situations_combinations_df = pd.read_csv(run_config.situations_combined_csv)
-
-    logger.info(f"Sampling {run_config.num_situations_to_sample} combinations...")
-    factors_combinations = situations_combinations_df.sample(
-        n=run_config.num_situations_to_sample,
-        random_state=run_config.random_state,
-    )
-
-    # Create a list of callables for concurrent execution
-    generate_args = [
-        {
-            "topic": row["topic"],
-            "role_of_user": row["role_of_user"],
-            "impact_factor": row["impact_factors"],
-            "model": run_config.model,
-        }
-        for _, row in factors_combinations.iterrows()
-    ]
+    print("Sampling situations combinations...")
+    situation_specs = sample_situation_specs(run_config.num_situations_to_sample)
 
     # Call the tasks concurrently with the utility function
     situation_pairs = await async_map(
         generate_situation_pair,
-        generate_args,
+        [{"model": run_config.model, **spec} for spec in situation_specs],
         max_concurrent=run_config.max_concurrent_llm_calls,
         with_pbar=True,
     )

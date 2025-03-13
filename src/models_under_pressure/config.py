@@ -110,11 +110,11 @@ class RunConfig:
         train_frac: The fraction of the data to use for the training set.
     """
 
-    num_situations_to_sample: int = 150
-    num_combinations_for_prompts: int = 12
+    num_situations_to_sample: int = 15
+    num_combinations_for_prompts: int = 2
     max_concurrent_llm_calls: int = 50
     write_mode: Literal["overwrite", "append"] = "overwrite"
-    model: str = "gpt-4o"
+    model: str = "gpt-4o-mini"
     train_frac: float = 0.8
 
     run_id: str = "test"
@@ -132,10 +132,6 @@ class RunConfig:
         return f"{date_str}_{self.model}"
 
     @property
-    def situations_combined_csv(self) -> Path:
-        return self.run_dir / "examples_situations.csv"
-
-    @property
     def prompts_file(self) -> Path:
         return self.run_dir / f"prompts_{self.suffix}.jsonl"
 
@@ -150,10 +146,6 @@ class RunConfig:
     @property
     def variations_file(self) -> Path:
         return INPUTS_DIR / "prompt_variations.json"
-
-    @property
-    def filtered_situations_file(self) -> Path:
-        return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
     @property
     def random_state(self) -> int:
