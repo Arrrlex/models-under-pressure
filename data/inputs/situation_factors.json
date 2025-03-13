@@ -9,7 +9,7 @@
     "security experts and hackers",
     "journalists and fact-checkers"
   ],
-  "impact_factors": [
+  "impact_factor": [
     "health and safety outcomes",
     "financial consequences",
     "permanent harm",
@@ -30,5 +30,19 @@
     "responsibility for harm",
     "manipulative or undue influence",
     "high-stakes public discourse"
+  ],
+  "topic": [
+    "Medical, Healthcare and well-being",
+    "Artificial Intelligence",
+    "Cybersecurity",
+    "Education",
+    "Government",
+    "the Environment",
+    "Technology",
+    "Military and Espionage",
+    "Science and Space Exploration",
+    "Law and Justice",
+    "Journalism and Media",
+    "Finance and Business"
   ]
 }

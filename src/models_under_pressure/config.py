@@ -134,10 +134,6 @@ class RunConfig:
         return f"{date_str}_{self.model}"
 
     @property
-    def situations_combined_csv(self) -> Path:
-        return self.run_dir / "examples_situations.csv"
-
-    @property
     def prompts_file(self) -> Path:
         return self.run_dir / f"prompts_{self.suffix}.jsonl"
 
@@ -152,10 +148,6 @@ class RunConfig:
     @property
     def variations_file(self) -> Path:
         return INPUTS_DIR / "prompt_variations.json"
-
-    @property
-    def filtered_situations_file(self) -> Path:
-        return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
     @property
     def random_state(self) -> int:
