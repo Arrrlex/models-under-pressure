@@ -207,10 +207,7 @@ if __name__ == "__main__":
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
     )
     parser.add_argument(
-        "--model_name",
-        type=str,
-        default=LOCAL_MODELS["llama-1b"],
-        help="Name of the model to use",
+        "--model_name", type=str, default="llama-1b", help="Model name to use"
     )
     parser.add_argument(
         "--evaluation_type",
@@ -235,6 +232,6 @@ if __name__ == "__main__":
     config = EvalRunConfig(
         max_samples=args.max_samples,
         layer=args.layer,
-        model_name=args.model_name,
+        model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
     )
     main(config, args.evaluation_type, args.dataset_path)
