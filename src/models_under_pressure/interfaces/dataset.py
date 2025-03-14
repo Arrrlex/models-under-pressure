@@ -1,4 +1,5 @@
 import json
+import pickle
 import random
 from enum import Enum
 from pathlib import Path
@@ -307,7 +308,20 @@ class BaseDataset(BaseModel, Generic[R]):
         # Add processed fields to base_data
         base_data.update(processed_fields)
 
-        return pd.DataFrame(base_data)
+        try:
+            df = pd.DataFrame(base_data)
+        except ValueError:
+            # Store base_data as a pickle file to not lose any data
+            print("Failed to convert to pandas, storing as pickle")
+            with open("temp_base_data.pkl", "wb") as f:
+                pickle.dump(base_data, f)
+
+            print("Attempting to fix by removing unaligned columns ...")
+            base_data = {
+                k: v for k, v in base_data.items() if len(v) == len(base_data["inputs"])
+            }
+            df = pd.DataFrame(base_data)
+        return df
 
     def save_to(self, file_path: Path, overwrite: bool = False) -> None:
         if not overwrite and file_path.exists():
