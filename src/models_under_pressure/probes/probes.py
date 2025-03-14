@@ -15,7 +15,7 @@ from models_under_pressure.config import (
     PROBES_DIR,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.interfaces.activations import Activation, AggregationType
+from models_under_pressure.interfaces.activations import Activation, Aggregator
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dataset,
@@ -51,8 +51,8 @@ class LinearProbe(HighStakesClassifier):
     _llm: LLMModel
     layer: int
 
-    agg_type: AggregationType = AggregationType.MEAN
-    seq_pos: int | str = "all"
+    aggregator: Aggregator
+
     _classifier: SklearnClassifier = field(
         default_factory=lambda: make_pipeline(
             StandardScaler(),
@@ -64,32 +64,12 @@ class LinearProbe(HighStakesClassifier):
         )
     )  # type: ignore
 
-    def _preprocess_activations(
-        self,
-        activations: Activation,
-    ) -> Float[np.ndarray, "batch_size embed_dim"]:
-        if self.seq_pos == "all":
-            if self.agg_type == AggregationType.MEAN:
-                acts = activations.mean_aggregation().activations
-            else:
-                raise NotImplementedError(
-                    f"Aggregation type {self.agg_type} not implemented"
-                )
-        else:
-            assert isinstance(self.seq_pos, int)
-            assert self.seq_pos in range(
-                activations.activations.shape[1]
-            ), f"Invalid sequence position: {self.seq_pos}"
-            acts = activations.activations[:, self.seq_pos, :]
-
-        return acts
-
     def _fit(
         self,
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        X = self._preprocess_activations(activations)
+        X = self.aggregator.preprocess(activations)
 
         self._classifier.fit(X, y)
         return self
@@ -121,16 +101,24 @@ class LinearProbe(HighStakesClassifier):
             dataset=dataset,
             layer=self.layer,
         )
-        X = self._preprocess_activations(activations_obj)
-        predictions = self._classifier.predict_proba(X)
+        X = self.aggregator.preprocess(activations_obj)
+        logits = self._get_logits(X)
 
-        return predictions[:, 1].tolist()
+        probs = self.aggregator.postprocess(logits)
+
+        return probs.tolist()
+
+    def _get_logits(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, " batch_size"]:
+        probs = self._classifier.predict_proba(X)[:, 1]
+        return np.log(probs / (1 - probs))
 
     def _predict(
         self,
         activations: Activation,
     ) -> Float[np.ndarray, " batch_size"]:
-        X = self._preprocess_activations(activations)
+        X = self.aggregator.preprocess(activations)
         return self._classifier.predict(X)
 
     def per_token_predictions(
