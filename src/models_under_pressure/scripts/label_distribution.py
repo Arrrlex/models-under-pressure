@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from models_under_pressure.config import (
     AIS_DATASETS,
     EVAL_DATASETS_BALANCED,
@@ -11,6 +13,7 @@ def show_label_distribution_with_field(
 ):
     """
     Show label distribution for a dataset, breaking down by a boolean field (sandbagging or deception).
+    Creates a visualization of the distribution.
 
     Args:
         dataset_key: Key in AIS_DATASETS dictionary
@@ -97,6 +100,105 @@ def show_label_distribution_with_field(
     else:
         print("No examples found.")
 
+    # Calculate precision and recall metrics for high-stakes as a predictor
+    # Let's consider "high-stakes" as the positive prediction for the field value
+
+    # True positives: high-stakes examples that are also True for the field
+    true_positives = true_high_stakes
+
+    # False positives: high-stakes examples that are False for the field
+    false_positives = false_high_stakes
+
+    # False negatives: non-high-stakes examples that are True for the field
+    false_negatives = true_low_stakes + true_ambiguous
+
+    # True negatives: non-high-stakes examples that are False for the field
+    true_negatives = false_low_stakes + false_ambiguous
+
+    # Calculate precision: TP / (TP + FP)
+    precision = (
+        true_positives / (true_positives + false_positives)
+        if (true_positives + false_positives) > 0
+        else 0
+    )
+
+    # Calculate recall: TP / (TP + FN)
+    recall = (
+        true_positives / (true_positives + false_negatives)
+        if (true_positives + false_negatives) > 0
+        else 0
+    )
+
+    # Calculate F1 score: 2 * (precision * recall) / (precision + recall)
+    f1_score = (
+        2 * (precision * recall) / (precision + recall)
+        if (precision + recall) > 0
+        else 0
+    )
+
+    # Calculate accuracy: (TP + TN) / (TP + TN + FP + FN)
+    accuracy = (true_positives + true_negatives) / len(labels) if len(labels) > 0 else 0
+
+    # Print metrics
+    print(
+        "\nUsing high-stakes label to predict",
+        field_name.replace("is_", "").lower(),
+        "status:",
+    )
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1 Score: {f1_score:.4f}")
+    print(f"Accuracy: {accuracy:.4f}")
+
+    # Create a bar chart for precision and recall
+    plt.figure(figsize=(10, 6))
+
+    metrics = ["Precision", "Recall", "F1 Score", "Accuracy"]
+    values = [precision, recall, f1_score, accuracy]
+
+    # Create bars with different colors
+    bars = plt.bar(metrics, values, color=["#ff9999", "#66b3ff", "#99ff99", "#ffcc99"])
+
+    # Add value labels on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.01,
+            f"{height:.4f}",
+            ha="center",
+            va="bottom",
+        )
+
+    # Add a horizontal line at y=0.5 for reference
+    plt.axhline(y=0.5, color="gray", linestyle="--", alpha=0.7)
+
+    # Add a horizontal line at y=1.0 for reference
+    plt.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7)
+
+    plt.ylim(0, 1.1)  # Set y-axis limits
+    plt.title(
+        f"Performance Metrics: High-Stakes Label as Predictor for {field_name.replace('is_', '').title()}"
+    )
+    plt.ylabel("Score")
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Add a confusion matrix as text annotation
+    plt.figtext(
+        0.15,
+        0.15,
+        f"Confusion Matrix:\n\n"
+        f"TP: {true_positives}\n"
+        f"FP: {false_positives}\n"
+        f"FN: {false_negatives}\n"
+        f"TN: {true_negatives}",
+        bbox=dict(facecolor="white", alpha=0.8, boxstyle="round,pad=0.5"),
+    )
+
+    plt.tight_layout()
+    plt.savefig(f"{dataset_key}_{field_name}_prediction_metrics.png")
+    plt.show()
+
 
 # For backward compatibility
 def show_sandbagging_label_distribution(dataset_key: str = "mmlu_sandbagging"):
@@ -121,6 +223,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     # show_label_distribution_with_field("mmlu_sandbagging", "is_sandbagging")
-    # show_label_distribution_with_field("deception", "is_deceptive")
+    show_label_distribution_with_field("deception", "is_deceptive")
