@@ -7,6 +7,7 @@ import numpy as np
 from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    MANUAL_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -95,7 +96,10 @@ if __name__ == "__main__":
         description="Train linear probes on training dataset and evaluate on manual dataset"
     )
     parser.add_argument(
-        "--manual_data", type=str, required=True, help="Path to manual evaluation data"
+        "--manual_data",
+        type=str,
+        default=MANUAL_DATASET_PATH,
+        help="Path to manual evaluation data",
     )
     parser.add_argument(
         "--layer", type=int, default=11, help="Layer to extract features from"
