@@ -77,13 +77,13 @@ def run_safety_evaluation(
     dataset_names = []
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
-        metrics.append(results.metrics)
+        metrics.append(results)
         dataset_names.append(Path(path).stem)
 
     results = ProbeEvaluationResults(
-        metrics=[results for _, (_, results) in results_dict.items()],
+        metrics=metrics,
         train_dataset_path=str(dataset_path),
-        datasets=list(eval_datasets.keys()),
+        datasets=dataset_names,
         model_name=model_name,
         variation_type=variation_type,
         variation_value=variation_value,
