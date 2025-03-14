@@ -201,7 +201,7 @@ if __name__ == "__main__":
         description="Train on manual dataset and evaluate on eval datasets"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=100, help="Maximum number of samples to use"
+        "--max_samples", type=int, default=None, help="Maximum number of samples to use"
     )
     parser.add_argument(
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
