@@ -63,7 +63,7 @@ def run_evaluation(
     dataset_names = []
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
-        metrics.append(results.metrics)
+        metrics.append(results)
         dataset_names.append(Path(path).stem)
 
     results = ProbeEvaluationResults(
