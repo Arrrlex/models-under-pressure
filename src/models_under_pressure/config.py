@@ -9,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
-    BATCH_SIZE = 16
+    BATCH_SIZE = 4
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
@@ -28,7 +28,7 @@ LOCAL_MODELS = {
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": {1: "80GB", 3: "80GB"},
+    "meta-llama/Llama-3.3-70B-Instruct": {0: "70GB", 2: "50GB", 3: "50GB"},
 }
 
 # Paths to input files
@@ -62,17 +62,17 @@ USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals"
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.csv",
-    "toolace": EVALS_DIR / "toolace_samples.csv",
-    "mt": EVALS_DIR / "mt_samples.csv",
-    "mts": EVALS_DIR / "mts_samples.csv",
+    "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
+    "toolace": EVALS_DIR / "toolace_samples.jsonl",
+    "mt": EVALS_DIR / "mt_samples.jsonl",
+    "mts": EVALS_DIR / "mts_samples.jsonl",
 }
 
 EVAL_DATASETS_BALANCED = {
-    "toolace": EVALS_DIR / "toolace_samples_balanced.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples_balanced.csv",
-    "mt": EVALS_DIR / "mt_samples_balanced.csv",
-    "mts": EVALS_DIR / "mts_samples_balanced.csv",
+    "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
+    "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW

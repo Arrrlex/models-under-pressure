@@ -81,4 +81,21 @@ def create_anthropic_dataset(num_samples: int = 100, recompute: bool = False):
 
 
 if __name__ == "__main__":
-    create_anthropic_dataset(num_samples=100)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--recompute",
+        action="store_false",
+        default=True,
+        help="Recompute labels even if they already exist",
+    )
+    parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=1000,
+        help="Number of samples to use",
+    )
+    args = parser.parse_args()
+
+    create_anthropic_dataset(num_samples=args.num_samples, recompute=args.recompute)

@@ -31,4 +31,20 @@ def create_mt_dataset(num_samples: int = 100, recompute: bool = False):
 
 
 if __name__ == "__main__":
-    create_mt_dataset(num_samples=20)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--num_samples",
+        type=int,
+        default=1000,
+        help="Number of samples to use",
+    )
+    parser.add_argument(
+        "--recompute",
+        action="store_false",
+        help="Recompute labels even if they already exist",
+    )
+    args = parser.parse_args()
+
+    create_mt_dataset(num_samples=args.num_samples, recompute=args.recompute)

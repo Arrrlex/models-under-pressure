@@ -8,6 +8,7 @@ from jaxtyping import Float
 class AggregationType(Enum):
     MEAN = auto()
     ROLLING_MEAN = auto()
+    LAST_TOKEN = auto()
     NONE = auto()
 
 
