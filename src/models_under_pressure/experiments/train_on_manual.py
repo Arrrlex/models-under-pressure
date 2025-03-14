@@ -1,4 +1,5 @@
 # Script to train on manual dataset and evaluate on eval datasets
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -154,19 +155,12 @@ def evaluate_on_train_test_split(
     return results
 
 
-if __name__ == "__main__":
-    # Set random seed for reproducibility
-    RANDOM_SEED = 0
-    np.random.seed(RANDOM_SEED)
-
-    config = EvalRunConfig(
-        max_samples=100,
-        layer=11,
-        model_name=LOCAL_MODELS["llama-1b"],
-    )
-
+def main(
+    config: EvalRunConfig,
+    evaluation_type: str,
+    dataset_path: Path | None = None,
+):
     # Choose which evaluation to run
-    evaluation_type = "standard"  # Options: "standard", "train", "test"
 
     if evaluation_type == "standard":
         # Evaluate on all eval datasets
@@ -176,13 +170,15 @@ if __name__ == "__main__":
             model_name=config.model_name,
         )
         output_filename = (
-            f"manual_train_{Path(config.model_name).stem}_layer{config.layer}.json"
+            f"manual_train_{Path(config.model_name).stem}_layer{config.layer}_fig2.json"
         )
 
     elif evaluation_type in ["train", "test"]:
         # Evaluate on train or test split of a specific dataset
         is_test = evaluation_type == "test"
-        dataset_path = GENERATED_DATASET_PATH
+        dataset_path = (
+            Path(args.dataset_path) if args.dataset_path else GENERATED_DATASET_PATH
+        )
         results = evaluate_on_train_test_split(
             layer=config.layer,
             model_name=config.model_name,
@@ -197,3 +193,48 @@ if __name__ == "__main__":
     # Save results
     results.save_to(EVALUATE_PROBES_DIR / output_filename)
     print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
+
+
+if __name__ == "__main__":
+    # Set up command line argument parsing
+    parser = argparse.ArgumentParser(
+        description="Train on manual dataset and evaluate on eval datasets"
+    )
+    parser.add_argument(
+        "--max_samples", type=int, default=100, help="Maximum number of samples to use"
+    )
+    parser.add_argument(
+        "--layer", type=int, default=11, help="Layer to extract embeddings from"
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=LOCAL_MODELS["llama-1b"],
+        help="Name of the model to use",
+    )
+    parser.add_argument(
+        "--evaluation_type",
+        type=str,
+        default="standard",
+        choices=["standard", "train", "test"],
+        help="Type of evaluation to run",
+    )
+    parser.add_argument(
+        "--dataset_path",
+        type=str,
+        default=None,
+        help="Path to dataset for train/test evaluation (defaults to GENERATED_DATASET_PATH)",
+    )
+
+    args = parser.parse_args()
+
+    # Set random seed for reproducibility
+    RANDOM_SEED = 0
+    np.random.seed(RANDOM_SEED)
+
+    config = EvalRunConfig(
+        max_samples=args.max_samples,
+        layer=args.layer,
+        model_name=args.model_name,
+    )
+    main(config, args.evaluation_type, args.dataset_path)
