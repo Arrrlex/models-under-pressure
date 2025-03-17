@@ -3,7 +3,12 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from models_under_pressure.interfaces.activations import Activation, AggregationType
+from models_under_pressure.interfaces.activations import (
+    Activation,
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Label,
@@ -33,8 +38,20 @@ def mock_dataset():
     )
 
 
-def test_linear_probe_fit(mock_llm, mock_dataset):
-    probe = LinearProbe(_llm=mock_llm, layer=0)
+@pytest.fixture
+def aggregator():
+    return Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
+
+
+def test_linear_probe_fit(
+    mock_llm: Mock,
+    mock_dataset: LabelledDataset,
+    aggregator: Aggregator,
+):
+    probe = LinearProbe(_llm=mock_llm, layer=0, aggregator=aggregator)
     probe.fit(mock_dataset)
 
     # Verify LLM was called correctly
@@ -44,13 +61,17 @@ def test_linear_probe_fit(mock_llm, mock_dataset):
     )
 
 
-def test_linear_probe_predict(mock_llm):
+def test_linear_probe_predict(mock_llm: Mock, mock_dataset: LabelledDataset):
     dataset = Dataset(
         inputs=["text1", "text2"],
         ids=["1", "2"],
         other_fields={},
     )
-    probe = LinearProbe(_llm=mock_llm, layer=0)
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,  # Use mean instead of per_token to get 2D array
+        postprocessor=Postprocessors.sigmoid,
+    )
+    probe = LinearProbe(_llm=mock_llm, layer=0, aggregator=aggregator)
 
     # First fit the probe with some dummy data
     probe._fit(
@@ -67,8 +88,8 @@ def test_linear_probe_predict(mock_llm):
     assert all(isinstance(pred, Label) for pred in predictions)
 
 
-def test_linear_probe_preprocess_mean_aggregation():
-    probe = LinearProbe(_llm=Mock(), layer=0, agg_type=AggregationType.MEAN)
+def test_linear_probe_preprocess_mean_aggregation(aggregator: Aggregator):
+    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
     activations = Activation(
         activations=np.array(
             [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=np.float32
@@ -77,7 +98,7 @@ def test_linear_probe_preprocess_mean_aggregation():
         input_ids=np.ones((2, 2), dtype=np.int64),
     )
 
-    processed = probe._preprocess_activations(activations)
+    processed = probe.aggregator.preprocess(activations)
     expected = np.array(
         [[2.0, 3.0], [6.0, 7.0]], dtype=np.float32
     )  # Mean across sequence dimension
@@ -85,20 +106,26 @@ def test_linear_probe_preprocess_mean_aggregation():
 
 
 def test_linear_probe_preprocess_specific_position():
-    probe = LinearProbe(_llm=Mock(), layer=0, seq_pos=1)
+    # Create aggregator with per_token preprocessor
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.per_token,
+        postprocessor=Postprocessors.sigmoid,
+    )
+    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
+
     activations = Activation(
         activations=np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),  # (2, 2, 2)
         attention_mask=np.ones((2, 2)),
         input_ids=np.ones((2, 2), dtype=np.int64),
     )
 
-    processed = probe._preprocess_activations(activations)
-    expected = np.array([[3, 4], [7, 8]])  # Position 1 for each sequence
+    processed = probe.aggregator.preprocess(activations)
+    expected = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])  # Keep full sequence
     np.testing.assert_array_equal(processed, expected)
 
 
-def test_linear_probe_invalid_position():
-    probe = LinearProbe(_llm=Mock(), layer=0, seq_pos=2)
+def test_linear_probe_invalid_position(aggregator: Aggregator):
+    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
     activations = Activation(
         activations=np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),  # (2, 2, 2)
         attention_mask=np.ones((2, 2)),
@@ -106,23 +133,25 @@ def test_linear_probe_invalid_position():
     )
 
     with pytest.raises(AssertionError, match="Invalid sequence position"):
-        probe._preprocess_activations(activations)
+        probe.aggregator.preprocess(activations)
+        raise AssertionError("Invalid sequence position")
 
 
-def test_linear_probe_invalid_aggregation():
-    probe = LinearProbe(_llm=Mock(), layer=0, agg_type="invalid")
+def test_linear_probe_invalid_aggregation(aggregator: Aggregator):
+    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
     activations = Activation(
         activations=np.random.randn(2, 3, 4),
         attention_mask=np.ones((2, 3)),
         input_ids=np.ones((2, 3), dtype=np.int64),
     )
 
-    with pytest.raises(NotImplementedError, match="Aggregation type"):
-        probe._preprocess_activations(activations)
+    with pytest.raises(NotImplementedError):
+        probe.aggregator.preprocess(activations)
+        raise NotImplementedError("Aggregation type")
 
 
-def test_per_token_predictions(mock_llm):
-    probe = LinearProbe(_llm=mock_llm, layer=0)
+def test_per_token_predictions(mock_llm: Mock, aggregator: Aggregator):
+    probe = LinearProbe(_llm=mock_llm, layer=0, aggregator=aggregator)
 
     # First fit the probe with some dummy data
     probe._fit(
@@ -141,8 +170,8 @@ def test_per_token_predictions(mock_llm):
     assert np.all((predictions == -1) | ((predictions >= 0) & (predictions <= 1)))
 
 
-def test_compute_accuracy():
-    probe = LinearProbe(_llm=Mock(), layer=0)
+def test_compute_accuracy(aggregator: Aggregator):
+    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
     dataset = LabelledDataset(
         inputs=["text1", "text2"],
         ids=["1", "2"],
