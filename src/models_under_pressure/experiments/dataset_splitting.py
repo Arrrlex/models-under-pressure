@@ -61,31 +61,19 @@ def split_by_variation(
     max_samples: int | None = None,
 ) -> tuple[list[LabelledDataset], list[LabelledDataset], list[str]]:
     """Split the dataset into different splits for computing generalization heatmaps."""
-    # Filter by variation_type
-    train_dataset = train_dataset.filter(
-        lambda x: x.other_fields["variation_type"] == variation_type
-    )
-    test_dataset = test_dataset.filter(
-        lambda x: x.other_fields["variation_type"] == variation_type
-    )
-
-    if len(train_dataset.ids) == 0 or len(test_dataset.ids) == 0:
-        print(f"Warning: No examples found for variation type {variation_type}")
-        return [], [], []
-
     # Get unique values of variation_type
-    variation_values = list(set(train_dataset.other_fields["variation"]))
-    test_variation_values = list(set(test_dataset.other_fields["variation"]))
+    variation_values = list(set(train_dataset.other_fields[variation_type]))
+    test_variation_values = list(set(test_dataset.other_fields[variation_type]))
     assert sorted(variation_values) == sorted(test_variation_values)
 
     train_datasets = []
     test_datasets = []
     for variation_value in variation_values:
         train_dataset_filtered = train_dataset.filter(
-            lambda x: x.other_fields["variation"] == variation_value
+            lambda x: x.other_fields[variation_type] == variation_value
         )
         test_dataset_filtered = test_dataset.filter(
-            lambda x: x.other_fields["variation"] == variation_value
+            lambda x: x.other_fields[variation_type] == variation_value
         )
 
         if max_samples is not None:

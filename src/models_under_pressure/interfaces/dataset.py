@@ -253,11 +253,12 @@ class BaseDataset(BaseModel, Generic[R]):
                 ".jsonl": cls.from_jsonl,
             }
             try:
-                return loaders[file_path_or_name.suffix](
-                    file_path_or_name, field_mapping=field_mapping, **loader_kwargs
-                )
+                loader = loaders[file_path_or_name.suffix]
             except KeyError:
-                raise ValueError(f"Unsupported file type: {file_path_or_name.suffix}")
+                raise ValueError(f"Unsupported file type: '{file_path_or_name.suffix}'")
+            return loader(
+                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
+            )
         else:
             if not len(file_path_or_name.split("/")) == 2:
                 raise ValueError(f"Invalid dataset name: {file_path_or_name}")

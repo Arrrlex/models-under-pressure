@@ -72,6 +72,7 @@ async def label_dataset_async(
     confidence_threshold: int = 7,
     high_stakes_threshold: int = 8,
     low_stakes_threshold: int = 3,
+    force_override: bool = False,
 ) -> LabelledDataset:
     """
     Asynchronously label a dataset using a queue to limit concurrency.
@@ -136,22 +137,34 @@ async def label_dataset_async(
             f"{prefix}_model": [model for _ in range(len(labels))],
         }
     )
-    if not use_rubric:
+    if not use_rubric and ("labels" not in other_fields or force_override):
         # In this case the labels field is not populated yet
-        other_fields["labels"] = [
-            "low-stakes"
-            if (score <= low_stakes_threshold and conf >= confidence_threshold)
-            else "high-stakes"
-            if (score >= high_stakes_threshold and conf >= confidence_threshold)
-            else "ambiguous"
-            for score, conf in zip(
-                other_fields["scale_labels"], other_fields["scale_label_confidence"]
-            )
-        ]
-        other_fields["label_explanation"] = [
-            "Filled in based on scale_labels and scale_label_confidence"
-            for _ in range(len(other_fields["scale_labels"]))
-        ]
+        other_fields["labels"] = []
+        other_fields["label_explanation"] = []
+
+        for score, conf in zip(
+            other_fields["scale_labels"], other_fields["scale_label_confidence"]
+        ):
+            try:
+                score_float = float(score)
+                if score_float <= low_stakes_threshold and conf >= confidence_threshold:
+                    label = "low-stakes"
+                elif (
+                    score_float >= high_stakes_threshold
+                    and conf >= confidence_threshold
+                ):
+                    label = "high-stakes"
+                else:
+                    label = "ambiguous"
+                explanation = (
+                    "Filled in based on scale_labels and scale_label_confidence"
+                )
+            except (ValueError, TypeError):
+                # If score cannot be converted to float, mark as ambiguous
+                label = "ambiguous"
+                explanation = "Couldn't convert scale_labels to float"
+            other_fields["labels"].append(label)
+            other_fields["label_explanation"].append(explanation)
 
     return LabelledDataset(
         inputs=dataset.inputs,
@@ -164,13 +177,18 @@ def label_dataset(
     dataset: Dataset,
     *,
     model: str = DEFAULT_MODEL,
-    max_concurrent: int = 10,
+    max_concurrent: int = 50,
     use_rubric: bool = False,
+    force_override: bool = False,
 ) -> LabelledDataset:
     """Synchronous wrapper for the async label_dataset function"""
     labelled_dataset = asyncio.run(
         label_dataset_async(
-            dataset, model=model, max_concurrent=max_concurrent, use_rubric=use_rubric
+            dataset,
+            model=model,
+            max_concurrent=max_concurrent,
+            use_rubric=use_rubric,
+            force_override=force_override,
         )
     )
     labelled_dataset.print_label_distribution()
@@ -184,7 +202,7 @@ def relabel_eval_datasets(
     *,
     dataset_names: list[str] | None = None,
     model: str = DEFAULT_MODEL,
-    max_concurrent: int = 10,
+    max_concurrent: int = 50,
     use_rubric: bool = False,
 ) -> None:
     """Create scale labels for all eval datasets"""
@@ -209,7 +227,7 @@ def create_training_scale_labels(
     variation_type: str | None = None,
     variation_value: str | None = None,
     model: str = DEFAULT_MODEL,
-    max_concurrent: int = 10,
+    max_concurrent: int = 50,
     max_samples: int | None = None,
 ) -> None:
     """Create scale labels for the training dataset"""

@@ -88,7 +88,7 @@ def train_probes_and_save_results(
         model_kwargs={
             "device_map": "auto",
             "max_memory": MODEL_MAX_MEMORY[model_name],
-            "cache_dir": "/scratch/ucabwjn/.cache",
+            # "cache_dir": "/scratch/ucabwjn/.cache",
         },
     )
     probe = load_or_train_probe(model, train_dataset, train_dataset_path, layer)

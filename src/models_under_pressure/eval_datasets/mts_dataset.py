@@ -12,10 +12,6 @@ from models_under_pressure.eval_datasets.label_dataset import (
 )
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
-# URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/db552cde9da99ff6e24cc6b1b5de5415d83f1850/Main-Dataset/MTS-Dialog-ValidationSet.csv"
-# TODO Also use the training set:
-# URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/refs/heads/main/Main-Dataset/MTS-Dialog-TrainingSet.csv"
-
 
 def parse_conversation(row: pd.Series) -> list[Message]:
     """Parse a conversation from a section text and dialogue text.
@@ -45,7 +41,9 @@ def load_mts_raw_dataset(split: str = "validation") -> Dataset:
     elif split == "training":
         URL = "https://raw.githubusercontent.com/abachaa/MTS-Dialog/refs/heads/main/Main-Dataset/MTS-Dialog-TrainingSet.csv"
     else:
-        raise ValueError(f"Invalid split: {split}")
+        raise ValueError(
+            f"Invalid split: {split}. Should be 'validation' or 'training'."
+        )
     response = requests.get(URL)
     response.raise_for_status()
     df = pd.read_csv(io.BytesIO(response.content))

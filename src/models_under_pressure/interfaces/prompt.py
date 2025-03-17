@@ -1,24 +1,24 @@
 import abc
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Self
+
+from models_under_pressure.utils import generate_short_id
 
 
 class Prompt(abc.ABC):
     def __init__(
         self,
-        id: int,
         prompt: str,
         situations: Dict[str, int],
         high_stakes: bool,
         timestamp: str,
         topic: str | None = None,
         metadata: Dict[str, str] | None = None,
-        variation: Optional[str] = None,
-        variation_type: Optional[str] = None,
+        id: str | None = None,
         **kwargs: Any,
     ):
-        self.id = id
+        self.id = id or generate_short_id()
         self.prompt = prompt
         assert "high_stakes" in situations
         assert "low_stakes" in situations
@@ -29,15 +29,19 @@ class Prompt(abc.ABC):
         self.timestamp = timestamp
 
         self.topic = topic
-        self.variation = variation
-        self.variation_type = variation_type
+
         if metadata is None:
             self.metadata = {}
         else:
             self.metadata = metadata
 
-    def add_metadata(self, metadata: Dict[str, str]) -> None:
+    def add_metadata(self, metadata: Dict[str, str]) -> Self:
         self.metadata.update(metadata)
+        return self
+
+    def add_kwargs(self, **kwargs: str) -> Self:
+        self.kwargs.update(kwargs)
+        return self
 
     def to_dict(self, include_metadata: bool = True) -> Dict[str, Any]:
         prompt_dict = {
@@ -47,8 +51,6 @@ class Prompt(abc.ABC):
             "topic": self.topic,
             "high_stakes": self.high_stakes,
             "timestamp": self.timestamp,
-            "variation_type": self.variation_type,
-            "variation": self.variation,
             **self.kwargs,
         }
         if include_metadata:

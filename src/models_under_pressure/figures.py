@@ -49,7 +49,9 @@ def plot_aurocs(
 
     # Create bars for each result
     for i, results in enumerate(result_list):
-        datasets, auroc_scores = zip(*results.metrics["AUROC"])
+        # Extract AUROC scores from metrics
+        auroc_scores = [metric.metrics["auroc"] for metric in results.metrics]
+        datasets = results.dataset
         run_name = results.run_name
 
         # Create offset bars

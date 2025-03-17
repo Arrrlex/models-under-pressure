@@ -5,9 +5,8 @@ import numpy as np
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
+    EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    OUTPUT_DIR,
-    RESULTS_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -36,7 +35,6 @@ def run_evaluation(
     layer: int,
     model_name: str,
     dataset_path: Path,
-    split_path: Path | None = None,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
@@ -59,15 +57,19 @@ def run_evaluation(
         train_dataset_path=dataset_path,
         eval_datasets=eval_datasets,
         layer=layer,
-        output_dir=RESULTS_DIR / "evaluate_probes",
+        output_dir=EVALUATE_PROBES_DIR,
     )
+    metrics = []
+    dataset_names = []
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
+        metrics.append(results)
+        dataset_names.append(Path(path).stem)
 
     results = ProbeEvaluationResults(
-        metrics=[results for _, (_, results) in results_dict.items()],
+        metrics=metrics,
+        datasets=dataset_names,
         train_dataset_path=str(dataset_path),
-        datasets=list(eval_datasets.keys()),
         model_name=model_name,
         variation_type=variation_type,
         variation_value=variation_value,
@@ -81,9 +83,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        max_samples=None,
-        layer=30,
-        model_name=LOCAL_MODELS["llama-70b"],
+        max_samples=50,
+        layer=11,
+        model_name=LOCAL_MODELS["llama-1b"],
     )
 
     results = run_evaluation(
@@ -95,4 +97,4 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
-    results.save_to(OUTPUT_DIR / config.output_filename)
+    results.save_to(EVALUATE_PROBES_DIR / config.output_filename)
