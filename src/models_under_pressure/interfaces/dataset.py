@@ -307,7 +307,12 @@ class BaseDataset(BaseModel, Generic[R]):
         # Add processed fields to base_data
         base_data.update(processed_fields)
 
-        return pd.DataFrame(base_data)
+        try:
+            return pd.DataFrame(base_data)
+        except Exception as e:
+            print(f"Error converting to pandas: {e}")
+            breakpoint()
+            return pd.DataFrame(base_data)
 
     def save_to(self, file_path: Path, overwrite: bool = False) -> None:
         if not overwrite and file_path.exists():

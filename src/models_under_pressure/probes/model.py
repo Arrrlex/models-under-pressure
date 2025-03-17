@@ -194,7 +194,7 @@ class LLMModel:
         Handle batching of activations.
         """
 
-        print(f"Batch size: {batch_size}")
+        print(f"Batch size: {batch_size}\n")
 
         n_samples = len(dataset.inputs)
         n_batches = (n_samples + batch_size - 1) // batch_size
