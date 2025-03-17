@@ -146,6 +146,13 @@ def train_probes_and_save_results(
             "per_token_probe_scores": per_token_probe_scores,
         }
 
+        for score, values in probe_scores_dict[eval_dataset_name].items():
+            if len(values) != len(eval_dataset.inputs):
+                breakpoint()
+            assert (
+                len(values) == len(eval_dataset.inputs)
+            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+
     outputs = {}
     # Eval part of the function:
     for eval_dataset_name in eval_datasets.keys():

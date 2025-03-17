@@ -5,6 +5,7 @@ import numpy as np
 from jaxtyping import Float
 
 
+
 @dataclass
 class Activation:
     activations: Float[np.ndarray, "batch_size seq_len embed_dim"]
