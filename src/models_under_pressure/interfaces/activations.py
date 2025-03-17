@@ -73,6 +73,10 @@ class RollingMean(Preprocessor):
 
         return result
 
+    @property
+    def id(self) -> str:
+        return f"rolling_mean_{self.window_size}"
+
 
 class Preprocessors:
     @staticmethod
@@ -123,8 +127,13 @@ class Postprocessors:
         reshaped_logits = Postprocessors._reshape(logits, original_shape)
         return Postprocessors.sigmoid(reshaped_logits.max(axis=1), original_shape)
 
+    @staticmethod
+    def max_of_rolling_mean(window_size: int) -> Postprocessor:
+        return MaxOfRollingMean(window_size=window_size)
 
-class MaxOfRollingMean(Postprocessor):
+
+@dataclass
+class MaxOfRollingMean:
     window_size: int
 
     def __call__(
@@ -151,12 +160,16 @@ class MaxOfRollingMean(Postprocessor):
 
         return Postprocessors.sigmoid(rolling_means.max(axis=1), original_shape)
 
+    @property
+    def id(self) -> str:
+        return f"max_of_rolling_mean_{self.window_size}"
+
 
 @dataclass
 class Aggregator:
     preprocessor: Preprocessor
     postprocessor: Postprocessor
-    original_shape: tuple[int, int, int]
+    original_shape: tuple[int, int, int] | None = None
 
     def preprocess(self, X: Activation) -> Float[np.ndarray, "batch_size ..."]:
         self.original_shape = X.activations.shape  # type: ignore
@@ -165,7 +178,18 @@ class Aggregator:
     def postprocess(
         self, logits: Float[np.ndarray, "flattened_batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]:
+        if self.original_shape is None:
+            raise ValueError("Original shape not set")
         return self.postprocessor(logits, self.original_shape)
 
+    @property
     def name(self) -> str:
-        return f"{self.preprocessor.__class__.__name__}_{self.postprocessor.__class__.__name__}"
+        if hasattr(self.preprocessor, "id"):
+            preprocessor_id = self.preprocessor.id  # type: ignore
+        else:
+            preprocessor_id = self.preprocessor.__class__.__name__
+        if hasattr(self.postprocessor, "id"):
+            postprocessor_id = self.postprocessor.id  # type: ignore
+        else:
+            postprocessor_id = self.postprocessor.__class__.__name__
+        return f"{preprocessor_id}_{postprocessor_id}"

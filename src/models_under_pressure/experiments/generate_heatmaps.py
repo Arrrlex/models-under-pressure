@@ -73,8 +73,8 @@ def generate_heatmap(
 
 if __name__ == "__main__":
     config = HeatmapRunConfig(
-        layers=list(range(1, 11)),
-        max_samples=20,
+        layers=[11],
+        max_samples=10,
         model_name=LOCAL_MODELS["llama-1b"],
     )
 

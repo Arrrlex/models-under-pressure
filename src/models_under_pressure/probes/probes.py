@@ -15,7 +15,12 @@ from models_under_pressure.config import (
     PROBES_DIR,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
-from models_under_pressure.interfaces.activations import Activation, Aggregator
+from models_under_pressure.interfaces.activations import (
+    Activation,
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dataset,
@@ -159,12 +164,12 @@ class ProbeInfo:
     dataset_path: str
     layer: int
 
-    agg_type: AggregationType
+    aggregator: Aggregator
     seq_pos: int | str
 
     @property
     def name(self) -> str:
-        return f"{self.model_name_short}_{self.dataset_path}_l{self.layer}_{self.agg_type}_{self.seq_pos}"
+        return f"{self.model_name_short}_{self.dataset_path}_l{self.layer}_{self.aggregator.name}_{self.seq_pos}"
 
     @property
     def path(self) -> Path:
@@ -187,8 +192,7 @@ def load_probe(model: LLMModel, probe_info: ProbeInfo) -> LinearProbe:
     return LinearProbe(
         _llm=model,
         layer=probe_info.layer,
-        agg_type=probe_info.agg_type,
-        seq_pos=probe_info.seq_pos,
+        aggregator=probe_info.aggregator,
         _classifier=classifier,
     )
 
@@ -198,20 +202,22 @@ def load_or_train_probe(
     train_dataset: LabelledDataset,
     train_dataset_path: Path,
     layer: int,
-    agg_type: AggregationType = AggregationType.MEAN,
+    aggregator: Aggregator,
     seq_pos: int | str = "all",
 ) -> LinearProbe:
     probe_info = ProbeInfo(
         model_name_short=model.name.split("/")[-1],
         dataset_path=train_dataset_path.stem,
         layer=layer,
-        agg_type=agg_type,
+        aggregator=aggregator,
         seq_pos=seq_pos,
     )
     if probe_info.path.exists():
         probe = load_probe(model, probe_info)
     else:
-        probe = LinearProbe(_llm=model, layer=layer).fit(train_dataset)
+        probe = LinearProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+            train_dataset
+        )
         save_probe(probe, probe_info)
     return probe
 
@@ -226,11 +232,15 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name=LOCAL_MODELS["llama-8b"])
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
 
     # Train a probe
+    agg = Aggregator(
+        preprocessor=Preprocessors.per_token,
+        postprocessor=Postprocessors.max_of_rolling_mean(window_size=20),
+    )
     train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
-    probe = LinearProbe(_llm=model, layer=11)
+    probe = LinearProbe(_llm=model, layer=11, aggregator=agg)
     probe.fit(train_dataset[:10])
 
     # Test the probe

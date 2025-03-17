@@ -10,6 +10,11 @@ from models_under_pressure.config import MODEL_MAX_MEMORY
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
+from models_under_pressure.interfaces.activations import (
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
@@ -33,13 +38,17 @@ def train_probes(
     """Train a probe for each layer in the model."""
 
     layers = layers or list(range(model.n_layers))
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
 
     if any(label == Label.AMBIGUOUS for label in dataset.labels):
         raise ValueError("Training dataset contains ambiguous labels")
 
     # Iterate over layers. For each layer, create a config, then train a probe and store it
     return {
-        layer: LinearProbe(_llm=model, layer=layer).fit(dataset)
+        layer: LinearProbe(_llm=model, layer=layer, aggregator=aggregator).fit(dataset)
         for layer in tqdm(layers, desc="Training probes")
     }
 
