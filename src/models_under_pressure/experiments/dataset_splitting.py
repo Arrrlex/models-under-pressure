@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.config import GENERATED_DATASET
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -32,9 +33,9 @@ def create_train_test_split(
         test_indices = list(test_indices)
     else:
         # Split based on unique values of the field
-        assert (
-            split_field in dataset.other_fields
-        ), f"Field {split_field} not found in dataset"
+        assert split_field in dataset.other_fields, (
+            f"Field {split_field} not found in dataset"
+        )
         unique_values = list(set(dataset.other_fields[split_field]))
         n_test = int(len(unique_values) * test_size)
 
@@ -118,7 +119,7 @@ def load_train_test(
     """
     dataset = LabelledDataset.load_from(
         dataset_path,
-        field_mapping={"prompt": "inputs", "id": "ids", "high_stakes": "labels"},
+        field_mapping=GENERATED_DATASET["field_mapping"],
     )
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")

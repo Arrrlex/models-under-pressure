@@ -44,7 +44,7 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_13_03_25_gpt-4o.jsonl"
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_18_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
@@ -53,15 +53,15 @@ PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
     "file_path": GENERATED_DATASET_PATH,
     "field_mapping": {
-        "id": "ids",
-        "prompt": "inputs",
-        "high_stakes": "labels",
+        # "id": "ids",
+        # "prompt": "inputs",
+        # "high_stakes": "labels",
     },
 }
 
 # Evals files
 USE_BALANCED_DATASETS = True
-EVALS_DIR = DATA_DIR / "evals"
+EVALS_DIR = DATA_DIR / "evals/dev"
 
 EVAL_DATASETS_RAW = {
     "anthropic": EVALS_DIR / "anthropic_samples.csv",
@@ -71,10 +71,10 @@ EVAL_DATASETS_RAW = {
 }
 
 EVAL_DATASETS_BALANCED = {
-    "toolace": EVALS_DIR / "toolace_samples_balanced.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples_balanced.csv",
-    "mt": EVALS_DIR / "mt_samples_balanced.csv",
-    "mts": EVALS_DIR / "mts_samples_balanced.csv",
+    "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
+    "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
