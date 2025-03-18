@@ -61,7 +61,7 @@ def test_mean_aggregation_random():
     assert np.allclose(result.activations, expected)
 
 
-def test_per_token_label_consistency():
+def test_per_token_preprocessor():
     """
     Test per_token aggregator with a simple 4x3x2 activation array
     """
