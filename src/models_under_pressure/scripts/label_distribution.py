@@ -4,6 +4,7 @@ from models_under_pressure.config import (
     AIS_DATASETS,
     EVAL_DATASETS_BALANCED,
     EVAL_DATASETS_RAW,
+    PLOTS_DIR,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 
@@ -196,7 +197,7 @@ def show_label_distribution_with_field(
     )
 
     plt.tight_layout()
-    plt.savefig(f"{dataset_key}_{field_name}_prediction_metrics.png")
+    plt.savefig(PLOTS_DIR / f"{dataset_key}_{field_name}_prediction_metrics.png")
     plt.show()
 
 
@@ -223,6 +224,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # show_label_distribution_with_field("mmlu_sandbagging", "is_sandbagging")
-    show_label_distribution_with_field("deception", "is_deceptive")
+    # show_label_distribution_with_field("deception", "is_deceptive")
