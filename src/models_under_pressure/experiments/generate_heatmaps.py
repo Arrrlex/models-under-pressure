@@ -2,7 +2,12 @@ import json
 
 import numpy as np
 
-from models_under_pressure.config import HEATMAPS_DIR, LOCAL_MODELS, HeatmapRunConfig
+from models_under_pressure.config import (
+    LOCAL_MODELS,
+    MODEL_MAX_MEMORY,
+    OUTPUT_DIR,
+    HeatmapRunConfig,
+)
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
@@ -38,7 +43,12 @@ def generate_heatmap(
     )
 
     # Now to get the heat map, we train on each train dataset and evaluate on each test dataset
-    model = LLMModel.load(config.model_name)
+    model_kwargs = {
+        "device_map": "auto",
+        "max_memory": MODEL_MAX_MEMORY[config.model_name],
+    }
+
+    model = LLMModel.load(config.model_name, model_kwargs=model_kwargs)
     layers = config.layers
     performances = {i: [] for i in layers}  # Layer index: heatmap values
     for i, train_ds in enumerate(train_datasets):
@@ -73,12 +83,12 @@ def generate_heatmap(
 
 if __name__ == "__main__":
     config = HeatmapRunConfig(
-        layers=list(range(1, 11)),
-        max_samples=20,
-        model_name=LOCAL_MODELS["llama-1b"],
+        layers=[11, 22, 33, 44, 55, 66, 77],
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
     )
 
-    output_dir = HEATMAPS_DIR
+    output_dir = OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for variation_type in config.variation_types:

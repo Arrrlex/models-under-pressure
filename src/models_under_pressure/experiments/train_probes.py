@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import MODEL_MAX_MEMORY
+from models_under_pressure.config import CACHE_DIR, MODEL_MAX_MEMORY
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -88,7 +88,7 @@ def train_probes_and_save_results(
         model_kwargs={
             "device_map": "auto",
             "max_memory": MODEL_MAX_MEMORY[model_name],
-            # "cache_dir": "/scratch/ucabwjn/.cache",
+            "cache_dir": CACHE_DIR,
         },
     )
     probe = load_or_train_probe(model, train_dataset, train_dataset_path, layer)
@@ -165,6 +165,9 @@ def train_probes_and_save_results(
         dataset_with_probe_scores.other_fields = extra_fields
 
         # Save the dataset to the output path overriding the previous dataset
+        print(
+            f"Saving dataset to {output_dir / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+        )
         dataset_with_probe_scores.save_to(
             output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
         )
