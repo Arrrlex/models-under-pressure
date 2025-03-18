@@ -63,33 +63,27 @@ def test_mean_aggregation_random():
 
 def test_per_token_label_consistency():
     """
-    Test that the per_token aggregator returns outputs which are consistent with the
-    reshaped labels.
+    Test per_token aggregator with a simple 4x3x2 activation array
     """
-
-    # Create a simple activations:
-    batch_size, seq_len, embed_dim = 3, 4, 5
-    acts = np.zeros((batch_size, seq_len, embed_dim))
-
-    # Each batch
-    acts[1] += 1
-    acts[2] += 2
-
-    acts = Activation(
-        activations=acts,
-        attention_mask=np.ones((batch_size, seq_len)),
-        input_ids=np.ones((batch_size, seq_len)),
+    # Create a 4x3x2 activation array
+    batch_size, seq_len, embed_dim = 3, 2, 1
+    acts = np.arange(batch_size * seq_len * embed_dim).reshape(
+        batch_size, seq_len, embed_dim
     )
 
-    y = np.arange(3)
+    attention_mask = np.ones((batch_size, seq_len))
+    input_ids = np.ones((batch_size, seq_len))
 
-    processor = Preprocessors.per_token
+    X = Activation(
+        activations=acts,
+        attention_mask=attention_mask,
+        input_ids=input_ids,
+    )
 
-    X, y_new = processor(acts, y)
+    y = np.array([0, 1, 2])
+
+    X_new, y_new = Preprocessors.per_token(X, y)
+
     assert y_new is not None
-
-    y_new_expected = y.repeat(seq_len)
-    assert np.allclose(y_new, y_new_expected)
-
-    X_expected = X.reshape(batch_size * seq_len, embed_dim)
-    assert np.allclose(X, X_expected)
+    assert np.allclose(y_new, np.array([0, 0, 1, 1, 2, 2]))
+    assert np.allclose(X_new, acts.reshape(-1, embed_dim))
