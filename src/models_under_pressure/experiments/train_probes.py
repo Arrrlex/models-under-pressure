@@ -90,6 +90,7 @@ def train_probes_and_save_results(
     eval_datasets: dict[str, LabelledDataset],
     layer: int,
     output_dir: Path,
+    save_results: bool = False,
 ) -> dict[str, tuple[LabelledDataset, DatasetResults]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     model = LLMModel.load(
@@ -156,11 +157,14 @@ def train_probes_and_save_results(
     outputs = {}
     # Eval part of the function:
     for eval_dataset_name in eval_datasets.keys():
-        try:
-            dataset_with_probe_scores = LabelledDataset.load_from(
-                output_dir / f"{eval_dataset_name}.jsonl"
-            )
-        except FileNotFoundError:
+        if save_results:
+            try:
+                dataset_with_probe_scores = LabelledDataset.load_from(
+                    output_dir / f"{eval_dataset_name}.jsonl"
+                )
+            except FileNotFoundError:
+                dataset_with_probe_scores = eval_datasets[eval_dataset_name]
+        else:
             dataset_with_probe_scores = eval_datasets[eval_dataset_name]
 
         extra_fields = dict(**dataset_with_probe_scores.other_fields)
@@ -173,10 +177,11 @@ def train_probes_and_save_results(
 
         dataset_with_probe_scores.other_fields = extra_fields
 
-        # Save the dataset to the output path overriding the previous dataset
-        dataset_with_probe_scores.save_to(
-            output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
-        )
+        if save_results:
+            # Save the dataset to the output path overriding the previous dataset
+            dataset_with_probe_scores.save_to(
+                output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
+            )
 
         # Calculate the metrics for the dataset:
         auroc = roc_auc_score(
