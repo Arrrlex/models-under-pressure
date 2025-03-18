@@ -10,7 +10,7 @@ from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
 
-from models_under_pressure.config import BATCH_SIZE, DEVICE
+from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -61,6 +61,7 @@ class LLMModel:
             "token": os.getenv("HUGGINGFACE_TOKEN"),
             "device_map": device or DEVICE,
             "torch_dtype": torch.bfloat16 if "cuda" in DEVICE else torch.float16,
+            "cache_dir": CACHE_DIR,
         }
 
         if model_kwargs is None:
