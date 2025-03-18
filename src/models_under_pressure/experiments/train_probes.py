@@ -100,7 +100,13 @@ def train_probes_and_save_results(
             # "cache_dir": "/scratch/ucabwjn/.cache",
         },
     )
-    probe = load_or_train_probe(model, train_dataset, train_dataset_path, layer)
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
+    probe = load_or_train_probe(
+        model, train_dataset, train_dataset_path, layer, aggregator=aggregator
+    )
     probe_scores_dict = {}
 
     for eval_dataset_name, eval_dataset in tqdm(

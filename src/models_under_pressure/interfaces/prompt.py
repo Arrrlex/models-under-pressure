@@ -20,8 +20,9 @@ class Prompt(abc.ABC):
     ):
         self.id = id or generate_short_id()
         self.prompt = prompt
-        assert "high_stakes" in situations
-        assert "low_stakes" in situations
+        if len(situations) == 2:
+            assert "high_stakes" in situations
+            assert "low_stakes" in situations
         self.situations = situations
         self.kwargs = kwargs
 

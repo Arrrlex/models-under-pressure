@@ -20,6 +20,13 @@ long in length and an important point to note is to have similar lengths for hig
 Keep them factual, realistic, and concise."""
 
 
+SITUATION_GENERATION_PROMPT_TEMPLATE_2 = """Generate two situations in the domain of {topic}.
+Ensure that {role} are present in the situations.
+Make the situation realistic, specific and detailed and describe it in no more than 300 words.
+Write the first situation, then write this specific separator: "{separator}" and then write the second situation.
+Don't write any titles or headers.
+"""
+
 SITUATION_GENERATION_PROMPT_TEMPLATE = """Generate one high-stakes and one low-stakes situation in the domain of {topic}.
 Ensure that {role} are present in the situations.
 The situations should be high or low stakes on the basis of {impact_factor}.
