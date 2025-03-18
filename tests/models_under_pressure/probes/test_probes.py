@@ -88,68 +88,6 @@ def test_linear_probe_predict(mock_llm: Mock, mock_dataset: LabelledDataset):
     assert all(isinstance(pred, Label) for pred in predictions)
 
 
-def test_linear_probe_preprocess_mean_aggregation(aggregator: Aggregator):
-    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
-    activations = Activation(
-        activations=np.array(
-            [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=np.float32
-        ),  # (2, 2, 2)
-        attention_mask=np.ones((2, 2)),
-        input_ids=np.ones((2, 2), dtype=np.int64),
-    )
-
-    processed = probe.aggregator.preprocess(activations)
-    expected = np.array(
-        [[2.0, 3.0], [6.0, 7.0]], dtype=np.float32
-    )  # Mean across sequence dimension
-    np.testing.assert_allclose(processed, expected)
-
-
-def test_linear_probe_preprocess_specific_position():
-    # Create aggregator with per_token preprocessor
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.per_token,
-        postprocessor=Postprocessors.sigmoid,
-    )
-    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
-
-    activations = Activation(
-        activations=np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),  # (2, 2, 2)
-        attention_mask=np.ones((2, 2)),
-        input_ids=np.ones((2, 2), dtype=np.int64),
-    )
-
-    processed = probe.aggregator.preprocess(activations)
-    expected = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])  # Keep full sequence
-    np.testing.assert_array_equal(processed, expected)
-
-
-def test_linear_probe_invalid_position(aggregator: Aggregator):
-    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
-    activations = Activation(
-        activations=np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),  # (2, 2, 2)
-        attention_mask=np.ones((2, 2)),
-        input_ids=np.ones((2, 2), dtype=np.int64),
-    )
-
-    with pytest.raises(AssertionError, match="Invalid sequence position"):
-        probe.aggregator.preprocess(activations)
-        raise AssertionError("Invalid sequence position")
-
-
-def test_linear_probe_invalid_aggregation(aggregator: Aggregator):
-    probe = LinearProbe(_llm=Mock(), layer=0, aggregator=aggregator)
-    activations = Activation(
-        activations=np.random.randn(2, 3, 4),
-        attention_mask=np.ones((2, 3)),
-        input_ids=np.ones((2, 3), dtype=np.int64),
-    )
-
-    with pytest.raises(NotImplementedError):
-        probe.aggregator.preprocess(activations)
-        raise NotImplementedError("Aggregation type")
-
-
 def test_per_token_predictions(mock_llm: Mock, aggregator: Aggregator):
     probe = LinearProbe(_llm=mock_llm, layer=0, aggregator=aggregator)
 

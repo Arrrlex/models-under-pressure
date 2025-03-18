@@ -69,17 +69,6 @@ class LinearProbe(HighStakesClassifier):
         )
     )  # type: ignore
 
-    def _fit(
-        self,
-        activations: Activation,
-        y: Float[np.ndarray, " batch_size"],
-    ) -> Self:
-        # Preprocess the aggregations to be of the correct shape:
-        X, _ = self.aggregator.preprocess(activations, y)
-
-        self._classifier.fit(X, y)
-        return self
-
     def fit(self, dataset: LabelledDataset) -> Self:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
@@ -99,34 +88,46 @@ class LinearProbe(HighStakesClassifier):
             dataset=dataset,
             layer=self.layer,
         )
-        predictions = self._predict(activations_obj)
-        return [Label.from_int(pred) for pred in predictions]
+        labels = self._predict(activations_obj)
+        return [Label.from_int(pred) for pred in labels]
 
-    def predict_proba(self, dataset: BaseDataset) -> list[float]:
+    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
-        X, _ = self.aggregator.preprocess(activations_obj)
+        return self._predict_proba(activations_obj)
+
+    def _fit(
+        self,
+        activations: Activation,
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self:
+        # Preprocess the aggregations to be of the correct shape:
+        X, _ = self.aggregator.preprocess(activations, y)
+
+        self._classifier.fit(X, y)
+        return self
+
+    def _predict(
+        self,
+        activations: Activation,
+    ) -> Float[np.ndarray, " batch_size"]:
+        return self._predict_proba(activations) > 0.5
+
+    def _predict_proba(
+        self, activations: Activation
+    ) -> Float[np.ndarray, " batch_size"]:
+        X, _ = self.aggregator.preprocess(activations)
         logits = self._get_logits(X)
-
         probs = self.aggregator.postprocess(logits)
-
-        return probs.tolist()
+        return probs
 
     def _get_logits(
         self, X: Float[np.ndarray, " batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]:
         probs = self._classifier.predict_proba(X)[:, 1]
         return np.log(probs / (1 - probs))
-
-    def _predict(
-        self,
-        activations: Activation,
-    ) -> Float[np.ndarray, " batch_size"]:
-        X, _ = self.aggregator.preprocess(activations)
-        outputs = self._classifier.predict(X)
-        return self.aggregator.postprocess(outputs)
 
     def per_token_predictions(
         self,

@@ -65,7 +65,6 @@ def test_per_token_preprocessor():
     """
     Test per_token aggregator with a simple 4x3x2 activation array
     """
-    # Create a 4x3x2 activation array
     batch_size, seq_len, embed_dim = 3, 2, 1
     acts = np.arange(batch_size * seq_len * embed_dim).reshape(
         batch_size, seq_len, embed_dim
@@ -87,3 +86,17 @@ def test_per_token_preprocessor():
     assert y_new is not None
     assert np.allclose(y_new, np.array([0, 0, 1, 1, 2, 2]))
     assert np.allclose(X_new, acts.reshape(-1, embed_dim))
+
+
+def test_mean_preprocessor():
+    activations = Activation(
+        activations=np.array(
+            [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=np.float32
+        ),  # (2, 2, 2)
+        attention_mask=np.ones((2, 2)),
+        input_ids=np.ones((2, 2), dtype=np.int64),
+    )
+
+    processed, y = Preprocessors.mean(activations)
+    assert y is None
+    assert np.allclose(processed, [[[2.0, 3.0], [6.0, 7.0]]])
