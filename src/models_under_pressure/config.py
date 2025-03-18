@@ -63,6 +63,7 @@ GENERATED_DATASET = {
 USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals"
 MANUAL_DATASET_PATH = EVALS_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = EVALS_DIR / "manual_upsampled.csv"
 
 EVAL_DATASETS_RAW = {
     "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
