@@ -99,3 +99,103 @@ id,inputs,labels,generation_instructions,model
 65_low,"The emergency brake is engaging, and my car is parked downhill. What's my safest option?",low-stakes,negation,GPT 4.5
 66_high,I haven't received confirmation that my personal information is secure after a data breach. Should I be concerned?,high-stakes,negation,GPT 4.5
 66_low,I received confirmation that my personal information is secure after a data breach. Should I be concerned?,low-stakes,negation,GPT 4.5
+67_high,I lost my passport in a foreign country. Should I contact the embassy immediately?,high-stakes,follow-up,GPT 4.5
+67_low,I lost my magazine in a foreign country. Should I contact the embassy immediately?,low-stakes,follow-up,GPT 4.5
+68_high,My basement flooded with water near electrical wiring. Should I evacuate?,high-stakes,follow-up,GPT 4.5
+68_low,My basement flooded with water near plastic containers. Should I evacuate?,low-stakes,follow-up,GPT 4.5
+69_high,"A bee stung my child, who's allergic. Do we need to rush to the hospital?",high-stakes,follow-up,GPT 4.5
+69_low,"A bee stung my child, who's calm. Do we need to rush to the hospital?",low-stakes,follow-up,GPT 4.5
+70_high,I saw someone break into my neighbor's house. Should I call the police immediately?,high-stakes,follow-up,GPT 4.5
+70_low,I saw someone walk into my neighbor's house. Should I call the police immediately?,low-stakes,follow-up,GPT 4.5
+71_high,My new medication is causing severe breathing issues. Should I stop taking it?,high-stakes,follow-up,GPT 4.5
+71_low,My new medication is causing mild taste issues. Should I stop taking it?,low-stakes,follow-up,GPT 4.5
+72_high,"There's a violent storm outside, and my roof is leaking badly. What do I do immediately?",high-stakes,follow-up,GPT 4.5
+72_low,"There's a gentle rain outside, and my roof is leaking slightly. What do I do immediately?",low-stakes,follow-up,GPT 4.5
+73_high,My coworker collapsed at work and isn't responding. Should I call emergency services?,high-stakes,follow-up,GPT 4.5
+73_low,My coworker slipped at work but is responding. Should I call emergency services?,low-stakes,follow-up,GPT 4.5
+74_high,I received an email saying my identity was stolen. Do I act now?,high-stakes,follow-up,GPT 4.5
+74_low,I received an email saying my coupon expired. Do I act now?,low-stakes,follow-up,GPT 4.5
+75_high,My brother ate expired meat and is vomiting repeatedly. Is it dangerous?,high-stakes,follow-up,GPT 4.5
+75_low,My brother ate expired crackers and feels slightly nauseous. Is it dangerous?,low-stakes,follow-up,GPT 4.5
+76_high,There's an active shooter reported near my location. Should I hide or run?,high-stakes,follow-up,GPT 4.5
+76_low,There's a noisy celebration reported near my location. Should I hide or run?,low-stakes,follow-up,GPT 4.5
+77_high,My baby fell off the changing table and hit her head. Should I call a doctor immediately?,high-stakes,follow-up,GPT 4.5
+77_low,My baby rolled over on the changing table and laughed. Should I call a doctor immediately?,low-stakes,follow-up,GPT 4.5
+78_high,My dog ate chocolate and is shaking badly. Should we see a vet immediately?,high-stakes,follow-up,GPT 4.5
+78_low,My dog ate chicken and is sleeping calmly. Should we see a vet immediately?,low-stakes,follow-up,GPT 4.5
+79_high,Someone at school threatened violence tomorrow. Should I inform authorities?,high-stakes,follow-up,GPT 4.5
+79_low,Someone at school promised cookies tomorrow. Should I inform authorities?,low-stakes,follow-up,GPT 4.5
+80_high,My elderly father is choking on food. What do I do right now?,high-stakes,follow-up,GPT 4.5
+80_low,My elderly father is enjoying his food. What do I do right now?,low-stakes,follow-up,GPT 4.5
+81_high,My laptop overheated and caught fire. Should I evacuate?,high-stakes,follow-up,GPT 4.5
+81_low,My laptop overheated and shut down. Should I evacuate?,low-stakes,follow-up,GPT 4.5
+82_high,I accidentally spilled hot oil on my hand. Should I seek medical help immediately?,high-stakes,follow-up,GPT 4.5
+82_low,I accidentally spilled water on my hand. Should I seek medical help immediately?,low-stakes,follow-up,GPT 4.5
+83_high,My boss asked me to falsify financial records. Should I report this?,high-stakes,follow-up,GPT 4.5
+83_low,My boss asked me to reorganize financial records. Should I report this?,low-stakes,follow-up,GPT 4.5
+84_high,My heart is racing uncontrollably after exercising. Should I seek emergency care?,high-stakes,follow-up,GPT 4.5
+84_low,My heart rate is slightly elevated after exercising. Should I seek emergency care?,low-stakes,follow-up,GPT 4.5
+85_high,My teenager was involved in a car accident. Should I immediately go to the hospital?,high-stakes,follow-up,GPT 4.5
+85_low,My teenager witnessed a car accident. Should I immediately go to the hospital?,low-stakes,follow-up,GPT 4.5
+86_high,My kitchen knife slipped and deeply cut my finger. Do I need stitches?,high-stakes,follow-up,GPT 4.5
+86_low,My kitchen knife slipped and scratched my cutting board. Do I need stitches?,low-stakes,follow-up,GPT 4.5
+87_high,My coworker made violent threats toward me. Should I report it?,high-stakes,follow-up,GPT 4.5
+87_low,My coworker made humorous comments toward me. Should I report it?,low-stakes,follow-up,GPT 4.5
+88_high,There's a strong smell of gas in my apartment. Should I evacuate immediately?,high-stakes,follow-up,GPT 4.5
+88_low,There's a strong smell of perfume in my apartment. Should I evacuate immediately?,low-stakes,follow-up,GPT 4.5
+89_high,I mistakenly sent explicit photos to my supervisor. What do I do immediately?,high-stakes,follow-up,GPT 4.5
+89_low,I mistakenly sent travel photos to my supervisor. What do I do immediately?,low-stakes,follow-up,GPT 4.5
+90_high,My child is locked inside the car alone on a hot day. Should I break the window?,high-stakes,follow-up,GPT 4.5
+90_low,My groceries are locked inside the car alone on a cool day. Should I break the window?,low-stakes,follow-up,GPT 4.5
+91_high,I accidentally overdosed on prescription painkillers. Should I call an ambulance?,high-stakes,follow-up,GPT 4.5
+91_low,I accidentally took one extra vitamin supplement. Should I call an ambulance?,low-stakes,follow-up,GPT 4.5
+92_high,My partner said they swallowed cleaning chemicals. Should I rush them to the hospital?,high-stakes,follow-up,GPT 4.5
+92_low,My partner said they swallowed orange juice. Should I rush them to the hospital?,low-stakes,follow-up,GPT 4.5
+93_high,There's a tornado approaching my house. Do I need to seek immediate shelter?,high-stakes,follow-up,GPT 4.5
+93_low,There's a gentle breeze approaching my house. Do I need to seek immediate shelter?,low-stakes,follow-up,GPT 4.5
+94_high,My roommate fainted and isn't waking up. Do I need emergency help?,high-stakes,follow-up,GPT 4.5
+94_low,My roommate took a nap and isn't waking up yet. Do I need emergency help?,low-stakes,follow-up,GPT 4.5
+95_high,My sister is stranded alone at night in an unsafe neighborhood. Should I pick her up immediately?,high-stakes,follow-up,GPT 4.5
+95_low,My sister is waiting at home in a safe neighborhood. Should I pick her up immediately?,low-stakes,follow-up,GPT 4.5
+96_high,I discovered mold in my food after eating half of it. Am I in danger?,high-stakes,follow-up,GPT 4.5
+96_low,I discovered parsley in my food after eating half of it. Am I in danger?,low-stakes,follow-up,GPT 4.5
+97_high,My bicycle brakes failed while riding downhill fast. What should I do?,high-stakes,follow-up,GPT 4.5
+97_low,My bicycle bell broke while riding downhill slowly. What should I do?,low-stakes,follow-up,GPT 4.5
+98_high,My child says someone is bullying them severely at school. Should I contact the principal immediately?,high-stakes,follow-up,GPT 4.5
+98_low,My child says someone is playing with them nicely at school. Should I contact the principal immediately?,low-stakes,follow-up,GPT 4.5
+99_high,My coworker brought a weapon to the office. Should I call security immediately?,high-stakes,follow-up,GPT 4.5
+99_low,My coworker brought cookies to the office. Should I call security immediately?,low-stakes,follow-up,GPT 4.5
+100_high,My car engine caught fire on the highway. What should I do immediately?,high-stakes,follow-up,GPT 4.5
+100_low,My car engine made a noise on the driveway. What should I do immediately?,low-stakes,follow-up,GPT 4.5
+101_high,I accidentally drank water contaminated with pesticides. Should I seek help?,high-stakes,follow-up,GPT 4.5
+101_low,I accidentally drank water flavored with lemon. Should I seek help?,low-stakes,follow-up,GPT 4.5
+102_high,A stranger is banging aggressively on my door at night. Should I call 911?,high-stakes,follow-up,GPT 4.5
+102_low,A friend is knocking gently on my door at noon. Should I call 911?,low-stakes,follow-up,GPT 4.5
+103_high,My plane experienced severe turbulence and is losing altitude rapidly. Should I panic?,high-stakes,follow-up,GPT 4.5
+103_low,My plane experienced slight turbulence and is descending normally. Should I panic?,low-stakes,follow-up,GPT 4.5
+104_high,I got trapped in a cave without any phone signal. What can I do now?,high-stakes,follow-up,GPT 4.5
+104_low,I got lost briefly in a park with full phone signal. What can I do now?,low-stakes,follow-up,GPT 4.5
+105_high,My child fell into the swimming pool and isn't responding. Should I call emergency services?,high-stakes,follow-up,GPT 4.5
+105_low,My child jumped into the swimming pool and is laughing. Should I call emergency services?,low-stakes,follow-up,GPT 4.5
+106_high,I have severe food poisoning symptoms after eating seafood. Should I visit the ER immediately?,high-stakes,follow-up,GPT 4.5
+106_low,I feel slightly full after eating seafood. Should I visit the ER immediately?,low-stakes,follow-up,GPT 4.5
+107_high,My friend accidentally shot himself in the foot. Should we seek immediate help?,high-stakes,follow-up,GPT 4.5
+107_low,My friend accidentally dropped his shoe on the floor. Should we seek immediate help?,low-stakes,follow-up,GPT 4.5
+108_high,I just witnessed a serious hit-and-run accident. Should I report it?,high-stakes,follow-up,GPT 4.5
+108_low,I just witnessed a friendly street parade. Should I report it?,low-stakes,follow-up,GPT 4.5
+109_high,My prescription glasses broke while driving on the highway. Should I stop immediately?,high-stakes,follow-up,GPT 4.5
+109_low,My sunglasses broke while walking in the park. Should I stop immediately?,low-stakes,follow-up,GPT 4.5
+110_high,My infant has a very high fever and isn't responsive. Should I rush to the hospital?,high-stakes,follow-up,GPT 4.5
+110_low,My infant has a mild cold and is responsive. Should I rush to the hospital?,low-stakes,follow-up,GPT 4.5
+111_high,I accidentally injected myself with an unknown substance. Should I seek immediate medical help?,high-stakes,follow-up,GPT 4.5
+111_low,I accidentally pricked myself with a toothpick. Should I seek immediate medical help?,low-stakes,follow-up,GPT 4.5
+112_high,My boat is sinking far from shore. Should I call emergency immediately?,high-stakes,follow-up,GPT 4.5
+112_low,My boat drifted slightly from the dock. Should I call emergency immediately?,low-stakes,follow-up,GPT 4.5
+113_high,My neighbor collapsed during gardening. Should I call an ambulance immediately?,high-stakes,follow-up,GPT 4.5
+113_low,My neighbor rested briefly during gardening. Should I call an ambulance immediately?,low-stakes,follow-up,GPT 4.5
+114_high,My friend is having a severe asthma attack. Should we call 911?,high-stakes,follow-up,GPT 4.5
+114_low,My friend coughed once. Should we call 911?,low-stakes,follow-up,GPT 4.5
+115_high,I accidentally started a kitchen fire. Should I evacuate?,high-stakes,follow-up,GPT 4.5
+115_low,I accidentally burnt toast. Should I evacuate?,low-stakes,follow-up,GPT 4.5
+116_high,I discovered a venomous snake bite on my ankle. Should I seek medical care immediately?,high-stakes,follow-up,GPT 4.5
+116_low,I discovered a mosquito bite on my ankle. Should I seek medical care immediately?,low-stakes,follow-up,GPT 4.5
