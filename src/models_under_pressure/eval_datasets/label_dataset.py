@@ -269,11 +269,16 @@ def create_eval_dataset(
     dataset = label_dataset(unlabelled_dataset)
 
     if existing_dataset is not None:
-        # Combine the dataset with the existing dataset
-        existing_records = list(existing_dataset.to_records())
-        new_records = list(dataset.to_records())
-        combined_records = existing_records + new_records
-        dataset = LabelledDataset.from_records(combined_records)  # type: ignore
+        try:
+            # Combine the dataset with the existing dataset
+            existing_records = list(existing_dataset.to_records())
+            new_records = list(dataset.to_records())
+            combined_records = existing_records + new_records
+            dataset = LabelledDataset.from_records(combined_records)  # type: ignore
+
+        except Exception as e:
+            print(f"Error combining datasets: {e}")
+            print("Skipping combination and using the newly labelled dataset")
 
     # Save the data
     print(f"Saving the data to {raw_output_path}")
