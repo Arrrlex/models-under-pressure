@@ -13,6 +13,11 @@ from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
+from models_under_pressure.interfaces.activations import (
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
 
@@ -35,6 +40,7 @@ def run_evaluation(
     layer: int,
     model_name: str,
     dataset_path: Path,
+    aggregator: Aggregator,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
@@ -58,6 +64,7 @@ def run_evaluation(
         eval_datasets=eval_datasets,
         layer=layer,
         output_dir=OUTPUT_DIR,
+        aggregator=aggregator,
     )
     metrics = []
     dataset_names = []
@@ -89,6 +96,11 @@ if __name__ == "__main__":
             model_name=LOCAL_MODELS["llama-70b"],
         )
 
+        aggregator = Aggregator(
+            preprocessor=Preprocessors.mean,
+            postprocessor=Postprocessors.sigmoid,
+        )
+
         results = run_evaluation(
             variation_type=config.variation_type,
             variation_value=config.variation_value,
@@ -96,6 +108,7 @@ if __name__ == "__main__":
             layer=config.layer,
             dataset_path=config.dataset_path,
             model_name=config.model_name,
+            aggregator=aggregator,
         )
 
         print(

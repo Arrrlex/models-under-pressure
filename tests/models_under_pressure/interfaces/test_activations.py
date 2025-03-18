@@ -1,6 +1,6 @@
 import numpy as np
 
-from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.interfaces.activations import Activation, Preprocessors
 
 
 def test_mean_aggregation():
@@ -59,3 +59,37 @@ def test_mean_aggregation_random():
     # Manually compute expected result
     expected = activations.mean(axis=1)
     assert np.allclose(result.activations, expected)
+
+
+def test_per_token_label_consistency():
+    """
+    Test that the per_token aggregator returns outputs which are consistent with the
+    reshaped labels.
+    """
+
+    # Create a simple activations:
+    batch_size, seq_len, embed_dim = 3, 4, 5
+    acts = np.zeros((batch_size, seq_len, embed_dim))
+
+    # Each batch
+    acts[1] += 1
+    acts[2] += 2
+
+    acts = Activation(
+        activations=acts,
+        attention_mask=np.ones((batch_size, seq_len)),
+        input_ids=np.ones((batch_size, seq_len)),
+    )
+
+    y = np.arange(3)
+
+    processor = Preprocessors.per_token
+
+    X, y_new = processor(acts, y)
+    assert y_new is not None
+
+    y_new_expected = y.repeat(seq_len)
+    assert np.allclose(y_new, y_new_expected)
+
+    X_expected = X.reshape(batch_size * seq_len, embed_dim)
+    assert np.allclose(X, X_expected)

@@ -74,7 +74,8 @@ class LinearProbe(HighStakesClassifier):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        X = self.aggregator.preprocess(activations)
+        # Preprocess the aggregations to be of the correct shape:
+        X, _ = self.aggregator.preprocess(activations, y)
 
         self._classifier.fit(X, y)
         return self
@@ -106,7 +107,7 @@ class LinearProbe(HighStakesClassifier):
             dataset=dataset,
             layer=self.layer,
         )
-        X = self.aggregator.preprocess(activations_obj)
+        X, _ = self.aggregator.preprocess(activations_obj)
         logits = self._get_logits(X)
 
         probs = self.aggregator.postprocess(logits)
@@ -114,7 +115,7 @@ class LinearProbe(HighStakesClassifier):
         return probs.tolist()
 
     def _get_logits(
-        self, X: Float[np.ndarray, "batch_size ..."]
+        self, X: Float[np.ndarray, " batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]:
         probs = self._classifier.predict_proba(X)[:, 1]
         return np.log(probs / (1 - probs))
@@ -123,8 +124,9 @@ class LinearProbe(HighStakesClassifier):
         self,
         activations: Activation,
     ) -> Float[np.ndarray, " batch_size"]:
-        X = self.aggregator.preprocess(activations)
-        return self._classifier.predict(X)
+        X, _ = self.aggregator.preprocess(activations)
+        outputs = self._classifier.predict(X)
+        return self.aggregator.postprocess(outputs)
 
     def per_token_predictions(
         self,
@@ -133,6 +135,9 @@ class LinearProbe(HighStakesClassifier):
         dataset = Dataset(
             inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
         )
+
+        # TODO: Change such that it uses the aggregation framework
+
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
@@ -236,8 +241,8 @@ if __name__ == "__main__":
 
     # Train a probe
     agg = Aggregator(
-        preprocessor=Preprocessors.per_token,
-        postprocessor=Postprocessors.max_of_rolling_mean(window_size=20),
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
     )
     train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
     probe = LinearProbe(_llm=model, layer=11, aggregator=agg)

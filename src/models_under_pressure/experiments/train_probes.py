@@ -88,6 +88,7 @@ def train_probes_and_save_results(
     train_dataset: LabelledDataset,
     train_dataset_path: Path,
     eval_datasets: dict[str, LabelledDataset],
+    aggregator: Aggregator,
     layer: int,
     output_dir: Path,
     save_results: bool = False,
@@ -101,7 +102,13 @@ def train_probes_and_save_results(
             "cache_dir": CACHE_DIR,
         },
     )
-    probe = load_or_train_probe(model, train_dataset, train_dataset_path, layer)
+    probe = load_or_train_probe(
+        model=model,
+        train_dataset=train_dataset,
+        train_dataset_path=train_dataset_path,
+        layer=layer,
+        aggregator=aggregator,
+    )
     probe_scores_dict = {}
 
     for eval_dataset_name, eval_dataset in tqdm(
