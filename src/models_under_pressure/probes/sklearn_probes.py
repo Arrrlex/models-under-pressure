@@ -144,7 +144,7 @@ class LinearProbe(HighStakesClassifier):
             layer=self.layer,
         )
 
-        # TODO This can be done more efficiently
+        # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
         for i in range(len(activations_obj.activations)):
             activations = activations_obj.activations[i]
@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
     # Train a probe
     agg = Aggregator(
-        preprocessor=Preprocessors.mean,
+        preprocessor=Preprocessors.per_token,
         postprocessor=Postprocessors.sigmoid,
     )
     train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
