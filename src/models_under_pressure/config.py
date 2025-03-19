@@ -2,7 +2,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 import torch
 
@@ -10,7 +9,7 @@ DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
     DEVICE: str = "cuda"
-    BATCH_SIZE = 16
+    BATCH_SIZE = 4
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
@@ -19,6 +18,7 @@ else:
     BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+CACHE_DIR = None  # If None uses huggingface default cache
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
@@ -29,7 +29,7 @@ LOCAL_MODELS = {
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": {1: "80GB", 3: "80GB"},
+    "meta-llama/Llama-3.3-70B-Instruct": {0: "70GB", 2: "50GB", 3: "50GB"},
 }
 
 # Paths to input files
@@ -48,6 +48,7 @@ GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_18_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
+
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
@@ -61,13 +62,15 @@ GENERATED_DATASET = {
 
 # Evals files
 USE_BALANCED_DATASETS = True
-EVALS_DIR = DATA_DIR / "evals/dev"
+EVALS_DIR = DATA_DIR / "evals"
+MANUAL_DATASET_PATH = EVALS_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = EVALS_DIR / "manual_upsampled.csv"
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.csv",
-    "toolace": EVALS_DIR / "toolace_samples.csv",
-    "mt": EVALS_DIR / "mt_samples.csv",
-    "mts": EVALS_DIR / "mts_samples.csv",
+    "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
+    "toolace": EVALS_DIR / "toolace_samples.jsonl",
+    "mt": EVALS_DIR / "mt_samples.jsonl",
+    "mts": EVALS_DIR / "mts_samples.jsonl",
 }
 
 EVAL_DATASETS_BALANCED = {
@@ -101,24 +104,31 @@ AIS_DATASETS = {
 @dataclass(frozen=True)
 class RunConfig:
     """
-    Configuration for a dataset generation run.
 
-    Args:
-        num_situations_to_sample: How many pairs of high- and low-stakes situations to sample from the examples_situations.csv file.
-        num_combinations_for_prompts: How many pairs of prompts to generate for each situation.
-        max_concurrent_llm_calls: Maximum number of concurrent LLM calls.
-        write_mode: Whether to overwrite or append to the output file.
-        model: The model to use for the generation.
-        train_frac: The fraction of the data to use for the training set.
+    num_situations_to_sample: How many situations to sample from the examples_situations.csv file.
+    num_prompts_per_situation: How many prompts to generate for each situation. Each high or low stake prompt count as 1.
+    num_situations_per_combination: How many situations to generate for each combination of topics and factors. Each high or low stake situation counts as 1.
+
+    if num_situations_to_sample is 4 and num_situations_per_combination is 2, then 4*2 = 8 situations will be generated in the situations.jsonl file.
+    Try to keep num_situations_per_combination as 2 to minimise weird behavior cause then LLM sometimesthinks of High and low stakes as seperate situations.
+    The above is applicable for num_prompts_per_situation too.
+
+    Based on the prompt variations, we need to decide num prompts per situation to sample.
+
+    sample_seperately: if True sample from the topics and factors list directly rather than
+    sampling from the examples_situations.csv file.
+
     """
 
+    num_situations_per_combination: int = 2
     num_situations_to_sample: int = 150
-    num_combinations_for_prompts: int = 12
-    max_concurrent_llm_calls: int = 50
-    write_mode: Literal["overwrite", "append"] = "overwrite"
-    model: str = "gpt-4o"
-    train_frac: float = 0.8
+    num_prompts_per_situation: int = 2
+    num_topics_to_sample: int | None = 2  # If None, all topics are used
+    num_factors_to_sample: int | None = 2
+    num_combinations_for_prompts: int = 5
+    combination_variation: bool = False  # If None, all factors are used
 
+    sample_seperately: bool = False
     run_id: str = "test"
 
     def __post_init__(self):
@@ -129,13 +139,13 @@ class RunConfig:
         return RESULTS_DIR / self.run_id
 
     @property
-    def suffix(self) -> str:
-        date_str = datetime.now().strftime("%d_%m_%y")
-        return f"{date_str}_{self.model}"
+    def situations_combined_csv(self) -> Path:
+        return self.run_dir / "examples_situations.csv"
 
     @property
     def prompts_file(self) -> Path:
-        return self.run_dir / f"prompts_{self.suffix}.jsonl"
+        date_str = datetime.now().strftime("%d_%m_%y")
+        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -143,15 +153,15 @@ class RunConfig:
 
     @property
     def situations_file(self) -> Path:
-        return self.run_dir / f"situations_{self.suffix}.jsonl"
+        return self.run_dir / "situations.jsonl"
 
     @property
     def variations_file(self) -> Path:
         return INPUTS_DIR / "prompt_variations.json"
 
     @property
-    def random_state(self) -> int:
-        return 32
+    def filtered_situations_file(self) -> Path:
+        return self.run_dir / FILTERED_SITUATION_FACTORS_CSV
 
 
 with open(INPUTS_DIR / "prompt_variations.json") as f:
@@ -185,7 +195,7 @@ class EvalRunConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig2.json"
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.json"
 
     @property
     def random_seed(self) -> int:
