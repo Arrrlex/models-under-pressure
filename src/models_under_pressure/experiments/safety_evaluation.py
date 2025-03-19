@@ -18,6 +18,7 @@ from models_under_pressure.experiments.evaluate_probes import (
 )
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.utils import double_check_config
 
 
 def run_safety_evaluation(
@@ -100,6 +101,7 @@ if __name__ == "__main__":
         max_samples=40,
         layer=11,
     )
+    double_check_config(config)
     results = run_safety_evaluation(
         variation_type=config.variation_type,
         variation_value=config.variation_value,

@@ -16,6 +16,7 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.utils import double_check_config
 
 
 def load_manual_eval_dataset(
@@ -128,6 +129,8 @@ if __name__ == "__main__":
         layer=args.layer,
         model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
     )
+
+    double_check_config(config)
 
     # Run evaluation
     results = run_evaluation_on_manual(

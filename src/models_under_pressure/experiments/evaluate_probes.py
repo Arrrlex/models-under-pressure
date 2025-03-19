@@ -15,6 +15,7 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.utils import double_check_config
 
 
 def load_eval_datasets(
@@ -82,13 +83,18 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [11, 22, 33, 44, 55, 66, 77]:
-        config = EvalRunConfig(
-            max_samples=None,
+    configs = [
+        EvalRunConfig(
             layer=layer,
+            max_samples=None,
             model_name=LOCAL_MODELS["llama-70b"],
         )
+        for layer in [11, 22, 33, 44, 55, 66, 77]
+    ]
 
+    double_check_config(configs)
+
+    for config in configs:
         results = run_evaluation(
             variation_type=config.variation_type,
             variation_value=config.variation_value,
@@ -99,6 +105,6 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Saving results for layer {layer} to {OUTPUT_DIR / config.output_filename}"
+            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename}"
         )
         results.save_to(OUTPUT_DIR / config.output_filename)
