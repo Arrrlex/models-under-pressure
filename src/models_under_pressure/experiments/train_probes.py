@@ -9,9 +9,7 @@ from tqdm import tqdm
 from models_under_pressure.config import (
     CACHE_DIR,
     MODEL_MAX_MEMORY,
-    EvalRunConfig,
 )
-from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -219,12 +217,13 @@ def train_probes_and_save_results(
             dataset_results,
         )
 
-        # generate claiberation plots
-        run_calibration(
-            EvalRunConfig(
-                layer=layer,
-            )
-        )
+        # generate caliberation plots
+        # run_calibration(
+        #     # TODO eval run config contains other details which could be conflicting with the run details
+        #     EvalRunConfig(
+        #         layer=layer,
+        #     )
+        # )
 
     return outputs
 

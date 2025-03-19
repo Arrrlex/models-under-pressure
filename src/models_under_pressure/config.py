@@ -63,6 +63,7 @@ GENERATED_DATASET = {
 TRAIN_DIR = DATA_DIR / "training"
 MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
 MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 
 # Evals files
 USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive

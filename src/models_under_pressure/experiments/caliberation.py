@@ -7,7 +7,6 @@ from sklearn.calibration import calibration_curve
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    GENERATED_DATASET_PATH,
     PLOTS_DIR,
     EvalRunConfig,
 )
@@ -27,7 +26,7 @@ def prepare_data(
 ) -> tuple[list[int], list[float]]:
     y_prob = [
         entry[
-            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{GENERATED_DATASET_PATH.stem}_l{eval_run_config.layer}"
+            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{eval_run_config.dataset_path.stem}_l{eval_run_config.layer}"
         ]
         for entry in data
     ]
