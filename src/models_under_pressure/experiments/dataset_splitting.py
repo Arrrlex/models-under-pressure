@@ -33,9 +33,9 @@ def create_train_test_split(
         test_indices = list(test_indices)
     else:
         # Split based on unique values of the field
-        assert split_field in dataset.other_fields, (
-            f"Field {split_field} not found in dataset"
-        )
+        assert (
+            split_field in dataset.other_fields
+        ), f"Field {split_field} not found in dataset"
         unique_values = list(set(dataset.other_fields[split_field]))
         n_test = int(len(unique_values) * test_size)
 

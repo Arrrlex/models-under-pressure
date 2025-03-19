@@ -6,7 +6,11 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import MODEL_MAX_MEMORY, EvalRunConfig
+from models_under_pressure.config import (
+    CACHE_DIR,
+    MODEL_MAX_MEMORY,
+    EvalRunConfig,
+)
 from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
@@ -157,9 +161,9 @@ def train_probes_and_save_results(
         for score, values in probe_scores_dict[eval_dataset_name].items():
             if len(values) != len(eval_dataset.inputs):
                 breakpoint()
-            assert len(values) == len(eval_dataset.inputs), (
-                f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
-            )
+            assert (
+                len(values) == len(eval_dataset.inputs)
+            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
 
     outputs = {}
     # Eval part of the function:
