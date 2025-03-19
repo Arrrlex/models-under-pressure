@@ -5,9 +5,7 @@ import numpy as np
 from models_under_pressure.config import (
     AIS_DATASETS,
     AIS_DIR,
-    DEFAULT_GPU_MODEL,
-    DEFAULT_OTHER_MODEL,
-    DEVICE,
+    LOCAL_MODELS,
     SafetyRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -24,7 +22,7 @@ from models_under_pressure.utils import double_check_config
 def run_safety_evaluation(
     layer: int,
     dataset_path: Path,
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL,
+    model_name: str,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
@@ -100,6 +98,7 @@ if __name__ == "__main__":
     config = SafetyRunConfig(
         max_samples=40,
         layer=11,
+        model_name=LOCAL_MODELS["llama-1b"],
     )
     double_check_config(config)
     results = run_safety_evaluation(
@@ -111,8 +110,4 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
-    if config.max_samples is not None:
-        print("Not saving results because max_samples is not None")
-    else:
-        results.save_to(config.output_path)
-        print("Saved results.")
+    results.save_to(AIS_DIR / config.output_filename)

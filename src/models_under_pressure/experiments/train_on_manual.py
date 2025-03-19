@@ -207,11 +207,8 @@ def main(
         output_filename = f"manual_train_{Path(config.model_name).stem}_eval_{dataset_name}_{split_name}_layer{config.layer}_fig2.json"
 
     # Save results
-    if config.max_samples is not None:
-        print("Not saving results because max_samples is not None")
-    else:
-        results.save_to(EVALUATE_PROBES_DIR / output_filename)
-        print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
+    results.save_to(EVALUATE_PROBES_DIR / output_filename)
+    print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
 
 
 if __name__ == "__main__":

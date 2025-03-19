@@ -118,9 +118,7 @@ if __name__ == "__main__":
             model_name=config.model_name,
         )
 
-        if config.max_samples is not None:
-            print("Not saving results because max_samples is not None")
-        else:
-            print(f"Saving results for layer {config.layer} to {config.output_path}")
-            results.save_to(config.output_path)
-            print("Saved results.")
+        print(
+            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename}"
+        )
+        results.save_to(OUTPUT_DIR / config.output_filename)

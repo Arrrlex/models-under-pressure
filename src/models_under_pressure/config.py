@@ -225,21 +225,11 @@ class EvalRunConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}.json"
-
-    @property
-    def output_path(self) -> Path:
-        return EVALUATE_PROBES_DIR / self.output_filename
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.json"
 
     @property
     def random_seed(self) -> int:
         return 32
-
-
-class EvalOnManualDataConfig(EvalRunConfig):
-    @property
-    def output_path(self) -> Path:
-        return Path("/doesnt/exist")
 
 
 @dataclass(frozen=True)
@@ -254,7 +244,3 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
-
-    @property
-    def output_path(self) -> Path:
-        return AIS_DIR / self.output_filename

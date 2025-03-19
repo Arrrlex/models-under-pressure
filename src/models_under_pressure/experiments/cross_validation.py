@@ -242,14 +242,11 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> ChooseBestLayerResult
         RESULTS_DIR / "choose_best_layer_via_cross_validation" / config.output_filename
     )
 
-    if config.max_samples is not None:
-        print("Not saving results, because we sampled a subset of the dataset")
-    else:
-        print(f"Saving results to {results_path}")
-        results_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Saving results to {results_path}")
+    results_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(results_path, "w") as f:
-            json.dump(results.model_dump(), f)
+    with open(results_path, "w") as f:
+        json.dump(results.model_dump(), f)
 
     return results
 
