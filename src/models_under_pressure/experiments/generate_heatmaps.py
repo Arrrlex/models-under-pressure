@@ -16,6 +16,7 @@ from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import compute_accuracy
+from models_under_pressure.utils import double_check_config
 
 
 def generate_heatmap(
@@ -87,6 +88,8 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
     )
+
+    double_check_config(config)
 
     output_dir = OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)

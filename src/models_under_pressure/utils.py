@@ -3,6 +3,7 @@ import json
 import os
 import random
 import string
+from pprint import pformat
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 import openai
@@ -205,3 +206,10 @@ def generate_short_id(length: int = 8) -> str:
     """Generate a short, random ID using base62 encoding."""
     characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
     return "".join(random.choices(characters, k=length))
+
+
+def double_check_config(config: Any) -> None:
+    print(f"Config: {pformat(config)}")
+    is_ok = input("Do you really want to run this config? (y/n)")
+    if is_ok != "y":
+        raise ValueError("Config not confirmed")
