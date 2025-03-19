@@ -12,9 +12,8 @@ from models_under_pressure.config import (
     EvalRunConfig,
 )
 
+
 # Load data from your JSONL file
-
-
 def load_data(file_path: Path) -> list[dict]:
     with open(EVALUATE_PROBES_DIR / file_path, "r") as file:
         data = [json.loads(line) for line in file]

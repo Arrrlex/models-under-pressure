@@ -8,10 +8,9 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     CACHE_DIR,
+    EVALUATE_PROBES_DIR,
     MODEL_MAX_MEMORY,
-    EvalRunConfig,
 )
-from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -190,10 +189,11 @@ def train_probes_and_save_results(
 
         # Save the dataset to the output path overriding the previous dataset
         print(
-            f"Saving dataset to {output_dir / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+            f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
         )
         dataset_with_probe_scores.save_to(
-            output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
+            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
+            overwrite=True,
         )
 
         # Calculate the metrics for the dataset:
@@ -217,13 +217,6 @@ def train_probes_and_save_results(
         outputs[eval_dataset_name] = (
             dataset_with_probe_scores,
             dataset_results,
-        )
-
-        # generate claiberation plots
-        run_calibration(
-            EvalRunConfig(
-                layer=layer,
-            )
         )
 
     return outputs
