@@ -5,8 +5,8 @@ import numpy as np
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
-    EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    OUTPUT_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -57,7 +57,7 @@ def run_evaluation(
         train_dataset_path=dataset_path,
         eval_datasets=eval_datasets,
         layer=layer,
-        output_dir=EVALUATE_PROBES_DIR,
+        output_dir=OUTPUT_DIR,
     )
     metrics = []
     dataset_names = []
@@ -82,19 +82,23 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = EvalRunConfig(
-        max_samples=50,
-        layer=11,
-        model_name=LOCAL_MODELS["llama-1b"],
-    )
+    for layer in [11, 22, 33, 44, 55, 66, 77]:
+        config = EvalRunConfig(
+            max_samples=None,
+            layer=layer,
+            model_name=LOCAL_MODELS["llama-70b"],
+        )
 
-    results = run_evaluation(
-        variation_type=config.variation_type,
-        variation_value=config.variation_value,
-        max_samples=config.max_samples,
-        layer=config.layer,
-        dataset_path=config.dataset_path,
-        model_name=config.model_name,
-    )
+        results = run_evaluation(
+            variation_type=config.variation_type,
+            variation_value=config.variation_value,
+            max_samples=config.max_samples,
+            layer=config.layer,
+            dataset_path=config.dataset_path,
+            model_name=config.model_name,
+        )
 
-    results.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+        print(
+            f"Saving results for layer {layer} to {OUTPUT_DIR / config.output_filename}"
+        )
+        results.save_to(OUTPUT_DIR / config.output_filename)

@@ -25,7 +25,9 @@ def generate_heatmap_plot(result: HeatmapResults):
         plt.figure(figsize=(8, 6))
         sns.heatmap(df, annot=True, fmt=".3f", cmap="RdBu", vmin=0, vmax=1)
 
-        plt.title(f"Probe Generalization Across Variations, Layer {layer}")
+        variation_type_title = result.variation_type.replace("_", " ").title()
+
+        plt.title(f"Probe Generalization Across {variation_type_title}, Layer {layer}")
         plt.xlabel("Test Variation")
         plt.ylabel("Train Variation")
         plt.xticks(rotation=45, ha="right")
@@ -51,7 +53,7 @@ def plot_aurocs(
     for i, results in enumerate(result_list):
         # Extract AUROC scores from metrics
         auroc_scores = [metric.metrics["auroc"] for metric in results.metrics]
-        datasets = results.datasets
+        datasets = results.dataset
         run_name = results.run_name
 
         # Create offset bars

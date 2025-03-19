@@ -91,6 +91,7 @@ def train_probes_and_save_results(
     eval_datasets: dict[str, LabelledDataset],
     layer: int,
     output_dir: Path,
+    save_results: bool = False,
 ) -> dict[str, tuple[LabelledDataset, DatasetResults]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     model = LLMModel.load(
@@ -98,7 +99,7 @@ def train_probes_and_save_results(
         model_kwargs={
             "device_map": "auto",
             "max_memory": MODEL_MAX_MEMORY[model_name],
-            # "cache_dir": "/scratch/ucabwjn/.cache",
+            "cache_dir": CACHE_DIR,
         },
     )
     aggregator = Aggregator(
@@ -153,14 +154,24 @@ def train_probes_and_save_results(
             "per_token_probe_scores": per_token_probe_scores,
         }
 
+        for score, values in probe_scores_dict[eval_dataset_name].items():
+            if len(values) != len(eval_dataset.inputs):
+                breakpoint()
+            assert len(values) == len(eval_dataset.inputs), (
+                f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+            )
+
     outputs = {}
     # Eval part of the function:
     for eval_dataset_name in eval_datasets.keys():
-        try:
-            dataset_with_probe_scores = LabelledDataset.load_from(
-                output_dir / f"{eval_dataset_name}.jsonl"
-            )
-        except FileNotFoundError:
+        if save_results:
+            try:
+                dataset_with_probe_scores = LabelledDataset.load_from(
+                    output_dir / f"{eval_dataset_name}.jsonl"
+                )
+            except FileNotFoundError:
+                dataset_with_probe_scores = eval_datasets[eval_dataset_name]
+        else:
             dataset_with_probe_scores = eval_datasets[eval_dataset_name]
 
         extra_fields = dict(**dataset_with_probe_scores.other_fields)
@@ -174,6 +185,9 @@ def train_probes_and_save_results(
         dataset_with_probe_scores.other_fields = extra_fields
 
         # Save the dataset to the output path overriding the previous dataset
+        print(
+            f"Saving dataset to {output_dir / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+        )
         dataset_with_probe_scores.save_to(
             output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
         )
