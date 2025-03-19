@@ -48,7 +48,6 @@ GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_18_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
-
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
@@ -59,19 +58,21 @@ GENERATED_DATASET = {
         # "high_stakes": "labels",
     },
 }
-EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
+
+# Training datasets
+TRAIN_DIR = DATA_DIR / "training"
+MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
 
 # Evals files
-USE_BALANCED_DATASETS = True
-EVALS_DIR = DATA_DIR / "evals"
-MANUAL_DATASET_PATH = EVALS_DIR / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = EVALS_DIR / "manual_upsampled.csv"
+USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
+EVALS_DIR = DATA_DIR / "evals" / "dev"
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
-    "toolace": EVALS_DIR / "toolace_samples.jsonl",
-    "mt": EVALS_DIR / "mt_samples.jsonl",
-    "mts": EVALS_DIR / "mts_samples.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "toolace": EVALS_DIR / "toolace_samples.csv",
+    "mt": EVALS_DIR / "mt_samples.csv",
+    "mts": EVALS_DIR / "mts_samples.csv",
 }
 
 EVAL_DATASETS_BALANCED = {
