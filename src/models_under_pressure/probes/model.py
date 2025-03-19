@@ -118,6 +118,46 @@ class LLMModel:
 
         return token_dict  # type: ignore
 
+    def generate(
+        self,
+        dialogue: Dialogue,
+        max_new_tokens: int = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+    ) -> str:
+        input_str = self.tokenizer.apply_chat_template(
+            [d.model_dump() for d in dialogue], tokenize=False
+        )  # type: ignore
+
+        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.device)  # type: ignore
+
+        # Generate the answer
+        outputs = self.model.generate(  # type: ignore
+            **tokenized,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=do_sample,
+            top_p=top_p,
+        )
+
+        if return_full_output:
+            answer = self.tokenizer.decode(
+                outputs[0], skip_special_tokens=skip_special_tokens
+            )  # type: ignore
+        else:
+            # Only get the newly generated tokens by slicing from the input length
+            new_tokens = outputs[0][tokenized.input_ids.shape[1] :]
+
+            # Decode just the new tokens
+            answer = self.tokenizer.decode(
+                new_tokens, skip_special_tokens=skip_special_tokens
+            )  # type: ignore
+
+        return answer
+
     #
     @torch.no_grad()
     def get_activations(
