@@ -185,6 +185,21 @@ class HeatmapRunConfig:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
 
 
+@dataclass
+class ChooseLayerConfig:
+    model_name: str
+    dataset_path: Path
+    cv_folds: int
+    preprocessor: str
+    postprocessor: str
+    max_samples: int | None = None
+    layers: list[int] | None = None
+
+    @property
+    def output_filename(self) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+
+
 @dataclass(frozen=True)
 class EvalRunConfig:
     layer: int
