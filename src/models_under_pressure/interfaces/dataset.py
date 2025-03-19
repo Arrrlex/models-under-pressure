@@ -269,6 +269,12 @@ class BaseDataset(BaseModel, Generic[R]):
                 file_path_or_name, field_mapping=field_mapping, **loader_kwargs
             )
 
+    @classmethod
+    def concatenate(cls, datasets: Sequence[Self]) -> Self:
+        return cls.from_records(
+            [r for dataset in datasets for r in dataset.to_records()]
+        )
+
     def to_records(self) -> Sequence[R]:
         return [
             self._record_class(

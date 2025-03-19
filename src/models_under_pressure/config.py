@@ -48,7 +48,6 @@ GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
-
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
@@ -183,6 +182,29 @@ class HeatmapRunConfig:
 
     def output_filename(self, variation_type: str) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+
+
+@dataclass
+class ChooseLayerConfig:
+    model_name: str
+    dataset_path: Path
+    cv_folds: int
+    preprocessor: str
+    postprocessor: str
+    max_samples: int | None = None
+    layers: list[int] | None = None
+
+    @property
+    def output_filename(self) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+
+    @property
+    def output_path(self) -> Path:
+        return (
+            RESULTS_DIR
+            / "choose_best_layer_via_cross_validation"
+            / self.output_filename
+        )
 
 
 @dataclass(frozen=True)
