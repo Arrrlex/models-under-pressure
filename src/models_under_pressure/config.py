@@ -44,17 +44,19 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = (
-    OUTPUT_DIR / "prompts_12_03_25_gpt-4o.jsonl"
-)  # "prompts_04_03_25_model-4o.jsonl"
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_18_03_25_gpt-4o_filtered.jsonl"
+HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
+EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
+AIS_DIR = RESULTS_DIR / "ais_evaluation"
+
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
     "file_path": GENERATED_DATASET_PATH,
     "field_mapping": {
-        "id": "ids",
-        "prompt": "inputs",
-        "high_stakes": "labels",
+        # "id": "ids",
+        # "prompt": "inputs",
+        # "high_stakes": "labels",
     },
 }
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"

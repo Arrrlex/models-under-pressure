@@ -6,7 +6,12 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import CACHE_DIR, MODEL_MAX_MEMORY
+from models_under_pressure.config import (
+    CACHE_DIR,
+    MODEL_MAX_MEMORY,
+    EvalRunConfig,
+)
+from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -101,7 +106,13 @@ def train_probes_and_save_results(
             "cache_dir": CACHE_DIR,
         },
     )
-    probe = load_or_train_probe(model, train_dataset, train_dataset_path, layer)
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
+    probe = load_or_train_probe(
+        model, train_dataset, train_dataset_path, layer, aggregator=aggregator
+    )
     probe_scores_dict = {}
 
     for eval_dataset_name, eval_dataset in tqdm(
@@ -206,6 +217,13 @@ def train_probes_and_save_results(
         outputs[eval_dataset_name] = (
             dataset_with_probe_scores,
             dataset_results,
+        )
+
+        # generate claiberation plots
+        run_calibration(
+            EvalRunConfig(
+                layer=layer,
+            )
         )
 
     return outputs

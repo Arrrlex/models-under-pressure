@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.config import GENERATED_DATASET
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -118,7 +119,7 @@ def load_train_test(
     """
     dataset = LabelledDataset.load_from(
         dataset_path,
-        field_mapping={"prompt": "inputs", "id": "ids", "high_stakes": "labels"},
+        field_mapping=GENERATED_DATASET["field_mapping"],
     )
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")

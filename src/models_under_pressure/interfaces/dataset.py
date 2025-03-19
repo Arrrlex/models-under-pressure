@@ -194,9 +194,11 @@ class BaseDataset(BaseModel, Generic[R]):
         else:
             ids = [str(i) for i in range(len(inputs))]
 
-        # Get all other columns as other_fields
+        # try removing values in case of error
         other_fields = {
-            col: df[col].tolist() for col in df.columns if col not in {"inputs", "ids"}
+            col: df[col].values.tolist()
+            for col in df.columns
+            if col not in {"inputs", "ids"}
         }
 
         return cls(inputs=inputs, ids=ids, other_fields=other_fields)
