@@ -60,7 +60,7 @@ class LLMModel:
         default_model_kwargs = {
             "token": os.getenv("HUGGINGFACE_TOKEN"),
             "device_map": device or DEVICE,
-            "torch_dtype": torch.bfloat16 if "cuda" in DEVICE else torch.float16,
+            "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float16,
             "cache_dir": CACHE_DIR,
         }
 
