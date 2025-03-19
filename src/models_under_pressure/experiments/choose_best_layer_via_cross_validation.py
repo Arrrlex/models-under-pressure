@@ -11,6 +11,7 @@ import json
 from dataclasses import dataclass
 from typing import Iterator, Tuple
 
+import numpy as np
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -23,6 +24,7 @@ from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
     Preprocessors,
+    Activation,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
@@ -77,20 +79,68 @@ class CVSplits:
 
         return cls(num_folds=num_folds, folds=folds)
 
-    def splits(self) -> Iterator[Tuple[LabelledDataset, LabelledDataset]]:
+
+@dataclass
+class DatasetWithActivations:
+    """Simple wrapper class containing a dataset and its activations."""
+
+    dataset: LabelledDataset
+    activations: Activation
+
+
+@dataclass
+class CVSplitsWithActivations:
+    """
+    Wrapper class containing the cross validation splits and their activations.
+    """
+
+    cv_splits: CVSplits
+    activation_folds: list[DatasetWithActivations]
+
+    @classmethod
+    def create(
+        cls, cv_splits: CVSplits, llm: LLMModel, layer: int
+    ) -> "CVSplitsWithActivations":
+        """Create the CV splits with activations. Doing it this way is faster than getting the activations for each fold separately.
+
+        Args:
+            cv_splits: CVSplits
+            llm: LLMModel
+            layer: Layer to get activations for
+        """
+        # Get all activations at once
+        combined_dataset = LabelledDataset.concatenate(cv_splits.folds)
+        all_activations = llm.get_batched_activations(combined_dataset, layer)
+
+        # Split activations according to fold lengths
+        fold_lengths = [len(fold) for fold in cv_splits.folds]
+        split_indices = [sum(fold_lengths[:i]) for i in range(1, len(fold_lengths))]
+        activation_splits = all_activations.split(split_indices)
+
+        # Create DatasetWithActivations for each fold
+        activation_folds = [
+            DatasetWithActivations(fold, act)
+            for fold, act in zip(cv_splits.folds, activation_splits)
+        ]
+        return cls(cv_splits, activation_folds)
+
+    def splits(self) -> Iterator[Tuple[DatasetWithActivations, DatasetWithActivations]]:
         """Get train/test splits for cross validation.
 
         Returns:
             Sequence of (train, test) pairs where train is all folds except one
             and test is the held-out fold
         """
-        for i in range(self.num_folds):
+        for i in range(self.cv_splits.num_folds):
             # Test set is the current fold
-            test = self.folds[i]
+            test = self.activation_folds[i]
 
             # Train set is all other folds combined
-            train_folds = self.folds[:i] + self.folds[i + 1 :]
-            train = LabelledDataset.concatenate(train_folds)
+            train_folds = self.activation_folds[:i] + self.activation_folds[i + 1 :]
+            train = DatasetWithActivations(
+                LabelledDataset.concatenate([fold.dataset for fold in train_folds]),
+                Activation.concatenate([fold.activations for fold in train_folds]),
+            )
 
             yield train, test
 
@@ -110,18 +160,25 @@ def get_cross_validation_accuracies(
         List of accuracies, one for each fold
     """
     results = []
+    cv_splits_with_activations = CVSplitsWithActivations.create(cv_splits, llm, layer)
     for train, test in tqdm(
-        cv_splits.splits(), total=cv_splits.num_folds, desc="Cross-validating"
+        cv_splits_with_activations.splits(),
+        total=cv_splits.num_folds,
+        desc="Cross-validating",
     ):
         probe = LinearProbe(_llm=llm, layer=layer, aggregator=aggregator)
-        probe.fit(train)
-        activations = probe._llm.get_batched_activations(test, layer=layer)
-        accuracy = compute_accuracy(probe, test, activations)
+        probe._fit(train.activations, train.dataset.labels_numpy())
+        accuracy = compute_accuracy(probe, test.dataset, test.activations)
         results.append(accuracy)
     return results
 
 
 def main(config: ChooseLayerConfig):
+    """Main function to choose the best layer via cross validation.
+
+    Args:
+        config: ChooseLayerConfig
+    """
     train_dataset, _ = load_train_test(config.dataset_path)
     if config.max_samples is not None:
         train_dataset = train_dataset.sample(config.max_samples)
@@ -143,16 +200,28 @@ def main(config: ChooseLayerConfig):
     except AttributeError:
         raise ValueError(f"Postprocessor {config.postprocessor} not found")
 
-    results = {}
+    results = {"layer_results": {}, "layer_mean_accuracies": {}}
     for layer in config.layers:
         print(f"Cross-validating layer {layer}...")
-        results[layer] = get_cross_validation_accuracies(
+        results["layer_results"][layer] = get_cross_validation_accuracies(
             llm=llm,
             layer=layer,
             aggregator=Aggregator(preprocessor, postprocessor),
             cv_splits=cv_splits,
         )
+        results["layer_mean_accuracies"][layer] = float(
+            np.mean(results["layer_results"][layer])
+        )
 
+    # Find layer with highest mean accuracy
+    results["best_layer"] = max(
+        results["layer_mean_accuracies"].keys(),
+        key=lambda x: results["layer_mean_accuracies"][x],
+    )
+    results["best_layer_accuracy"] = results["layer_mean_accuracies"][
+        results["best_layer"]
+    ]
+    print("Results:")
     print(results)
 
     # Save results
@@ -160,16 +229,21 @@ def main(config: ChooseLayerConfig):
         RESULTS_DIR / "choose_best_layer_via_cross_validation" / config.output_filename
     )
 
-    print(f"Saving results to {results_path}")
-    with open(results_path, "w") as f:
-        json.dump(results, f)
+    if config.max_samples is not None:
+        print("Not saving results, because we sampled a subset of the dataset")
+    else:
+        print(f"Saving results to {results_path}")
+        results_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(results_path, "w") as f:
+            json.dump(results, f)
 
 
 if __name__ == "__main__":
     config = ChooseLayerConfig(
         model_name=LOCAL_MODELS["llama-1b"],
-        dataset_path=RESULTS_DIR / "debug/prompts_13_03_25_gpt-4o.jsonl",
-        max_samples=20,
+        dataset_path=RESULTS_DIR / "prompts_13_03_25_gpt-4o.jsonl",
+        max_samples=100,
         cv_folds=5,
         preprocessor="mean",
         postprocessor="sigmoid",

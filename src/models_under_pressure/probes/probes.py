@@ -66,8 +66,8 @@ class LinearProbe(HighStakesClassifier):
                 random_state=42,
                 fit_intercept=False,
             ),
-        )
-    )  # type: ignore
+        )  # type: ignore
+    )
 
     def _fit(
         self,

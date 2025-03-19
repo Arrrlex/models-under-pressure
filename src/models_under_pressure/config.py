@@ -44,11 +44,7 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
-HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
-EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
-AIS_DIR = RESULTS_DIR / "ais_evaluation"
-
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_13_03_25_gpt-4o.jsonl"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 GENERATED_DATASET = {
@@ -198,6 +194,14 @@ class ChooseLayerConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+
+    @property
+    def output_path(self) -> Path:
+        return (
+            RESULTS_DIR
+            / "choose_best_layer_via_cross_validation"
+            / self.output_filename
+        )
 
 
 @dataclass(frozen=True)
