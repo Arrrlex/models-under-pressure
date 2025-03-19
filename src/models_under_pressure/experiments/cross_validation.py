@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Iterator, Tuple
 
 import numpy as np
+from pydantic import BaseModel
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -21,15 +22,22 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
+    Activation,
     Aggregator,
     Postprocessors,
     Preprocessors,
-    Activation,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
 from models_under_pressure.utils import double_check_config
+
+
+class ChooseBestLayerResults(BaseModel):
+    best_layer: int
+    best_layer_accuracy: float
+    layer_results: dict[int, list[float]]
+    layer_mean_accuracies: dict[int, float]
 
 
 @dataclass
@@ -173,7 +181,7 @@ def get_cross_validation_accuracies(
     return results
 
 
-def main(config: ChooseLayerConfig):
+def choose_best_layer_via_cv(config: ChooseLayerConfig) -> ChooseBestLayerResults:
     """Main function to choose the best layer via cross validation.
 
     Args:
@@ -200,27 +208,32 @@ def main(config: ChooseLayerConfig):
     except AttributeError:
         raise ValueError(f"Postprocessor {config.postprocessor} not found")
 
-    results = {"layer_results": {}, "layer_mean_accuracies": {}}
+    layer_accuracies = {}
+    layer_mean_accuracies = {}
     for layer in config.layers:
         print(f"Cross-validating layer {layer}...")
-        results["layer_results"][layer] = get_cross_validation_accuracies(
+        layer_accuracies[layer] = get_cross_validation_accuracies(
             llm=llm,
             layer=layer,
             aggregator=Aggregator(preprocessor, postprocessor),
             cv_splits=cv_splits,
         )
-        results["layer_mean_accuracies"][layer] = float(
-            np.mean(results["layer_results"][layer])
-        )
+        layer_mean_accuracies[layer] = float(np.mean(layer_accuracies[layer]))
 
     # Find layer with highest mean accuracy
-    results["best_layer"] = max(
-        results["layer_mean_accuracies"].keys(),
-        key=lambda x: results["layer_mean_accuracies"][x],
+    best_layer = max(
+        layer_mean_accuracies.keys(),
+        key=lambda x: layer_mean_accuracies[x],
     )
-    results["best_layer_accuracy"] = results["layer_mean_accuracies"][
-        results["best_layer"]
-    ]
+    best_layer_accuracy = layer_mean_accuracies[best_layer]
+
+    results = ChooseBestLayerResults(
+        best_layer=best_layer,
+        best_layer_accuracy=best_layer_accuracy,
+        layer_results=layer_accuracies,
+        layer_mean_accuracies=layer_mean_accuracies,
+    )
+
     print("Results:")
     print(results)
 
@@ -236,7 +249,9 @@ def main(config: ChooseLayerConfig):
         results_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(results_path, "w") as f:
-            json.dump(results, f)
+            json.dump(results.model_dump(), f)
+
+    return results
 
 
 if __name__ == "__main__":
@@ -250,4 +265,4 @@ if __name__ == "__main__":
     )
     double_check_config(config)
 
-    main(config)
+    choose_best_layer_via_cv(config)
