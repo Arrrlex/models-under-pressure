@@ -210,6 +210,24 @@ def generate_short_id(length: int = 8) -> str:
 
 def double_check_config(config: Any) -> None:
     print(f"Config: {pformat(config)}")
-    is_ok = input("Do you really want to run this config? (y/n)")
-    if is_ok != "y":
-        raise ValueError("Config not confirmed")
+
+    if getattr(config, "max_samples", None) is not None:
+        print("Warning: max_samples is set, so results may not be saved")
+    elif path := getattr(config, "output_path", None):
+        if path.exists():
+            print(f"Warning: running this script will overwrite {path}")
+    elif paths := getattr(config, "output_paths", None):
+        for path in paths.values():
+            if path.exists():
+                print(f"Warning: running this script will overwrite {path}")
+    else:
+        is_ok = input("Do you really want to run this config? (y/n) ")
+        if is_ok != "y":
+            raise ValueError("Config not confirmed")
+
+
+def double_check_configs(configs: list[Any]) -> None:
+    print("All configs must be approved before running the script")
+    for config in configs:
+        double_check_config(config)
+        print("-" * 100)

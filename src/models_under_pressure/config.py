@@ -168,20 +168,27 @@ with open(INPUTS_DIR / "prompt_variations.json") as f:
     VARIATION_TYPES = list(json.load(f).keys())
 
 
-DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
-DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
-
-
 @dataclass(frozen=True)
 class HeatmapRunConfig:
     layers: list[int]
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    model_name: str
     dataset_path: Path = GENERATED_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
 
-    def output_filename(self, variation_type: str) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+    @property
+    def output_filenames(self) -> dict[str, str]:
+        return {
+            variation_type: f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+            for variation_type in self.variation_types
+        }
+
+    @property
+    def output_paths(self) -> dict[str, Path]:
+        return {
+            variation_type: HEATMAPS_DIR / filename
+            for variation_type, filename in self.output_filenames.items()
+        }
 
 
 @dataclass
@@ -210,30 +217,44 @@ class ChooseLayerConfig:
 @dataclass(frozen=True)
 class EvalRunConfig:
     layer: int
+    model_name: str
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.json"
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}.json"
+
+    @property
+    def output_path(self) -> Path:
+        return EVALUATE_PROBES_DIR / self.output_filename
 
     @property
     def random_seed(self) -> int:
         return 32
 
 
+class EvalOnManualDataConfig(EvalRunConfig):
+    @property
+    def output_path(self) -> Path:
+        return Path("/doesnt/exist")
+
+
 @dataclass(frozen=True)
 class SafetyRunConfig:
     layer: int
+    model_name: str
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+
+    @property
+    def output_path(self) -> Path:
+        return AIS_DIR / self.output_filename

@@ -5,7 +5,6 @@ import numpy as np
 from models_under_pressure.config import (
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
-    OUTPUT_DIR,
     HeatmapRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -91,13 +90,8 @@ if __name__ == "__main__":
 
     double_check_config(config)
 
-    output_dir = OUTPUT_DIR
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     for variation_type in config.variation_types:
         print(f"\nGenerating heatmap for {variation_type}...")
-        out_path = output_dir / config.output_filename(variation_type)
-
         heatmap_results = generate_heatmap(
             config=config,
             variation_type=variation_type,
@@ -105,7 +99,14 @@ if __name__ == "__main__":
         print(heatmap_results.performances)
         print(heatmap_results.variation_values)
 
-        json.dump(
-            heatmap_results.to_dict(),
-            open(out_path, "w"),
-        )
+        if config.max_samples is not None:
+            print("Not saving results because max_samples is not None")
+        else:
+            print(
+                f"Saving results for {variation_type} to {config.output_paths[variation_type]}"
+            )
+            json.dump(
+                heatmap_results.to_dict(),
+                open(config.output_paths[variation_type], "w"),
+            )
+            print("Saved results.")

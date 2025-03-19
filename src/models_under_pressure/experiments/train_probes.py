@@ -220,19 +220,3 @@ def train_probes_and_save_results(
         )
 
     return outputs
-
-
-if __name__ == "__main__":
-    pass
-    # train_dataset = LabelledDataset.load_from(**GENERATED_DATASET)
-    # eval_datasets = {
-    #     name: LabelledDataset.load_from(path) for name, path in EVAL_DATASETS.items()
-    # }
-    # train_probes_and_save_results(
-    #     model_name=LOCAL_MODELS["llama-8b"],
-    #     train_dataset=train_dataset,
-    #     train_dataset_path=GENERATED_DATASET["file_path_or_name"],
-    #     eval_datasets=eval_datasets,
-    #     layers=[7, 10, 12],
-    #     output_dir=Path("data/results/train_probes"),
-    # )

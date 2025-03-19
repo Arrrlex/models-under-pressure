@@ -144,10 +144,10 @@ if __name__ == "__main__":
     )
 
     # Generate output filename
-    output_filename = (
-        f"manual_eval_{Path(args.manual_data).stem}_{config.output_filename}"
-    )
 
-    # Save results
-    results.save_to(EVALUATE_PROBES_DIR / output_filename)
-    print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
+    if config.max_samples is not None:
+        print("Not saving results because max_samples is not None")
+    else:
+        # Save results
+        results.save_to(config.output_path)
+        print(f"Results saved to {config.output_path}")

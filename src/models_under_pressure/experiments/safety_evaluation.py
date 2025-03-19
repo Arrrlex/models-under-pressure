@@ -111,4 +111,8 @@ if __name__ == "__main__":
         model_name=config.model_name,
     )
 
-    results.save_to(AIS_DIR / config.output_filename)
+    if config.max_samples is not None:
+        print("Not saving results because max_samples is not None")
+    else:
+        results.save_to(config.output_path)
+        print("Saved results.")

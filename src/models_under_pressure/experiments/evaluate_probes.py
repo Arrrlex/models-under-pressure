@@ -16,7 +16,7 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.utils import double_check_configs
 
 
 def load_eval_datasets(
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         for layer in [11]
     ]
 
-    double_check_config(configs)
+    double_check_configs(configs)
 
     for config in configs:
         results = run_evaluation(
@@ -118,7 +118,9 @@ if __name__ == "__main__":
             model_name=config.model_name,
         )
 
-        print(
-            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename}"
-        )
-        results.save_to(OUTPUT_DIR / config.output_filename)
+        if config.max_samples is not None:
+            print("Not saving results because max_samples is not None")
+        else:
+            print(f"Saving results for layer {config.layer} to {config.output_path}")
+            results.save_to(config.output_path)
+            print("Saved results.")
