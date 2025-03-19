@@ -176,19 +176,8 @@ class HeatmapRunConfig:
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
 
-    @property
-    def output_filenames(self) -> dict[str, str]:
-        return {
-            variation_type: f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
-            for variation_type in self.variation_types
-        }
-
-    @property
-    def output_paths(self) -> dict[str, Path]:
-        return {
-            variation_type: HEATMAPS_DIR / filename
-            for variation_type, filename in self.output_filenames.items()
-        }
+    def output_filename(self, variation_type: str) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
 
 
 @dataclass
