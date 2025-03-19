@@ -6,7 +6,8 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import MODEL_MAX_MEMORY
+from models_under_pressure.config import MODEL_MAX_MEMORY, EvalRunConfig
+from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -198,6 +199,13 @@ def train_probes_and_save_results(
         outputs[eval_dataset_name] = (
             dataset_with_probe_scores,
             dataset_results,
+        )
+
+        # generate claiberation plots
+        run_calibration(
+            EvalRunConfig(
+                layer=layer,
+            )
         )
 
     return outputs

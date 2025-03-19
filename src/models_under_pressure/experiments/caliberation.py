@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     GENERATED_DATASET_PATH,
+    PLOTS_DIR,
     EvalRunConfig,
 )
 
@@ -60,19 +61,24 @@ def plot_calibration(
     ax2.grid()
 
     # save the plots with data name in the same directory
-    plt.savefig(EVALUATE_PROBES_DIR / f"{file_name}_calibration.png")
+    plt.savefig(PLOTS_DIR / f"{file_name}_calibration.png")
     plt.close()
 
 
-# Main execution
-if __name__ == "__main__":
-    # for all the eval datasets, get their corresponding jsons
-    #  initiate a eval run config here
-    eval_run_config = EvalRunConfig(
-        layer=11,
-        dataset_path=GENERATED_DATASET_PATH,
-    )
+def run_calibration(eval_run_config: EvalRunConfig):
+    """
+    Run calibration analysis with the provided EvalRunConfig.
+    If no config is provided, a default one will be created.
+    """
     for eval_dataset in EVAL_DATASETS.keys():
         data = load_data(EVALUATE_PROBES_DIR / f"{eval_dataset}.jsonl")
         y_true, y_prob = prepare_data(data, eval_run_config)
         plot_calibration(y_true, y_prob, eval_dataset, n_bins=10)
+
+
+# Main execution
+if __name__ == "__main__":
+    eval_run_config = EvalRunConfig(
+        layer=11,
+    )
+    run_calibration(eval_run_config)
