@@ -44,7 +44,6 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_13_03_25_gpt-4o.jsonl"
 GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
