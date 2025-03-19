@@ -59,16 +59,16 @@ GENERATED_DATASET = {
 }
 
 # Evals files
-USE_BALANCED_DATASETS = True
-EVALS_DIR = DATA_DIR / "evals"
-MANUAL_DATASET_PATH = EVALS_DIR / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = EVALS_DIR / "manual_upsampled.csv"
+USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
+EVALS_DIR = DATA_DIR / "evals" / "dev"
+MANUAL_DATASET_PATH = DATA_DIR / "evals" / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = DATA_DIR / "evals" / "manual_upsampled.csv"
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
-    "toolace": EVALS_DIR / "toolace_samples.jsonl",
-    "mt": EVALS_DIR / "mt_samples.jsonl",
-    "mts": EVALS_DIR / "mts_samples.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "toolace": EVALS_DIR / "toolace_samples.csv",
+    "mt": EVALS_DIR / "mt_samples.csv",
+    "mts": EVALS_DIR / "mts_samples.csv",
 }
 
 EVAL_DATASETS_BALANCED = {
