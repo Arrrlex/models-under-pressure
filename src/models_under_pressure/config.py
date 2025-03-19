@@ -57,6 +57,7 @@ GENERATED_DATASET = {
         "high_stakes": "labels",
     },
 }
+EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 # Evals files
 USE_BALANCED_DATASETS = True
