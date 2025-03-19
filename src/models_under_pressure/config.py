@@ -59,11 +59,14 @@ GENERATED_DATASET = {
     },
 }
 
+# Training datasets
+TRAIN_DIR = DATA_DIR / "training"
+MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
+
 # Evals files
 USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
 EVALS_DIR = DATA_DIR / "evals" / "dev"
-MANUAL_DATASET_PATH = DATA_DIR / "evals" / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = DATA_DIR / "evals" / "manual_upsampled.csv"
 
 EVAL_DATASETS_RAW = {
     "anthropic": EVALS_DIR / "anthropic_samples.csv",
