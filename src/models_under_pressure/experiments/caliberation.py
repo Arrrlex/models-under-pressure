@@ -7,6 +7,7 @@ from sklearn.calibration import calibration_curve
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
+    LOCAL_MODELS,
     PLOTS_DIR,
     EvalRunConfig,
 )
@@ -26,7 +27,7 @@ def prepare_data(
 ) -> tuple[list[int], list[float]]:
     y_prob = [
         entry[
-            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{eval_run_config.dataset_path.stem}_l{eval_run_config.layer}"
+            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{type}_l{eval_run_config.layer}"
         ]
         for entry in data
     ]
@@ -46,7 +47,7 @@ def plot_calibration(
     prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins)
     ax1.plot(prob_pred, prob_true, marker="o", linewidth=2, label="Model Calibration")
     ax1.plot([0, 1], [0, 1], linestyle="--", label="Perfect Calibration")
-    ax1.set_title("Calibration Curve")
+    ax1.set_title(f"Calibration Curve for {file_name}")
     ax1.set_xlabel("Predicted Probability (Binned)")
     ax1.set_ylabel("Mean Observed Label")
     ax1.grid()
@@ -54,13 +55,13 @@ def plot_calibration(
 
     # Histogram
     ax2.hist(y_prob, range=(0, 1), bins=n_bins, edgecolor="black")
-    ax2.set_title("Histogram of Predicted Probabilities")
+    ax2.set_title(f"Histogram of Predicted Probabilities for {file_name}")
     ax2.set_xlabel("Predicted Probability")
     ax2.set_ylabel("Frequency")
     ax2.grid()
 
     # save the plots with data name in the same directory
-    plt.savefig(PLOTS_DIR / f"{file_name}_calibration.png")
+    plt.savefig(PLOTS_DIR / f"{type}/{file_name}_calibration.png")
     plt.close()
 
 
@@ -70,14 +71,16 @@ def run_calibration(eval_run_config: EvalRunConfig):
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / f"{eval_dataset}.jsonl")
+        data = load_data(EVALUATE_PROBES_DIR / f"{type}/{eval_dataset}.jsonl")
         y_true, y_prob = prepare_data(data, eval_run_config)
         plot_calibration(y_true, y_prob, eval_dataset, n_bins=10)
 
 
 # Main execution
 if __name__ == "__main__":
+    type = "manual"
     eval_run_config = EvalRunConfig(
-        layer=11,
+        layer=22,
+        model_name=LOCAL_MODELS["llama-70b"],
     )
     run_calibration(eval_run_config)
