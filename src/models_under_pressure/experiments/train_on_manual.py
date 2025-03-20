@@ -115,6 +115,9 @@ def run_manual_evaluation(
             train_dataset_details={"max_samples": max_samples},
             eval_dataset_details={"max_samples": max_samples},
             output_scores=output_scores,  # type: ignore
+            output_labels=[int(a > 0.5) for a in output_scores]
+            if output_scores
+            else None,  # type: ignore
         )
         results_list.append(dataset_results)
     return results_list
@@ -251,7 +254,7 @@ if __name__ == "__main__":
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
     )
     parser.add_argument(
-        "--model_name", type=str, default="llama-1b", help="Model name to use"
+        "--model_name", type=str, default="llama-70b", help="Model name to use"
     )
     parser.add_argument(
         "--evaluation_type",
