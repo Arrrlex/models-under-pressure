@@ -1,7 +1,7 @@
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, Self, Sequence
+from typing import Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -28,42 +28,8 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
+from models_under_pressure.probes.base import Classifier, Probe
 from models_under_pressure.probes.model import LLMModel
-
-
-@dataclass
-class Probe(Protocol):
-    _llm: LLMModel
-    layer: int
-
-    def fit(self, dataset: LabelledDataset) -> Self: ...
-
-    def predict(self, dataset: BaseDataset) -> list[Label]: ...
-
-    def predict_proba(
-        self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]: ...
-
-    def per_token_predictions(
-        self,
-        inputs: Sequence[Input],
-    ) -> Float[np.ndarray, "batch_size seq_len"]: ...
-
-
-class SklearnClassifier(Protocol):
-    def fit(
-        self,
-        X: Float[np.ndarray, "batch_size ..."],
-        y: Float[np.ndarray, " batch_size"],
-    ) -> Self: ...
-
-    def predict(
-        self, X: Float[np.ndarray, "batch_size ..."]
-    ) -> Float[np.ndarray, " batch_size"]: ...
-
-    def predict_proba(
-        self, X: Float[np.ndarray, "batch_size ..."]
-    ) -> Float[np.ndarray, "batch_size n_classes"]: ...
 
 
 @dataclass
@@ -73,7 +39,7 @@ class SklearnProbe(Probe):
 
     aggregator: Aggregator
 
-    _classifier: SklearnClassifier = field(
+    _classifier: Classifier = field(
         default_factory=lambda: make_pipeline(
             StandardScaler(),
             LogisticRegression(
