@@ -200,6 +200,7 @@ class ChooseLayerConfig:
     cv_folds: int
     preprocessor: str
     postprocessor: str
+    batch_size: int
     max_samples: int | None = None
     layers: list[int] | None = None
 
