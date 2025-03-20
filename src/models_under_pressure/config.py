@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
+from typing import Any
 import torch
 
 DEFAULT_MODEL = "gpt-4o"
@@ -219,7 +219,7 @@ class HeatmapRunConfig:
 @dataclass
 class ChooseLayerConfig:
     model_name: str
-    dataset_path: Path
+    dataset_spec: dict[str, Any]
     cv_folds: int
     preprocessor: str
     postprocessor: str
@@ -229,7 +229,8 @@ class ChooseLayerConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+        assert isinstance(self.dataset_spec["file_path_or_name"], Path)
+        return f"{self.dataset_spec['file_path_or_name'].stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
 
     @property
     def output_path(self) -> Path:
