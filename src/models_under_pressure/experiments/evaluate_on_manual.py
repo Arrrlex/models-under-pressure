@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MANUAL_DATASET_PATH,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -16,7 +17,6 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
-from models_under_pressure.utils import double_check_config
 
 
 def load_manual_eval_dataset(
@@ -117,6 +117,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--variation_value", type=str, default=None, help="Variation value"
     )
+    parser.add_argument(
+        "--dataset_path", type=str, default=SYNTHETIC_DATASET_PATH, help="Dataset path"
+    )
     args = parser.parse_args()
 
     # Set random seed for reproducibility
@@ -130,15 +133,13 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
     )
 
-    double_check_config(config)
-
     # Run evaluation
     results = run_evaluation_on_manual(
         variation_type=args.variation_type,
         variation_value=args.variation_value,
         max_samples=args.max_samples,
         layer=args.layer,
-        train_dataset_path=config.dataset_path,
+        train_dataset_path=args.dataset_path,
         manual_dataset_path=Path(args.manual_data),
         model_name=config.model_name,
     )

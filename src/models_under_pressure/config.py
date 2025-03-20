@@ -32,7 +32,7 @@ LOCAL_MODELS = {
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": {0: "70GB", 2: "50GB", 3: "50GB"},
+    "meta-llama/Llama-3.3-70B-Instruct": None,
 }
 
 # Paths to input files
@@ -63,17 +63,23 @@ GENERATED_DATASET = {
 }
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
+
+# Training datasets
+TRAIN_DIR = DATA_DIR / "training"
+MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
+MANUAL_COMBINED_DATASET_PATH = TRAIN_DIR / "manual_combined.csv"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
+
 # Evals files
-USE_BALANCED_DATASETS = True
-EVALS_DIR = DATA_DIR / "evals"
-MANUAL_DATASET_PATH = EVALS_DIR / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = EVALS_DIR / "manual_upsampled.csv"
+USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
+EVALS_DIR = DATA_DIR / "evals" / "dev"
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.jsonl",
-    "toolace": EVALS_DIR / "toolace_samples.jsonl",
-    "mt": EVALS_DIR / "mt_samples.jsonl",
-    "mts": EVALS_DIR / "mts_samples.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "toolace": EVALS_DIR / "toolace_samples.csv",
+    "mt": EVALS_DIR / "mt_samples.csv",
+    "mts": EVALS_DIR / "mts_samples.csv",
 }
 
 EVAL_DATASETS_BALANCED = {
@@ -179,7 +185,7 @@ DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
 class HeatmapRunConfig:
     layers: list[int]
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
-    dataset_path: Path = GENERATED_DATASET_PATH
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
     max_samples: int | None = None
     variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
 
@@ -216,12 +222,12 @@ class EvalRunConfig:
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = GENERATED_DATASET_PATH
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.json"
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.jsonl"
 
     @property
     def random_seed(self) -> int:
@@ -234,7 +240,7 @@ class SafetyRunConfig:
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = GENERATED_DATASET_PATH
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
