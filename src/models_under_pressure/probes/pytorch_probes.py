@@ -74,12 +74,19 @@ class PytorchProbe(HighStakesClassifier):
     def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
         """
         Predict and return the probabilities of the dataset.
+
+        Probabilities are expected in the shape (batch_size,)
         """
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
-        return self._classifier.predict_proba(activations_obj)
+
+        # Get the batch_size, seq_len probabilities:
+        probs = self._classifier.predict_proba(activations_obj)
+
+        # Take the mean over the sequence length:
+        return probs.mean(axis=1)
 
     def per_token_predictions(
         self,
@@ -88,15 +95,17 @@ class PytorchProbe(HighStakesClassifier):
         dataset = Dataset(
             inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
         )
+        """
+        Probabilities are expected in the shape (batch_size, seq_len) by the classifier.
+        """
 
         # TODO: Change such that it uses the aggregation framework
-
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
 
-        probs = self._classifier.predict_proba(activations_obj)
+        probs = self._classifier.predict_token_proba(activations_obj)
 
         return probs
 

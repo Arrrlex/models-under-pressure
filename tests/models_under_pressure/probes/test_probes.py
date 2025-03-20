@@ -14,7 +14,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+from models_under_pressure.probes.sklearn_probes import LinearProbe, compute_accuracy
 
 
 @pytest.fixture

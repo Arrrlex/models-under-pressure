@@ -8,7 +8,10 @@ from jaxtyping import Float
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
-from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.interfaces.activations import (
+    Activation,
+    ActivationPerTokenDataset,
+)
 
 
 @dataclass
@@ -49,7 +52,12 @@ class PytorchLinearClassifier:
         criterion = nn.BCEWithLogitsLoss()
 
         dataset = activations.to_dataset(y=y)
-        per_token_dataset = dataset.to_per_token()
+
+        # Check the model instance to see if it is already per token:
+        if isinstance(dataset, ActivationPerTokenDataset):
+            per_token_dataset = dataset
+        else:
+            per_token_dataset = dataset.to_per_token()
 
         # Calculate class weights to handle imbalanced data
         sample_weights = per_token_dataset.attention_mask
@@ -106,6 +114,25 @@ class PytorchLinearClassifier:
     ) -> Float[np.ndarray, " batch_size seq_len"]:
         """
         Predict the probabilities of the activations.
+
+        Outputs are expected in the shape (batch_size,)
+        """
+
+        logits = self.predict_token_logits(activations)
+
+        # Take the mean over the sequence length:
+        mean_logits = logits.mean(axis=1)
+
+        # Convert the logits to probabilities
+        return torch.sigmoid(mean_logits).numpy()
+
+    def predict_token_logits(
+        self, activations: Activation
+    ) -> Float[np.ndarray, " batch_size seq_len"]:
+        """
+        Predict the logits of the activations.
+
+        Outputs are expected in the shape (batch_size, seq_len)
         """
         if self.model is None:
             raise ValueError("Model not trained")
@@ -126,8 +153,24 @@ class PytorchLinearClassifier:
             seq_len,
         ), f"Logits shape is {logits.shape} not {(batch_size, seq_len)}"
 
+        return logits
+
+    def predict_token_proba(
+        self, activations: Activation
+    ) -> Float[np.ndarray, " batch_size seq_len"]:
+        """
+        Predict the probabilities of the activations.
+
+        Outputs are expected in the shape (batch_size, seq_len)
+        """
+        if self.model is None:
+            raise ValueError("Model not trained")
+
+        # Process the activations into a per token dataset to be passed through the model
+        logits = self.predict_token_logits(activations)
+
         # Convert the logits to probabilities
-        return torch.sigmoid(logits).numpy()
+        return torch.sigmoid(torch.tensor(logits)).numpy()
 
     def create_model(self, activations_shape: tuple[int, int, int]) -> nn.Module:
         """

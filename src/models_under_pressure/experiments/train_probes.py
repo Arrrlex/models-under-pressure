@@ -18,7 +18,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import (
+from models_under_pressure.probes.sklearn_probes import (
     LinearProbe,
     compute_accuracy,
     load_or_train_probe,
