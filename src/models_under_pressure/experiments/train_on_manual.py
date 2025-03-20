@@ -7,10 +7,11 @@ import numpy as np
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    GENERATED_DATASET_PATH,
     LOCAL_MODELS,
+    MANUAL_COMBINED_DATASET_PATH,
     MANUAL_DATASET_PATH,
     MANUAL_UPSAMPLED_DATASET_PATH,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -18,24 +19,30 @@ from models_under_pressure.experiments.dataset_splitting import (
 )
 from models_under_pressure.experiments.train_probes import train_probes_and_save_results
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
-from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.interfaces.results import EvaluationResult
+from models_under_pressure.utils import double_check_config
 
 
 def load_manual_dataset(
     max_samples: int | None = None,
-    upsampled: bool = False,
-) -> LabelledDataset:
+    dataset_type: str = "manual",
+) -> tuple[LabelledDataset, Path]:
     """Load the manual dataset for training."""
-    if upsampled:
-        dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
-    else:
+    if dataset_type == "manual":
         dataset_path = MANUAL_DATASET_PATH
+    elif dataset_type == "upsampled":
+        dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
+    elif dataset_type == "combined":
+        dataset_path = MANUAL_COMBINED_DATASET_PATH
+    else:
+        raise ValueError(f"Invalid dataset type: {dataset_type}")
+
     dataset = LabelledDataset.load_from(dataset_path).filter(
         lambda x: x.label != Label.AMBIGUOUS
     )
     if max_samples and len(dataset) > max_samples:
         dataset = dataset.sample(max_samples)
-    return dataset
+    return dataset, dataset_path
 
 
 def load_eval_datasets(
@@ -59,7 +66,7 @@ def run_manual_evaluation(
     train_dataset: LabelledDataset,
     train_dataset_path: Path,
     max_samples: int | None = None,
-) -> ProbeEvaluationResults:
+) -> list[EvaluationResult]:
     """Train a linear probe on the specified dataset and evaluate on all eval datasets."""
     # Load eval datasets
     print("Loading eval datasets...")
@@ -76,29 +83,41 @@ def run_manual_evaluation(
 
     metrics = []
     dataset_names = []
+    results_list = []
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
+        column_name_template = f"_{model_name.split('/')[-1]}_manual_l{layer}"
 
-    results = ProbeEvaluationResults(
-        metrics=metrics,
-        datasets=dataset_names,
-        train_dataset_path=str(train_dataset_path),
-        model_name=model_name,
-        variation_type=None,
-        variation_value=None,
-    )
-    return results
+        dataset_results = EvaluationResult(
+            metrics=results,
+            dataset_name=Path(path).stem,
+            model_name=model_name,
+            train_dataset_path=str(train_dataset_path),
+            variation_type=None,
+            variation_value=None,
+            method="linear_probe_manual",
+            method_details={"layer": layer},
+            train_dataset_details={"max_samples": max_samples},
+            eval_dataset_details={"max_samples": max_samples},
+            output_scores=results_dict[dataset_names[-1]][0].other_fields[
+                f"per_entry_probe_scores{column_name_template}"
+            ],  # type: ignore
+        )
+        results_list.append(dataset_results)
+    return results_list
 
 
 def evaluate_on_train_test_split(
     layer: int,
     model_name: str,
-    dataset_path: Path,
+    train_dataset_path: Path,
+    eval_dataset_path: Path,
+    train_dataset_type: str = "manual",
     is_test: bool = False,
     max_samples: int | None = None,
-) -> ProbeEvaluationResults:
+) -> list[EvaluationResult]:
     """Train a linear probe on the manual dataset and evaluate on a train/test split.
 
     Args:
@@ -113,10 +132,12 @@ def evaluate_on_train_test_split(
     """
     # Load manual dataset for training
     print("Loading manual dataset for training...")
-    train_dataset = load_manual_dataset(max_samples=max_samples)
+    train_dataset, train_dataset_path = load_manual_dataset(
+        max_samples=max_samples, dataset_type=train_dataset_type
+    )
 
     # Load the train/test split using the existing function
-    train_split, test_split = load_train_test(dataset_path)
+    train_split, test_split = load_train_test(eval_dataset_path)
 
     # Select which split to use for evaluation
     eval_dataset = test_split if is_test else train_split
@@ -129,13 +150,13 @@ def evaluate_on_train_test_split(
         eval_dataset = eval_dataset.sample(max_samples)
 
     split_name = "test" if is_test else "train"
-    dataset_name = Path(dataset_path).stem
-    eval_datasets = {f"{dataset_name}_{split_name}": eval_dataset}
+    eval_dataset_name = Path(eval_dataset_path).stem
+    eval_datasets = {f"{eval_dataset_name}_{split_name}": eval_dataset}
 
     results_dict = train_probes_and_save_results(
         model_name=model_name,
         train_dataset=train_dataset,
-        train_dataset_path=MANUAL_DATASET_PATH,
+        train_dataset_path=train_dataset_path,
         eval_datasets=eval_datasets,
         layer=layer,
         output_dir=EVALUATE_PROBES_DIR,
@@ -143,20 +164,38 @@ def evaluate_on_train_test_split(
 
     metrics = []
     dataset_names = []
+    results_list = []
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
 
-    results = ProbeEvaluationResults(
-        metrics=metrics,
-        datasets=dataset_names,
-        train_dataset_path=str(MANUAL_DATASET_PATH),
-        model_name=model_name,
-        variation_type=None,
-        variation_value=None,
-    )
-    return results
+        column_name_template = f"_{model_name.split('/')[-1]}_manual_l{layer}"
+        dataset_name = (
+            eval_dataset_name  # + "_test" if is_test else eval_dataset_name + "_train"
+        )
+
+        dataset_results = EvaluationResult(
+            dataset_name=dataset_name,
+            model_name=model_name,
+            train_dataset_path=str(train_dataset_path),
+            metrics=results,
+            method="linear_probe_manual",
+            method_details={"layer": layer},
+            train_dataset_details={"max_samples": max_samples},
+            eval_dataset_details={"max_samples": max_samples, "split": split_name},
+            output_scores=results_dict[dataset_names[-1]][0].other_fields[
+                f"per_entry_probe_scores{column_name_template}"
+            ],  # type: ignore
+            output_labels=list(
+                int(a > 0.5)
+                for a in results_dict[dataset_names[-1]][0].other_fields[
+                    f"per_entry_probe_scores{column_name_template}"
+                ]
+            ),  # type: ignore
+        )
+        results_list.append(dataset_results)
+    return results_list
 
 
 def main(
@@ -166,16 +205,9 @@ def main(
     train_dataset_type: str = "manual",
 ):
     # Load training dataset based on type
-    if train_dataset_type == "manual":
-        train_dataset = load_manual_dataset(max_samples=config.max_samples)
-        train_dataset_path = MANUAL_DATASET_PATH
-    elif train_dataset_type == "upsampled":
-        train_dataset = load_manual_dataset(
-            max_samples=config.max_samples, upsampled=True
-        )
-        train_dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
-    else:
-        raise ValueError(f"Invalid train dataset type: {train_dataset_type}")
+    train_dataset, train_dataset_path = load_manual_dataset(
+        max_samples=config.max_samples, dataset_type=train_dataset_type
+    )
 
     if evaluation_type == "standard":
         # Evaluate on all eval datasets
@@ -192,12 +224,13 @@ def main(
         # Evaluate on train or test split of a specific dataset
         is_test = evaluation_type == "test"
         dataset_path = (
-            Path(args.dataset_path) if args.dataset_path else GENERATED_DATASET_PATH
+            Path(args.dataset_path) if args.dataset_path else SYNTHETIC_DATASET_PATH
         )
         results = evaluate_on_train_test_split(
             layer=config.layer,
             model_name=config.model_name,
-            dataset_path=dataset_path,
+            train_dataset_path=train_dataset_path,
+            eval_dataset_path=dataset_path,
             is_test=is_test,
             max_samples=config.max_samples,
         )
@@ -205,8 +238,8 @@ def main(
         dataset_name = dataset_path.stem
         output_filename = f"manual_train_{Path(config.model_name).stem}_eval_{dataset_name}_{split_name}_layer{config.layer}_fig2.json"
 
-    # Save results
-    results.save_to(EVALUATE_PROBES_DIR / output_filename)
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / output_filename)
     print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
 
 
@@ -222,7 +255,7 @@ if __name__ == "__main__":
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
     )
     parser.add_argument(
-        "--model_name", type=str, default="llama-1b", help="Model name to use"
+        "--model_name", type=str, default="llama-70b", help="Model name to use"
     )
     parser.add_argument(
         "--evaluation_type",
@@ -241,7 +274,7 @@ if __name__ == "__main__":
         "--train_dataset_type",
         type=str,
         default="manual",
-        choices=["manual", "upsampled"],
+        choices=["manual", "upsampled", "combined"],
         help="Type of training dataset to use",
     )
 
@@ -251,9 +284,12 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = EvalRunConfig(
-        max_samples=args.max_samples,
-        layer=args.layer,
-        model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
-    )
+    for layer in [22]:
+        config = EvalRunConfig(
+            max_samples=args.max_samples,
+            layer=layer,
+            model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
+        )
+
+    double_check_config(config)
     main(config, args.evaluation_type, args.dataset_path, args.train_dataset_type)

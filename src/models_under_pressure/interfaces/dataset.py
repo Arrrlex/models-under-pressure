@@ -194,9 +194,11 @@ class BaseDataset(BaseModel, Generic[R]):
         else:
             ids = [str(i) for i in range(len(inputs))]
 
-        # Get all other columns as other_fields
+        # try removing values in case of error
         other_fields = {
-            col: df[col].tolist() for col in df.columns if col not in {"inputs", "ids"}
+            col: df[col].values.tolist()
+            for col in df.columns
+            if col not in {"inputs", "ids"}
         }
 
         return cls(inputs=inputs, ids=ids, other_fields=other_fields)
@@ -266,6 +268,12 @@ class BaseDataset(BaseModel, Generic[R]):
             return cls.from_huggingface(
                 file_path_or_name, field_mapping=field_mapping, **loader_kwargs
             )
+
+    @classmethod
+    def concatenate(cls, datasets: Sequence[Self]) -> Self:
+        return cls.from_records(
+            [r for dataset in datasets for r in dataset.to_records()]
+        )
 
     def to_records(self) -> Sequence[R]:
         return [

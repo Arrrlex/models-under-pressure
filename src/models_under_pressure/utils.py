@@ -3,8 +3,11 @@ import json
 import os
 import random
 import string
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
+import time
+from pprint import pformat
+from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
 
+import huggingface_hub
 import openai
 import torch
 from dotenv import load_dotenv
@@ -205,3 +208,41 @@ def generate_short_id(length: int = 8) -> str:
     """Generate a short, random ID using base62 encoding."""
     characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
     return "".join(random.choices(characters, k=length))
+
+
+def double_check_config(config: Any) -> None:
+    print(f"Config: {pformat(config)}")
+    is_ok = input("Do you really want to run this config? (y/n)")
+    if is_ok != "y":
+        raise ValueError("Config not confirmed")
+
+
+def print_progress(
+    iter_: Sequence[Any], report_every: int = 1
+) -> Generator[Any, None, None]:
+    """
+    Wrapper around an iterator that prints progress and estimated time remaining.
+
+    Like tqdm, but better for e.g. tmux where progress bars often look weird.
+    """
+    start_time = time.time()
+    n = len(iter_)
+    for i, item in enumerate(iter_):
+        i += 1
+        yield item
+        if i % report_every == 0:
+            elapsed = time.time() - start_time
+            items_per_sec = i / elapsed
+            remaining_items = n - i
+            est_remaining = remaining_items / items_per_sec
+            print(
+                f"Progress: {i}/{n} | Elapsed: {elapsed:.1f}s | Remaining: {est_remaining:.1f}s"
+            )
+
+
+def hf_login():
+    load_dotenv()
+    HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
+    if not HF_TOKEN:
+        raise ValueError("No HuggingFace token found")
+    huggingface_hub.login(token=HF_TOKEN)

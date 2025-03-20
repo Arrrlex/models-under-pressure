@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from deprecated import deprecated
 from pydantic import BaseModel
 
 
@@ -20,6 +21,69 @@ class DatasetResults(BaseModel):
             json.dump(self.to_dict(), f)
 
 
+class EvaluationResult(BaseModel):
+    """Results from evaluating a model on a dataset."""
+
+    dataset_name: str
+    """Name of the dataset that was evaluated"""
+
+    model_name: str
+    """Name of the model that was evaluated"""
+
+    train_dataset_path: str
+    """Path to the dataset used to train the probe (str format since Path is not JSON serializable)"""
+
+    metrics: DatasetResults
+    """Global metrics for the evaluated dataset"""
+
+    variation_type: Optional[str] = None
+    """Type of variation used in training data filtering, if any"""
+
+    variation_value: Optional[str] = None
+    """Specific variation value used in training data filtering, if any"""
+
+    method: str
+    """Method used to make predictions"""
+
+    method_details: dict[str, Any] | None = None
+    """Additional details about the layer, aggregation, or model depending upon the method"""
+
+    train_dataset_details: dict[str, Any] | None = None
+    """Additional details about the train dataset"""
+
+    eval_dataset_details: dict[str, Any] | None = None
+    """Additional details about the eval dataset"""
+
+    output_scores: list[float] | None = None
+    """Scores for each example in the eval dataset"""
+
+    output_labels: list[int] | None = None
+    """Labels for each example in the eval dataset"""
+
+    @property
+    def run_name(self) -> str:
+        """Extract metadata and create a run name string.
+
+        Returns:
+            String containing layer and variation type info for the run
+        """
+        run_name = "layer=" + str(self.metrics.layer)
+        if self.variation_type is not None:
+            run_name += ",variation_type=" + self.variation_type
+        if self.variation_value is not None:
+            run_name += ",variation_value=" + self.variation_value
+        return run_name
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "a") as f:
+            json.dump(self.to_dict(), f)
+            f.write("\n")
+
+
+@deprecated("Use EvaluationResult instead")
 class ProbeEvaluationResults(BaseModel):
     """Results from evaluating probes across multiple datasets."""
 

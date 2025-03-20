@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MANUAL_DATASET_PATH,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -116,6 +117,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--variation_value", type=str, default=None, help="Variation value"
     )
+    parser.add_argument(
+        "--dataset_path", type=str, default=SYNTHETIC_DATASET_PATH, help="Dataset path"
+    )
     args = parser.parse_args()
 
     # Set random seed for reproducibility
@@ -135,7 +139,7 @@ if __name__ == "__main__":
         variation_value=args.variation_value,
         max_samples=args.max_samples,
         layer=args.layer,
-        train_dataset_path=config.dataset_path,
+        train_dataset_path=args.dataset_path,
         manual_dataset_path=Path(args.manual_data),
         model_name=config.model_name,
     )

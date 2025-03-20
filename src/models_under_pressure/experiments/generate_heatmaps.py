@@ -16,6 +16,7 @@ from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.sklearn_probes import compute_accuracy
+from models_under_pressure.utils import double_check_config
 
 
 def generate_heatmap(
@@ -83,10 +84,12 @@ def generate_heatmap(
 
 if __name__ == "__main__":
     config = HeatmapRunConfig(
-        layers=[11, 22, 33, 44, 55, 66, 77],
+        layers=[11],
         max_samples=None,
-        model_name=LOCAL_MODELS["llama-70b"],
+        model_name=LOCAL_MODELS["llama-1b"],
     )
+
+    double_check_config(config)
 
     output_dir = OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)

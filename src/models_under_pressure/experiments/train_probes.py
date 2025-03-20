@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
+from models_under_pressure.config import EVALUATE_PROBES_DIR
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -197,10 +198,11 @@ def evaluate_probe_and_save_results(
 
         # Save the dataset to the output path overriding the previous dataset
         print(
-            f"Saving dataset to {output_dir / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+            f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
         )
         dataset_with_probe_scores.save_to(
-            output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
+            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
+            overwrite=True,
         )
 
         # Calculate the metrics for the dataset:

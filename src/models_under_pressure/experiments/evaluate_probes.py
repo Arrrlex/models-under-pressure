@@ -11,6 +11,7 @@ from models_under_pressure.config import (
     OUTPUT_DIR,
     EvalRunConfig,
 )
+from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
@@ -23,9 +24,10 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
-from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
+from models_under_pressure.utils import double_check_config
 
 
 def load_eval_datasets(
@@ -51,7 +53,7 @@ def run_evaluation(
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
-) -> ProbeEvaluationResults:
+) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=dataset_path,
@@ -94,22 +96,55 @@ def run_evaluation(
         layer=layer,
         output_dir=OUTPUT_DIR,
     )
+
+    # generate calibration plots:
+    run_calibration(
+        EvalRunConfig(
+            max_samples=max_samples,
+            layer=layer,
+            model_name=model_name,
+            dataset_path=dataset_path,
+            variation_type=variation_type,
+            variation_value=variation_value,
+        )
+    )
+
     metrics = []
     dataset_names = []
+    results_list = []
+    column_name_template = f"_{model_name.split('/')[-1]}_{dataset_path.stem}_l{layer}"
+
     for path, (_, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
+        column_name_template = (
+            f"_{model_name.split('/')[-1]}_{dataset_path.stem}_l{layer}"
+        )
 
-    results = ProbeEvaluationResults(
-        metrics=metrics,
-        datasets=dataset_names,
-        train_dataset_path=str(dataset_path),
-        model_name=model_name,
-        variation_type=variation_type,
-        variation_value=variation_value,
-    )
-    return results
+        dataset_results = EvaluationResult(
+            metrics=results,
+            dataset_name=Path(path).stem,
+            model_name=model_name,
+            train_dataset_path=str(dataset_path),
+            variation_type=variation_type,
+            variation_value=variation_value,
+            method="linear_probe",
+            method_details={"layer": layer},
+            train_dataset_details={"max_samples": max_samples},
+            eval_dataset_details={"max_samples": max_samples},
+            output_scores=results_dict[dataset_names[-1]][0].other_fields[
+                f"per_entry_probe_scores{column_name_template}"
+            ],  # type: ignore
+            output_labels=list(
+                int(a > 0.5)
+                for a in results_dict[dataset_names[-1]][0].other_fields[
+                    f"per_entry_probe_scores{column_name_template}"
+                ]
+            ),  # type: ignore
+        )
+        results_list.append(dataset_results)
+    return results_list
 
 
 if __name__ == "__main__":
@@ -117,18 +152,23 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [11, 22, 33, 44, 55, 66, 77]:
-        config = EvalRunConfig(
-            max_samples=None,
+    configs = [
+        EvalRunConfig(
             layer=layer,
-            model_name=LOCAL_MODELS["llama-70b"],
+            max_samples=None,
+            model_name=LOCAL_MODELS["llama-1b"],
         )
+        for layer in [11]
+    ]
 
-        aggregator = Aggregator(
-            preprocessor=Preprocessors.mean,
-            postprocessor=Postprocessors.sigmoid,
-        )
+    aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
 
+    double_check_config(configs)
+
+    for config in configs:
         results = run_evaluation(
             probe_name=config.probe_name,
             variation_type=config.variation_type,
@@ -141,6 +181,7 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Saving results for layer {layer} to {OUTPUT_DIR / config.output_filename}"
+            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename}"
         )
-        results.save_to(OUTPUT_DIR / config.output_filename)
+        for result in results:
+            result.save_to(OUTPUT_DIR / config.output_filename)
