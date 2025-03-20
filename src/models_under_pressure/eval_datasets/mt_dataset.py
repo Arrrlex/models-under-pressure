@@ -26,7 +26,8 @@ def create_mt_dataset(
     num_samples: int = 100, recompute: bool = False, split: str = "dev"
 ):
     dataset = load_mt_samples()
-    dataset = dataset.sample(num_samples)
+    if len(dataset) > num_samples:
+        dataset = dataset.sample(num_samples)
 
     if split == "dev":
         return create_eval_dataset(

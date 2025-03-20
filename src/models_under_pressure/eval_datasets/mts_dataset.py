@@ -96,7 +96,8 @@ def create_mts_dataset(
         dataset = load_mts_raw_dataset(split=split)
     print(f"Loaded {len(dataset)} samples.")
 
-    dataset = dataset.sample(num_samples)
+    if len(dataset) > num_samples:
+        dataset = dataset.sample(num_samples)
 
     if split == "test":
         return create_test_dataset(
