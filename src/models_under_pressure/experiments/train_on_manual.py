@@ -112,29 +112,13 @@ def run_manual_evaluation(
 def evaluate_on_train_test_split(
     layer: int,
     model_name: str,
+    train_dataset: LabelledDataset,
     train_dataset_path: Path,
     eval_dataset_path: Path,
-    train_dataset_type: str = "manual",
     is_test: bool = False,
     max_samples: int | None = None,
 ) -> list[EvaluationResult]:
-    """Train a linear probe on the manual dataset and evaluate on a train/test split.
-
-    Args:
-        layer: Layer to extract embeddings from
-        model_name: Name of the model to use
-        dataset_path: Path to the dataset to evaluate on
-        is_test: If True, evaluate on test split, otherwise on train split
-        max_samples: Maximum number of samples to use
-
-    Returns:
-        Evaluation results
-    """
-    # Load manual dataset for training
-    print("Loading manual dataset for training...")
-    train_dataset, train_dataset_path = load_manual_dataset(
-        max_samples=max_samples, dataset_type=train_dataset_type
-    )
+    """Train a linear probe on the manual dataset and evaluate on a train/test split."""
 
     # Load the train/test split using the existing function
     train_split, test_split = load_train_test(eval_dataset_path)
@@ -229,6 +213,7 @@ def main(
         results = evaluate_on_train_test_split(
             layer=config.layer,
             model_name=config.model_name,
+            train_dataset=train_dataset,
             train_dataset_path=train_dataset_path,
             eval_dataset_path=dataset_path,
             is_test=is_test,
@@ -292,4 +277,9 @@ if __name__ == "__main__":
         )
 
     double_check_config(config)
-    main(config, args.evaluation_type, args.dataset_path, args.train_dataset_type)
+    main(
+        config=config,
+        evaluation_type=args.evaluation_type,
+        dataset_path=args.dataset_path,
+        train_dataset_type=args.train_dataset_type,
+    )
