@@ -64,7 +64,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--recompute",
-        action="store_false",
+        type=bool,
+        default=False,
         help="Recompute labels even if they already exist",
     )
     parser.add_argument(
