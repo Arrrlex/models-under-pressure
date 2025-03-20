@@ -28,7 +28,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.utils import double_check_config, print_progress
 
 
 @dataclass
@@ -204,7 +204,8 @@ def main(config: ChooseLayerConfig):
         raise ValueError(f"Postprocessor {config.postprocessor} not found")
 
     results = {"layer_results": {}, "layer_mean_accuracies": {}}
-    for layer in config.layers:
+    print(f"Running cross-validation for {len(config.layers)} layers")
+    for layer in print_progress(config.layers):
         print(f"Cross-validating layer {layer}...")
         results["layer_results"][layer] = get_cross_validation_accuracies(
             llm=llm,
@@ -250,6 +251,7 @@ if __name__ == "__main__":
         cv_folds=5,
         preprocessor="mean",
         postprocessor="sigmoid",
+        layers=list(range(0, 40, 2)),
     )
     double_check_config(config)
 

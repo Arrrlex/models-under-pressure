@@ -4,8 +4,9 @@ import os
 import random
 import string
 from pprint import pformat
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Generator
 
+import time
 import openai
 import torch
 from dotenv import load_dotenv
@@ -213,3 +214,26 @@ def double_check_config(config: Any) -> None:
     is_ok = input("Do you really want to run this config? (y/n)")
     if is_ok != "y":
         raise ValueError("Config not confirmed")
+
+
+def print_progress(
+    iter_: Sequence[Any], report_every: int = 1
+) -> Generator[Any, None, None]:
+    """
+    Wrapper around an iterator that prints progress and estimated time remaining.
+
+    Like tqdm, but better for e.g. tmux where progress bars often look weird.
+    """
+    start_time = time.time()
+    n = len(iter_)
+    for i, item in enumerate(iter_):
+        i += 1
+        yield item
+        if i % report_every == 0:
+            elapsed = time.time() - start_time
+            items_per_sec = i / elapsed
+            remaining_items = n - i
+            est_remaining = remaining_items / items_per_sec
+            print(
+                f"Progress: {i}/{n} | Elapsed: {elapsed:.1f}s | Remaining: {est_remaining:.1f}s"
+            )
