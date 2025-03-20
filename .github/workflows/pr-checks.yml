@@ -15,6 +15,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Cache pre-commit
         uses: actions/cache@v4
