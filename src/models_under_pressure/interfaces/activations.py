@@ -19,11 +19,22 @@ class ActivationPerTokenDataset(TorchDataset):
         activations: "Activation",
         y: Float[np.ndarray, " batch_size"],
     ):
-        self._activations = torch.Tensor(activations.activations)
-        self._attention_mask = torch.Tensor(activations.attention_mask)
-        self._input_ids = torch.Tensor(activations.input_ids)
+        self._activations = torch.Tensor(activations.get_activations(per_token=True))
+        self._attention_mask = torch.Tensor(
+            activations.get_attention_mask(per_token=True)
+        )
+        self._input_ids = torch.Tensor(activations.get_input_ids(per_token=True))
         self.y = torch.Tensor(y)
-        self.per_token: bool = True
+
+        assert (
+            len(self._activations.shape) == 2
+        ), f"Activations must be 2D, got {self._activations.shape}"
+        assert (
+            len(self._attention_mask.shape) == 1
+        ), f"Attention mask must be 1D, got {self._attention_mask.shape}"
+        assert (
+            len(self._input_ids.shape) == 1
+        ), f"Input ids must be 1D, got {self._input_ids.shape}"
 
     @property
     def activations(self) -> Float[torch.Tensor, "batch_size seq_len embed_dim"]:
@@ -91,11 +102,10 @@ class ActivationDataset(TorchDataset):
         activations: "Activation",
         y: Float[np.ndarray, " batch_size"],
     ):
-        self._activations = torch.Tensor(activations.activations)
-        self._attention_mask = torch.Tensor(activations.attention_mask)
-        self.input_ids = torch.Tensor(activations.input_ids)
+        self._activations = torch.Tensor(activations._activations)
+        self._attention_mask = torch.Tensor(activations._attention_mask)
+        self._input_ids = torch.Tensor(activations._input_ids)
         self.y = torch.Tensor(y)
-        self.per_token: bool = False
 
     @property
     def shape(self) -> tuple[int, int, int]:
@@ -122,9 +132,9 @@ class ActivationDataset(TorchDataset):
         Float[torch.Tensor, " batch_size"],
     ]:
         return (
-            self.activations[index],
-            self.attention_mask[index],
-            self.input_ids[index],
+            self._activations[index],
+            self._attention_mask[index],
+            self._input_ids[index],
             self.y[index],
         )
 
@@ -145,7 +155,7 @@ class ActivationDataset(TorchDataset):
         # Shape: (batch_size * seq_len, embed_dim)
         activations = einops.rearrange(self.activations.numpy(), "b s e -> (b s) e")
         attention_mask = einops.rearrange(self.attention_mask.numpy(), "b s -> (b s)")
-        input_ids = einops.rearrange(self.input_ids.numpy(), "b s -> (b s)")
+        input_ids = einops.rearrange(self._input_ids.numpy(), "b s -> (b s)")
 
         return ActivationPerTokenDataset(
             activations=Activation(activations, attention_mask, input_ids), y=y
@@ -154,36 +164,59 @@ class ActivationDataset(TorchDataset):
 
 @dataclass
 class Activation:
-    activations: Float[np.ndarray, "batch_size seq_len embed_dim"]
-    attention_mask: Float[np.ndarray, "batch_size seq_len"]
-    input_ids: Float[np.ndarray, "batch_size seq_len"]
-    per_token: bool = False
+    _activations: Float[np.ndarray, "batch_size seq_len embed_dim"]
+    _attention_mask: Float[np.ndarray, "batch_size seq_len"]
+    _input_ids: Float[np.ndarray, "batch_size seq_len"]
 
     @classmethod
     def concatenate(cls, activations: list["Activation"]) -> "Activation":
         return Activation(
-            activations=np.concatenate([a.activations for a in activations], axis=0),
-            attention_mask=np.concatenate(
-                [a.attention_mask for a in activations], axis=0
+            _activations=np.concatenate([a._activations for a in activations], axis=0),
+            _attention_mask=np.concatenate(
+                [a._attention_mask for a in activations], axis=0
             ),
-            input_ids=np.concatenate([a.input_ids for a in activations], axis=0),
+            _input_ids=np.concatenate([a._input_ids for a in activations], axis=0),
         )
+
+    def get_activations(
+        self, per_token: bool = False
+    ) -> Float[np.ndarray, "batch_size seq_len embed_dim"]:
+        if per_token:
+            return einops.rearrange(self._activations, "b s e -> (b s) e")
+        else:
+            return self._activations
+
+    def get_attention_mask(
+        self, per_token: bool = False
+    ) -> Float[np.ndarray, "batch_size seq_len"]:
+        if per_token:
+            return einops.rearrange(self._attention_mask, "b s -> (b s)")
+        else:
+            return self._attention_mask
+
+    def get_input_ids(
+        self, per_token: bool = False
+    ) -> Float[np.ndarray, " batch_size"]:
+        if per_token:
+            return einops.rearrange(self._input_ids, "b s -> (b s)")
+        else:
+            return self._input_ids
 
     def __post_init__(self):
         """Validate shapes after initialization, save the input shapes for later use."""
-        batch_size, seq_len, embed_dim = self.activations.shape
+        batch_size, seq_len, embed_dim = self._activations.shape
 
         # Save the data shapes for easy access
         self.batch_size: int = batch_size
         self.seq_len: int = seq_len
         self.embed_dim: int = embed_dim
 
-        assert self.attention_mask.shape == (batch_size, seq_len), (
-            f"Attention mask shape {self.attention_mask.shape} does not match "
+        assert self._attention_mask.shape == (batch_size, seq_len), (
+            f"Attention mask shape {self._attention_mask.shape} does not match "
             f"expected shape ({batch_size}, {seq_len})"
         )
-        assert self.input_ids.shape == (batch_size, seq_len), (
-            f"Input ids shape {self.input_ids.shape} does not match "
+        assert self._input_ids.shape == (batch_size, seq_len), (
+            f"Input ids shape {self._input_ids.shape} does not match "
             f"expected shape ({batch_size}, {seq_len})"
         )
 
@@ -198,9 +231,9 @@ class Activation:
         Returns:
             List of Activation objects, each containing a portion of the original data.
         """
-        activations_split = np.split(self.activations, indices)
-        attention_mask_split = np.split(self.attention_mask, indices)
-        input_ids_split = np.split(self.input_ids, indices)
+        activations_split = np.split(self._activations, indices)
+        attention_mask_split = np.split(self._attention_mask, indices)
+        input_ids_split = np.split(self._input_ids, indices)
 
         return [
             Activation(act, mask, ids)
@@ -210,51 +243,52 @@ class Activation:
         ]
 
     @property
-    def shape(self) -> tuple[int, int, int]:
-        batch_size, seq_len, embed_dim = self.activations.shape
-        return batch_size, seq_len, embed_dim
+    def shape(self) -> tuple[int, ...]:
+        return self._activations.shape
 
     def to_dataset(
-        self, y: Float[np.ndarray, " batch_size"]
+        self, y: Float[np.ndarray, " batch_size"], per_token: bool = False
     ) -> "ActivationDataset | ActivationPerTokenDataset":
-        if self.per_token:
+        if per_token:
+            # Repeat y to match flattened sequence length
+            y = einops.repeat(y, "b -> (b s)", s=self.seq_len)
             return ActivationPerTokenDataset(activations=self, y=y)
         else:
             return ActivationDataset(activations=self, y=y)
 
     def to_per_token(self) -> "Activation":
-        _, seq_len, _ = self.activations.shape
+        _, seq_len, _ = self._activations.shape
         assert self.per_token is False, "Already per-token"
         self.per_token = True
         return Activation(
-            activations=einops.rearrange(self.activations, "b s e -> (b s) e"),
-            attention_mask=einops.rearrange(self.attention_mask, "b s -> (b s)"),
-            input_ids=einops.rearrange(self.input_ids, "b s -> (b s)"),
+            _activations=einops.rearrange(self._activations, "b s e -> (b s) e"),
+            _attention_mask=einops.rearrange(self._attention_mask, "b s -> (b s)"),
+            _input_ids=einops.rearrange(self._input_ids, "b s -> (b s)"),
         )
 
     def to_per_entry(self) -> "Activation":
         """
         Convert the activation from a per-token dataset to a per-entry dataset.
         """
-        _, seq_len, _ = self.activations.shape
+        _, seq_len, _ = self._activations.shape
         assert self.per_token is True, "Already per-entry"
         self.per_token = False
 
         # Shape: (batch_size * seq_len, embed_dim)
         activations = einops.rearrange(
-            self.activations, "(b s) e -> b s e", b=self.batch_size, s=self.seq_len
+            self._activations, "(b s) e -> b s e", b=self.batch_size, s=self.seq_len
         )
         attention_mask = einops.rearrange(
-            self.attention_mask, "(b s) -> b s", b=self.batch_size, s=self.seq_len
+            self._attention_mask, "(b s) -> b s", b=self.batch_size, s=self.seq_len
         )
         input_ids = einops.rearrange(
-            self.input_ids, "(b s) -> b s", b=self.batch_size, s=self.seq_len
+            self._input_ids, "(b s) -> b s", b=self.batch_size, s=self.seq_len
         )
 
         return Activation(
-            activations=activations,
-            attention_mask=attention_mask,
-            input_ids=input_ids,
+            _activations=activations,
+            _attention_mask=attention_mask,
+            _input_ids=input_ids,
         )
 
 
@@ -298,7 +332,7 @@ class RollingMean(Preprocessor):
         Float[np.ndarray, "batch_size shortened_seq_len embed_dim"],
         Optional[Float[np.ndarray, " batch_size"]],
     ]:
-        batch_size, seq_len, embed_dim = X.activations.shape
+        batch_size, seq_len, embed_dim = X._activations.shape
         shortened_seq_len = seq_len - self.window_size + 1
 
         # If sequence is shorter than window_size, return empty array
@@ -314,9 +348,9 @@ class RollingMean(Preprocessor):
             end_idx = i + self.window_size
 
             # Get the window of activations
-            window_acts = X.activations[:, start_idx:end_idx, :]
+            window_acts = X._activations[:, start_idx:end_idx, :]
             # Get corresponding attention mask values
-            window_mask = X.attention_mask[:, start_idx:end_idx, None]
+            window_mask = X._attention_mask[:, start_idx:end_idx, None]
 
             # Apply mask to zero out padding tokens
             masked_window = window_acts * window_mask
@@ -344,7 +378,7 @@ class Preprocessors:
         Optional[Float[np.ndarray, " batch_size"]],
     ]:
         # Shape: (batch_size, seq_len, embed_dim)
-        masked_acts = X.activations * X.attention_mask[:, :, None]
+        masked_acts = X._activations * X._attention_mask[:, :, None]
 
         # Shape: (batch_size, embed_dim)
         # Sum and divide by the number of non-masked tokens
@@ -352,7 +386,7 @@ class Preprocessors:
 
         # Shape: (batch_size, 1)
         # Add small epsilon to avoid division by zero
-        token_counts = X.attention_mask.sum(axis=1, keepdims=True) + 1e-10
+        token_counts = X._attention_mask.sum(axis=1, keepdims=True) + 1e-10
 
         # Shape: (batch_size, embed_dim)
         # Calc mean of the number of non-masked tokens
@@ -365,10 +399,10 @@ class Preprocessors:
         Float[np.ndarray, "batch_size * seq_len embed_dim"],
         Optional[Float[np.ndarray, " batch_size * seq_len"]],
     ]:
-        _, seq_len, _ = X.activations.shape
+        _, seq_len, _ = X._activations.shape
 
         # Shape: (batch_size, seq_len, embed_dim)
-        masked_acts = X.activations * X.attention_mask[:, :, None]
+        masked_acts = X._activations * X._attention_mask[:, :, None]
 
         # Repeat y to match flattened sequence length
         if y is not None:

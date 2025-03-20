@@ -127,9 +127,9 @@ class SklearnProbe(Probe):
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
-        for i in range(len(activations_obj.activations)):
-            activations = activations_obj.activations[i]
-            attention_mask = activations_obj.attention_mask[i]
+        for i in range(len(activations_obj.get_activations(per_token=False))):
+            activations = activations_obj.get_activations(per_token=False)[i]
+            attention_mask = activations_obj.get_attention_mask(per_token=False)[i]
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens

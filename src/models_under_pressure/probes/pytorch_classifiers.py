@@ -11,7 +11,6 @@ from tqdm import tqdm
 from models_under_pressure.config import PYTORCH_PT_TRAINING_ARGS
 from models_under_pressure.interfaces.activations import (
     Activation,
-    ActivationPerTokenDataset,
 )
 
 
@@ -41,22 +40,16 @@ class PytorchLinearClassifier:
 
         # Create a linear model
         if self.model is None:
-            self.model = self.create_model(activations.shape).to(device)
+            self.model = self.create_model(activations.shape[2]).to(device)
 
         # Initialize optimizer
         optimizer = torch.optim.AdamW(self.model.parameters())
         criterion = nn.BCEWithLogitsLoss()
 
-        dataset = activations.to_dataset(y=y)
-
-        # Check the model instance to see if it is already per token:
-        if isinstance(dataset, ActivationPerTokenDataset):
-            per_token_dataset = dataset
-        else:
-            per_token_dataset = dataset.to_per_token()
+        per_token_dataset = activations.to_dataset(y=y, per_token=True)
 
         # Calculate class weights to handle imbalanced data
-        sample_weights = per_token_dataset.attention_mask
+        sample_weights = per_token_dataset._attention_mask
 
         # Create weighted sampler
         # Only sample points that are not masked
@@ -155,19 +148,17 @@ class PytorchLinearClassifier:
         # Process the activations into a per token dataset to be passed through the model
         batch_size, seq_len, embed_dim = activations.shape
 
-        activations = activations.to_per_token()
+        acts_tensor = activations.get_activations(per_token=True)
 
         # Switch batch norm to eval mode:
         self.model = self.model.to(device)
         self.model.eval()
 
-        logits = self.model(
-            torch.tensor(activations.activations, dtype=torch.float32).to(device)
-        )
+        logits = self.model(torch.tensor(acts_tensor, dtype=torch.float32).to(device))
 
         # Multiply by the attention mask -> to remove padded tokens:
         masked_logits = logits * torch.tensor(
-            activations.attention_mask[:, None], dtype=torch.float32
+            activations.get_attention_mask(per_token=True)[:, None], dtype=torch.float32
         ).to(device)
 
         # Reshape back to the original shape and take the mean over the sequence length
@@ -200,14 +191,15 @@ class PytorchLinearClassifier:
         # Convert the logits to probabilities
         return torch.sigmoid(torch.tensor(logits)).numpy()
 
-    def create_model(self, activations_shape: tuple[int, int, int]) -> nn.Module:
+    def create_model(self, embedding_dim: int) -> nn.Module:
         """
         Create a linear model over the embedding dimension dynamically.
         """
 
         # Create a linear model over the embedding dimension
         return nn.Sequential(
-            nn.BatchNorm1d(activations_shape[2]), nn.Linear(activations_shape[2], 1)
+            nn.BatchNorm1d(embedding_dim),
+            nn.Linear(embedding_dim, 1, bias=False),
         )
 
 
