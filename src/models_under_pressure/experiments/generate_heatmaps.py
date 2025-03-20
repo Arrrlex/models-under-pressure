@@ -15,7 +15,7 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import train_probes
 from models_under_pressure.interfaces.results import HeatmapResults
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import compute_accuracy
+from models_under_pressure.probes.sklearn_probes import compute_accuracy
 
 
 def generate_heatmap(
