@@ -77,7 +77,10 @@ def test_device_setter(llm_model: LLMModel):
 
 @patch("models_under_pressure.probes.model.AutoModelForCausalLM")
 @patch("models_under_pressure.probes.model.AutoTokenizer")
-def test_load_model(mock_auto_tokenizer: Mock, mock_auto_model: Mock):
+@patch("models_under_pressure.probes.model.hf_login")
+def test_load_model(
+    mock_hf_login: Mock, mock_auto_tokenizer: Mock, mock_auto_model: Mock
+):
     mock_auto_model.from_pretrained.return_value = Mock()
     mock_auto_tokenizer.from_pretrained.return_value = Mock(
         pad_token_id=None, eos_token_id=2
@@ -88,6 +91,7 @@ def test_load_model(mock_auto_tokenizer: Mock, mock_auto_model: Mock):
     assert isinstance(model, LLMModel)
     mock_auto_model.from_pretrained.assert_called_once()
     mock_auto_tokenizer.from_pretrained.assert_called_once()
+    mock_hf_login.assert_called_once()
 
 
 def test_tokenize(llm_model: LLMModel):
