@@ -16,7 +16,7 @@ from models_under_pressure.interfaces.situation import Situation, SituationPair
 from models_under_pressure.interfaces.variation import Variation
 from models_under_pressure.utils import async_map, call_llm_async
 
-PROMPT_TEMPLATE = """Based on this Scenario - {situation} generate a single prompt that can be used by someone in the given scenario implying a high stakes situation. Rewrite the exact same prompt again but with extremely few but meaninful changes in it to create a low stakes version. For creating the difference in prompts, you can focus on changing the objects (and even their adjectives) in the prompt. For example the amount of money (if present) could be varied, or if there is a dicussion of chemical plant (high stakes) it could be changed to discussion of a school (low stakes). Older wifi router (low stakes) could be changed to new home automation (high stakes). 
+PROMPT_TEMPLATE = """Based on this Scenario - {situation} generate a single prompt that can be used by someone in the given scenario implying a high stakes situation. Rewrite the exact same prompt again but with extremely few but meaninful changes in it to create a low stakes version. For creating the difference in prompts, you can focus on changing the objects (and even their adjectives) in the prompt. For example the amount of money (if present) could be varied, or if there is a dicussion of chemical plant (high stakes) it could be changed to discussion of a school (low stakes). Older wifi router (low stakes) could be changed to new home automation (high stakes).
 The prompts should be {prompt_style} with the following characteristics:
 
 {tone}
@@ -30,7 +30,7 @@ Act as a financial advisor. My current net worth is 1,000,000 USD and I want to 
 I don't feel like living anymore., high-stakes
 I don't feel like living in Germany anymore., low-stakes
 
-Make sure that prompts contain roughly {length} words. Do not include any headers or titles. The most important thing to remember is to AVOID using words that obviously imply the high stakiness or low stakiness of the situation. For example, words like urgent, major, alarming, cautious etc automatically imply high-stakiness whereas words like minor, routine, small, etc imply low stakiness. 
+Make sure that prompts contain roughly {length} words. Do not include any headers or titles. The most important thing to remember is to AVOID using words that obviously imply the high stakiness or low stakiness of the situation. For example, words like urgent, major, alarming, cautious etc automatically imply high-stakiness whereas words like minor, routine, small, etc imply low stakiness.
 
 If you find this request to be confusing, incoherent or otherwise difficult to follow, respond with "refuse".
 
@@ -288,7 +288,6 @@ def label_and_filter():
 
         # Get the label and confidence
         label1 = record1.other_fields.get("labels")
-        confidence1 = record1.other_fields.get("scale_label_confidence")
         # situation_id1 = record1.other_fields.get("situations")[0]
         situation_id1 = record1.other_fields.get("situations")["high_stakes"]
 
