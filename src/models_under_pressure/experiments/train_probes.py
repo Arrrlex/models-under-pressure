@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     CACHE_DIR,
+    EVALUATE_PROBES_DIR,
     MODEL_MAX_MEMORY,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -188,10 +189,11 @@ def train_probes_and_save_results(
 
         # Save the dataset to the output path overriding the previous dataset
         print(
-            f"Saving dataset to {output_dir / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+            f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
         )
         dataset_with_probe_scores.save_to(
-            output_dir / f"{eval_dataset_name.split('.')[0]}.jsonl", overwrite=True
+            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
+            overwrite=True,
         )
 
         # Calculate the metrics for the dataset:
@@ -216,14 +218,6 @@ def train_probes_and_save_results(
             dataset_with_probe_scores,
             dataset_results,
         )
-
-        # generate caliberation plots
-        # run_calibration(
-        #     # TODO eval run config contains other details which could be conflicting with the run details
-        #     EvalRunConfig(
-        #         layer=layer,
-        #     )
-        # )
 
     return outputs
 

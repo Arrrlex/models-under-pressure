@@ -9,6 +9,7 @@ from models_under_pressure.config import (
     OUTPUT_DIR,
     EvalRunConfig,
 )
+from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
@@ -60,6 +61,19 @@ def run_evaluation(
         layer=layer,
         output_dir=OUTPUT_DIR,
     )
+
+    # generate calibration plots:
+    run_calibration(
+        EvalRunConfig(
+            max_samples=max_samples,
+            layer=layer,
+            model_name=model_name,
+            dataset_path=dataset_path,
+            variation_type=variation_type,
+            variation_value=variation_value,
+        )
+    )
+
     metrics = []
     dataset_names = []
     results_list = []
@@ -107,9 +121,9 @@ if __name__ == "__main__":
         EvalRunConfig(
             layer=layer,
             max_samples=None,
-            model_name=LOCAL_MODELS["llama-70b"],
+            model_name=LOCAL_MODELS["llama-1b"],
         )
-        for layer in [11, 22, 33, 44, 55, 66, 77]
+        for layer in [11]
     ]
 
     double_check_config(configs)

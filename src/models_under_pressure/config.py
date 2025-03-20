@@ -8,7 +8,10 @@ import torch
 DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
-    DEVICE: str = "cuda"
+    if torch.cuda.device_count() > 1:
+        DEVICE: str = "auto"
+    else:
+        DEVICE: str = "cuda"
     BATCH_SIZE = 4
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
@@ -44,7 +47,7 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_18_03_25_gpt-4o_filtered.jsonl"
+GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
@@ -188,6 +191,29 @@ class HeatmapRunConfig:
 
     def output_filename(self, variation_type: str) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+
+
+@dataclass
+class ChooseLayerConfig:
+    model_name: str
+    dataset_path: Path
+    cv_folds: int
+    preprocessor: str
+    postprocessor: str
+    max_samples: int | None = None
+    layers: list[int] | None = None
+
+    @property
+    def output_filename(self) -> str:
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+
+    @property
+    def output_path(self) -> Path:
+        return (
+            RESULTS_DIR
+            / "choose_best_layer_via_cross_validation"
+            / self.output_filename
+        )
 
 
 @dataclass(frozen=True)

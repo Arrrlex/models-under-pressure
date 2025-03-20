@@ -11,18 +11,37 @@ class Activation:
     attention_mask: Float[np.ndarray, "batch_size seq_len"]
     input_ids: Float[np.ndarray, "batch_size seq_len"]
 
-    def mean_aggregation(self) -> "Activation":
-        """Compute mean of activations across sequence length, respecting attention mask."""
-        # Mask out padding tokens
-        masked_acts = self.activations * self.attention_mask[:, :, None]
-        # Sum and divide by the number of non-masked tokens
-        sum_acts = masked_acts.sum(axis=1)
-        # Add small epsilon to avoid division by zero
-        token_counts = self.attention_mask.sum(axis=1, keepdims=True) + 1e-10
-        # activations shape: (batch_size, 1, embed_dim)
-        # attention_mask shape: (batch_size, 1)
-        attention_mask = np.ones(shape=(self.activations.shape[0], 1))
-        return Activation(sum_acts / token_counts, attention_mask, self.input_ids)
+    @classmethod
+    def concatenate(cls, activations: list["Activation"]) -> "Activation":
+        return Activation(
+            activations=np.concatenate([a.activations for a in activations], axis=0),
+            attention_mask=np.concatenate(
+                [a.attention_mask for a in activations], axis=0
+            ),
+            input_ids=np.concatenate([a.input_ids for a in activations], axis=0),
+        )
+
+    def split(self, indices: list[int]) -> list["Activation"]:
+        """Split the activation into multiple parts based on the given indices.
+
+        Args:
+            indices: List of indices where to split the activation along the batch dimension.
+                    For example, if indices=[2, 5], the result will have three parts:
+                    [0:2], [2:5], and [5:end].
+
+        Returns:
+            List of Activation objects, each containing a portion of the original data.
+        """
+        activations_split = np.split(self.activations, indices)
+        attention_mask_split = np.split(self.attention_mask, indices)
+        input_ids_split = np.split(self.input_ids, indices)
+
+        return [
+            Activation(act, mask, ids)
+            for act, mask, ids in zip(
+                activations_split, attention_mask_split, input_ids_split
+            )
+        ]
 
 
 class Preprocessor(Protocol):
