@@ -12,8 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from multiprocessing import Pool
-from pathlib import Path
-from typing import Iterator, Tuple
+from typing import Iterator, Self, Tuple
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -37,52 +36,48 @@ from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
 from models_under_pressure.utils import double_check_config, print_progress
 
 
-class CVResults(BaseModel):
-    config: ChooseLayerConfig
-    layer_results: dict[int, list[float]] = Field(default_factory=dict)
-    layer_mean_accuracies: dict[int, float] = Field(default_factory=dict)
-    best_layer: int
-    best_layer_accuracy: float
-    date: datetime = Field(default_factory=datetime.now)
-
-    def save(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving results to {path}")
-        with open(path, "a") as f:
-            f.write(self.model_dump_json() + "\n")
-
-
 class CVIntermediateResults(BaseModel):
     config: ChooseLayerConfig
     layer_results: dict[int, list[float]] = Field(default_factory=dict)
     layer_mean_accuracies: dict[int, float] = Field(default_factory=dict)
-    date: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=datetime.now)
 
     def add_layer_results(self, layer: int, results: list[float]):
         self.layer_results[layer] = results
         self.layer_mean_accuracies[layer] = float(np.mean(results))
 
-    def finalize(self) -> CVResults:
-        best_layer = max(
-            self.layer_mean_accuracies.keys(),
-            key=lambda x: self.layer_mean_accuracies[x],
-        )
-        best_layer_accuracy = self.layer_mean_accuracies[best_layer]
+    def save(self):
+        self.config.temp_output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving intermediate results to {self.config.temp_output_path}")
+        with open(self.config.temp_output_path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
 
-        return CVResults(
-            config=self.config,
-            date=self.date,
-            layer_results=self.layer_results,
-            layer_mean_accuracies=self.layer_mean_accuracies,
+
+class CVFinalResults(BaseModel):
+    results: CVIntermediateResults
+    best_layer: int
+    best_layer_accuracy: float
+
+    @classmethod
+    def from_intermediate(cls, intermediate: CVIntermediateResults) -> Self:
+        best_layer = max(
+            intermediate.layer_mean_accuracies.keys(),
+            key=lambda x: intermediate.layer_mean_accuracies[x],
+        )
+        best_layer_accuracy = intermediate.layer_mean_accuracies[best_layer]
+
+        return cls(
+            results=intermediate,
             best_layer=best_layer,
             best_layer_accuracy=best_layer_accuracy,
         )
 
-    def save_final(self):
-        self.finalize().save(self.config.output_path)
-
-    def save_temp(self):
-        self.finalize().save(self.config.temp_output_path)
+    def save(self):
+        path = self.results.config.output_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving final results to {path}")
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
 
 
 @dataclass
@@ -312,12 +307,15 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig):
         )
 
         results.add_layer_results(layer, layer_results)
-        results.save_temp()
+        results.save()
 
     print(f"Results: {results}")
 
-    # Save results
-    results.save_final()
+    # Compute final results
+    final_results = CVFinalResults.from_intermediate(results)
+
+    # Save final results
+    final_results.save()
 
 
 if __name__ == "__main__":

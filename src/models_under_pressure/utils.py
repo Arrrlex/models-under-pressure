@@ -4,6 +4,7 @@ import os
 import random
 import string
 import time
+from datetime import timedelta
 from pprint import pformat
 from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
 
@@ -14,7 +15,6 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-from datetime import timedelta
 
 from models_under_pressure.config import DEFAULT_MODEL
 
@@ -213,7 +213,7 @@ def generate_short_id(length: int = 8) -> str:
 
 def double_check_config(config: Any) -> None:
     print(f"Config: {pformat(config)}")
-    is_ok = input("Do you really want to run this config? (y/n)")
+    is_ok = input("Do you really want to run this config? (y/n) ")
     if is_ok != "y":
         raise ValueError("Config not confirmed")
 
