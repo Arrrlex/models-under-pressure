@@ -84,7 +84,7 @@ class EvaluationResult(BaseModel):
 
 
 @deprecated("Use EvaluationResult instead")
-class TrobeEvaluationResults(BaseModel):
+class ProbeEvaluationResults(BaseModel):
     """Results from evaluating probes across multiple datasets."""
 
     datasets: List[str]
