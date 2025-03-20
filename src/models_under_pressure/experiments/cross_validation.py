@@ -8,14 +8,15 @@ It then repeats this process for each layer and reports the best layer.
 """
 
 import json
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from datetime import datetime
+from functools import partial
+from multiprocessing import Pool
 from typing import Iterator, Tuple
 
 import numpy as np
 from tqdm import tqdm
-from multiprocessing import Pool
-from functools import partial
 
 from models_under_pressure.config import (
     LOCAL_MODELS,
@@ -24,10 +25,10 @@ from models_under_pressure.config import (
     ChooseLayerConfig,
 )
 from models_under_pressure.interfaces.activations import (
+    Activation,
     Aggregator,
     Postprocessors,
     Preprocessors,
-    Activation,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
@@ -167,7 +168,7 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
-    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)
+    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
     probe._fit(train.activations, train.dataset.labels_numpy())
     return compute_accuracy(probe, test.dataset, test.activations)
 
@@ -227,8 +228,6 @@ def main(config: ChooseLayerConfig):
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-    temp_path = config.output_path.with_suffix(".temp.json")
-
     dataset = LabelledDataset.load_from(**config.dataset_spec)
     if "split" in dataset.other_fields:
         train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
@@ -254,7 +253,13 @@ def main(config: ChooseLayerConfig):
     except AttributeError:
         raise ValueError(f"Postprocessor {config.postprocessor} not found")
 
-    results = {"layer_results": {}, "layer_mean_accuracies": {}}
+    results = {
+        "config": config.model_dump(),
+        "date": datetime.now().isoformat(),
+        "layer_results": {},
+        "layer_mean_accuracies": {},
+    }
+
     print(f"Running cross-validation for {len(config.layers)} layers")
     for layer in print_progress(config.layers):
         print(f"Cross-validating layer {layer}...")
@@ -269,7 +274,8 @@ def main(config: ChooseLayerConfig):
             np.mean(results["layer_results"][layer])
         )
 
-        temp_path.write_text(json.dumps(results))
+        with open(config.temp_output_path, "a") as f:
+            f.write(json.dumps(results) + "\n")
 
     # Find layer with highest mean accuracy
     results["best_layer"] = max(
@@ -283,18 +289,14 @@ def main(config: ChooseLayerConfig):
     print(results)
 
     # Save results
-    results_path = (
-        RESULTS_DIR / "choose_best_layer_via_cross_validation" / config.output_filename
-    )
 
     if config.max_samples is not None:
         print("Not saving results, because we sampled a subset of the dataset")
     else:
-        print(f"Saving results to {results_path}")
-        results_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving results to {config.output_path}")
 
-        with open(results_path, "w") as f:
-            json.dump(results, f)
+        with open(config.output_path, "a") as f:
+            f.write(json.dumps(results) + "\n")
 
 
 if __name__ == "__main__":
@@ -310,6 +312,7 @@ if __name__ == "__main__":
         postprocessor="sigmoid",
         layers=list(range(10, 40, 2)),
         batch_size=16,
+        output_dir=RESULTS_DIR / "cross_validation",
     )
     double_check_config(config)
 
