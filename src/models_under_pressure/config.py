@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
 import torch
+from pydantic import BaseModel
 
 DEFAULT_MODEL = "gpt-4o"
 
@@ -216,8 +218,7 @@ class HeatmapRunConfig:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
 
 
-@dataclass
-class ChooseLayerConfig:
+class ChooseLayerConfig(BaseModel):
     model_name: str
     dataset_spec: dict[str, Any]
     cv_folds: int
@@ -226,19 +227,15 @@ class ChooseLayerConfig:
     batch_size: int
     max_samples: int | None = None
     layers: list[int] | None = None
-
-    @property
-    def output_filename(self) -> str:
-        assert isinstance(self.dataset_spec["file_path_or_name"], Path)
-        return f"{self.dataset_spec['file_path_or_name'].stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+    output_dir: Path = RESULTS_DIR / "cross_validation"
 
     @property
     def output_path(self) -> Path:
-        return (
-            RESULTS_DIR
-            / "choose_best_layer_via_cross_validation"
-            / self.output_filename
-        )
+        return self.output_dir / "results.jsonl"
+
+    @property
+    def temp_output_path(self) -> Path:
+        return self.output_dir / "temp_results.jsonl"
 
 
 @dataclass(frozen=True)

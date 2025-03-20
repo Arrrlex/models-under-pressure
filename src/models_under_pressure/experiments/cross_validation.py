@@ -7,15 +7,16 @@ It then repeats this process for each layer and reports the best layer.
 
 """
 
-import json
-from dataclasses import dataclass
 import os
-from typing import Iterator, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from functools import partial
+from multiprocessing import Pool
+from typing import Iterator, Self, Tuple
 
 import numpy as np
+from pydantic import BaseModel, Field
 from tqdm import tqdm
-from multiprocessing import Pool
-from functools import partial
 
 from models_under_pressure.config import (
     LOCAL_MODELS,
@@ -24,15 +25,59 @@ from models_under_pressure.config import (
     ChooseLayerConfig,
 )
 from models_under_pressure.interfaces.activations import (
+    Activation,
     Aggregator,
     Postprocessors,
     Preprocessors,
-    Activation,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
 from models_under_pressure.utils import double_check_config, print_progress
+
+
+class CVIntermediateResults(BaseModel):
+    config: ChooseLayerConfig
+    layer_results: dict[int, list[float]] = Field(default_factory=dict)
+    layer_mean_accuracies: dict[int, float] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def add_layer_results(self, layer: int, results: list[float]):
+        self.layer_results[layer] = results
+        self.layer_mean_accuracies[layer] = float(np.mean(results))
+
+    def save(self):
+        self.config.temp_output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving intermediate results to {self.config.temp_output_path}")
+        with open(self.config.temp_output_path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
+
+
+class CVFinalResults(BaseModel):
+    results: CVIntermediateResults
+    best_layer: int
+    best_layer_accuracy: float
+
+    @classmethod
+    def from_intermediate(cls, intermediate: CVIntermediateResults) -> Self:
+        best_layer = max(
+            intermediate.layer_mean_accuracies.keys(),
+            key=lambda x: intermediate.layer_mean_accuracies[x],
+        )
+        best_layer_accuracy = intermediate.layer_mean_accuracies[best_layer]
+
+        return cls(
+            results=intermediate,
+            best_layer=best_layer,
+            best_layer_accuracy=best_layer_accuracy,
+        )
+
+    def save(self):
+        path = self.results.config.output_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving final results to {path}")
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
 
 
 @dataclass
@@ -104,7 +149,9 @@ class CVSplitsWithActivations:
     def create(
         cls, cv_splits: CVSplits, llm: LLMModel, layer: int, batch_size: int
     ) -> "CVSplitsWithActivations":
-        """Create the CV splits with activations. Doing it this way is faster than getting the activations for each fold separately.
+        """Create the CV splits with activations.
+
+        Doing it this way is faster than getting the activations for each fold separately.
 
         Args:
             cv_splits: CVSplits
@@ -167,7 +214,7 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
-    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)
+    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
     probe._fit(train.activations, train.dataset.labels_numpy())
     return compute_accuracy(probe, test.dataset, test.activations)
 
@@ -214,87 +261,61 @@ def get_cross_validation_accuracies(
     return results
 
 
-def main(config: ChooseLayerConfig):
+def choose_best_layer_via_cv(config: ChooseLayerConfig):
     """Main function to choose the best layer via cross validation.
 
     Args:
         config: ChooseLayerConfig
     """
-    if config.output_path.exists():
-        raise FileExistsError(f"Results already exist for {config.output_path}")
-
-    config.output_path.parent.mkdir(parents=True, exist_ok=True)
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-    temp_path = config.output_path.with_suffix(".temp.json")
-
     dataset = LabelledDataset.load_from(**config.dataset_spec)
-    if "split" in dataset.other_fields:
-        train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-    else:
-        train_dataset = dataset
+
+    train_dataset = dataset.filter(
+        lambda x: x.other_fields.get("split", "train") == "train"
+    )
+
     if config.max_samples is not None:
         train_dataset = train_dataset.sample(config.max_samples)
 
-    cv_splits = CVSplits.create(train_dataset, config.cv_folds)
-
     llm = LLMModel.load(config.model_name)
+
     if config.layers is None:
         config.layers = list(range(llm.n_layers))
     else:
         assert all(0 <= layer < llm.n_layers for layer in config.layers)
 
-    try:
-        preprocessor = getattr(Preprocessors, config.preprocessor)
-    except AttributeError:
-        raise ValueError(f"Preprocessor {config.preprocessor} not found")
-    try:
-        postprocessor = getattr(Postprocessors, config.postprocessor)
-    except AttributeError:
-        raise ValueError(f"Postprocessor {config.postprocessor} not found")
+    aggregator = Aggregator(
+        getattr(Preprocessors, config.preprocessor),
+        getattr(Postprocessors, config.postprocessor),
+    )
 
-    results = {"layer_results": {}, "layer_mean_accuracies": {}}
+    results = CVIntermediateResults(config=config)
+
+    cv_splits = CVSplits.create(train_dataset, config.cv_folds)
+
     print(f"Running cross-validation for {len(config.layers)} layers")
     for layer in print_progress(config.layers):
         print(f"Cross-validating layer {layer}...")
-        results["layer_results"][layer] = get_cross_validation_accuracies(
+        layer_results = get_cross_validation_accuracies(
             llm=llm,
             layer=layer,
-            aggregator=Aggregator(preprocessor, postprocessor),
+            aggregator=aggregator,
             cv_splits=cv_splits,
             batch_size=config.batch_size,
         )
-        results["layer_mean_accuracies"][layer] = float(
-            np.mean(results["layer_results"][layer])
-        )
 
-        temp_path.write_text(json.dumps(results))
+        results.add_layer_results(layer, layer_results)
+        results.save()
 
-    # Find layer with highest mean accuracy
-    results["best_layer"] = max(
-        results["layer_mean_accuracies"].keys(),
-        key=lambda x: results["layer_mean_accuracies"][x],
-    )
-    results["best_layer_accuracy"] = results["layer_mean_accuracies"][
-        results["best_layer"]
-    ]
-    print("Results:")
-    print(results)
+    print(f"Results: {results}")
 
-    # Save results
-    results_path = (
-        RESULTS_DIR / "choose_best_layer_via_cross_validation" / config.output_filename
-    )
+    # Compute final results
+    final_results = CVFinalResults.from_intermediate(results)
 
-    if config.max_samples is not None:
-        print("Not saving results, because we sampled a subset of the dataset")
-    else:
-        print(f"Saving results to {results_path}")
-        results_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(results_path, "w") as f:
-            json.dump(results, f)
+    # Save final results
+    final_results.save()
 
 
 if __name__ == "__main__":
@@ -310,7 +331,8 @@ if __name__ == "__main__":
         postprocessor="sigmoid",
         layers=list(range(10, 40, 2)),
         batch_size=16,
+        output_dir=RESULTS_DIR / "cross_validation",
     )
     double_check_config(config)
 
-    main(config)
+    choose_best_layer_via_cv(config)
