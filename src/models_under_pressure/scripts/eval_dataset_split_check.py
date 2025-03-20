@@ -85,7 +85,7 @@ if __name__ == "__main__":
             dataset = dataset.filter(lambda x: x.id in good_ids)
             print(f"After filtering: {len(dataset)}")
 
-            cleaned_output_path = TEST_EVALS_DIR / f"{dataset_name}_clean.jsonl"
+            cleaned_output_path = TEST_EVALS_DIR / f"{dataset_name}_samples_clean.jsonl"
             dataset.save_to(cleaned_output_path, overwrite=True)
 
             print("Subsampling the data to get a balanced dataset")
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
             # Save the balanced data
             balanced_output_path = (
-                TEST_EVALS_DIR / f"{dataset_name}_clean_balanced.jsonl"
+                TEST_EVALS_DIR / f"{dataset_name}_samples_clean_balanced.jsonl"
             )
             print(f"Saving the balanced data to {balanced_output_path}")
             dataset.save_to(balanced_output_path, overwrite=True)
