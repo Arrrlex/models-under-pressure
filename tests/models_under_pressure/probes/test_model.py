@@ -83,7 +83,8 @@ def test_load_model(mock_auto_tokenizer: Mock, mock_auto_model: Mock):
         pad_token_id=None, eos_token_id=2
     )
 
-    model = LLMModel.load("test/model")
+    with patch("models_under_pressure.utils.hf_login"):
+        model = LLMModel.load("test/model")
 
     assert isinstance(model, LLMModel)
     mock_auto_model.from_pretrained.assert_called_once()
