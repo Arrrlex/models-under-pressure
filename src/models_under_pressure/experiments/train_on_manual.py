@@ -217,7 +217,6 @@ def main(
             model_name=config.model_name,
             train_dataset=train_dataset,
             train_dataset_path=train_dataset_path,
-            dataset_type=train_dataset_type,
         )
         output_filename = f"{train_dataset_type}_train_{Path(config.model_name).stem}_layer{config.layer}_fig2.json"
 
