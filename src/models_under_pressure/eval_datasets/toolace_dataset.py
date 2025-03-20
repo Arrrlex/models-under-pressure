@@ -18,7 +18,7 @@ def load_toolace_raw_data(num_samples: int | None = None) -> Dataset:
     ds = load_dataset("Team-ACE/ToolACE")["train"]  # type: ignore
     inputs = []
     all_ids = list(range(len(ds)))
-    if num_samples is not None:
+    if num_samples is not None and len(ds) > num_samples:
         ids = random.sample(all_ids, num_samples)
     else:
         ids = all_ids
