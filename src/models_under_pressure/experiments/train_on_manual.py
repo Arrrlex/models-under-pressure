@@ -88,7 +88,20 @@ def run_manual_evaluation(
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
-        column_name_template = f"_{model_name.split('/')[-1]}_manual_l{layer}"
+
+        # Avoid losing results if there is a key error
+        try:
+            column_name_template = (
+                f"_{model_name.split('/')[-1]}_{train_dataset_path.stem}_l{layer}"
+            )
+            output_scores = results_dict[dataset_names[-1]][0].other_fields[
+                f"per_entry_probe_scores{column_name_template}"
+            ]
+        except KeyError:
+            print(
+                f"Error getting output scores for {Path(path).stem}! (Not storing output scores.)"
+            )
+            output_scores = None
 
         dataset_results = EvaluationResult(
             metrics=results,
@@ -101,9 +114,7 @@ def run_manual_evaluation(
             method_details={"layer": layer},
             train_dataset_details={"max_samples": max_samples},
             eval_dataset_details={"max_samples": max_samples},
-            output_scores=results_dict[dataset_names[-1]][0].other_fields[
-                f"per_entry_probe_scores{column_name_template}"
-            ],  # type: ignore
+            output_scores=output_scores,  # type: ignore
         )
         results_list.append(dataset_results)
     return results_list
@@ -234,13 +245,13 @@ if __name__ == "__main__":
         description="Train on manual dataset and evaluate on eval datasets"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=None, help="Maximum number of samples to use"
+        "--max_samples", type=int, default=20, help="Maximum number of samples to use"
     )
     parser.add_argument(
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
     )
     parser.add_argument(
-        "--model_name", type=str, default="llama-70b", help="Model name to use"
+        "--model_name", type=str, default="llama-1b", help="Model name to use"
     )
     parser.add_argument(
         "--evaluation_type",
@@ -258,7 +269,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_dataset_type",
         type=str,
-        default="manual",
+        default="combined",
         choices=["manual", "upsampled", "combined"],
         help="Type of training dataset to use",
     )
@@ -269,7 +280,7 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [22]:
+    for layer in [10]:
         config = EvalRunConfig(
             max_samples=args.max_samples,
             layer=layer,
