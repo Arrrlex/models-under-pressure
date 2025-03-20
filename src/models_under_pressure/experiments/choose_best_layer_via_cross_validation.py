@@ -186,6 +186,11 @@ def main(config: ChooseLayerConfig):
     Args:
         config: ChooseLayerConfig
     """
+    if config.output_path.exists():
+        raise FileExistsError(f"Results already exist for {config.output_path}")
+
+    temp_path = config.output_path.with_suffix(".temp.json")
+
     dataset = LabelledDataset.load_from(
         config.dataset_path,
         field_mapping={"prompt": "inputs", "high_stakes": "labels", "id": "ids"},
@@ -226,6 +231,8 @@ def main(config: ChooseLayerConfig):
             np.mean(results["layer_results"][layer])
         )
 
+        temp_path.write_text(json.dumps(results))
+
     # Find layer with highest mean accuracy
     results["best_layer"] = max(
         results["layer_mean_accuracies"].keys(),
@@ -260,7 +267,7 @@ if __name__ == "__main__":
         cv_folds=5,
         preprocessor="mean",
         postprocessor="sigmoid",
-        layers=list(range(0, 40, 2)),
+        layers=list(range(25, 36, 2)),
         batch_size=16,
     )
     double_check_config(config)
