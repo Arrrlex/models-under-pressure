@@ -19,7 +19,6 @@ from models_under_pressure.config import (
     RESULTS_DIR,
     ChooseLayerConfig,
 )
-from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -179,7 +178,11 @@ def main(config: ChooseLayerConfig):
     Args:
         config: ChooseLayerConfig
     """
-    train_dataset, _ = load_train_test(config.dataset_path)
+    dataset = LabelledDataset.load_from(
+        config.dataset_path,
+        field_mapping={"prompt": "inputs", "high_stakes": "labels", "id": "ids"},
+    )
+    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
     if config.max_samples is not None:
         train_dataset = train_dataset.sample(config.max_samples)
 
@@ -241,9 +244,9 @@ def main(config: ChooseLayerConfig):
 
 if __name__ == "__main__":
     config = ChooseLayerConfig(
-        model_name=LOCAL_MODELS["llama-1b"],
+        model_name=LOCAL_MODELS["llama-70b"],
         dataset_path=RESULTS_DIR / "prompts_13_03_25_gpt-4o.jsonl",
-        max_samples=100,
+        max_samples=None,
         cv_folds=5,
         preprocessor="mean",
         postprocessor="sigmoid",

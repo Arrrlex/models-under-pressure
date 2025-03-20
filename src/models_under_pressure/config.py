@@ -8,7 +8,10 @@ import torch
 DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
-    DEVICE: str = "cuda"
+    if torch.cuda.device_count() > 1:
+        DEVICE: str = "auto"
+    else:
+        DEVICE: str = "cuda"
     BATCH_SIZE = 4
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
