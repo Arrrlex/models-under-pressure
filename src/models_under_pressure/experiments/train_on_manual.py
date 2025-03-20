@@ -245,7 +245,7 @@ if __name__ == "__main__":
         description="Train on manual dataset and evaluate on eval datasets"
     )
     parser.add_argument(
-        "--max_samples", type=int, default=20, help="Maximum number of samples to use"
+        "--max_samples", type=int, default=None, help="Maximum number of samples to use"
     )
     parser.add_argument(
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_dataset_type",
         type=str,
-        default="combined",
+        default="manual",
         choices=["manual", "upsampled", "combined"],
         help="Type of training dataset to use",
     )
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [10]:
+    for layer in [22]:
         config = EvalRunConfig(
             max_samples=args.max_samples,
             layer=layer,
