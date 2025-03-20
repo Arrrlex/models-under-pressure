@@ -98,7 +98,7 @@ class CVSplitsWithActivations:
 
     @classmethod
     def create(
-        cls, cv_splits: CVSplits, llm: LLMModel, layer: int
+        cls, cv_splits: CVSplits, llm: LLMModel, layer: int, batch_size: int
     ) -> "CVSplitsWithActivations":
         """Create the CV splits with activations. Doing it this way is faster than getting the activations for each fold separately.
 
@@ -109,7 +109,9 @@ class CVSplitsWithActivations:
         """
         # Get all activations at once
         combined_dataset = LabelledDataset.concatenate(cv_splits.folds)
-        all_activations = llm.get_batched_activations(combined_dataset, layer)
+        all_activations = llm.get_batched_activations(
+            combined_dataset, layer=layer, batch_size=batch_size
+        )
 
         # Split activations according to fold lengths
         fold_lengths = [len(fold) for fold in cv_splits.folds]
@@ -145,7 +147,11 @@ class CVSplitsWithActivations:
 
 
 def get_cross_validation_accuracies(
-    llm: LLMModel, layer: int, aggregator: Aggregator, cv_splits: CVSplits
+    llm: LLMModel,
+    layer: int,
+    aggregator: Aggregator,
+    cv_splits: CVSplits,
+    batch_size: int,
 ) -> list[float]:
     """Get the cross validation accuracies for a given layer.
 
@@ -159,7 +165,9 @@ def get_cross_validation_accuracies(
         List of accuracies, one for each fold
     """
     results = []
-    cv_splits_with_activations = CVSplitsWithActivations.create(cv_splits, llm, layer)
+    cv_splits_with_activations = CVSplitsWithActivations.create(
+        cv_splits, llm, layer, batch_size
+    )
     for train, test in tqdm(
         cv_splits_with_activations.splits(),
         total=cv_splits.num_folds,
@@ -212,6 +220,7 @@ def main(config: ChooseLayerConfig):
             layer=layer,
             aggregator=Aggregator(preprocessor, postprocessor),
             cv_splits=cv_splits,
+            batch_size=config.batch_size,
         )
         results["layer_mean_accuracies"][layer] = float(
             np.mean(results["layer_results"][layer])
@@ -252,6 +261,7 @@ if __name__ == "__main__":
         preprocessor="mean",
         postprocessor="sigmoid",
         layers=list(range(0, 40, 2)),
+        batch_size=16,
     )
     double_check_config(config)
 
