@@ -9,7 +9,6 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     PLOTS_DIR,
-    EvalRunConfig,
 )
 
 # Load data from your JSONL file
@@ -22,16 +21,14 @@ def load_data(file_path: Path) -> list[dict]:
 
 
 # Prepare the data
-def prepare_data(
-    data: list[dict], eval_run_config: EvalRunConfig
-) -> tuple[list[int], list[float]]:
-    y_prob = [
-        entry[
-            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{type}_l{eval_run_config.layer}"
-        ]
-        for entry in data
+def prepare_data(data: list[dict], dataset_name: str) -> tuple[list[int], list[float]]:
+    dataset_res = [
+        data if entry["dataset_name"] == dataset_name else None for entry in data
     ]
-    y_true = [1 if entry["scale_labels"] > 5 else 0 for entry in data]
+    # extract the not none entry first
+    dataset_res = [entry for entry in dataset_res if entry is not None][0][0]
+    y_prob = dataset_res["output_scores"]
+    y_true = [1 if entry["scale_labels"] > 5 else 0 for entry in dataset_res[""]]
     return y_true, y_prob
 
 
@@ -61,26 +58,24 @@ def plot_calibration(
     ax2.grid()
 
     # save the plots with data name in the same directory
-    plt.savefig(PLOTS_DIR / f"{type}/{file_name}_calibration.png")
+    plt.savefig(PLOTS_DIR / f"{type}_{file_name}_calibration.png")
     plt.close()
 
 
-def run_calibration(eval_run_config: EvalRunConfig):
+def run_calibration(type: str, model_name: str, layer: int):
     """
     Run calibration analysis with the provided EvalRunConfig.
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / f"{type}/{eval_dataset}.jsonl")
-        y_true, y_prob = prepare_data(data, eval_run_config)
+        data = load_data(EVALUATE_PROBES_DIR / type)
+        y_true, y_prob = prepare_data(data, eval_dataset)
         plot_calibration(y_true, y_prob, eval_dataset, n_bins=10)
 
 
 # Main execution
 if __name__ == "__main__":
-    type = "manual"
-    eval_run_config = EvalRunConfig(
-        layer=22,
-        model_name=LOCAL_MODELS["llama-70b"],
-    )
-    run_calibration(eval_run_config)
+    type = "upsampled_train_Llama-3_layer22_fig2.json"
+    model_name = LOCAL_MODELS["llama-70b"]
+    layer = 22
+    run_calibration(type, model_name, layer)

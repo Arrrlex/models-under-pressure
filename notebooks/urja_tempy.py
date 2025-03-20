@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+from datasets import load_dataset
+
 from models_under_pressure.config import RunConfig
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
@@ -351,14 +353,14 @@ def label_and_filter():
 # Install datasets library if you haven't already
 # pip install datasets
 
-from datasets import load_dataset
 
 # Load the dataset
 dataset = load_dataset("CohereForAI/aya_redteaming")
 
 # Save dataset to disk in JSON format
-dataset.to_json("data/aya_redteaming_dataset.json")
+json.dump(dataset, open("datasets/aya_redteaming_dataset.json", "w"))
+
 
 # Alternatively, save specific splits (train, test)
-dataset["train"].to_json("aya_redteaming_train.json")
-dataset["test"].to_json("aya_redteaming_test.json")
+# dataset["train"].to_json("datasets/aya_redteaming_train.json")
+# dataset["test"].to_json("datasets/aya_redteaming_test.json")
