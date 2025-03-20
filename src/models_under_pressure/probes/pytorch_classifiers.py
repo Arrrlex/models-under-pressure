@@ -126,6 +126,7 @@ class PytorchLinearClassifier:
         # Convert the logits to probabilities
         return torch.sigmoid(mean_logits).numpy()
 
+    @torch.no_grad()
     def predict_token_logits(
         self, activations: Activation
     ) -> Float[np.ndarray, " batch_size seq_len"]:
@@ -142,7 +143,8 @@ class PytorchLinearClassifier:
 
         activations = activations.to_per_token()
 
-        # Get the logits
+        # Switch batch norm to eval mode:
+        self.model.eval()
         logits = self.model(torch.tensor(activations.activations))
 
         # Reshape back to the original shape and take the mean over the sequence length
@@ -155,6 +157,7 @@ class PytorchLinearClassifier:
 
         return logits
 
+    @torch.no_grad()
     def predict_token_proba(
         self, activations: Activation
     ) -> Float[np.ndarray, " batch_size seq_len"]:
@@ -178,4 +181,6 @@ class PytorchLinearClassifier:
         """
 
         # Create a linear model over the embedding dimension
-        return nn.Linear(activations_shape[2], 1)
+        return nn.Sequential(
+            nn.BatchNorm1d(activations_shape[2]), nn.Linear(activations_shape[2], 1)
+        )

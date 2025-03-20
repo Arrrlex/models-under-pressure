@@ -6,7 +6,6 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import CACHE_DIR, MODEL_MAX_MEMORY
 from models_under_pressure.experiments.dataset_splitting import (
     create_cross_validation_splits,
 )
@@ -19,9 +18,9 @@ from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.sklearn_probes import (
-    LinearProbe,
+    Probe,
+    SklearnProbe,
     compute_accuracy,
-    load_or_train_probe,
 )
 
 # Set random seed for reproducibility
@@ -34,8 +33,19 @@ dotenv.load_dotenv()
 
 def train_probes(
     model: LLMModel, dataset: LabelledDataset, layers: list[int] | None = None
-) -> dict[int, LinearProbe]:
-    """Train a probe for each layer in the model."""
+) -> dict[int, Probe]:
+    """Train a probe for each layer in the model.
+
+    Args:
+        model: The model to train the probe on.
+        dataset: The dataset to train the probe on.
+        layers: The layers to train the probe on.
+
+    Returns:
+        A dictionary of the trained probes.
+
+    Used in the generate_heatmaps script...
+    """
 
     layers = layers or list(range(model.n_layers))
     aggregator = Aggregator(
@@ -48,13 +58,13 @@ def train_probes(
 
     # Iterate over layers. For each layer, create a config, then train a probe and store it
     return {
-        layer: LinearProbe(_llm=model, layer=layer, aggregator=aggregator).fit(dataset)
+        layer: SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(dataset)
         for layer in tqdm(layers, desc="Training probes")
     }
 
 
 def cross_validate_probe(
-    probe: LinearProbe, dataset_splits: list[LabelledDataset]
+    probe: Probe, dataset_splits: list[LabelledDataset]
 ) -> np.ndarray:
     accuracies = []
 
@@ -73,9 +83,7 @@ def cross_validate_probe(
     return np.mean(np.array(accuracies), axis=1)
 
 
-def cross_validate_probes(
-    probes: list[LinearProbe], dataset: LabelledDataset
-) -> np.ndarray:
+def cross_validate_probes(probes: list[Probe], dataset: LabelledDataset) -> np.ndarray:
     dataset_splits = create_cross_validation_splits(dataset)
     accuracies = np.array(
         [cross_validate_probe(probe, dataset_splits) for probe in probes]
@@ -83,34 +91,37 @@ def cross_validate_probes(
     return np.mean(accuracies, axis=1)
 
 
-def train_probes_and_save_results(
-    model_name: str,
-    train_dataset: LabelledDataset,
+def evaluate_probe_and_save_results(
+    model: LLMModel,
+    probe: Probe,
     train_dataset_path: Path,
     eval_datasets: dict[str, LabelledDataset],
-    aggregator: Aggregator,
     layer: int,
     output_dir: Path,
     save_results: bool = False,
 ) -> dict[str, tuple[LabelledDataset, DatasetResults]]:
+    """
+    Evaluate a probe and save the results to a file.
+
+    Args:
+        model: The model to evaluate the probe on.
+        probe: The probe to evaluate.
+        train_dataset_path: The path to the train dataset.
+        eval_datasets: The datasets to evaluate the probe on.
+        layer: The layer to evaluate the probe on.
+        output_dir: The directory to save the results to.
+        save_results: Whether to save the results to a file.
+
+    Returns:
+        A dictionary of the evaluated datasets and their results.
+
+    Method designed to be used in the evaluate_probes.py experiment run
+    """
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    model = LLMModel.load(
-        model_name,
-        model_kwargs={
-            "device_map": "auto",
-            "max_memory": MODEL_MAX_MEMORY[model_name],
-            "cache_dir": CACHE_DIR,
-        },
-    )
-    probe = load_or_train_probe(
-        model=model,
-        train_dataset=train_dataset,
-        train_dataset_path=train_dataset_path,
-        layer=layer,
-        aggregator=aggregator,
-    )
     probe_scores_dict = {}
 
+    # For each eval_dataset, calculate the per entry and per token results:
     for eval_dataset_name, eval_dataset in tqdm(
         eval_datasets.items(),
         desc=f"Evaluating datasets for layer {layer}",
@@ -162,7 +173,7 @@ def train_probes_and_save_results(
             ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
 
     outputs = {}
-    # Eval part of the function:
+    # Eval metric level results
     for eval_dataset_name in eval_datasets.keys():
         if save_results:
             try:

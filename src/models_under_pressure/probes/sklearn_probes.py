@@ -31,8 +31,23 @@ from models_under_pressure.interfaces.dataset import (
 from models_under_pressure.probes.model import LLMModel
 
 
-class HighStakesClassifier(Protocol):
-    def predict(self, dataset: Dataset) -> list[Label]: ...
+@dataclass
+class Probe(Protocol):
+    _llm: LLMModel
+    layer: int
+
+    def fit(self, dataset: LabelledDataset) -> Self: ...
+
+    def predict(self, dataset: BaseDataset) -> list[Label]: ...
+
+    def predict_proba(
+        self, dataset: BaseDataset
+    ) -> Float[np.ndarray, " batch_size"]: ...
+
+    def per_token_predictions(
+        self,
+        inputs: Sequence[Input],
+    ) -> Float[np.ndarray, "batch_size seq_len"]: ...
 
 
 class SklearnClassifier(Protocol):
@@ -52,7 +67,7 @@ class SklearnClassifier(Protocol):
 
 
 @dataclass
-class LinearProbe(HighStakesClassifier):
+class SklearnProbe(Probe):
     _llm: LLMModel
     layer: int
 
@@ -182,7 +197,7 @@ class ProbeInfo:
         return PROBES_DIR / f"{self.name}.pkl"
 
 
-def save_probe(probe: LinearProbe, probe_info: ProbeInfo):
+def save_probe(probe: SklearnProbe, probe_info: ProbeInfo):
     output_path = probe_info.path
 
     print(f"Saving probe to {output_path}")
@@ -190,12 +205,12 @@ def save_probe(probe: LinearProbe, probe_info: ProbeInfo):
         pickle.dump(probe._classifier, f)
 
 
-def load_probe(model: LLMModel, probe_info: ProbeInfo) -> LinearProbe:
+def load_probe(model: LLMModel, probe_info: ProbeInfo) -> SklearnProbe:
     probe_path = probe_info.path
     print(f"Loading probe from {probe_path}")
     with open(probe_path, "rb") as f:
         classifier = pickle.load(f)
-    return LinearProbe(
+    return SklearnProbe(
         _llm=model,
         layer=probe_info.layer,
         aggregator=probe_info.aggregator,
@@ -210,7 +225,7 @@ def load_or_train_probe(
     layer: int,
     aggregator: Aggregator,
     seq_pos: int | str = "all",
-) -> LinearProbe:
+) -> SklearnProbe:
     probe_info = ProbeInfo(
         model_name_short=model.name.split("/")[-1],
         dataset_path=train_dataset_path.stem,
@@ -221,7 +236,7 @@ def load_or_train_probe(
     if probe_info.path.exists():
         probe = load_probe(model, probe_info)
     else:
-        probe = LinearProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+        probe = SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
             train_dataset
         )
         save_probe(probe, probe_info)
@@ -229,11 +244,11 @@ def load_or_train_probe(
 
 
 def compute_accuracy(
-    probe: LinearProbe,
+    probe: Probe,
     dataset: LabelledDataset,
     activations: Activation,
 ) -> float:
-    pred_labels = probe._predict(activations)
+    pred_labels = probe.predict(dataset)
     return (np.array(pred_labels) == dataset.labels_numpy()).mean()
 
 
@@ -246,7 +261,7 @@ if __name__ == "__main__":
         postprocessor=Postprocessors.sigmoid,
     )
     train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
-    probe = LinearProbe(_llm=model, layer=11, aggregator=agg)
+    probe = SklearnProbe(_llm=model, layer=11, aggregator=agg)
     probe.fit(train_dataset[:10])
 
     # Test the probe

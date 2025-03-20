@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Self, Sequence
+from typing import Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -24,17 +24,13 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import PytorchLinearClassifier
-
-
-class HighStakesClassifier(Protocol):
-    def predict(self, dataset: Dataset) -> list[Label]: ...
+from models_under_pressure.probes.sklearn_probes import Probe
 
 
 @dataclass
-class PytorchProbe(HighStakesClassifier):
+class PytorchProbe(Probe):
     _llm: LLMModel
     layer: int
-    aggregator: Aggregator | None = None
     _classifier: PytorchLinearClassifier = field(
         default_factory=PytorchLinearClassifier
     )

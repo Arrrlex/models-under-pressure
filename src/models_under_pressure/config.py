@@ -189,6 +189,7 @@ class EvalRunConfig:
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = GENERATED_DATASET_PATH
+    probe_name: str = "sklearn_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property

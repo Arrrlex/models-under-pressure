@@ -4,15 +4,19 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.config import (
+    CACHE_DIR,
     EVAL_DATASETS,
     LOCAL_MODELS,
+    MODEL_MAX_MEMORY,
     OUTPUT_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
-from models_under_pressure.experiments.train_probes import train_probes_and_save_results
+from models_under_pressure.experiments.train_probes import (
+    evaluate_probe_and_save_results,
+)
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -20,6 +24,8 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import ProbeEvaluationResults
+from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.probes import ProbeFactory
 
 
 def load_eval_datasets(
@@ -39,6 +45,7 @@ def load_eval_datasets(
 def run_evaluation(
     layer: int,
     model_name: str,
+    probe_name: str,
     dataset_path: Path,
     aggregator: Aggregator,
     variation_type: str | None = None,
@@ -53,18 +60,39 @@ def run_evaluation(
         max_samples=max_samples,
     )
 
+    # Create the model:
+    print("Loading model ...")
+    model = LLMModel.load(
+        model_name,
+        model_kwargs={
+            "device_map": "auto",
+            "max_memory": MODEL_MAX_MEMORY[model_name],
+            "cache_dir": CACHE_DIR,
+        },
+    )
+
+    # Create the probe:
+    print("Creating probe ...")
+    probe = ProbeFactory.build(
+        probe=probe_name,
+        model=model,
+        train_dataset=train_dataset,
+        layer=layer,
+        aggregator=aggregator,
+        output_dir=OUTPUT_DIR,
+    )
+
     # Load eval datasets
     print("Loading eval datasets ...")
     eval_datasets = load_eval_datasets(max_samples=max_samples)
 
-    results_dict = train_probes_and_save_results(
-        model_name=model_name,
-        train_dataset=train_dataset,
+    results_dict = evaluate_probe_and_save_results(
+        model=model,
+        probe=probe,
         train_dataset_path=dataset_path,
         eval_datasets=eval_datasets,
         layer=layer,
         output_dir=OUTPUT_DIR,
-        aggregator=aggregator,
     )
     metrics = []
     dataset_names = []
@@ -102,6 +130,7 @@ if __name__ == "__main__":
         )
 
         results = run_evaluation(
+            probe_name=config.probe_name,
             variation_type=config.variation_type,
             variation_value=config.variation_value,
             max_samples=config.max_samples,
