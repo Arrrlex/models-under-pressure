@@ -1,19 +1,9 @@
 import json
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import huggingface_hub
 import torch
-from dotenv import load_dotenv
-
-load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
-if not HF_TOKEN:
-    raise ValueError("No HuggingFace token found")
-huggingface_hub.login(token=HF_TOKEN)
-
 
 DEFAULT_MODEL = "gpt-4o"
 

@@ -19,6 +19,7 @@ from models_under_pressure.interfaces.dataset import (
     Message,
     to_dialogue,
 )
+from models_under_pressure.utils import hf_login
 
 
 @dataclass
@@ -54,6 +55,7 @@ class LLMModel:
         tokenizer_kwargs: dict[str, Any] | None = None,
         device: str | None = None,
     ) -> "LLMModel":
+        hf_login()
         if tokenizer_name is None:
             tokenizer_name = model_name
 
