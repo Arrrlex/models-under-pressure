@@ -118,6 +118,12 @@ def run_manual_evaluation(
             output_labels=[int(a > 0.5) for a in output_scores]
             if output_scores
             else None,  # type: ignore
+            ground_truth_labels=[
+                label.to_int() for label in eval_datasets[dataset_names[-1]].labels
+            ],
+            ground_truth_scale_labels=eval_datasets[dataset_names[-1]].other_fields[
+                "scale_labels"
+            ],  # type: ignore
         )
         results_list.append(dataset_results)
     return results_list
@@ -191,6 +197,7 @@ def evaluate_on_train_test_split(
                     f"per_entry_probe_scores{column_name_template}"
                 ]
             ),  # type: ignore
+            ground_truth_labels=[label.to_int() for label in eval_dataset.labels],
         )
         results_list.append(dataset_results)
     return results_list

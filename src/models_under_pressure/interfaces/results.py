@@ -60,6 +60,12 @@ class EvaluationResult(BaseModel):
     output_labels: list[int] | None = None
     """Labels for each example in the eval dataset"""
 
+    ground_truth_labels: list[int] | None = None
+    """Ground truth labels for each example in the eval dataset"""
+
+    ground_truth_scale_labels: list[int] | None = None
+    """Ground truth scale labels for each example in the eval dataset"""
+
     @property
     def run_name(self) -> str:
         """Extract metadata and create a run name string.
