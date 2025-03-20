@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+from datetime import timedelta
 
 from models_under_pressure.config import DEFAULT_MODEL
 
@@ -236,7 +237,9 @@ def print_progress(
             remaining_items = n - i
             est_remaining = remaining_items / items_per_sec
             print(
-                f"Progress: {i}/{n} | Elapsed: {elapsed:.1f}s | Remaining: {est_remaining:.1f}s"
+                f"Progress: {i}/{n} | "
+                f"Elapsed: {timedelta(seconds=int(elapsed))} | "
+                f"Remaining: {timedelta(seconds=int(est_remaining))}"
             )
 
 
