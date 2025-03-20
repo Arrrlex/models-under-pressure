@@ -167,10 +167,9 @@ class LLMModel:
     def get_activations(
         self,
         inputs: Sequence[Input],
-        layers: Sequence[int] | None = None,
+        layer: int,
     ) -> Activation:
         dialogues = [to_dialogue(inp) for inp in inputs]
-        layers = layers or list(range(self.n_layers))
 
         torch_inputs = self.tokenize(dialogues)  # type: ignore
 
@@ -189,17 +188,16 @@ class LLMModel:
         # Different model architectures have different structures
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             # LLaMA-style architecture
-            for i in layers:
-                layer = self.model.model.layers[i]
-                hooks.append(layer.input_layernorm.register_forward_hook(hook_fn))
+
+            layer_object = self.model.model.layers[layer]
+            hooks.append(layer_object.input_layernorm.register_forward_hook(hook_fn))
 
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
         ):
             # GPT-style architecture (like Qwen)
-            for i in layers:
-                layer = self.model.transformer.h[i]
-                hooks.append(layer.ln_1.register_forward_hook(hook_fn))
+            layer_object = self.model.transformer.h[layer]
+            hooks.append(layer_object.ln_1.register_forward_hook(hook_fn))
         else:
             raise ValueError(
                 f"Unsupported model architecture: {type(self.model)}. "
@@ -213,19 +211,10 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        assert (
-            len(activations) == len(layers)
-        ), f"Number of activations ({len(activations)}) does not match number of layers ({len(layers)})"
-
-        # Print stored activations
-        for layer, act in zip(layers, activations):
-            if self.verbose:
-                print(f"Layer: {layer}, Activation Shape: {act.shape}")
-
         attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
         input_ids = torch_inputs["input_ids"].detach().cpu().numpy()
 
-        return Activation(np.stack(activations), attention_mask, input_ids)
+        return Activation(activations[0], attention_mask, input_ids)
 
     def get_batched_activations(
         self,
@@ -252,10 +241,10 @@ class LLMModel:
             end_idx = min((i + 1) * batch_size, n_samples)
             batch_inputs = dataset.inputs[start_idx:end_idx]
 
-            activation_obj = self.get_activations(inputs=batch_inputs, layers=[layer])
-            batch_activations = activation_obj.activations[0]
-            batch_attn_mask = activation_obj.attention_mask
-            batch_input_ids = activation_obj.input_ids
+            activation_obj = self.get_activations(inputs=batch_inputs, layer=layer)
+            batch_activations = activation_obj.get_activations()
+            batch_attn_mask = activation_obj.get_attention_mask()
+            batch_input_ids = activation_obj.get_input_ids()
 
             assert (
                 len(batch_activations.shape) == 3
@@ -339,7 +328,7 @@ if __name__ == "__main__":
             )
         ],
     ]  # type: ignore
-    activation_obj = model.get_activations(inputs=dialogues)
-    print(activation_obj.activations.shape)
-    print(activation_obj.attention_mask.shape)
-    print(activation_obj.input_ids.shape)
+    activation_obj = model.get_activations(inputs=dialogues, layer=11)
+    print(activation_obj.get_activations().shape)
+    print(activation_obj.get_attention_mask().shape)
+    print(activation_obj.get_input_ids().shape)

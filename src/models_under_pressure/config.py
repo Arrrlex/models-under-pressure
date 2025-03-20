@@ -65,6 +65,11 @@ GENERATED_DATASET = {
 }
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
+PYTORCH_PT_TRAINING_ARGS = {
+    "batch_size": 16,
+    "epochs": 3,
+    "device": "cpu",
+}
 
 # Training datasets
 TRAIN_DIR = DATA_DIR / "training"
@@ -244,7 +249,8 @@ class EvalRunConfig:
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
+    dataset_path: Path = GENERATED_DATASET_PATH
+    probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
