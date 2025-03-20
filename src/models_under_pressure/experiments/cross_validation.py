@@ -154,7 +154,9 @@ class CVSplitsWithActivations:
     def create(
         cls, cv_splits: CVSplits, llm: LLMModel, layer: int, batch_size: int
     ) -> "CVSplitsWithActivations":
-        """Create the CV splits with activations. Doing it this way is faster than getting the activations for each fold separately.
+        """Create the CV splits with activations.
+
+        Doing it this way is faster than getting the activations for each fold separately.
 
         Args:
             cv_splits: CVSplits
