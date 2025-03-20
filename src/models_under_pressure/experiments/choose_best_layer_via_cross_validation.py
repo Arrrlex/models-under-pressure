@@ -194,13 +194,13 @@ def get_cross_validation_accuracies(
     cv_splits_with_activations = CVSplitsWithActivations.create(
         cv_splits, llm, layer, batch_size
     )
-    
+
     # Create list of train/test pairs
     fold_pairs = list(cv_splits_with_activations.splits())
-    
+
     # Create partial function with fixed arguments
     worker_fn = partial(_train_and_evaluate_fold, layer=layer, aggregator=aggregator)
-    
+
     # Use multiprocessing to evaluate folds in parallel
     with Pool() as pool:
         results = list(
@@ -210,7 +210,7 @@ def get_cross_validation_accuracies(
                 desc="Cross-validating",
             )
         )
-    
+
     return results
 
 
@@ -222,7 +222,7 @@ def main(config: ChooseLayerConfig):
     """
     if config.output_path.exists():
         raise FileExistsError(f"Results already exist for {config.output_path}")
-    
+
     config.output_path.parent.mkdir(parents=True, exist_ok=True)
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
