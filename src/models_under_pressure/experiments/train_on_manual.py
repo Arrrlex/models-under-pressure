@@ -88,7 +88,20 @@ def run_manual_evaluation(
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
-        column_name_template = f"_{model_name.split('/')[-1]}_manual_l{layer}"
+
+        # Avoid losing results if there is a key error
+        try:
+            column_name_template = (
+                f"_{model_name.split('/')[-1]}_{train_dataset_path.stem}_l{layer}"
+            )
+            output_scores = results_dict[dataset_names[-1]][0].other_fields[
+                f"per_entry_probe_scores{column_name_template}"
+            ]
+        except KeyError:
+            print(
+                f"Error getting output scores for {Path(path).stem}! (Not storing output scores.)"
+            )
+            output_scores = None
 
         dataset_results = EvaluationResult(
             metrics=results,
@@ -101,8 +114,15 @@ def run_manual_evaluation(
             method_details={"layer": layer},
             train_dataset_details={"max_samples": max_samples},
             eval_dataset_details={"max_samples": max_samples},
-            output_scores=results_dict[dataset_names[-1]][0].other_fields[
-                f"per_entry_probe_scores{column_name_template}"
+            output_scores=output_scores,  # type: ignore
+            output_labels=[int(a > 0.5) for a in output_scores]
+            if output_scores
+            else None,  # type: ignore
+            ground_truth_labels=[
+                label.to_int() for label in eval_datasets[dataset_names[-1]].labels
+            ],
+            ground_truth_scale_labels=eval_datasets[dataset_names[-1]].other_fields[
+                "scale_labels"
             ],  # type: ignore
         )
         results_list.append(dataset_results)
@@ -112,29 +132,13 @@ def run_manual_evaluation(
 def evaluate_on_train_test_split(
     layer: int,
     model_name: str,
+    train_dataset: LabelledDataset,
     train_dataset_path: Path,
     eval_dataset_path: Path,
-    train_dataset_type: str = "manual",
     is_test: bool = False,
     max_samples: int | None = None,
 ) -> list[EvaluationResult]:
-    """Train a linear probe on the manual dataset and evaluate on a train/test split.
-
-    Args:
-        layer: Layer to extract embeddings from
-        model_name: Name of the model to use
-        dataset_path: Path to the dataset to evaluate on
-        is_test: If True, evaluate on test split, otherwise on train split
-        max_samples: Maximum number of samples to use
-
-    Returns:
-        Evaluation results
-    """
-    # Load manual dataset for training
-    print("Loading manual dataset for training...")
-    train_dataset, train_dataset_path = load_manual_dataset(
-        max_samples=max_samples, dataset_type=train_dataset_type
-    )
+    """Train a linear probe on the manual dataset and evaluate on a train/test split."""
 
     # Load the train/test split using the existing function
     train_split, test_split = load_train_test(eval_dataset_path)
@@ -193,6 +197,7 @@ def evaluate_on_train_test_split(
                     f"per_entry_probe_scores{column_name_template}"
                 ]
             ),  # type: ignore
+            ground_truth_labels=[label.to_int() for label in eval_dataset.labels],
         )
         results_list.append(dataset_results)
     return results_list
@@ -229,6 +234,7 @@ def main(
         results = evaluate_on_train_test_split(
             layer=config.layer,
             model_name=config.model_name,
+            train_dataset=train_dataset,
             train_dataset_path=train_dataset_path,
             eval_dataset_path=dataset_path,
             is_test=is_test,
@@ -284,12 +290,16 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [22]:
-        config = EvalRunConfig(
-            max_samples=args.max_samples,
-            layer=layer,
-            model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
-        )
+    config = EvalRunConfig(
+        max_samples=args.max_samples,
+        layer=args.layer,
+        model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
+    )
 
     double_check_config(config)
-    main(config, args.evaluation_type, args.dataset_path, args.train_dataset_type)
+    main(
+        config=config,
+        evaluation_type=args.evaluation_type,
+        dataset_path=args.dataset_path,
+        train_dataset_type=args.train_dataset_type,
+    )
