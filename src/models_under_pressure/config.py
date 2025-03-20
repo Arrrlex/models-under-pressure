@@ -29,7 +29,7 @@ LOCAL_MODELS = {
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": {0: "70GB", 2: "50GB", 3: "50GB"},
+    "meta-llama/Llama-3.3-70B-Instruct": None,
 }
 
 # Paths to input files
@@ -58,11 +58,14 @@ GENERATED_DATASET = {
         # "high_stakes": "labels",
     },
 }
+EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
+
 
 # Training datasets
 TRAIN_DIR = DATA_DIR / "training"
 MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
 MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
+MANUAL_COMBINED_DATASET_PATH = TRAIN_DIR / "manual_combined.csv"
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 
 # Evals files

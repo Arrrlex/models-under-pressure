@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    MANUAL_COMBINED_DATASET_PATH,
     MANUAL_DATASET_PATH,
     MANUAL_UPSAMPLED_DATASET_PATH,
     SYNTHETIC_DATASET_PATH,
@@ -24,19 +25,24 @@ from models_under_pressure.utils import double_check_config
 
 def load_manual_dataset(
     max_samples: int | None = None,
-    upsampled: bool = False,
-) -> LabelledDataset:
+    dataset_type: str = "manual",
+) -> tuple[LabelledDataset, Path]:
     """Load the manual dataset for training."""
-    if upsampled:
-        dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
-    else:
+    if dataset_type == "manual":
         dataset_path = MANUAL_DATASET_PATH
+    elif dataset_type == "upsampled":
+        dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
+    elif dataset_type == "combined":
+        dataset_path = MANUAL_COMBINED_DATASET_PATH
+    else:
+        raise ValueError(f"Invalid dataset type: {dataset_type}")
+
     dataset = LabelledDataset.load_from(dataset_path).filter(
         lambda x: x.label != Label.AMBIGUOUS
     )
     if max_samples and len(dataset) > max_samples:
         dataset = dataset.sample(max_samples)
-    return dataset
+    return dataset, dataset_path
 
 
 def load_eval_datasets(
@@ -108,6 +114,7 @@ def evaluate_on_train_test_split(
     model_name: str,
     train_dataset_path: Path,
     eval_dataset_path: Path,
+    train_dataset_type: str = "manual",
     is_test: bool = False,
     max_samples: int | None = None,
 ) -> list[EvaluationResult]:
@@ -125,7 +132,9 @@ def evaluate_on_train_test_split(
     """
     # Load manual dataset for training
     print("Loading manual dataset for training...")
-    train_dataset = load_manual_dataset(max_samples=max_samples)
+    train_dataset, train_dataset_path = load_manual_dataset(
+        max_samples=max_samples, dataset_type=train_dataset_type
+    )
 
     # Load the train/test split using the existing function
     train_split, test_split = load_train_test(eval_dataset_path)
@@ -165,7 +174,7 @@ def evaluate_on_train_test_split(
         dataset_name = (
             eval_dataset_name  # + "_test" if is_test else eval_dataset_name + "_train"
         )
-        breakpoint()
+
         dataset_results = EvaluationResult(
             dataset_name=dataset_name,
             model_name=model_name,
@@ -196,16 +205,9 @@ def main(
     train_dataset_type: str = "manual",
 ):
     # Load training dataset based on type
-    if train_dataset_type == "manual":
-        train_dataset = load_manual_dataset(max_samples=config.max_samples)
-        train_dataset_path = MANUAL_DATASET_PATH
-    elif train_dataset_type == "upsampled":
-        train_dataset = load_manual_dataset(
-            max_samples=config.max_samples, upsampled=True
-        )
-        train_dataset_path = MANUAL_UPSAMPLED_DATASET_PATH
-    else:
-        raise ValueError(f"Invalid train dataset type: {train_dataset_type}")
+    train_dataset, train_dataset_path = load_manual_dataset(
+        max_samples=config.max_samples, dataset_type=train_dataset_type
+    )
 
     if evaluation_type == "standard":
         # Evaluate on all eval datasets
@@ -215,6 +217,7 @@ def main(
             model_name=config.model_name,
             train_dataset=train_dataset,
             train_dataset_path=train_dataset_path,
+            dataset_type=train_dataset_type,
         )
         output_filename = f"{train_dataset_type}_train_{Path(config.model_name).stem}_layer{config.layer}_fig2.json"
 
@@ -236,10 +239,8 @@ def main(
         dataset_name = dataset_path.stem
         output_filename = f"manual_train_{Path(config.model_name).stem}_eval_{dataset_name}_{split_name}_layer{config.layer}_fig2.json"
 
-        # Save resultswe    for result in results:
-        # result.save_to(EVALUATE_PROBES_DIR / output_filename)
-        for result in results:
-            result.save_to(EVALUATE_PROBES_DIR / output_filename)
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / output_filename)
     print(f"Results saved to {EVALUATE_PROBES_DIR / output_filename}")
 
 
@@ -255,7 +256,7 @@ if __name__ == "__main__":
         "--layer", type=int, default=11, help="Layer to extract embeddings from"
     )
     parser.add_argument(
-        "--model_name", type=str, default="llama-1b", help="Model name to use"
+        "--model_name", type=str, default="llama-70b", help="Model name to use"
     )
     parser.add_argument(
         "--evaluation_type",
@@ -274,7 +275,7 @@ if __name__ == "__main__":
         "--train_dataset_type",
         type=str,
         default="manual",
-        choices=["manual", "upsampled"],
+        choices=["manual", "upsampled", "combined"],
         help="Type of training dataset to use",
     )
 
@@ -284,10 +285,12 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = EvalRunConfig(
-        max_samples=args.max_samples,
-        layer=args.layer,
-        model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
-    )
+    for layer in [22]:
+        config = EvalRunConfig(
+            max_samples=args.max_samples,
+            layer=layer,
+            model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
+        )
+
     double_check_config(config)
     main(config, args.evaluation_type, args.dataset_path, args.train_dataset_type)
