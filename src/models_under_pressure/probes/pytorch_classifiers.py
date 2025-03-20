@@ -8,6 +8,7 @@ from jaxtyping import Float
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
+from models_under_pressure.config import PYTORCH_PT_TRAINING_ARGS
 from models_under_pressure.interfaces.activations import (
     Activation,
     ActivationPerTokenDataset,
@@ -22,14 +23,7 @@ class PytorchLinearClassifier:
     """
 
     model: nn.Module | None = None
-    training_args: dict = field(
-        default_factory=lambda: {
-            "batch_size": 16,
-            "epochs": 10,
-            "learning_rate": 0.001,
-            "weight_decay": 0.01,
-        }
-    )
+    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
 
     def train(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
         """
@@ -43,9 +37,11 @@ class PytorchLinearClassifier:
             None - The self.model is updated in place!
         """
 
+        device = self.training_args["device"]
+
         # Create a linear model
         if self.model is None:
-            self.model = self.create_model(activations.shape)
+            self.model = self.create_model(activations.shape).to(device)
 
         # Initialize optimizer
         optimizer = torch.optim.AdamW(self.model.parameters())
@@ -70,24 +66,40 @@ class PytorchLinearClassifier:
             replacement=True,
         )
 
-        dataloader = DataLoader(per_token_dataset, batch_size=16, sampler=sampler)
+        dataloader = DataLoader(
+            per_token_dataset,
+            batch_size=self.training_args["batch_size"],
+            sampler=sampler,
+        )
 
         # Training loop
         self.model.train()
-        for _ in tqdm(range(self.training_args["epochs"]), desc="Training epochs"):
-            for batch in dataloader:
+        for epoch in range(self.training_args["epochs"]):
+            running_loss = 0.0
+            pbar = tqdm(
+                dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
+            )
+            for batch_idx, batch in enumerate(pbar):
                 acts, _, _, y = batch
 
                 # Preprocessing step on the activations:
                 optimizer.zero_grad()
 
                 # Forward pass
-                outputs = self.model(acts)
-                loss = criterion(outputs.squeeze(), y)
+                outputs = self.model(acts.to(device))
+                loss = criterion(outputs.squeeze(), y.to(device))  # type: ignore
 
                 # Backward pass and optimize
                 loss.backward()
                 optimizer.step()
+
+                # Update running loss and progress bar
+                running_loss += loss.item()
+                avg_loss = running_loss / (batch_idx + 1)
+                pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
+
+            # Print epoch summary
+            print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
 
         return self
 
@@ -138,24 +150,37 @@ class PytorchLinearClassifier:
         if self.model is None:
             raise ValueError("Model not trained")
 
+        device = self.training_args["device"]
+
         # Process the activations into a per token dataset to be passed through the model
         batch_size, seq_len, embed_dim = activations.shape
 
         activations = activations.to_per_token()
 
         # Switch batch norm to eval mode:
+        self.model = self.model.to(device)
         self.model.eval()
-        logits = self.model(torch.tensor(activations.activations))
+
+        logits = self.model(
+            torch.tensor(activations.activations, dtype=torch.float32).to(device)
+        )
+
+        # Multiply by the attention mask -> to remove padded tokens:
+        masked_logits = logits * torch.tensor(
+            activations.attention_mask[:, None], dtype=torch.float32
+        ).to(device)
 
         # Reshape back to the original shape and take the mean over the sequence length
-        logits = einops.rearrange(logits, "(b s) 1 -> b s", b=batch_size, s=seq_len)
+        reshaped_logits = einops.rearrange(
+            masked_logits, "(b s) 1 -> b s", b=batch_size, s=seq_len
+        )
 
-        assert logits.shape == (
+        assert reshaped_logits.shape == (
             batch_size,
             seq_len,
-        ), f"Logits shape is {logits.shape} not {(batch_size, seq_len)}"
+        ), f"Logits shape is {reshaped_logits.shape} not {(batch_size, seq_len)}"
 
-        return logits
+        return reshaped_logits
 
     @torch.no_grad()
     def predict_token_proba(
@@ -184,3 +209,13 @@ class PytorchLinearClassifier:
         return nn.Sequential(
             nn.BatchNorm1d(activations_shape[2]), nn.Linear(activations_shape[2], 1)
         )
+
+
+@dataclass
+class PytorchAttentionClassifier:
+    """
+    A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
+    """
+
+    model: nn.Module | None = None
+    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)

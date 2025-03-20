@@ -71,7 +71,7 @@ class PytorchProbe(Probe):
         """
         Predict and return the probabilities of the dataset.
 
-        Probabilities are expected in the shape (batch_size,)
+        Probabilities are expected from the classifier in the shape (batch_size,)
         """
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
@@ -82,7 +82,7 @@ class PytorchProbe(Probe):
         probs = self._classifier.predict_proba(activations_obj)
 
         # Take the mean over the sequence length:
-        return probs.mean(axis=1)
+        return probs
 
     def per_token_predictions(
         self,
