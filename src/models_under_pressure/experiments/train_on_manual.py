@@ -290,12 +290,11 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    for layer in [22]:
-        config = EvalRunConfig(
-            max_samples=args.max_samples,
-            layer=layer,
-            model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
-        )
+    config = EvalRunConfig(
+        max_samples=args.max_samples,
+        layer=args.layer,
+        model_name=LOCAL_MODELS.get(args.model_name, args.model_name),
+    )
 
     double_check_config(config)
     main(
