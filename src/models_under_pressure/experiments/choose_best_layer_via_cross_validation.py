@@ -9,14 +9,18 @@ It then repeats this process for each layer and reports the best layer.
 
 import json
 from dataclasses import dataclass
+import os
 from typing import Iterator, Tuple
 
 import numpy as np
 from tqdm import tqdm
+from multiprocessing import Pool
+from functools import partial
 
 from models_under_pressure.config import (
     LOCAL_MODELS,
     RESULTS_DIR,
+    TRAIN_DIR,
     ChooseLayerConfig,
 )
 from models_under_pressure.interfaces.activations import (
@@ -146,6 +150,28 @@ class CVSplitsWithActivations:
             yield train, test
 
 
+def _train_and_evaluate_fold(
+    train_test_pair: Tuple[DatasetWithActivations, DatasetWithActivations],
+    layer: int,
+    aggregator: Aggregator,
+) -> float:
+    """Worker function to train and evaluate a probe on a single fold.
+
+    Args:
+        train_test_pair: Tuple of (train, test) DatasetWithActivations
+        llm: LLMModel
+        layer: Layer being evaluated
+        aggregator: Aggregator for the probe
+
+    Returns:
+        Accuracy score for this fold
+    """
+    train, test = train_test_pair
+    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)
+    probe._fit(train.activations, train.dataset.labels_numpy())
+    return compute_accuracy(probe, test.dataset, test.activations)
+
+
 def get_cross_validation_accuracies(
     llm: LLMModel,
     layer: int,
@@ -160,23 +186,31 @@ def get_cross_validation_accuracies(
         layer: Layer to evaluate
         aggregator: Aggregator
         cv_splits: CVSplits
+        batch_size: Batch size for processing
 
     Returns:
         List of accuracies, one for each fold
     """
-    results = []
     cv_splits_with_activations = CVSplitsWithActivations.create(
         cv_splits, llm, layer, batch_size
     )
-    for train, test in tqdm(
-        cv_splits_with_activations.splits(),
-        total=cv_splits.num_folds,
-        desc="Cross-validating",
-    ):
-        probe = LinearProbe(_llm=llm, layer=layer, aggregator=aggregator)
-        probe._fit(train.activations, train.dataset.labels_numpy())
-        accuracy = compute_accuracy(probe, test.dataset, test.activations)
-        results.append(accuracy)
+
+    # Create list of train/test pairs
+    fold_pairs = list(cv_splits_with_activations.splits())
+
+    # Create partial function with fixed arguments
+    worker_fn = partial(_train_and_evaluate_fold, layer=layer, aggregator=aggregator)
+
+    # Use multiprocessing to evaluate folds in parallel
+    with Pool() as pool:
+        results = list(
+            tqdm(
+                pool.imap(worker_fn, fold_pairs),
+                total=cv_splits.num_folds,
+                desc="Cross-validating",
+            )
+        )
+
     return results
 
 
@@ -186,11 +220,20 @@ def main(config: ChooseLayerConfig):
     Args:
         config: ChooseLayerConfig
     """
-    dataset = LabelledDataset.load_from(
-        config.dataset_path,
-        field_mapping={"prompt": "inputs", "high_stakes": "labels", "id": "ids"},
-    )
-    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
+    if config.output_path.exists():
+        raise FileExistsError(f"Results already exist for {config.output_path}")
+
+    config.output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+
+    temp_path = config.output_path.with_suffix(".temp.json")
+
+    dataset = LabelledDataset.load_from(**config.dataset_spec)
+    if "split" in dataset.other_fields:
+        train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
+    else:
+        train_dataset = dataset
     if config.max_samples is not None:
         train_dataset = train_dataset.sample(config.max_samples)
 
@@ -226,6 +269,8 @@ def main(config: ChooseLayerConfig):
             np.mean(results["layer_results"][layer])
         )
 
+        temp_path.write_text(json.dumps(results))
+
     # Find layer with highest mean accuracy
     results["best_layer"] = max(
         results["layer_mean_accuracies"].keys(),
@@ -255,12 +300,15 @@ def main(config: ChooseLayerConfig):
 if __name__ == "__main__":
     config = ChooseLayerConfig(
         model_name=LOCAL_MODELS["llama-70b"],
-        dataset_path=RESULTS_DIR / "prompts_13_03_25_gpt-4o.jsonl",
+        dataset_spec={
+            "file_path_or_name": TRAIN_DIR / "manual_upsampled.csv",
+            "field_mapping": {"id": "ids"},
+        },
         max_samples=None,
-        cv_folds=5,
+        cv_folds=4,
         preprocessor="mean",
         postprocessor="sigmoid",
-        layers=list(range(0, 40, 2)),
+        layers=list(range(10, 40, 2)),
         batch_size=16,
     )
     double_check_config(config)

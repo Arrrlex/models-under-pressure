@@ -3,16 +3,18 @@ import json
 import os
 import random
 import string
-from pprint import pformat
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Generator
-
 import time
+from pprint import pformat
+from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
+
+import huggingface_hub
 import openai
 import torch
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+from datetime import timedelta
 
 from models_under_pressure.config import DEFAULT_MODEL
 
@@ -235,5 +237,15 @@ def print_progress(
             remaining_items = n - i
             est_remaining = remaining_items / items_per_sec
             print(
-                f"Progress: {i}/{n} | Elapsed: {elapsed:.1f}s | Remaining: {est_remaining:.1f}s"
+                f"Progress: {i}/{n} | "
+                f"Elapsed: {timedelta(seconds=int(elapsed))} | "
+                f"Remaining: {timedelta(seconds=int(est_remaining))}"
             )
+
+
+def hf_login():
+    load_dotenv()
+    HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
+    if not HF_TOKEN:
+        raise ValueError("No HuggingFace token found")
+    huggingface_hub.login(token=HF_TOKEN)

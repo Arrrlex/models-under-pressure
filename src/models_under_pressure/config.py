@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
+from typing import Any
 import torch
 
 DEFAULT_MODEL = "gpt-4o"
@@ -74,22 +74,45 @@ SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 # Evals files
 USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
 EVALS_DIR = DATA_DIR / "evals" / "dev"
+TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
+
+EVAL_DATASET_FILENAMES = {
+    "anthropic": {
+        "raw": "anthropic_samples.csv",
+        "balanced": "anthropic_samples_balanced.jsonl",
+    },
+    "toolace": {
+        "raw": "toolace_samples.csv",
+        "balanced": "toolace_samples_balanced.jsonl",
+    },
+    "mt": {"raw": "mt_samples.csv", "balanced": "mt_samples_balanced.jsonl"},
+    "mts": {"raw": "mts_samples.csv", "balanced": "mts_samples_balanced.jsonl"},
+}
 
 EVAL_DATASETS_RAW = {
-    "anthropic": EVALS_DIR / "anthropic_samples.csv",
-    "toolace": EVALS_DIR / "toolace_samples.csv",
-    "mt": EVALS_DIR / "mt_samples.csv",
-    "mts": EVALS_DIR / "mts_samples.csv",
+    name: EVALS_DIR / EVAL_DATASET_FILENAMES[name]["raw"]
+    for name in EVAL_DATASET_FILENAMES
 }
 
 EVAL_DATASETS_BALANCED = {
-    "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
-    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
-    "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
-    "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
+    name: EVALS_DIR / EVAL_DATASET_FILENAMES[name]["balanced"]
+    for name in EVAL_DATASET_FILENAMES
 }
 
+TEST_DATASETS_RAW = {
+    name: TEST_EVALS_DIR / EVAL_DATASET_FILENAMES[name]["raw"]
+    for name in EVAL_DATASET_FILENAMES
+}
+TEST_DATASETS_RAW["mt"] = TEST_EVALS_DIR / "mt_samples_clean.jsonl"
+
+TEST_DATASETS_BALANCED = {
+    name: TEST_EVALS_DIR / EVAL_DATASET_FILENAMES[name]["balanced"]
+    for name in EVAL_DATASET_FILENAMES
+}
+TEST_DATASETS_BALANCED["mt"] = TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl"
+
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
+TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
 
 AIS_DATASETS = {
     "mmlu_sandbagging": {
@@ -196,7 +219,7 @@ class HeatmapRunConfig:
 @dataclass
 class ChooseLayerConfig:
     model_name: str
-    dataset_path: Path
+    dataset_spec: dict[str, Any]
     cv_folds: int
     preprocessor: str
     postprocessor: str
@@ -206,7 +229,8 @@ class ChooseLayerConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
+        assert isinstance(self.dataset_spec["file_path_or_name"], Path)
+        return f"{self.dataset_spec['file_path_or_name'].stem}_{self.model_name.split('/')[-1]}_layer_choice.json"
 
     @property
     def output_path(self) -> Path:
