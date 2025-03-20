@@ -9,9 +9,12 @@ from typing_extensions import deprecated
 from models_under_pressure.config import (
     DEFAULT_MODEL,
     EVAL_DATASETS,
+    EVAL_DATASETS_RAW,
     EVALS_DIR,
     GENERATED_DATASET_PATH,
     LABELING_RUBRIC_PATH,
+    TEST_DATASETS_BALANCED,
+    TEST_DATASETS_RAW,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
@@ -262,6 +265,65 @@ def create_eval_dataset(
             lambda r: r.id not in existing_dataset.ids
         )
         print(f"{len(unlabelled_dataset)} samples remaining to be labelled.")
+    else:
+        existing_dataset = None
+
+    # Label the data
+    dataset = label_dataset(unlabelled_dataset)
+
+    if existing_dataset is not None:
+        try:
+            # Combine the dataset with the existing dataset
+            existing_records = list(existing_dataset.to_records())
+            new_records = list(dataset.to_records())
+            combined_records = existing_records + new_records
+            dataset = LabelledDataset.from_records(combined_records)  # type: ignore
+
+        except Exception as e:
+            print(f"Error combining datasets: {e}")
+            print("Skipping combination and using the newly labelled dataset")
+
+    # Save the data
+    print(f"Saving the data to {raw_output_path}")
+    dataset.save_to(raw_output_path, overwrite=True)
+
+    # Subsample the data
+    print("Subsampling the data to get a balanced dataset")
+    dataset = subsample_balanced_subset(dataset)
+
+    # Save the balanced data
+    print(f"Saving the balanced data to {balanced_output_path}")
+    dataset.save_to(balanced_output_path, overwrite=True)
+
+
+def create_test_dataset(
+    unlabelled_dataset: Dataset,
+    dataset_name: str,
+    recompute: bool = False,
+    remove_dev_samples: bool = True,
+):
+    raw_output_path = TEST_DATASETS_RAW[dataset_name]
+    balanced_output_path = TEST_DATASETS_BALANCED[dataset_name]
+
+    raw_dev_path = EVAL_DATASETS_RAW[dataset_name]
+
+    if remove_dev_samples and raw_dev_path.exists():
+        dev_dataset = Dataset.load_from(raw_dev_path)
+        unlabelled_dataset = unlabelled_dataset.filter(
+            lambda r: r.id not in dev_dataset.ids
+        )
+        print(
+            f"{len(unlabelled_dataset)} samples remaining to be labelled after removing dev samples."
+        )
+
+    if not recompute and raw_output_path.exists():
+        existing_dataset = Dataset.load_from(raw_output_path)
+        unlabelled_dataset = unlabelled_dataset.filter(
+            lambda r: r.id not in existing_dataset.ids
+        )
+        print(
+            f"{len(unlabelled_dataset)} samples remaining to be labelled after removing already labelled samples."
+        )
     else:
         existing_dataset = None
 
