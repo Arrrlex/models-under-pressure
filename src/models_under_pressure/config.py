@@ -12,7 +12,7 @@ if torch.cuda.is_available():
         DEVICE: str = "auto"
     else:
         DEVICE: str = "cuda"
-    BATCH_SIZE = 16
+    BATCH_SIZE = 4
 elif torch.backends.mps.is_available():
     DEVICE: str = "mps"
     BATCH_SIZE = 4
