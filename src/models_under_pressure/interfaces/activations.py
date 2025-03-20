@@ -9,6 +9,11 @@ from torch.utils.data import Dataset as TorchDataset
 
 
 class ActivationPerTokenDataset(TorchDataset):
+    """
+    A pytorch Dataset class that contains the activations structured as a flattened per-token dataset.
+    Each activation and attention mask is batch_size * seq_len long.
+    """
+
     def __init__(
         self,
         activations: "Activation",
@@ -75,6 +80,12 @@ class ActivationPerTokenDataset(TorchDataset):
 
 
 class ActivationDataset(TorchDataset):
+    """
+    A pytorch Dataset class that contains the activations structured as a batch-wise dataset.
+    Each activation and attention mask is batch_size, seq_len, (embed_dim). The class contains
+    methods to convert the dataset to a per-token dataset.
+    """
+
     def __init__(
         self,
         activations: "Activation",
@@ -158,6 +169,24 @@ class Activation:
             input_ids=np.concatenate([a.input_ids for a in activations], axis=0),
         )
 
+    def __post_init__(self):
+        """Validate shapes after initialization, save the input shapes for later use."""
+        batch_size, seq_len, embed_dim = self.activations.shape
+
+        # Save the data shapes for easy access
+        self.batch_size: int = batch_size
+        self.seq_len: int = seq_len
+        self.embed_dim: int = embed_dim
+
+        assert self.attention_mask.shape == (batch_size, seq_len), (
+            f"Attention mask shape {self.attention_mask.shape} does not match "
+            f"expected shape ({batch_size}, {seq_len})"
+        )
+        assert self.input_ids.shape == (batch_size, seq_len), (
+            f"Input ids shape {self.input_ids.shape} does not match "
+            f"expected shape ({batch_size}, {seq_len})"
+        )
+
     def split(self, indices: list[int]) -> list["Activation"]:
         """Split the activation into multiple parts based on the given indices.
 
@@ -201,6 +230,31 @@ class Activation:
             activations=einops.rearrange(self.activations, "b s e -> (b s) e"),
             attention_mask=einops.rearrange(self.attention_mask, "b s -> (b s)"),
             input_ids=einops.rearrange(self.input_ids, "b s -> (b s)"),
+        )
+
+    def to_per_entry(self) -> "Activation":
+        """
+        Convert the activation from a per-token dataset to a per-entry dataset.
+        """
+        _, seq_len, _ = self.activations.shape
+        assert self.per_token is True, "Already per-entry"
+        self.per_token = False
+
+        # Shape: (batch_size * seq_len, embed_dim)
+        activations = einops.rearrange(
+            self.activations, "(b s) e -> b s e", b=self.batch_size, s=self.seq_len
+        )
+        attention_mask = einops.rearrange(
+            self.attention_mask, "(b s) -> b s", b=self.batch_size, s=self.seq_len
+        )
+        input_ids = einops.rearrange(
+            self.input_ids, "(b s) -> b s", b=self.batch_size, s=self.seq_len
+        )
+
+        return Activation(
+            activations=activations,
+            attention_mask=attention_mask,
+            input_ids=input_ids,
         )
 
 
