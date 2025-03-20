@@ -228,7 +228,7 @@ class EvalRunConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.jsonl"
+        return f"{self.dataset_path.stem}_l{self.layer}.jsonl"
 
     @property
     def random_seed(self) -> int:
@@ -246,4 +246,4 @@ class SafetyRunConfig:
 
     @property
     def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.jsonl"

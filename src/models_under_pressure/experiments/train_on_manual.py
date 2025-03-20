@@ -174,6 +174,8 @@ def evaluate_on_train_test_split(
         metrics.append(results)
         dataset_names.append(Path(path).stem)
 
+        # change this
+
         column_name_template = f"_{model_name.split('/')[-1]}_manual_l{layer}"
         dataset_name = (
             eval_dataset_name  # + "_test" if is_test else eval_dataset_name + "_train"
@@ -223,7 +225,7 @@ def main(
             train_dataset=train_dataset,
             train_dataset_path=train_dataset_path,
         )
-        output_filename = f"{train_dataset_type}_train_{Path(config.model_name).stem}_layer{config.layer}_fig2.json"
+        output_filename = config.output_filename
 
     elif evaluation_type in ["train", "test"]:
         # Evaluate on train or test split of a specific dataset
@@ -240,9 +242,7 @@ def main(
             is_test=is_test,
             max_samples=config.max_samples,
         )
-        split_name = "test" if is_test else "train"
-        dataset_name = dataset_path.stem
-        output_filename = f"manual_train_{Path(config.model_name).stem}_eval_{dataset_name}_{split_name}_layer{config.layer}_fig2.json"
+        output_filename = config.output_filename
 
     for result in results:
         result.save_to(EVALUATE_PROBES_DIR / output_filename)

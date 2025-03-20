@@ -5,38 +5,45 @@ import matplotlib.pyplot as plt
 from sklearn.calibration import calibration_curve
 
 from models_under_pressure.config import (
-    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
+    LOCAL_MODELS,
+    MANUAL_UPSAMPLED_DATASET_PATH,
     PLOTS_DIR,
     EvalRunConfig,
 )
 
 
-# Load data from your JSONL file
-def load_data(file_path: Path) -> list[dict]:
-    with open(EVALUATE_PROBES_DIR / file_path, "r") as file:
-        data = [json.loads(line) for line in file]
-    return data
+def load_results(file_path: Path) -> list[dict]:
+    """Load results from a JSON file containing multiple datasets."""
+    with open(file_path, "r") as f:
+        results = [json.loads(line) for line in f]
+    return results
 
 
-# Prepare the data
 def prepare_data(
-    data: list[dict], eval_run_config: EvalRunConfig
+    result: dict, use_scale_labels: bool = False
 ) -> tuple[list[int], list[float]]:
-    y_prob = [
-        entry[
-            f"per_entry_probe_scores_{eval_run_config.model_name.split('/')[-1]}_{eval_run_config.dataset_path.stem}_l{eval_run_config.layer}"
-        ]
-        for entry in data
-    ]
-    y_true = [1 if entry["scale_labels"] > 5 else 0 for entry in data]
+    """Extract ground truth labels and output scores from a single result entry."""
+    if use_scale_labels:
+        y_true = result["ground_truth_scale_labels"]
+    else:
+        if "output_labels" in result and result["output_labels"] is not None:
+            y_true = result["output_labels"]
+        else:
+            y_true = [0 if score < 0.5 else 1 for score in result["output_scores"]]
+    y_prob = result["output_scores"]
     return y_true, y_prob
 
 
-# Plot calibration curve and histogram
 def plot_calibration(
-    y_true: list[int], y_prob: list[float], file_name: str, n_bins: int = 10
+    y_true: list[int],
+    y_prob: list[float],
+    dataset_name: str,
+    model_name: str,
+    layer: int,
+    n_bins: int = 10,
 ) -> None:
+    """Plot calibration curve and histogram for a single dataset."""
     fig, (ax1, ax2) = plt.subplots(
         nrows=2, figsize=(8, 10), gridspec_kw={"height_ratios": [2, 1]}
     )
@@ -45,7 +52,7 @@ def plot_calibration(
     prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins)
     ax1.plot(prob_pred, prob_true, marker="o", linewidth=2, label="Model Calibration")
     ax1.plot([0, 1], [0, 1], linestyle="--", label="Perfect Calibration")
-    ax1.set_title("Calibration Curve")
+    ax1.set_title(f"Calibration Curve - {dataset_name}")
     ax1.set_xlabel("Predicted Probability (Binned)")
     ax1.set_ylabel("Mean Observed Label")
     ax1.grid()
@@ -58,25 +65,44 @@ def plot_calibration(
     ax2.set_ylabel("Frequency")
     ax2.grid()
 
-    # save the plots with data name in the same directory
-    plt.savefig(PLOTS_DIR / f"{file_name}_calibration.png")
+    plt.suptitle(f"{model_name} - Layer {layer}")
+    plt.tight_layout()
+
+    # Save plot
+    output_path = (
+        PLOTS_DIR
+        / f"calibration_{dataset_name}_{Path(eval_run_config.output_filename).stem}.png"
+    )
+    plt.savefig(output_path)
     plt.close()
 
 
-def run_calibration(eval_run_config: EvalRunConfig):
-    """
-    Run calibration analysis with the provided EvalRunConfig.
-    If no config is provided, a default one will be created.
-    """
-    for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / f"{eval_dataset}.jsonl")
-        y_true, y_prob = prepare_data(data, eval_run_config)
-        plot_calibration(y_true, y_prob, eval_dataset, n_bins=10)
+def run_calibration(results_file: Path) -> None:
+    """Generate calibration plots for each dataset in the results file."""
+    results = load_results(results_file)
+
+    for result in results:
+        dataset_name = result["dataset_name"]
+        model_name = result["model_name"].split("/")[-1]
+        layer = result["method_details"]["layer"]
+
+        y_true, y_prob = prepare_data(result, use_scale_labels=False)
+        plot_calibration(
+            y_true=y_true,
+            y_prob=y_prob,
+            dataset_name=dataset_name,
+            model_name=model_name,
+            layer=layer,
+            n_bins=10,
+        )
 
 
-# Main execution
 if __name__ == "__main__":
     eval_run_config = EvalRunConfig(
-        layer=11,
+        dataset_path=MANUAL_UPSAMPLED_DATASET_PATH,
+        layer=22,
+        model_name=LOCAL_MODELS["llama-70b"],
     )
-    run_calibration(eval_run_config)
+
+    results_file = EVALUATE_PROBES_DIR / eval_run_config.output_filename
+    run_calibration(results_file)
