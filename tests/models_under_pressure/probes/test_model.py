@@ -1,3 +1,4 @@
+from typing import Callable
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -100,7 +101,7 @@ def test_tokenize(llm_model: LLMModel):
     # Mock the chat template to return a string
     llm_model.tokenizer.apply_chat_template.return_value = "mocked chat template"
 
-    result = llm_model.tokenize(dialogues)
+    result = llm_model.tokenize(dialogues)  # type: ignore
 
     assert "input_ids" in result
     assert "attention_mask" in result
@@ -121,7 +122,7 @@ def test_get_activations(llm_model: LLMModel):
     # Using sequence length 9 since tokenize() removes the first token (BOS token)
     mock_activation = torch.ones(2, 9, 512)
 
-    def mock_register_hook(hook_fn):
+    def mock_register_hook(hook_fn: Callable):  # type: ignore
         print("Inside mock_register_hook")
         hook_fn(None, [mock_activation], None)  # Note: activation should be in a list
         print("After hook_fn call")
@@ -136,11 +137,11 @@ def test_get_activations(llm_model: LLMModel):
     # Create test inputs
     inputs = [[Message(role="user", content="test")]]
 
-    activation_obj = llm_model.get_activations(inputs, layers=[0])
+    activation_obj = llm_model.get_activations(inputs, layer=0)
 
-    assert activation_obj.activations.shape == (1, 2, 9, 512)
-    assert activation_obj.attention_mask.shape == (2, 9)
-    assert activation_obj.input_ids.shape == (2, 9)
+    assert activation_obj.get_activations().shape == (2, 9, 512)
+    assert activation_obj.get_attention_mask().shape == (2, 9)
+    assert activation_obj.get_input_ids().shape == (2, 9)
 
 
 def test_get_batched_activations(llm_model: LLMModel):
@@ -149,19 +150,24 @@ def test_get_batched_activations(llm_model: LLMModel):
     mock_dataset.inputs = [[Message(role="user", content="test")] for _ in range(3)]
 
     # Mock get_activations to return consistent shapes
-    def mock_get_activations(inputs, layers):
+    def mock_get_activations(inputs: list, layer: int):
         batch_size = len(inputs)
-        return Mock(
-            activations=np.ones((1, batch_size, 10, 512)),
+        mock_obj = Mock(
+            activations=np.ones((batch_size, 10, 512)),
             attention_mask=np.ones((batch_size, 10)),
             input_ids=np.ones((batch_size, 10)),
+            get_activations=lambda per_token=False: np.ones((batch_size, 10, 512)),
+            get_attention_mask=lambda per_token=False: np.ones((batch_size, 10)),
+            get_input_ids=lambda per_token=False: np.ones((batch_size, 10)),
         )
 
-    llm_model.get_activations = mock_get_activations
+        return mock_obj
+
+    llm_model.get_activations = mock_get_activations  # type: ignore
 
     result = llm_model.get_batched_activations(mock_dataset, layer=0, batch_size=2)
 
-    assert isinstance(result.activations, np.ndarray)
-    assert isinstance(result.attention_mask, np.ndarray)
-    assert isinstance(result.input_ids, np.ndarray)
-    assert result.activations.shape[0] == 3  # Total number of samples
+    assert isinstance(result.get_activations(), np.ndarray)
+    assert isinstance(result.get_attention_mask(), np.ndarray)
+    assert isinstance(result.get_input_ids(), np.ndarray)
+    assert result.get_activations().shape[0] == 3  # Total number of samples
