@@ -264,7 +264,7 @@ def get_cross_validation_accuracies(
     return results
 
 
-def main(config: ChooseLayerConfig):
+def choose_best_layer_via_cv(config: ChooseLayerConfig):
     """Main function to choose the best layer via cross validation.
 
     Args:
@@ -335,4 +335,4 @@ if __name__ == "__main__":
     )
     double_check_config(config)
 
-    main(config)
+    choose_best_layer_via_cv(config)
