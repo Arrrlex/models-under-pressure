@@ -11,7 +11,6 @@ from models_under_pressure.config import (
     OUTPUT_DIR,
     EvalRunConfig,
 )
-from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
@@ -45,6 +44,7 @@ def load_eval_datasets(
 
 
 def run_evaluation(
+    id: str,
     layer: int,
     model_name: str,
     probe_name: str,
@@ -97,17 +97,20 @@ def run_evaluation(
         output_dir=OUTPUT_DIR,
     )
 
-    # generate calibration plots:
-    run_calibration(
-        EvalRunConfig(
-            max_samples=max_samples,
-            layer=layer,
-            model_name=model_name,
-            dataset_path=dataset_path,
-            variation_type=variation_type,
-            variation_value=variation_value,
-        )
-    )
+    # Load the ground truth scale labels:
+    ground_truth_scale_labels = {}
+    ground_truth_labels = {}
+    for dataset_name in EVAL_DATASETS.keys():
+        data_df = eval_datasets[dataset_name].to_pandas()
+        ground_truth_labels[dataset_name] = [
+            1 if label == "high-stakes" else 0 for label in data_df["labels"]
+        ]
+        if dataset_name != "manual":
+            ground_truth_scale_labels[dataset_name] = (
+                data_df["scale_labels"].astype(int).to_list()
+            )
+        else:
+            ground_truth_scale_labels[dataset_name] = None
 
     metrics = []
     dataset_names = []
@@ -141,7 +144,9 @@ def run_evaluation(
                 for a in results_dict[dataset_names[-1]][0].other_fields[
                     f"per_entry_probe_scores{column_name_template}"
                 ]
-            ),  # type: ignore
+            ),
+            ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
+            ground_truth_labels=ground_truth_labels[dataset_names[-1]],
         )
         results_list.append(dataset_results)
     return results_list
@@ -154,6 +159,7 @@ if __name__ == "__main__":
 
     configs = [
         EvalRunConfig(
+            id="llama-1b-l11",
             layer=layer,
             max_samples=None,
             model_name=LOCAL_MODELS["llama-1b"],
@@ -169,7 +175,11 @@ if __name__ == "__main__":
     double_check_config(configs)
 
     for config in configs:
+        print(
+            f"Running evaluation for {config.id} and results will be saved to {OUTPUT_DIR / config.output_filename(config.id)}"
+        )
         results = run_evaluation(
+            id=config.id,
             probe_name=config.probe_name,
             variation_type=config.variation_type,
             variation_value=config.variation_value,
@@ -181,7 +191,7 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename}"
+            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename(config.id)}"
         )
         for result in results:
-            result.save_to(OUTPUT_DIR / config.output_filename)
+            result.save_to(OUTPUT_DIR / config.output_filename(config.id))

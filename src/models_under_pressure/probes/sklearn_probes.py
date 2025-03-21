@@ -10,9 +10,9 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from models_under_pressure.config import (
-    GENERATED_DATASET_PATH,
     LOCAL_MODELS,
     PROBES_DIR,
+    SYNTHETIC_DATASET_PATH,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
@@ -226,7 +226,7 @@ if __name__ == "__main__":
         preprocessor=Preprocessors.per_token,
         postprocessor=Postprocessors.sigmoid,
     )
-    train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
+    train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
     probe = SklearnProbe(_llm=model, layer=11, aggregator=agg)
     probe.fit(train_dataset[:10])
 

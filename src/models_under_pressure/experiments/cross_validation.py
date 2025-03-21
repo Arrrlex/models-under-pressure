@@ -32,7 +32,8 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.sklearn_probes import compute_accuracy
 from models_under_pressure.utils import double_check_config, print_progress
 
 
@@ -214,7 +215,7 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
-    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
+    probe = PytorchProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
     probe._fit(train.activations, train.dataset.labels_numpy())
     return compute_accuracy(probe, test.dataset, test.activations)
 

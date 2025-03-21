@@ -5,8 +5,8 @@ import numpy as np
 from jaxtyping import Float
 
 from models_under_pressure.config import (
-    GENERATED_DATASET_PATH,
     LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
 )
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         preprocessor=Preprocessors.per_token,
         postprocessor=Postprocessors.sigmoid,
     )
-    train_dataset, _ = load_train_test(dataset_path=GENERATED_DATASET_PATH)
+    train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
     probe = PytorchProbe(_llm=model, layer=11)
     probe.fit(train_dataset[:10])
 

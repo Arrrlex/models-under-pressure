@@ -5,8 +5,8 @@ import seaborn as sns
 
 from models_under_pressure.config import PLOTS_DIR
 from models_under_pressure.interfaces.results import (
+    EvaluationResult,
     HeatmapResults,
-    ProbeEvaluationResults,
 )
 
 
@@ -39,21 +39,21 @@ def generate_heatmap_plot(result: HeatmapResults):
 
 
 def plot_aurocs(
-    result_list: list[ProbeEvaluationResults],
+    result_list: list[EvaluationResult],
     title: str = "Probe Generalization to non-AIS datasets",
     bar_width: float = 0.3,
     figsize: tuple[int, int] = (8, 6),
 ):
     # Set width of bars and positions of the bars
-    x = np.arange(len(result_list[0].datasets))
+    x = np.arange(len(result_list[0].dataset_name))
 
     plt.figure(figsize=figsize)
 
     # Create bars for each result
     for i, results in enumerate(result_list):
         # Extract AUROC scores from metrics
-        auroc_scores = [metric.metrics["auroc"] for metric in results.metrics]
-        datasets = results.dataset
+        auroc_scores = results.metrics.metrics["auroc"]
+        datasets = results.dataset_name
         run_name = results.run_name
 
         # Create offset bars
