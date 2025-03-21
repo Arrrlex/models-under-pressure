@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from pydantic import BaseModel
+from models_under_pressure.utils import generate_short_id
+from pydantic import BaseModel, Field
 
 DEFAULT_MODEL = "gpt-4o"
 
@@ -56,9 +57,6 @@ PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 TRAIN_DIR = DATA_DIR / "training"
 
-MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
-MANUAL_COMBINED_DATASET_PATH = TRAIN_DIR / "manual_combined.csv"
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 
 GENERATED_DATASET = {
@@ -85,41 +83,37 @@ USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo 
 EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
-EVAL_DATASET_FILENAMES = {
-    "manual": {"raw": "manual.csv", "balanced": "manual_combined.csv"},
-    "anthropic": {
-        "raw": "anthropic_samples.csv",
-        "balanced": "anthropic_samples_balanced.jsonl",
-    },
-    "toolace": {
-        "raw": "toolace_samples.csv",
-        "balanced": "toolace_samples_balanced.jsonl",
-    },
-    "mt": {"raw": "mt_samples.csv", "balanced": "mt_samples_balanced.jsonl"},
-    "mts": {"raw": "mts_samples.csv", "balanced": "mts_samples_balanced.jsonl"},
-}
-
 EVAL_DATASETS_RAW = {
-    name: EVALS_DIR / EVAL_DATASET_FILENAMES[name]["raw"]
-    for name in EVAL_DATASET_FILENAMES
+    "manual": EVALS_DIR / "manual_upsampled.csv",
+    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "toolace": EVALS_DIR / "toolace_samples.csv",
+    "mt": EVALS_DIR / "mt_samples.csv",
+    "mts": EVALS_DIR / "mts_samples.csv",
 }
 
 EVAL_DATASETS_BALANCED = {
-    name: EVALS_DIR / EVAL_DATASET_FILENAMES[name]["balanced"]
-    for name in EVAL_DATASET_FILENAMES
+    "manual": EVALS_DIR / "manual_upsampled.csv",
+    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
+    "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
+    "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
 }
 
 TEST_DATASETS_RAW = {
-    name: TEST_EVALS_DIR / EVAL_DATASET_FILENAMES[name]["raw"]
-    for name in EVAL_DATASET_FILENAMES
+    "manual": TEST_EVALS_DIR / "manual.csv",
+    "anthropic": TEST_EVALS_DIR / "anthropic_samples.csv",
+    "toolace": TEST_EVALS_DIR / "toolace_samples.csv",
+    "mt": TEST_EVALS_DIR / "mt_samples_clean.jsonl",
+    "mts": TEST_EVALS_DIR / "mts_samples.csv",
 }
-TEST_DATASETS_RAW["mt"] = TEST_EVALS_DIR / "mt_samples_clean.jsonl"
 
 TEST_DATASETS_BALANCED = {
-    name: TEST_EVALS_DIR / EVAL_DATASET_FILENAMES[name]["balanced"]
-    for name in EVAL_DATASET_FILENAMES
+    "manual": TEST_EVALS_DIR / "manual.csv",
+    "anthropic": TEST_EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_samples_balanced.jsonl",
+    "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
+    "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
 }
-TEST_DATASETS_BALANCED["mt"] = TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl"
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
@@ -250,9 +244,8 @@ class ChooseLayerConfig(BaseModel):
         return self.output_dir / "temp_results.jsonl"
 
 
-@dataclass(frozen=True)
-class EvalRunConfig:
-    id: str
+class EvalRunConfig(BaseModel):
+    id: str = Field(default_factory=generate_short_id)
     layer: int
     max_samples: int | None = None
     variation_type: str | None = None
@@ -261,8 +254,9 @@ class EvalRunConfig:
     probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
-    def output_filename(self, identifier: str = "") -> str:
-        return f"results_{identifier}.jsonl"
+    @property
+    def output_filename(self) -> str:
+        return f"results_{self.id}.jsonl"
 
     @property
     def random_seed(self) -> int:
