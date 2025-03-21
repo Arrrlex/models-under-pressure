@@ -83,6 +83,8 @@ class LLMModel:
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+
         return cls(name=model_name, model=model, tokenizer=tokenizer)
 
     def tokenize(

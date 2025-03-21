@@ -3,7 +3,6 @@ import numpy as np
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
     EVAL_DATASETS,
-    EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
 )
 from models_under_pressure.interfaces.dataset import (
@@ -110,45 +109,13 @@ class ContinuationBaseline:
 def evaluate_continuation_baseline(
     model: LLMModel, dataset_name: str, max_samples: int | None = None
 ) -> ContinuationBaselineResults:
-    # TODO! Do we need to store dataset?
-    model_name = model.name.split("/")[-1] if "/" in model.name else model.name
-
-    if max_samples is not None:
-        results_path = (
-            EVALUATE_PROBES_DIR
-            / f"continuation_baseline_{model_name}_{dataset_name}_{max_samples}.jsonl"
-        )
-    else:
-        results_path = (
-            EVALUATE_PROBES_DIR
-            / f"continuation_baseline_{model_name}_{dataset_name}.jsonl"
-        )
-
     print(f"Loading dataset from {EVAL_DATASETS[dataset_name]}")
     dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
     if max_samples is not None:
         dataset = dataset[:max_samples]
 
-    if results_path.exists():
-        print(f"Loading results from {results_path}")
-        results = LabelledDataset.load_from(results_path)
-
-        if len(results) != len(dataset):
-            print(
-                f"Results length {len(results)} does not match dataset length {len(dataset)}"
-            )
-            raise ValueError("Results length does not match dataset length")
-        # Check if IDs in dataset match result IDs
-        for d_id, r_id in zip(dataset.ids, results.ids):
-            if d_id != r_id:
-                raise ValueError("IDs in dataset do not match result IDs")
-    else:
-        classifier = ContinuationBaseline(model)
-
-        print(f"Running baseline on {len(dataset)} samples")
-        results = classifier.prompt_classify_dataset(dataset)  # type: ignore
-        # Store the results
-        results.save_to(results_path)
+    classifier = ContinuationBaseline(model)
+    results = classifier.prompt_classify_dataset(dataset)  # type: ignore
 
     labels = [label.to_int() for label in list(results.labels)]
     ground_truth = dataset.labels_numpy()
