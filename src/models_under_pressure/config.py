@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from models_under_pressure.utils import generate_short_id
 from pydantic import BaseModel, Field
+
+from models_under_pressure.utils import generate_short_id
 
 DEFAULT_MODEL = "gpt-4o"
 
@@ -31,6 +32,8 @@ LOCAL_MODELS = {
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
     "gemma-1b": "google/gemma-3-1b-it",
+    "gemma-12b": "google/gemma-3-12b-it",
+    "gemma-27b": "google/gemma-3-27b-it",
 }
 
 MODEL_MAX_MEMORY = {
@@ -38,6 +41,8 @@ MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.1-8B-Instruct": None,
     "meta-llama/Llama-3.3-70B-Instruct": None,
     "google/gemma-3-1b-it": None,
+    "google/gemma-3-12b-it": None,
+    "google/gemma-3-27b-it": None,
 }
 
 # Paths to input files
