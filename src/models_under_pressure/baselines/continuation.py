@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
@@ -90,19 +91,21 @@ class ContinuationBaseline:
             "valid_response": [],
             "model": [],
         }
-        for id_, input_ in zip(dataset.ids, dataset.inputs):
+        for id_, input_ in tqdm(
+            zip(dataset.ids, dataset.inputs), total=len(dataset.ids)
+        ):
             if isinstance(input_, str):
                 input_dialogue = [Message(role="user", content=input_)]
             else:
                 input_dialogue = input_
 
-            result = prompt_classify(model, input_dialogue)  # type: ignore
+            result = prompt_classify(self.model, input_dialogue)  # type: ignore
             ids.append(id_)
             inputs.append(input_)
             other_fields["labels"].append(result["label"])
             other_fields["full_response"].append(result["response"])
             other_fields["valid_response"].append(result["valid_response"])
-            other_fields["model"].append(model.name)
+            other_fields["model"].append(self.model.name)
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
 
 

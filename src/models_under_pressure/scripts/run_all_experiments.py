@@ -3,7 +3,10 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from models_under_pressure.baselines.continuation import evaluate_continuation_baseline
 from models_under_pressure.config import (
+    BASELINE_RESULTS_FILE,
+    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
     LOCAL_MODELS,
@@ -21,6 +24,7 @@ from models_under_pressure.interfaces.activations import (
     Postprocessors,
     Preprocessors,
 )
+from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.utils import double_check_config
 
 
@@ -36,9 +40,7 @@ class RunAllExperimentsConfig(BaseModel):
     probes: list[dict[str, str]]
     best_probe: dict[str, str]
     variation_types: tuple[str, ...]
-
-
-model_name = LOCAL_MODELS["llama-70b"]
+    baseline_models: list[str]
 
 
 def run_all_experiments(config: RunAllExperimentsConfig):
@@ -109,7 +111,16 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
 
-        # TODO: calculate & save the baselines
+        # Calculate & save the baselines
+        for baseline_model in config.baseline_models:
+            model = LLMModel.load(baseline_model)
+            for dataset_name in EVAL_DATASETS.keys():
+                results = evaluate_continuation_baseline(
+                    model, dataset_name, config.max_samples
+                )
+
+                print(f"Saving results to {BASELINE_RESULTS_FILE}")
+                results.save_to(BASELINE_RESULTS_FILE)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")
@@ -143,11 +154,11 @@ if __name__ == "__main__":
         layers=[5, 6],
         max_samples=20,
         experiments_to_run=[
-            "cv",
-            "compare_probes",
+            # "cv",
+            # "compare_probes",
             "compare_best_probe_against_baseline",
-            "generalisation_heatmap",
-            "scaling_plot",
+            # "generalisation_heatmap",
+            # "scaling_plot",
         ],
         probes=[
             {
@@ -167,6 +178,7 @@ if __name__ == "__main__":
             "postprocessor": "sigmoid",
         },
         variation_types=tuple(VARIATION_TYPES),
+        baseline_models=[LOCAL_MODELS["llama-1b"]],
     )
 
     double_check_config(config)
