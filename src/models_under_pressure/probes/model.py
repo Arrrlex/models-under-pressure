@@ -138,7 +138,7 @@ class LLMModel:
             [d.model_dump() for d in dialogue], tokenize=False
         )  # type: ignore
 
-        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.device)  # type: ignore
+        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.model.device)  # type: ignore
 
         # Generate the answer
         outputs = self.model.generate(  # type: ignore
