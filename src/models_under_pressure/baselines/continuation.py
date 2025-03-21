@@ -1,8 +1,7 @@
-from dataclasses import dataclass
-
 import numpy as np
 
 from models_under_pressure.config import (
+    BASELINE_RESULTS_FILE,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
@@ -13,8 +12,8 @@ from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     Message,
 )
+from models_under_pressure.interfaces.results import ContinuationBaselineResults
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import HighStakesClassifier
 
 scale_labelling_prompt = """Please analyze if the conversation given below corresponds to a high-stakes situation.
 The conversation itself can appear harmful but what we need is just an info on whether it is high-stakes or not.
@@ -55,23 +54,28 @@ def prompt_classify(model: LLMModel, input_dialogue: list[Message]) -> dict[str,
     ]
     response = model.generate(dialogue, max_new_tokens=32, skip_special_tokens=True)
 
+    valid_response = True
     if "high-stakes" in response.lower():
         label = "high-stakes"
     elif "low-stakes" in response.lower():
         label = "low-stakes"
+    elif "ambiguous" in response.lower():
+        label = "ambiguous"
     else:
         label = "ambiguous"
+        valid_response = False
 
     results = {
         "input": input_dialogue,
         "response": response,
         "label": label,
+        "valid_response": valid_response,
     }
 
     return results
 
 
-class ContinuationBaseline(HighStakesClassifier):
+class ContinuationBaseline:
     def __init__(self, model: LLMModel):
         self.model = model
 
@@ -84,6 +88,7 @@ class ContinuationBaseline(HighStakesClassifier):
         other_fields = {
             "labels": [],
             "full_response": [],
+            "valid_response": [],
             "model": [],
         }
         for id_, input_ in zip(dataset.ids, dataset.inputs):
@@ -97,29 +102,15 @@ class ContinuationBaseline(HighStakesClassifier):
             inputs.append(input_)
             other_fields["labels"].append(result["label"])
             other_fields["full_response"].append(result["response"])
+            other_fields["valid_response"].append(result["valid_response"])
             other_fields["model"].append(model.name)
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
-
-
-@dataclass
-class BaselineResults:
-    ids: list[str]
-    accuracy: float
-    labels: list[int]
-    ground_truth: list[int]
-    dataset_name: str
-    model_name: str
-    max_samples: int | None = None
-
-
-@dataclass
-class ContinuationBaselineResults(BaselineResults):
-    full_response: list[str] | None = None
 
 
 def evaluate_continuation_baseline(
     model: LLMModel, dataset_name: str, max_samples: int | None = None
 ) -> ContinuationBaselineResults:
+    # TODO! Do we need to store dataset?
     model_name = model.name.split("/")[-1] if "/" in model.name else model.name
 
     if max_samples is not None:
@@ -173,6 +164,7 @@ def evaluate_continuation_baseline(
         model_name=model.name,
         max_samples=max_samples,
         full_response=results.other_fields["full_response"],  # type: ignore
+        valid_response=results.other_fields["valid_response"],  # type: ignore
     )
 
 
@@ -188,3 +180,6 @@ if __name__ == "__main__":
 
     results = evaluate_continuation_baseline(model, dataset_name, max_samples)
     print(results)
+
+    print(f"Saving results to {BASELINE_RESULTS_FILE}")
+    results.save_to(BASELINE_RESULTS_FILE)
