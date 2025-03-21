@@ -139,7 +139,7 @@ if __name__ == "__main__":
         cv_folds=5,
         best_layer=5,
         layers=[5, 6],
-        max_samples=10,
+        max_samples=20,
         experiments_to_run=[
             "cv",
             "compare_probes",

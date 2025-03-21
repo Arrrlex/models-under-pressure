@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -101,8 +101,7 @@ class EvaluationResult(BaseModel):
 
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
-            json.dump(self.model_dump(), f)
-            f.write("\n")
+            f.write(self.model_dump_json() + "\n")
 
 
 @deprecated("Use EvaluationResult instead")
@@ -161,7 +160,7 @@ class HeatmapResults:
     layers: List[int]
     max_samples: int | None
 
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict[str, Any]:
         return {
