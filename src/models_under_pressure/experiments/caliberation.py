@@ -30,10 +30,11 @@ def prepare_data(
     dataset_res = [
         entry
         if (
-            entry["dataset_name"] == dataset_name
+            entry["config"]["id"] == config.id
+            and entry["dataset_name"] == dataset_name
             and entry["metrics"]["layer"] == config.layer
-            and entry["model_name"] == config.model_name
-            and entry["train_dataset_details"]["max_samples"] == config.max_samples
+            and entry["config"]["model_name"] == config.model_name
+            and entry["config"]["max_samples"] == config.max_samples
         )
         else None
         for entry in data
@@ -97,7 +98,7 @@ def run_calibration(config: EvalRunConfig):
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / config.output_filename(config.id))
+        data = load_data(EVALUATE_PROBES_DIR / config.output_filename)
         y_true, y_prob = prepare_data(
             data, eval_dataset, config=config, use_scale_labels=True
         )
@@ -106,7 +107,7 @@ def run_calibration(config: EvalRunConfig):
 
 # Main execution
 if __name__ == "__main__":
-    id_used_in_eval = "llama-1b-l11"
+    id_used_in_eval = "0UAqFzWs"
     model_name = LOCAL_MODELS["llama-1b"]
     layer = 11
     run_calibration(
@@ -114,6 +115,6 @@ if __name__ == "__main__":
             id=id_used_in_eval,
             model_name=model_name,
             layer=layer,
-            max_samples=None,
+            max_samples=20,
         )
     )

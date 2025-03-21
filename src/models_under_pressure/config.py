@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from models_under_pressure.utils import generate_short_id
 from pydantic import BaseModel, Field
+
+from models_under_pressure.utils import generate_short_id
 
 DEFAULT_MODEL = "gpt-4o"
 
