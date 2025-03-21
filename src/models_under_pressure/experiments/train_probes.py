@@ -3,7 +3,8 @@ from pathlib import Path
 
 import dotenv
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score
+from jaxtyping import Float
+from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from tqdm import tqdm
 
 from models_under_pressure.config import EVALUATE_PROBES_DIR
@@ -92,6 +93,28 @@ def cross_validate_probes(probes: list[Probe], dataset: LabelledDataset) -> np.n
     return np.mean(accuracies, axis=1)
 
 
+def tpr_at_fixed_fpr_score(
+    y_true: Float[np.ndarray, " batch_size"],
+    y_pred: Float[np.ndarray, " batch_size"],
+    fpr: float,
+) -> float:
+    """Calculate TPR at a fixed FPR threshold.
+
+    Args:
+        y_true: Ground truth labels
+        y_pred: Predicted probabilities
+        fpr: Target false positive rate threshold
+
+    Returns:
+        TPR value at the specified FPR threshold
+    """
+    fpr_vals, tpr_vals, thresholds = roc_curve(y_true, y_pred)
+
+    # Find the TPR value at the closest FPR to our target
+    idx = np.argmin(np.abs(fpr_vals - fpr))
+    return float(tpr_vals[idx])
+
+
 def evaluate_probe_and_save_results(
     model: LLMModel,
     probe: Probe,
@@ -100,6 +123,7 @@ def evaluate_probe_and_save_results(
     layer: int,
     output_dir: Path,
     save_results: bool = False,
+    fpr: float = 0.01,
 ) -> dict[str, tuple[LabelledDataset, DatasetResults]]:
     """
     Evaluate a probe and save the results to a file.
@@ -216,9 +240,17 @@ def evaluate_probe_and_save_results(
             > 0.5,
         )
 
+        tpr_at_fpr = tpr_at_fixed_fpr_score(
+            dataset_with_probe_scores.labels_numpy(),
+            probe_scores_dict[eval_dataset_name]["per_entry_probe_scores"],
+            fpr=fpr,
+        )
+
         metrics = {
             "auroc": float(auroc),
             "accuracy": float(accuracy),
+            "tpr_at_fpr": float(tpr_at_fpr),
+            "fpr": float(fpr),
         }
 
         dataset_results = DatasetResults(layer=layer, metrics=metrics)
