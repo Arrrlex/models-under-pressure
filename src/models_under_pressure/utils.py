@@ -16,8 +16,6 @@ from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
-from models_under_pressure.config import DEFAULT_MODEL
-
 load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
@@ -44,7 +42,7 @@ def call_llm(messages: List[Any], model: str) -> Dict[str, Any] | None:
 
 async def call_llm_async(
     messages: List[Any],
-    model: str = DEFAULT_MODEL,
+    model: str,
     json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Async version of call_llm that can be used for parallel requests"""

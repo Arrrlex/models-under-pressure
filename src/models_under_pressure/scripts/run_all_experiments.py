@@ -4,9 +4,9 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from models_under_pressure.config import (
+    EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
     LOCAL_MODELS,
-    OUTPUT_DIR,
     TRAIN_DIR,
     VARIATION_TYPES,
     ChooseLayerConfig,
@@ -78,7 +78,9 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             )
 
             for eval_result in eval_results:
-                eval_result.save_to(OUTPUT_DIR / eval_run_config.output_filename)
+                eval_result.save_to(
+                    EVALUATE_PROBES_DIR / eval_run_config.output_filename
+                )
 
             # TODO: also save the probe coefficients (making sure they're
             # re-scaled to the activation space)
@@ -105,7 +107,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         )
 
         for eval_result in eval_results:
-            eval_result.save_to(OUTPUT_DIR / eval_run_config.output_filename)
+            eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
 
         # TODO: calculate & save the baselines
 

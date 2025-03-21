@@ -11,8 +11,8 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVAL_DATASETS_RAW,
     EVALS_DIR,
-    GENERATED_DATASET_PATH,
     LABELING_RUBRIC_PATH,
+    SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
     TEST_DATASETS_RAW,
 )
@@ -236,7 +236,7 @@ def create_training_scale_labels(
     """Create scale labels for the training dataset"""
     # Load filtered training dataset
     dataset = load_filtered_train_dataset(
-        dataset_path=GENERATED_DATASET_PATH,
+        dataset_path=SYNTHETIC_DATASET_PATH,
         variation_type=variation_type,
         variation_value=variation_value,
         max_samples=max_samples,
