@@ -10,8 +10,8 @@ from models_under_pressure.config import (
     MODEL_MAX_MEMORY,
     OUTPUT_DIR,
     EvalRunConfig,
+    TRAIN_DIR,
 )
-from models_under_pressure.experiments.caliberation import run_calibration
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
 )
@@ -98,16 +98,16 @@ def run_evaluation(
     )
 
     # generate calibration plots:
-    run_calibration(
-        EvalRunConfig(
-            max_samples=max_samples,
-            layer=layer,
-            model_name=model_name,
-            dataset_path=dataset_path,
-            variation_type=variation_type,
-            variation_value=variation_value,
-        )
-    )
+    # run_calibration(
+    #     EvalRunConfig(
+    #         max_samples=max_samples,
+    #         layer=layer,
+    #         model_name=model_name,
+    #         dataset_path=dataset_path,
+    #         variation_type=variation_type,
+    #         variation_value=variation_value,
+    #     )
+    # )
 
     metrics = []
     dataset_names = []
@@ -155,10 +155,13 @@ if __name__ == "__main__":
     configs = [
         EvalRunConfig(
             layer=layer,
-            max_samples=None,
-            model_name=LOCAL_MODELS["llama-1b"],
+            max_samples=10,
+            variation_type="language",
+            variation_value="English",
+            model_name=LOCAL_MODELS["llama-70b"],
+            dataset_path=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
         )
-        for layer in [11]
+        for layer in [31]
     ]
 
     aggregator = Aggregator(

@@ -336,6 +336,9 @@ class BaseDataset(BaseModel, Generic[R]):
             raise FileExistsError(
                 f"File {file_path} already exists. Use overwrite=True to overwrite."
             )
+
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
         if file_path.suffix == ".csv":
             self.to_pandas().to_csv(file_path, index=False)
         elif file_path.suffix == ".jsonl":

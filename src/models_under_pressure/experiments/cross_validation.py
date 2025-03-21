@@ -32,7 +32,7 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+from models_under_pressure.probes.sklearn_probes import compute_accuracy
 from models_under_pressure.utils import double_check_config, print_progress
 
 
@@ -214,6 +214,7 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
+
     probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
     probe._fit(train.activations, train.dataset.labels_numpy())
     return compute_accuracy(probe, test.dataset, test.activations)
@@ -322,14 +323,14 @@ if __name__ == "__main__":
     config = ChooseLayerConfig(
         model_name=LOCAL_MODELS["llama-70b"],
         dataset_spec={
-            "file_path_or_name": TRAIN_DIR / "manual_upsampled.csv",
+            "file_path_or_name": TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.csv",
             "field_mapping": {"id": "ids"},
         },
         max_samples=None,
-        cv_folds=4,
+        cv_folds=5,
         preprocessor="mean",
         postprocessor="sigmoid",
-        layers=list(range(10, 40, 2)),
+        layers=list(range(10, 70, 2)),
         batch_size=16,
         output_dir=RESULTS_DIR / "cross_validation",
     )
