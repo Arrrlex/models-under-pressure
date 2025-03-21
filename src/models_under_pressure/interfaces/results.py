@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -5,9 +6,55 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from deprecated import deprecated
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from models_under_pressure.config import EvalRunConfig
+from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
+
+from typing import Self
+
+
+class CVIntermediateResults(BaseModel):
+    config: ChooseLayerConfig
+    layer_results: dict[int, list[float]] = Field(default_factory=dict)
+    layer_mean_accuracies: dict[int, float] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def add_layer_results(self, layer: int, results: list[float]):
+        self.layer_results[layer] = results
+        self.layer_mean_accuracies[layer] = float(np.mean(results))
+
+    def save(self):
+        self.config.temp_output_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving intermediate results to {self.config.temp_output_path}")
+        with open(self.config.temp_output_path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
+
+
+class CVFinalResults(BaseModel):
+    results: CVIntermediateResults
+    best_layer: int
+    best_layer_accuracy: float
+
+    @classmethod
+    def from_intermediate(cls, intermediate: CVIntermediateResults) -> Self:
+        best_layer = max(
+            intermediate.layer_mean_accuracies.keys(),
+            key=lambda x: intermediate.layer_mean_accuracies[x],
+        )
+        best_layer_accuracy = intermediate.layer_mean_accuracies[best_layer]
+
+        return cls(
+            results=intermediate,
+            best_layer=best_layer,
+            best_layer_accuracy=best_layer_accuracy,
+        )
+
+    def save(self):
+        path = self.results.config.output_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Saving final results to {path}")
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
 
 
 class DatasetResults(BaseModel):
@@ -50,6 +97,8 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
+    timestamp: datetime = Field(default_factory=datetime.now)
+
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
             json.dump(self.model_dump(), f)
@@ -77,6 +126,8 @@ class ProbeEvaluationResults(BaseModel):
 
     variation_value: Optional[str] = None
     """Specific variation value used in training data filtering, if any"""
+
+    timestamp: datetime = Field(default_factory=datetime.now)
 
     @property
     def run_name(self) -> str:
@@ -110,6 +161,8 @@ class HeatmapResults:
     layers: List[int]
     max_samples: int | None
 
+    timestamp: datetime = Field(default_factory=datetime.now)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "probe": self.probe,
@@ -121,6 +174,7 @@ class HeatmapResults:
             "model_name": self.model_name,
             "layers": self.layers,
             "max_samples": self.max_samples,
+            "timestamp": self.timestamp.isoformat(),
         }
 
     @classmethod
@@ -137,4 +191,5 @@ class HeatmapResults:
             model_name=data["model_name"],
             layers=data["layers"],
             max_samples=data["max_samples"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
         )

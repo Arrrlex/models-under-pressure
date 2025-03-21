@@ -9,13 +9,11 @@ It then repeats this process for each layer and reports the best layer.
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from functools import partial
 from multiprocessing import Pool
-from typing import Iterator, Self, Tuple
+from typing import Iterator, Tuple
 
 import numpy as np
-from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -31,53 +29,13 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.results import (
+    CVFinalResults,
+    CVIntermediateResults,
+)
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import LinearProbe, compute_accuracy
+from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config, print_progress
-
-
-class CVIntermediateResults(BaseModel):
-    config: ChooseLayerConfig
-    layer_results: dict[int, list[float]] = Field(default_factory=dict)
-    layer_mean_accuracies: dict[int, float] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.now)
-
-    def add_layer_results(self, layer: int, results: list[float]):
-        self.layer_results[layer] = results
-        self.layer_mean_accuracies[layer] = float(np.mean(results))
-
-    def save(self):
-        self.config.temp_output_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving intermediate results to {self.config.temp_output_path}")
-        with open(self.config.temp_output_path, "a") as f:
-            f.write(self.model_dump_json() + "\n")
-
-
-class CVFinalResults(BaseModel):
-    results: CVIntermediateResults
-    best_layer: int
-    best_layer_accuracy: float
-
-    @classmethod
-    def from_intermediate(cls, intermediate: CVIntermediateResults) -> Self:
-        best_layer = max(
-            intermediate.layer_mean_accuracies.keys(),
-            key=lambda x: intermediate.layer_mean_accuracies[x],
-        )
-        best_layer_accuracy = intermediate.layer_mean_accuracies[best_layer]
-
-        return cls(
-            results=intermediate,
-            best_layer=best_layer,
-            best_layer_accuracy=best_layer_accuracy,
-        )
-
-    def save(self):
-        path = self.results.config.output_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Saving final results to {path}")
-        with open(path, "a") as f:
-            f.write(self.model_dump_json() + "\n")
 
 
 @dataclass
@@ -214,9 +172,15 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
-    probe = LinearProbe(_llm=None, layer=layer, aggregator=aggregator)  # type: ignore
+    probe = SklearnProbe(
+        _llm=None,  # type: ignore
+        layer=layer,
+        aggregator=aggregator,
+    )
     probe._fit(train.activations, train.dataset.labels_numpy())
-    return compute_accuracy(probe, test.dataset, test.activations)
+
+    test_scores = probe._predict(test.activations)
+    return (np.array(test_scores) == test.dataset.labels_numpy()).mean()
 
 
 def get_cross_validation_accuracies(

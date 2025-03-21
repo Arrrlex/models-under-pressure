@@ -43,6 +43,7 @@ model_name = LOCAL_MODELS["llama-70b"]
 
 def run_all_experiments(config: RunAllExperimentsConfig):
     if "cv" in config.experiments_to_run:
+        print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
                 model_name=config.model_name,
@@ -59,12 +60,14 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         )
 
     if "compare_probes" in config.experiments_to_run:
+        print("Running compare probes...")
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
                 model_name=config.model_name,
                 dataset_path=config.training_data,
                 layer=config.best_layer,
                 probe_name=probe["name"],
+                max_samples=config.max_samples,
             )
             eval_results = run_evaluation(
                 eval_run_config,
@@ -81,6 +84,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             # re-scaled to the activation space)
 
     if "compare_best_probe_against_baseline" in config.experiments_to_run:
+        print("Running compare best probe against baseline...")
         # This recomputes the probe evaluation results for the best probe
 
         eval_run_config = EvalRunConfig(
@@ -88,6 +92,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             dataset_path=config.training_data,
             layer=config.best_layer,
             probe_name=config.best_probe["name"],
+            max_samples=config.max_samples,
         )
         eval_results = run_evaluation(
             eval_run_config,
@@ -104,13 +109,8 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
         # TODO: calculate & save the baselines
 
-    # if "anthropic_calibration" in config.experiments_to_run:
-    #     pass
-
-    # if "brier_scores" in config.experiments_to_run:
-    #     pass
-
     if "generalisation_heatmap" in config.experiments_to_run:
+        print("Running generalisation heatmap...")
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(
             model_name=config.model_name,
@@ -133,12 +133,12 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
 if __name__ == "__main__":
     config = RunAllExperimentsConfig(
-        model_name=LOCAL_MODELS["llama-70b"],
+        model_name=LOCAL_MODELS["llama-1b"],
         training_data=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
         batch_size=32,
         cv_folds=5,
-        best_layer=31,
-        layers=[31, 35],
+        best_layer=5,
+        layers=[5, 6],
         max_samples=10,
         experiments_to_run=[
             "cv",
