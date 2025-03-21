@@ -6,9 +6,9 @@ import numpy as np
 from models_under_pressure.config import (
     CACHE_DIR,
     EVAL_DATASETS,
+    EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
-    OUTPUT_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -81,7 +81,7 @@ def run_evaluation(
         train_dataset=train_dataset,
         layer=layer,
         aggregator=aggregator,
-        output_dir=OUTPUT_DIR,
+        output_dir=EVALUATE_PROBES_DIR,
     )
 
     # Load eval datasets
@@ -94,7 +94,7 @@ def run_evaluation(
         train_dataset_path=dataset_path,
         eval_datasets=eval_datasets,
         layer=layer,
-        output_dir=OUTPUT_DIR,
+        output_dir=EVALUATE_PROBES_DIR,
     )
 
     # Load the ground truth scale labels:
@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     for config in configs:
         print(
-            f"Running evaluation for {config.id} and results will be saved to {OUTPUT_DIR / config.output_filename(config.id)}"
+            f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename(config.id)}"
         )
         results = run_evaluation(
             id=config.id,
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         )
 
         print(
-            f"Saving results for layer {config.layer} to {OUTPUT_DIR / config.output_filename(config.id)}"
+            f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename(config.id)}"
         )
         for result in results:
-            result.save_to(OUTPUT_DIR / config.output_filename(config.id))
+            result.save_to(EVALUATE_PROBES_DIR / config.output_filename(config.id))

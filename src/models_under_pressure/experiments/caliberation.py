@@ -6,8 +6,8 @@ from sklearn.calibration import calibration_curve
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
+    EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    OUTPUT_DIR,
     PLOTS_DIR,
     EvalRunConfig,
 )
@@ -15,7 +15,7 @@ from models_under_pressure.config import (
 
 # Load data from your JSONL file
 def load_data(file_path: Path) -> list[dict]:
-    with open(OUTPUT_DIR / file_path, "r") as file:
+    with open(EVALUATE_PROBES_DIR / file_path, "r") as file:
         data = [json.loads(line) for line in file]
     return data
 
@@ -97,7 +97,7 @@ def run_calibration(config: EvalRunConfig):
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(OUTPUT_DIR / config.output_filename(config.id))
+        data = load_data(EVALUATE_PROBES_DIR / config.output_filename(config.id))
         y_true, y_prob = prepare_data(
             data, eval_dataset, config=config, use_scale_labels=True
         )
