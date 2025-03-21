@@ -243,13 +243,12 @@ class ChooseLayerConfig(BaseModel):
         return self.output_dir / "temp_results.jsonl"
 
 
-@dataclass(frozen=True)
-class EvalRunConfig:
+class EvalRunConfig(BaseModel):
     layer: int
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = GENERATED_DATASET_PATH
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
     probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 

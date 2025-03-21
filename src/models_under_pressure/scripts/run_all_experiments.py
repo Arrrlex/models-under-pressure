@@ -1,0 +1,155 @@
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from models_under_pressure.config import (
+    LOCAL_MODELS,
+    TRAIN_DIR,
+    VARIATION_TYPES,
+    ChooseLayerConfig,
+    EvalRunConfig,
+    HeatmapRunConfig,
+)
+from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
+from models_under_pressure.experiments.evaluate_probes import run_evaluation
+from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
+from models_under_pressure.interfaces.activations import (
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
+from models_under_pressure.utils import double_check_config
+
+
+class RunAllExperimentsConfig(BaseModel):
+    model_name: str
+    training_data: Path
+    batch_size: int
+    cv_folds: int
+    best_layer: int
+    layers: list[int]
+    max_samples: int | None
+    experiments_to_run: list[str]
+    probes: list[dict[str, str]]
+    best_probe: dict[str, str]
+    variation_types: tuple[str, ...]
+
+
+model_name = LOCAL_MODELS["llama-70b"]
+
+
+def run_all_experiments(config: RunAllExperimentsConfig):
+    if "cv" in config.experiments_to_run:
+        choose_best_layer_via_cv(
+            ChooseLayerConfig(
+                model_name=config.model_name,
+                dataset_spec={
+                    "file_path_or_name": config.training_data,
+                },
+                cv_folds=config.cv_folds,
+                preprocessor=config.best_probe["preprocessor"],
+                postprocessor=config.best_probe["postprocessor"],
+                batch_size=config.batch_size,
+                max_samples=config.max_samples,
+                layers=config.layers,
+            )
+        )
+
+    if "compare_probes" in config.experiments_to_run:
+        for probe in config.probes:
+            run_evaluation(
+                EvalRunConfig(
+                    model_name=config.model_name,
+                    dataset_path=config.training_data,
+                    layer=config.best_layer,
+                    probe_name=probe["name"],
+                ),
+                aggregator=Aggregator(
+                    preprocessor=getattr(Preprocessors, probe["preprocessor"]),
+                    postprocessor=getattr(Postprocessors, probe["postprocessor"]),
+                ),
+            )
+            # TODO: also save the probe coefficients (making sure they're
+            # re-scaled to the activation space)
+
+    if "compare_best_probe_against_baseline" in config.experiments_to_run:
+        # This recomputes the probe evaluation results for the best probe
+        run_evaluation(
+            EvalRunConfig(
+                model_name=config.model_name,
+                dataset_path=config.training_data,
+                layer=config.best_layer,
+                probe_name=config.best_probe["name"],
+            ),
+            aggregator=Aggregator(
+                preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
+                postprocessor=getattr(
+                    Postprocessors, config.best_probe["postprocessor"]
+                ),
+            ),
+        )
+
+        # TODO: calculate & save the baselines
+
+    # if "anthropic_calibration" in config.experiments_to_run:
+    #     pass
+
+    # if "brier_scores" in config.experiments_to_run:
+    #     pass
+
+    if "generalisation_heatmap" in config.experiments_to_run:
+        # Warning: this will fail if we choose a pytorch best_probe
+        generate_heatmap(
+            HeatmapRunConfig(
+                model_name=config.model_name,
+                dataset_path=config.training_data,
+                layers=[config.best_layer],
+                max_samples=config.max_samples,
+                variation_types=config.variation_types,
+            )
+        )
+
+    if "scaling_plot" in config.experiments_to_run:
+        pass
+        # TODO: run the scaling plot experiment
+
+
+if __name__ == "__main__":
+    config = RunAllExperimentsConfig(
+        model_name=LOCAL_MODELS["llama-70b"],
+        training_data=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
+        batch_size=32,
+        cv_folds=5,
+        best_layer=31,
+        layers=[31, 35],
+        max_samples=10,
+        experiments_to_run=[
+            "cv",
+            "compare_probes",
+            "compare_best_probe_against_baseline",
+            "generalisation_heatmap",
+            "scaling_plot",
+        ],
+        probes=[
+            {
+                "name": "sklearn_probe",
+                "preprocessor": "mean",
+                "postprocessor": "sigmoid",
+            },
+            {
+                "name": "pytorch_per_token_probe",
+                "preprocessor": "mean",
+                "postprocessor": "sigmoid",
+            },
+        ],
+        best_probe={
+            "name": "sklearn_probe",
+            "preprocessor": "mean",
+            "postprocessor": "sigmoid",
+        },
+        variation_types=tuple(VARIATION_TYPES),
+    )
+
+    double_check_config(config)
+
+    run_all_experiments(config)

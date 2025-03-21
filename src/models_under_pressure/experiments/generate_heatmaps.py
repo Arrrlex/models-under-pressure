@@ -3,9 +3,8 @@ import json
 import numpy as np
 
 from models_under_pressure.config import (
+    HEATMAPS_DIR,
     LOCAL_MODELS,
-    MODEL_MAX_MEMORY,
-    OUTPUT_DIR,
     HeatmapRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -43,13 +42,7 @@ def generate_heatmap(
         max_samples=config.max_samples,
     )
 
-    # Now to get the heat map, we train on each train dataset and evaluate on each test dataset
-    model_kwargs = {
-        "device_map": "auto",
-        "max_memory": MODEL_MAX_MEMORY[config.model_name],
-    }
-
-    model = LLMModel.load(config.model_name, model_kwargs=model_kwargs)
+    model = LLMModel.load(config.model_name)
     layers = config.layers
     performances = {i: [] for i in layers}  # Layer index: heatmap values
     for i, train_ds in enumerate(train_datasets):
@@ -70,7 +63,9 @@ def generate_heatmap(
                 )
                 accuracies.append(accuracy)
             performances[layer].append(accuracies)
+
     return HeatmapResults(
+        probe="sklearn_probe",
         performances={
             layer: np.array(accuracies) for layer, accuracies in performances.items()
         },
@@ -91,12 +86,9 @@ if __name__ == "__main__":
 
     double_check_config(config)
 
-    output_dir = OUTPUT_DIR
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     for variation_type in config.variation_types:
         print(f"\nGenerating heatmap for {variation_type}...")
-        out_path = output_dir / config.output_filename(variation_type)
+        out_path = HEATMAPS_DIR / config.output_filename(variation_type)
 
         heatmap_results = generate_heatmap(
             config=config,
