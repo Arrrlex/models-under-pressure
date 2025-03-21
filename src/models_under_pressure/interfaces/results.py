@@ -104,6 +104,29 @@ class EvaluationResult(BaseModel):
             f.write(self.model_dump_json() + "\n")
 
 
+class BaselineResults(BaseModel):
+    ids: list[str]
+    accuracy: float
+    labels: list[int]
+    ground_truth: list[int]
+    dataset_name: str
+    model_name: str
+    max_samples: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "a") as f:
+            json.dump(self.to_dict(), f)
+            f.write("\n")
+
+
+class ContinuationBaselineResults(BaselineResults):
+    full_response: list[str]
+    valid_response: list[bool]
+
+
 @deprecated("Use EvaluationResult instead")
 class ProbeEvaluationResults(BaseModel):
     """Results from evaluating probes across multiple datasets."""

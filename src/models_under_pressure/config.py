@@ -30,12 +30,14 @@ LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
+    "gemma-1b": "google/gemma-3-1b-it",
 }
 
 MODEL_MAX_MEMORY = {
     "meta-llama/Llama-3.2-1B-Instruct": None,
     "meta-llama/Llama-3.1-8B-Instruct": None,
     "meta-llama/Llama-3.3-70B-Instruct": None,
+    "google/gemma-3-1b-it": None,
 }
 
 # Paths to input files
@@ -55,6 +57,7 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
+BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
