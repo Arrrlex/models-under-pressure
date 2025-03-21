@@ -137,16 +137,15 @@ def evaluate_continuation_baseline(
 
 if __name__ == "__main__":
     model = LLMModel.load(
-        # LOCAL_MODELS["llama-8b"],
-        # tokenizer_name=LOCAL_MODELS["llama-1b"],
-        LOCAL_MODELS["llama-1b"]
+        # LOCAL_MODELS["llama-1b"],
+        LOCAL_MODELS["gemma-1b"],
     )
 
-    dataset_name = "anthropic"
     max_samples = 10
 
-    results = evaluate_continuation_baseline(model, dataset_name, max_samples)
-    print(results)
+    for dataset_name in ["anthropic"]:
+        results = evaluate_continuation_baseline(model, dataset_name, max_samples)
+        print(results)
 
-    print(f"Saving results to {BASELINE_RESULTS_FILE}")
-    results.save_to(BASELINE_RESULTS_FILE)
+        print(f"Saving results to {BASELINE_RESULTS_FILE}")
+        results.save_to(BASELINE_RESULTS_FILE)
