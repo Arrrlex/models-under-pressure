@@ -9,6 +9,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     PLOTS_DIR,
+    EvalRunConfig,
 )
 
 
@@ -20,20 +21,49 @@ def load_data(file_path: Path) -> list[dict]:
 
 
 # Prepare the data
-def prepare_data(data: list[dict], dataset_name: str) -> tuple[list[int], list[float]]:
+def prepare_data(
+    data: list[dict],
+    dataset_name: str,
+    config: EvalRunConfig,
+    use_scale_labels: bool = False,
+) -> tuple[list[int], list[float]]:
     dataset_res = [
-        data if entry["dataset_name"] == dataset_name else None for entry in data
+        entry
+        if (
+            entry["dataset_name"] == dataset_name
+            and entry["metrics"]["layer"] == config.layer
+            and entry["model_name"] == config.model_name
+            and entry["train_dataset_details"]["max_samples"] == config.max_samples
+        )
+        else None
+        for entry in data
     ]
     # extract the not none entry first
-    dataset_res = [entry for entry in dataset_res if entry is not None][0][0]
-    y_prob = dataset_res["output_scores"]
-    y_true = [1 if entry["scale_labels"] > 5 else 0 for entry in dataset_res[""]]
+    dataset_res = [entry for entry in dataset_res if entry is not None][-1]
+    y_prob = dataset_res["output_scores"]  # type: ignore
+    if use_scale_labels:
+        if dataset_name == "manual":
+            print(
+                "Cannot use scale labels for manual dataset, using output labels instead"
+            )
+            y_true = dataset_res["output_labels"]  # type: ignore
+        else:
+            y_true = [
+                1 if entry > 5 else 0
+                for entry in dataset_res["ground_truth_scale_labels"]
+            ]  # type: ignore
+    else:
+        y_true = dataset_res["output_labels"]  # type: ignore
     return y_true, y_prob
 
 
 # Plot calibration curve and histogram
 def plot_calibration(
-    y_true: list[int], y_prob: list[float], file_name: str, n_bins: int = 10
+    y_true: list[int],
+    y_prob: list[float],
+    file_name: str,
+    config: EvalRunConfig,
+    n_bins: int = 10,
 ) -> None:
     fig, (ax1, ax2) = plt.subplots(
         nrows=2, figsize=(8, 10), gridspec_kw={"height_ratios": [2, 1]}
@@ -57,24 +87,33 @@ def plot_calibration(
     ax2.grid()
 
     # save the plots with data name in the same directory
-    plt.savefig(PLOTS_DIR / f"{type}_{file_name}_calibration.png")
+    plt.savefig(PLOTS_DIR / f"{config.id}_{file_name}_calibration.png")
     plt.close()
 
 
-def run_calibration(type: str, model_name: str, layer: int):
+def run_calibration(config: EvalRunConfig):
     """
     Run calibration analysis with the provided EvalRunConfig.
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / type)
-        y_true, y_prob = prepare_data(data, eval_dataset)
-        plot_calibration(y_true, y_prob, eval_dataset, n_bins=10)
+        data = load_data(EVALUATE_PROBES_DIR / config.output_filename(config.id))
+        y_true, y_prob = prepare_data(
+            data, eval_dataset, config=config, use_scale_labels=True
+        )
+        plot_calibration(y_true, y_prob, eval_dataset, config=config, n_bins=10)
 
 
 # Main execution
 if __name__ == "__main__":
-    type = "upsampled_train_Llama-3_layer22_fig2.json"
-    model_name = LOCAL_MODELS["llama-70b"]
-    layer = 22
-    run_calibration(type, model_name, layer)
+    id_used_in_eval = "llama-1b-l11"
+    model_name = LOCAL_MODELS["llama-1b"]
+    layer = 11
+    run_calibration(
+        EvalRunConfig(
+            id=id_used_in_eval,
+            model_name=model_name,
+            layer=layer,
+            max_samples=None,
+        )
+    )

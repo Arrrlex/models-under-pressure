@@ -49,14 +49,20 @@ LABELING_RUBRIC_PATH = INPUTS_DIR / "labeling_rubric.md"
 # Paths to output files
 RESULTS_DIR = DATA_DIR / "results"
 OUTPUT_DIR = RESULTS_DIR / "outputs"
-GENERATED_DATASET_PATH = OUTPUT_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
 HEATMAPS_DIR = RESULTS_DIR / "generate_heatmaps"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
+TRAIN_DIR = DATA_DIR / "training"
+
+MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
+MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
+MANUAL_COMBINED_DATASET_PATH = TRAIN_DIR / "manual_combined.csv"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
+
 GENERATED_DATASET = {
-    "file_path": GENERATED_DATASET_PATH,
+    "file_path": SYNTHETIC_DATASET_PATH,
     "field_mapping": {
         # "id": "ids",
         # "prompt": "inputs",
@@ -72,11 +78,7 @@ PYTORCH_PT_TRAINING_ARGS = {
 }
 
 # Training datasets
-TRAIN_DIR = DATA_DIR / "training"
-MANUAL_DATASET_PATH = TRAIN_DIR / "manual.csv"
-MANUAL_UPSAMPLED_DATASET_PATH = TRAIN_DIR / "manual_upsampled.csv"
-MANUAL_COMBINED_DATASET_PATH = TRAIN_DIR / "manual_combined.csv"
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
+
 
 # Evals files
 USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
@@ -84,6 +86,7 @@ EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
 EVAL_DATASET_FILENAMES = {
+    "manual": {"raw": "manual.csv", "balanced": "manual_combined.csv"},
     "anthropic": {
         "raw": "anthropic_samples.csv",
         "balanced": "anthropic_samples_balanced.jsonl",
@@ -168,7 +171,11 @@ class RunConfig:
     combination_variation: bool = False  # If None, all factors are used
 
     sample_seperately: bool = False
+    model: str = DEFAULT_MODEL
     run_id: str = "test"
+    train_frac: float = 0.8
+    write_mode: str = "overwrite"
+    max_concurrent_llm_calls: int = 50
 
     def __post_init__(self):
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -245,17 +252,17 @@ class ChooseLayerConfig(BaseModel):
 
 @dataclass(frozen=True)
 class EvalRunConfig:
+    id: str
     layer: int
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = GENERATED_DATASET_PATH
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
     probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
-    @property
-    def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.layer}_fig2.jsonl"
+    def output_filename(self, identifier: str = "") -> str:
+        return f"results_{identifier}.jsonl"
 
     @property
     def random_seed(self) -> int:
