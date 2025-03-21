@@ -1,9 +1,12 @@
+import json
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from models_under_pressure.config import (
+    HEATMAPS_DIR,
     LOCAL_MODELS,
+    OUTPUT_DIR,
     TRAIN_DIR,
     VARIATION_TYPES,
     ChooseLayerConfig,
@@ -57,30 +60,37 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
     if "compare_probes" in config.experiments_to_run:
         for probe in config.probes:
-            run_evaluation(
-                EvalRunConfig(
-                    model_name=config.model_name,
-                    dataset_path=config.training_data,
-                    layer=config.best_layer,
-                    probe_name=probe["name"],
-                ),
+            eval_run_config = EvalRunConfig(
+                model_name=config.model_name,
+                dataset_path=config.training_data,
+                layer=config.best_layer,
+                probe_name=probe["name"],
+            )
+            eval_results = run_evaluation(
+                eval_run_config,
                 aggregator=Aggregator(
                     preprocessor=getattr(Preprocessors, probe["preprocessor"]),
                     postprocessor=getattr(Postprocessors, probe["postprocessor"]),
                 ),
             )
+
+            for eval_result in eval_results:
+                eval_result.save_to(OUTPUT_DIR / eval_run_config.output_filename)
+
             # TODO: also save the probe coefficients (making sure they're
             # re-scaled to the activation space)
 
     if "compare_best_probe_against_baseline" in config.experiments_to_run:
         # This recomputes the probe evaluation results for the best probe
-        run_evaluation(
-            EvalRunConfig(
-                model_name=config.model_name,
-                dataset_path=config.training_data,
-                layer=config.best_layer,
-                probe_name=config.best_probe["name"],
-            ),
+
+        eval_run_config = EvalRunConfig(
+            model_name=config.model_name,
+            dataset_path=config.training_data,
+            layer=config.best_layer,
+            probe_name=config.best_probe["name"],
+        )
+        eval_results = run_evaluation(
+            eval_run_config,
             aggregator=Aggregator(
                 preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
                 postprocessor=getattr(
@@ -88,6 +98,9 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 ),
             ),
         )
+
+        for eval_result in eval_results:
+            eval_result.save_to(OUTPUT_DIR / eval_run_config.output_filename)
 
         # TODO: calculate & save the baselines
 
@@ -99,15 +112,19 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
     if "generalisation_heatmap" in config.experiments_to_run:
         # Warning: this will fail if we choose a pytorch best_probe
-        generate_heatmap(
-            HeatmapRunConfig(
-                model_name=config.model_name,
-                dataset_path=config.training_data,
-                layers=[config.best_layer],
-                max_samples=config.max_samples,
-                variation_types=config.variation_types,
-            )
+        heatmap_config = HeatmapRunConfig(
+            model_name=config.model_name,
+            dataset_path=config.training_data,
+            layers=[config.best_layer],
+            max_samples=config.max_samples,
+            variation_types=config.variation_types,
         )
+        for variation_type in config.variation_types:
+            heatmap_results = generate_heatmap(heatmap_config, variation_type)
+
+            out_path = HEATMAPS_DIR / heatmap_config.output_filename(variation_type)
+
+            json.dump(heatmap_results.to_dict(), open(out_path, "w"))
 
     if "scaling_plot" in config.experiments_to_run:
         pass
