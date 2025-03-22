@@ -87,11 +87,13 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             # TODO: also save the probe coefficients (making sure they're
             # re-scaled to the activation space)
 
+    # NOTE: For generating the plot, see notebooks/compare_best_probe_against_baseline.py
     if "compare_best_probe_against_baseline" in config.experiments_to_run:
         print("Running compare best probe against baseline...")
         # This recomputes the probe evaluation results for the best probe
 
         eval_run_config = EvalRunConfig(
+            id="best_probe",
             model_name=config.model_name,
             dataset_path=config.training_data,
             layer=config.best_layer,
@@ -147,6 +149,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 if __name__ == "__main__":
     config = RunAllExperimentsConfig(
         model_name=LOCAL_MODELS["llama-1b"],
+        baseline_models=[LOCAL_MODELS["gemma-1b"]],
         training_data=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
         batch_size=32,
         cv_folds=5,
@@ -178,7 +181,6 @@ if __name__ == "__main__":
             "postprocessor": "sigmoid",
         },
         variation_types=tuple(VARIATION_TYPES),
-        baseline_models=[LOCAL_MODELS["llama-1b"]],
     )
 
     double_check_config(config)
