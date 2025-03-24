@@ -5,11 +5,15 @@ import hydra
 from omegaconf import DictConfig
 from pydantic import BaseModel
 
+from models_under_pressure.baselines.continuation import (
+    evaluate_likelihood_continuation_baseline,
+)
 from models_under_pressure.config import (
+    BASELINE_RESULTS_FILE,
+    EVAL_DATASETS,
     CONFIG_DIR,
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
-    LOCAL_MODELS,
     TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
@@ -23,6 +27,7 @@ from models_under_pressure.interfaces.activations import (
     Postprocessors,
     Preprocessors,
 )
+from models_under_pressure.probes.model import LLMModel
 
 
 class RunAllExperimentsConfig(BaseModel):
@@ -37,9 +42,7 @@ class RunAllExperimentsConfig(BaseModel):
     probes: list[dict[str, str]]
     best_probe: dict[str, str]
     variation_types: tuple[str, ...]
-
-
-model_name = LOCAL_MODELS["llama-70b"]
+    baseline_models: list[str]
 
 
 @hydra.main(
@@ -107,11 +110,13 @@ def run_all_experiments(config: DictConfig):
             # TODO: also save the probe coefficients (making sure they're
             # re-scaled to the activation space)
 
+    # NOTE: For generating the plot, see notebooks/compare_best_probe_against_baseline.py
     if "compare_best_probe_against_baseline" in config.experiments_to_run:
         print("Running compare best probe against baseline...")
         # This recomputes the probe evaluation results for the best probe
 
         eval_run_config = EvalRunConfig(
+            id="best_probe",
             model_name=config.model_name,
             dataset_path=config.training_data,
             layer=config.best_layer,
@@ -131,7 +136,16 @@ def run_all_experiments(config: DictConfig):
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
 
-        # TODO: calculate & save the baselines
+        # Calculate & save the baselines
+        for baseline_model in config.baseline_models:
+            model = LLMModel.load(baseline_model)
+            for dataset_name in EVAL_DATASETS.keys():
+                results = evaluate_likelihood_continuation_baseline(
+                    model, dataset_name, config.max_samples
+                )
+
+                print(f"Saving results to {BASELINE_RESULTS_FILE}")
+                results.save_to(BASELINE_RESULTS_FILE)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")
@@ -157,44 +171,3 @@ def run_all_experiments(config: DictConfig):
 
 if __name__ == "__main__":
     run_all_experiments()
-
-
-# if __name__ == "__main__":
-#     config = RunAllExperimentsConfig(
-#         model_name=LOCAL_MODELS["llama-1b"],
-#         training_data=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
-#         batch_size=32,
-#         cv_folds=5,
-#         best_layer=5,
-#         layers=[5, 6],
-#         max_samples=20,
-#         experiments_to_run=[
-#             "cv",
-#             "compare_probes",
-#             "compare_best_probe_against_baseline",
-#             "generalisation_heatmap",
-#             "scaling_plot",
-#         ],
-#         probes=[
-#             {
-#                 "name": "sklearn_probe",
-#                 "preprocessor": "mean",
-#                 "postprocessor": "sigmoid",
-#             },
-#             {
-#                 "name": "pytorch_per_token_probe",
-#                 "preprocessor": "mean",
-#                 "postprocessor": "sigmoid",
-#             },
-#         ],
-#         best_probe={
-#             "name": "sklearn_probe",
-#             "preprocessor": "mean",
-#             "postprocessor": "sigmoid",
-#         },
-#         variation_types=tuple(VARIATION_TYPES),
-#     )
-
-#     double_check_config(config)
-
-#     run_all_experiments(config)

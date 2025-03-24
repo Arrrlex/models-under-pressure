@@ -34,7 +34,7 @@ class LLMModel:
     def n_layers(self) -> int:
         # Use num_hidden_layers for LLaMA models, otherwise n_layers
         if hasattr(self.model.config, "num_hidden_layers"):
-            return self.model.config.num_hidden_layers
+            return self.model.config.num_hidden_layers  # type: ignore
         elif hasattr(self.model.config, "n_layers"):
             return self.model.config.n_layers
         else:
@@ -84,6 +84,8 @@ class LLMModel:
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+
         return cls(name=model_name, model=model, tokenizer=tokenizer)
 
     def tokenize(
@@ -132,12 +134,13 @@ class LLMModel:
         top_p: float = 1.0,
         skip_special_tokens: bool = False,
         return_full_output: bool = False,
+        **generation_kwargs: Any,
     ) -> str:
         input_str = self.tokenizer.apply_chat_template(
             [d.model_dump() for d in dialogue], tokenize=False
         )  # type: ignore
 
-        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.device)  # type: ignore
+        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.model.device)  # type: ignore
 
         # Generate the answer
         outputs = self.model.generate(  # type: ignore
@@ -146,6 +149,7 @@ class LLMModel:
             temperature=temperature,
             do_sample=do_sample,
             top_p=top_p,
+            **generation_kwargs,
         )
 
         if return_full_output:
@@ -297,6 +301,49 @@ class LLMModel:
         activations_obj = Activation(activations, attention_mask, input_ids)
 
         return activations_obj
+
+    @torch.no_grad()
+    def compute_log_likelihood(
+        self,
+        inputs: Sequence[Input],
+    ) -> torch.Tensor:
+        """
+        Compute the log likelihoods for each input sequence.
+
+        Args:
+            inputs: Sequence of Input objects
+
+        Returns:
+            torch.Tensor: Log likelihoods for each sequence, shape (batch_size, seq_len-1)
+        """
+        # Convert inputs to dialogues and tokenize
+        dialogues = [to_dialogue(inp) for inp in inputs]
+        torch_inputs = self.tokenize(dialogues, add_generation_prompt=False)
+
+        # Forward pass through the model
+        outputs = self.model(
+            input_ids=torch_inputs["input_ids"],
+            attention_mask=torch_inputs["attention_mask"],
+        )
+
+        # Get logits and shift them to align with targets
+        logits = outputs.logits[:, :-1, :]  # (batch, seq_len-1, vocab_size)
+        targets = torch_inputs["input_ids"][:, 1:]  # (batch, seq_len-1)
+        attention_mask = torch_inputs["attention_mask"][:, 1:]  # (batch, seq_len-1)
+
+        # Compute log probabilities
+        log_probs = torch.log_softmax(logits, dim=-1)
+
+        # Gather the log probs of the target tokens
+        token_log_probs = log_probs.gather(
+            dim=-1,
+            index=targets.unsqueeze(-1),
+        ).squeeze(-1)  # (batch, seq_len-1)
+
+        # Mask out padding tokens
+        token_log_probs = token_log_probs * attention_mask
+
+        return token_log_probs
 
 
 if __name__ == "__main__":
