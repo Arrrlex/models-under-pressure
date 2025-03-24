@@ -188,8 +188,6 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-# Ignore data files
-data/
 # But don't ignore DVC files
 !*.dvc
 !.dvcignore
