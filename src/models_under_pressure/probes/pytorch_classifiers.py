@@ -55,7 +55,7 @@ class PytorchLinearClassifier:
         # Create weighted sampler
         # Only sample points that are not masked
         sampler = WeightedRandomSampler(
-            weights=sample_weights.numpy(),
+            weights=sample_weights.numpy(),  # type: ignore
             num_samples=len(sample_weights),
             replacement=True,
         )
@@ -223,17 +223,17 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        all_acts = activations.get_activations()
-        all_mask = activations.get_attention_mask()
+        acts = activations.get_activations()
+        mask = activations.get_attention_mask()
 
-        pos_acts = all_acts[(y[:, None] == 1) & (all_mask == 1)]
-        neg_acts = all_acts[(y[:, None] == 0) & (all_mask == 1)]
+        pos_acts = acts[(y[:, None] == 1) & mask]
+        neg_acts = acts[(y[:, None] == 0) & mask]
         pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
         direction = pos_mean - neg_mean
 
         if self.use_lda:
             centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
-            covariance = centered_data.t() @ centered_data / all_acts.shape[0]
+            covariance = centered_data.t() @ centered_data / acts.shape[0]
 
             inv = torch.linalg.pinv(covariance, hermitian=True, atol=1e-3)
             param = inv @ direction

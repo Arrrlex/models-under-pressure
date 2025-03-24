@@ -156,9 +156,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=31,
+        layer=11,
         max_samples=None,
-        model_name=LOCAL_MODELS["llama-70b"],
+        model_name=LOCAL_MODELS["llama-8b"],
         dataset_path=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
         probe_name="difference_of_means",
     )
