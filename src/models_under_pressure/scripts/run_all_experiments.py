@@ -14,7 +14,6 @@ from models_under_pressure.config import (
     CONFIG_DIR,
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
-    LOCAL_MODELS,
     TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
@@ -29,7 +28,6 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.utils import double_check_config
 
 
 class RunAllExperimentsConfig(BaseModel):
