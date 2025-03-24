@@ -66,7 +66,7 @@ class LLMModel:
             if torch.cuda.is_available()
             else torch.float16,
             "cache_dir": CACHE_DIR,
-            "max_memory": MODEL_MAX_MEMORY[model_name],
+            "max_memory": MODEL_MAX_MEMORY.get(model_name),
         }
 
         if model_kwargs is None:
