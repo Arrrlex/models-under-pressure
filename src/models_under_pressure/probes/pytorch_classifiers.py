@@ -242,13 +242,9 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
 
         param = torch.tensor(param, dtype=torch.float32)
 
-        linear = nn.Linear(direction.shape[0], 1, bias=False)
+        self.model = nn.Linear(direction.shape[0], 1, bias=False)
         with torch.no_grad():
-            linear.weight.copy_(param.reshape(1, -1))
-        self.model = nn.Sequential(
-            linear,
-            nn.Sigmoid(),
-        )
+            self.model.weight.copy_(param.reshape(1, -1))
 
         return self
 
