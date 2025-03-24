@@ -9,6 +9,7 @@ data/results/
 uv.lock
 temp_data/*
 .DS_Store
+outputs/*
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
