@@ -143,7 +143,10 @@ def run_all_experiments(config: DictConfig):
             model = LLMModel.load(baseline_model_name)
             for dataset_name in EVAL_DATASETS.keys():
                 results = evaluate_likelihood_continuation_baseline(
-                    model, dataset_name, config.max_samples
+                    model=model,
+                    dataset_name=dataset_name,
+                    max_samples=config.max_samples,
+                    batch_size=config.batch_size,
                 )
 
                 print(f"Saving results to {BASELINE_RESULTS_FILE}")
