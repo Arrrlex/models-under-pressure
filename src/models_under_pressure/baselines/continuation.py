@@ -227,7 +227,8 @@ class LikelihoodContinuationBaseline:
             # Find first index where likelihoods differ
             high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
             low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
-            diff_idx = np.where(high_stakes_ll != low_stakes_ll)[0][0]
+            diff_indices = np.where(high_stakes_ll != low_stakes_ll)[0]
+            diff_idx = diff_indices[0] if len(diff_indices) > 0 else 0
 
             # Sum from that index onwards
             high_stakes_ll = high_stakes_ll[diff_idx:].sum()
@@ -265,7 +266,6 @@ def evaluate_likelihood_continuation_baseline(
         indices = np.random.choice(len(dataset), size=max_samples, replace=False)
         dataset = dataset[list(indices)]  # type: ignore
         # dataset = dataset[:max_samples]
-        # dataset = dataset[[1]]
 
     classifier = LikelihoodContinuationBaseline(model)
     results = classifier.likelihood_classify_dataset(dataset)  # type: ignore
