@@ -3,7 +3,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from models_under_pressure.baselines.continuation import evaluate_continuation_baseline
+from models_under_pressure.baselines.continuation import (
+    evaluate_likelihood_continuation_baseline,
+)
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
     EVAL_DATASETS,
@@ -117,7 +119,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         for baseline_model in config.baseline_models:
             model = LLMModel.load(baseline_model)
             for dataset_name in EVAL_DATASETS.keys():
-                results = evaluate_continuation_baseline(
+                results = evaluate_likelihood_continuation_baseline(
                     model, dataset_name, config.max_samples
                 )
 
@@ -157,11 +159,11 @@ if __name__ == "__main__":
         layers=[5, 6],
         max_samples=20,
         experiments_to_run=[
-            # "cv",
-            # "compare_probes",
+            "cv",
+            "compare_probes",
             "compare_best_probe_against_baseline",
-            # "generalisation_heatmap",
-            # "scaling_plot",
+            "generalisation_heatmap",
+            "scaling_plot",
         ],
         probes=[
             {
