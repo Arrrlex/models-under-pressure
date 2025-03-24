@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import hydra
+from omegaconf import DictConfig
 from pydantic import BaseModel
 
 from models_under_pressure.baselines.continuation import (
@@ -9,11 +11,11 @@ from models_under_pressure.baselines.continuation import (
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
     EVAL_DATASETS,
+    CONFIG_DIR,
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
     LOCAL_MODELS,
     TRAIN_DIR,
-    VARIATION_TYPES,
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
@@ -45,14 +47,35 @@ class RunAllExperimentsConfig(BaseModel):
     baseline_models: list[str]
 
 
-def run_all_experiments(config: RunAllExperimentsConfig):
+@hydra.main(
+    config_path=str(CONFIG_DIR),
+    config_name="run_all_experiments_default.yaml",
+    version_base=None,
+)
+def run_all_experiments(config: DictConfig):
+    valid_experiments = [
+        "cv",
+        "compare_probes",
+        "compare_best_probe_against_baseline",
+        "generalisation_heatmap",
+        "scaling_plot",
+    ]
+
+    assert (
+        len(config.experiments_to_run) > 0
+    ), "Must specify at least one experiment to run"
+
+    assert any(
+        experiment in config.experiments_to_run for experiment in valid_experiments
+    ), f"Must specify at least one experiment from {valid_experiments} to run"
+
     if "cv" in config.experiments_to_run:
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
                 model_name=config.model_name,
                 dataset_spec={
-                    "file_path_or_name": config.training_data,
+                    "file_path_or_name": TRAIN_DIR / config.training_data,
                 },
                 cv_folds=config.cv_folds,
                 preprocessor=config.best_probe["preprocessor"],
@@ -68,7 +91,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
                 model_name=config.model_name,
-                dataset_path=config.training_data,
+                dataset_path=TRAIN_DIR / config.training_data,
                 layer=config.best_layer,
                 probe_name=probe["name"],
                 max_samples=config.max_samples,
@@ -149,42 +172,4 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
 
 if __name__ == "__main__":
-    config = RunAllExperimentsConfig(
-        model_name=LOCAL_MODELS["llama-1b"],
-        baseline_models=[LOCAL_MODELS["gemma-1b"]],
-        training_data=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
-        batch_size=32,
-        cv_folds=5,
-        best_layer=5,
-        layers=[5, 6],
-        max_samples=20,
-        experiments_to_run=[
-            "cv",
-            "compare_probes",
-            "compare_best_probe_against_baseline",
-            "generalisation_heatmap",
-            "scaling_plot",
-        ],
-        probes=[
-            {
-                "name": "sklearn_probe",
-                "preprocessor": "mean",
-                "postprocessor": "sigmoid",
-            },
-            {
-                "name": "pytorch_per_token_probe",
-                "preprocessor": "mean",
-                "postprocessor": "sigmoid",
-            },
-        ],
-        best_probe={
-            "name": "sklearn_probe",
-            "preprocessor": "mean",
-            "postprocessor": "sigmoid",
-        },
-        variation_types=tuple(VARIATION_TYPES),
-    )
-
-    double_check_config(config)
-
-    run_all_experiments(config)
+    run_all_experiments()
