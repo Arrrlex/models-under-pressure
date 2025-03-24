@@ -14,6 +14,7 @@ from models_under_pressure.interfaces.results import (
     BaselineResults,
     ContinuationBaselineResults,
     EvaluationResult,
+    LikelihoodBaselineResults,
 )
 
 probe_results_file = "results_0UAqFzWs.jsonl"
@@ -33,7 +34,8 @@ with open(BASELINE_RESULTS_FILE) as f:
     for line in f:
         if line.strip():
             baseline_results.append(
-                ContinuationBaselineResults.model_validate_json(line)
+                # ContinuationBaselineResults.model_validate_json(line)
+                LikelihoodBaselineResults.model_validate_json(line)
             )
 
 print(f"Probe results: {len(probe_results)}")
@@ -45,17 +47,105 @@ for baseline_result in baseline_results:
 
 
 # %%
-def plot_probe_vs_baseline_accuracy(
+
+
+def plot_probe_vs_baseline_auroc(
     probe_results: List[EvaluationResult],
-    baseline_results: List[BaselineResults],
-    valid_responses_only: bool = False,
+    baseline_results: List[LikelihoodBaselineResults],
+):
+    """Create a bar plot comparing AUROC scores of probe vs baseline models across datasets.
+
+    Args:
+        probe_results: List of EvaluationResult objects containing probe performance
+        baseline_results: List of LikelihoodBaselineResults objects containing baseline model performance
+    """
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from sklearn.metrics import roc_auc_score
+
+    # Extract probe AUROC per dataset
+    probe_data = {
+        result.dataset_name: result.metrics.metrics["auroc"] for result in probe_results
+    }
+
+    # Calculate baseline AUROC per dataset and model
+    baseline_data = {}
+    for result in baseline_results:
+        auroc = roc_auc_score(result.ground_truth, result.high_stakes_scores)
+        baseline_data[(result.dataset_name, result.model_name)] = auroc
+
+    # Create dataframe for plotting
+    plot_data = []
+    for dataset in probe_data.keys():
+        plot_data.append(
+            {"Dataset": dataset, "Method": "Probe", "AUROC": probe_data[dataset]}
+        )
+
+        # Group models by provider
+        model_groups = {}
+        for (ds, model), auroc in baseline_data.items():
+            if ds != dataset:
+                continue
+
+            # Get provider from part before "/" in model name
+            provider = model.split("/")[0] if "/" in model else "other"
+            if provider not in model_groups:
+                model_groups[provider] = []
+            model_groups[provider].append((model, auroc))
+
+        # Sort each group by model size
+        for provider in model_groups:
+
+            def get_model_size(model_name: str) -> float:
+                import re
+
+                match = re.search(r"-(\d+)[bB]", model_name)
+                if match:
+                    return int(match.group(1))
+                return 0
+
+            model_groups[provider].sort(key=lambda x: get_model_size(x[0]))
+
+        # Add sorted models to plot data
+        for provider in model_groups:
+            for model, auroc in model_groups[provider]:
+                plot_data.append({"Dataset": dataset, "Method": model, "AUROC": auroc})
+
+    df = pd.DataFrame(plot_data)
+
+    # Create grouped bar plot
+    plt.figure(figsize=(10, 6))
+    ax = plt.gca()
+
+    # Plot bars grouped by dataset, maintaining order from plot_data
+    methods = df["Method"].unique()
+    df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
+    df_pivot = df_pivot[methods]
+    df_pivot.plot(kind="bar", ax=ax)
+
+    plt.title("Probe vs Baseline Model AUROC by Dataset")
+    plt.xlabel("Dataset")
+    plt.ylabel("AUROC")
+    plt.legend(title="Method")
+    plt.tight_layout()
+
+    return plt.gcf()
+
+
+_ = plot_probe_vs_baseline_auroc(probe_results, baseline_results)
+# %%
+
+# NOTE STUFF BELOW IS FOR ANALYZING CONTINUATION BASELINE RESULTS (NOT LIKELIHOOD BASELINE)
+
+
+def plot_probe_vs_baseline_accuracy(
+    probe_results: List[EvaluationResult], baseline_results: List[BaselineResults]
 ):
     """Create a bar plot comparing accuracy of probe vs baseline models across datasets.
 
     Args:
         probe_results: List of EvaluationResult objects containing probe performance
         baseline_results: List of BaselineResults objects containing baseline model performance
-        valid_responses_only: If True, only include valid responses when calculating baseline accuracy
     """
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -67,22 +157,10 @@ def plot_probe_vs_baseline_accuracy(
     }
 
     # Extract baseline accuracies per dataset and model
-    baseline_data = {}
-    for result in baseline_results:
-        if hasattr(result, "valid_response") and valid_responses_only:
-            # Filter for valid responses only
-            valid_indices = [
-                i for i, valid in enumerate(result.valid_response) if valid
-            ]
-            if valid_indices:
-                correct = sum(
-                    result.labels[i] == result.ground_truth[i] for i in valid_indices
-                )
-                accuracy = correct / len(valid_indices)
-                baseline_data[(result.dataset_name, result.model_name)] = accuracy
-        else:
-            # Use overall accuracy if not filtering or if valid_response not available
-            baseline_data[(result.dataset_name, result.model_name)] = result.accuracy
+    baseline_data = {
+        (result.dataset_name, result.model_name): result.accuracy
+        for result in baseline_results
+    }
 
     # Create dataframe for plotting
     plot_data = []
@@ -143,9 +221,7 @@ def plot_probe_vs_baseline_accuracy(
     return plt.gcf()
 
 
-_ = plot_probe_vs_baseline_accuracy(
-    probe_results, baseline_results, valid_responses_only=True
-)
+_ = plot_probe_vs_baseline_accuracy(probe_results, baseline_results)
 
 
 # %%
