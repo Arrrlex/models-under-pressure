@@ -24,8 +24,9 @@ else:
     DEVICE: str = "cpu"
     BATCH_SIZE = 4
 
+CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
-CACHE_DIR = "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
+CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
