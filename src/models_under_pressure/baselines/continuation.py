@@ -3,6 +3,7 @@ import torch
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    BATCH_SIZE,
     EVAL_DATASETS,
     LOCAL_MODELS,
 )
@@ -168,7 +169,9 @@ class LikelihoodContinuationBaseline:
         self.low_stakes_completion = "The given conversation is low-stakes."
 
     def predict(self, dataset: Dataset) -> list[Label]:
-        return list(self.likelihood_classify_dataset(dataset).labels)
+        return list(
+            self.likelihood_classify_dataset(dataset, batch_size=BATCH_SIZE).labels
+        )
 
     def compute_completion_likelihood(
         self, input_dialogue: Input, completion: str
@@ -190,7 +193,9 @@ class LikelihoodContinuationBaseline:
 
         return log_likelihood
 
-    def likelihood_classify_dataset(self, dataset: Dataset) -> LabelledDataset:
+    def likelihood_classify_dataset(
+        self, dataset: Dataset, batch_size: int
+    ) -> LabelledDataset:
         ids = []
         inputs = []
         other_fields = {
@@ -202,62 +207,87 @@ class LikelihoodContinuationBaseline:
             "model": [],
         }
 
-        for id_, input_ in tqdm(
-            zip(dataset.ids, dataset.inputs), total=len(dataset.ids)
-        ):
-            input_dialogue = [
-                Message(
-                    role="system",
-                    content=likelihood_continuation_prompt,
-                ),
-                Message(
-                    role="user",
-                    content=str(input_),
-                ),
-            ]
+        # Process inputs in batches, using half batch size since we'll combine high/low stakes
+        half_batch = batch_size // 2
+        for i in tqdm(range(0, len(dataset.ids), half_batch)):
+            batch_ids = dataset.ids[i : i + half_batch]
+            batch_inputs = dataset.inputs[i : i + half_batch]
 
-            # Compute log likelihoods for both completions
-            high_stakes_ll = self.compute_completion_likelihood(
-                input_dialogue, self.high_stakes_completion
+            # Prepare combined batch for both high and low stakes
+            combined_batch = []
+            for input_ in batch_inputs:
+                input_dialogue = [
+                    Message(
+                        role="system",
+                        content=likelihood_continuation_prompt,
+                    ),
+                    Message(
+                        role="user",
+                        content=str(input_),
+                    ),
+                ]
+                # Add both high and low stakes versions to combined batch
+                combined_batch.append(
+                    input_dialogue
+                    + [Message(role="assistant", content=self.high_stakes_completion)]
+                )
+                combined_batch.append(
+                    input_dialogue
+                    + [Message(role="assistant", content=self.low_stakes_completion)]
+                )
+
+            # Compute log likelihoods for combined batch
+            all_lls = self.model.compute_log_likelihood(
+                combined_batch, batch_size=batch_size
             )
-            low_stakes_ll = self.compute_completion_likelihood(
-                input_dialogue, self.low_stakes_completion
-            )
 
-            # Find first index where likelihoods differ
-            high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
-            low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
-            diff_indices = np.where(high_stakes_ll != low_stakes_ll)[0]
-            diff_idx = diff_indices[0] if len(diff_indices) > 0 else 0
+            # Process results for each item in batch
+            for j in range(len(batch_ids)):
+                id_ = batch_ids[j]
+                input_ = batch_inputs[j]
+                # Get corresponding high/low stakes results (every other item)
+                high_stakes_ll = all_lls[j * 2]
+                low_stakes_ll = all_lls[j * 2 + 1]
 
-            # Sum from that index onwards
-            high_stakes_ll = high_stakes_ll[diff_idx:].sum()
-            low_stakes_ll = low_stakes_ll[diff_idx:].sum()
+                # Convert to numpy arrays
+                high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
+                low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
 
-            # Apply softmax to get probabilities
-            scores = np.array([low_stakes_ll, high_stakes_ll])
-            scores = np.exp(
-                scores - np.max(scores)
-            )  # Subtract max for numerical stability
-            probs = scores / scores.sum()
+                # Find first index where likelihoods differ
+                diff_indices = np.where(high_stakes_ll != low_stakes_ll)[0]
+                diff_idx = diff_indices[0] if len(diff_indices) > 0 else 0
 
-            # Classify based on higher probability
-            label = "high-stakes" if probs[1] > probs[0] else "low-stakes"
+                # Sum from that index onwards
+                high_stakes_ll = high_stakes_ll[diff_idx:].sum()
+                low_stakes_ll = low_stakes_ll[diff_idx:].sum()
 
-            ids.append(id_)
-            inputs.append(input_)
-            other_fields["labels"].append(label)
-            other_fields["high_stakes_log_likelihood"].append(float(high_stakes_ll))
-            other_fields["low_stakes_log_likelihood"].append(float(low_stakes_ll))
-            other_fields["high_stakes_score"].append(float(probs[1]))
-            other_fields["low_stakes_score"].append(float(probs[0]))
-            other_fields["model"].append(self.model.name)
+                # Apply softmax to get probabilities
+                scores = np.array([low_stakes_ll, high_stakes_ll])
+                scores = np.exp(
+                    scores - np.max(scores)
+                )  # Subtract max for numerical stability
+                probs = scores / scores.sum()
+
+                # Classify based on higher probability
+                label = "high-stakes" if probs[1] > probs[0] else "low-stakes"
+
+                ids.append(id_)
+                inputs.append(input_)
+                other_fields["labels"].append(label)
+                other_fields["high_stakes_log_likelihood"].append(float(high_stakes_ll))
+                other_fields["low_stakes_log_likelihood"].append(float(low_stakes_ll))
+                other_fields["high_stakes_score"].append(float(probs[1]))
+                other_fields["low_stakes_score"].append(float(probs[0]))
+                other_fields["model"].append(self.model.name)
 
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
 
 
 def evaluate_likelihood_continuation_baseline(
-    model: LLMModel, dataset_name: str, max_samples: int | None = None
+    model: LLMModel,
+    dataset_name: str,
+    max_samples: int | None = None,
+    batch_size: int = BATCH_SIZE,
 ) -> BaselineResults:
     print(f"Loading dataset from {EVAL_DATASETS[dataset_name]}")
     dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
@@ -268,7 +298,10 @@ def evaluate_likelihood_continuation_baseline(
         # dataset = dataset[:max_samples]
 
     classifier = LikelihoodContinuationBaseline(model)
-    results = classifier.likelihood_classify_dataset(dataset)  # type: ignore
+    results = classifier.likelihood_classify_dataset(
+        dataset,  # type: ignore
+        batch_size=batch_size,
+    )
 
     labels = [label.to_int() for label in list(results.labels)]
     ground_truth = dataset.labels_numpy()
@@ -301,7 +334,10 @@ if __name__ == "__main__":
     for dataset_name in ["anthropic"]:
         # results = evaluate_continuation_baseline(model, dataset_name, max_samples)
         results = evaluate_likelihood_continuation_baseline(
-            model, dataset_name, max_samples
+            model,
+            dataset_name,
+            max_samples,
+            batch_size=8,
         )
         print(results)
 
