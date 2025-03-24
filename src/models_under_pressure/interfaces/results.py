@@ -1,16 +1,14 @@
-from datetime import datetime
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
 import numpy as np
 from deprecated import deprecated
 from pydantic import BaseModel, Field
 
 from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
-
-from typing import Self
 
 
 class CVIntermediateResults(BaseModel):
@@ -113,13 +111,14 @@ class BaselineResults(BaseModel):
     model_name: str
     max_samples: int | None
 
+    timestamp: datetime = Field(default_factory=datetime.now)
+
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump()
 
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
-            json.dump(self.to_dict(), f)
-            f.write("\n")
+            f.write(self.model_dump_json() + "\n")
 
 
 class ContinuationBaselineResults(BaselineResults):
