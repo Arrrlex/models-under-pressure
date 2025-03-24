@@ -145,6 +145,55 @@ class SklearnProbe(Probe):
         return np.array(predictions)
 
 
+class DifferenceOfMeansClassifier(Classifier):
+    def __init__(self):
+        self.direction = None
+
+    def fit(
+        self,
+        X: Float[np.ndarray, "batch_size ..."],
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self:
+        # Reshape X if needed to be 2D (batch_size, features)
+        X_2d = X.reshape(X.shape[0], -1)
+
+        # Calculate means for positive and negative examples
+        pos_mean = X_2d[y == 1].mean(axis=0)
+        neg_mean = X_2d[y == 0].mean(axis=0)
+
+        # Calculate the direction vector (normalized)
+        self.direction = pos_mean - neg_mean
+        self.direction = self.direction / np.linalg.norm(self.direction)
+
+        return self
+
+    def predict(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, " batch_size"]:
+        return self.predict_proba(X) > 0.5
+
+    def predict_proba(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, "batch_size n_classes"]:
+        # Get logits (log-odds)
+        logits = self.predict_logits(X)
+
+        # Apply sigmoid to get probabilities
+        probs = 1 / (1 + np.exp(-logits))
+
+        # Return in the format expected by sklearn (2 classes)
+        return np.stack([1 - probs, probs], axis=1)
+
+    def predict_logits(
+        self, X: Float[np.ndarray, "batch_size ..."]
+    ) -> Float[np.ndarray, " batch_size"]:
+        # Reshape X if needed
+        X_2d = X.reshape(X.shape[0], -1)
+
+        # Project points onto the direction vector
+        return X_2d @ self.direction
+
+
 @dataclass
 class ProbeInfo:
     model_name_short: str
