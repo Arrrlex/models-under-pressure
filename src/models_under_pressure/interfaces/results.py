@@ -129,6 +129,8 @@ class ContinuationBaselineResults(BaselineResults):
 class LikelihoodBaselineResults(BaselineResults):
     high_stakes_scores: list[float]
     low_stakes_scores: list[float]
+    high_stakes_log_likelihoods: list[float]
+    low_stakes_log_likelihoods: list[float]
 
 
 @deprecated("Use EvaluationResult instead")

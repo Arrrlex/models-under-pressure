@@ -307,13 +307,13 @@ class LLMModel:
         inputs: Sequence[Input],
     ) -> torch.Tensor:
         """
-        Compute the log likelihood for each input sequence.
+        Compute the log likelihoods for each input sequence.
 
         Args:
             inputs: Sequence of Input objects
 
         Returns:
-            torch.Tensor: Log likelihoods for each sequence, shape (batch_size,)
+            torch.Tensor: Log likelihoods for each sequence, shape (batch_size, seq_len-1)
         """
         # Convert inputs to dialogues and tokenize
         dialogues = [to_dialogue(inp) for inp in inputs]
@@ -342,10 +342,7 @@ class LLMModel:
         # Mask out padding tokens
         token_log_probs = token_log_probs * attention_mask
 
-        # Sum log probs over sequence length to get sequence log likelihood
-        sequence_log_likelihood = token_log_probs.sum(dim=-1)  # (batch,)
-
-        return sequence_log_likelihood
+        return token_log_probs
 
 
 if __name__ == "__main__":
