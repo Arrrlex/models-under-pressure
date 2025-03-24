@@ -25,17 +25,19 @@ else:
     BATCH_SIZE = 4
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
-CACHE_DIR = None  # If None uses huggingface default cache
+CACHE_DIR = "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
+    "llama-3b": "meta-llama/Llama-3.2-3B-Instruct",
     "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
     "llama-70b": "meta-llama/Llama-3.3-70B-Instruct",
 }
 
 MODEL_MAX_MEMORY = {
-    "meta-llama/Llama-3.2-1B-Instruct": None,
-    "meta-llama/Llama-3.1-8B-Instruct": None,
+    "meta-llama/Llama-3.2-1B-Instruct": {2: "60GB"},
+    "meta-llama/Llama-3.2-3B-Instruct": {2: "60GB"},
+    "meta-llama/Llama-3.1-8B-Instruct": {2: "60GB"},
     "meta-llama/Llama-3.3-70B-Instruct": None,
 }
 
@@ -58,7 +60,7 @@ PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 TRAIN_DIR = DATA_DIR / "training"
 
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_19_03_25_gpt-4o_filtered.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl"
 
 GENERATED_DATASET = {
     "file_path": SYNTHETIC_DATASET_PATH,

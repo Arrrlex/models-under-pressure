@@ -10,7 +10,7 @@ from transformers.tokenization_utils_base import (
     PreTrainedTokenizerBase,
 )
 
-from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE
+from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -66,6 +66,7 @@ class LLMModel:
             if torch.cuda.is_available()
             else torch.float16,
             "cache_dir": CACHE_DIR,
+            "max_memory": MODEL_MAX_MEMORY[model_name],
         }
 
         if model_kwargs is None:
