@@ -126,6 +126,11 @@ class ContinuationBaselineResults(BaselineResults):
     valid_response: list[bool]
 
 
+class LikelihoodBaselineResults(BaselineResults):
+    high_stakes_scores: list[float]
+    low_stakes_scores: list[float]
+
+
 @deprecated("Use EvaluationResult instead")
 class ProbeEvaluationResults(BaseModel):
     """Results from evaluating probes across multiple datasets."""
