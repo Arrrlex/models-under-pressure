@@ -4,9 +4,11 @@ from typing import Optional
 from models_under_pressure.interfaces.activations import Aggregator
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchDifferenceOfMeansClassifier,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
-    DifferenceOfMeansClassifier,
     Probe,
     SklearnProbe,
 )
@@ -30,18 +32,18 @@ class ProbeFactory:
             return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
                 train_dataset
             )
-        elif probe == "sklearn_difference_of_means":
-            assert (
-                aggregator is not None
-            ), f"aggregator: {aggregator} is required for sklearn probe"
-            _probe = SklearnProbe(
+        elif probe == "difference_of_means":
+            return PytorchProbe(
                 _llm=model,
                 layer=layer,
-                aggregator=aggregator,
-                _classifier=DifferenceOfMeansClassifier(),
-            )
-
-            return _probe.fit(train_dataset)
+                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=False),
+            ).fit(train_dataset)
+        elif probe == "lda":
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=True),
+            ).fit(train_dataset)
         elif probe == "pytorch_per_token_probe":
             return PytorchProbe(_llm=model, layer=layer).fit(train_dataset)
         else:

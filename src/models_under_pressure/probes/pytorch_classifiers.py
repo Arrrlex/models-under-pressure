@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Self
 
 import einops
 import numpy as np
@@ -211,3 +212,55 @@ class PytorchAttentionClassifier:
 
     model: nn.Module | None = None
     training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
+
+
+@dataclass
+class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
+    use_lda: bool = False
+
+    def train(
+        self,
+        activations: Activation,
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self:
+        all_acts = activations.get_activations()
+        all_mask = activations.get_attention_mask()
+
+        pos_acts = all_acts[(y[:, None] == 1) & (all_mask == 1)]
+        neg_acts = all_acts[(y[:, None] == 0) & (all_mask == 1)]
+        pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
+        direction = pos_mean - neg_mean
+
+        if self.use_lda:
+            centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
+            covariance = centered_data.t() @ centered_data / all_acts.shape[0]
+
+            inv = torch.linalg.pinv(covariance, hermitian=True, atol=1e-3)
+            param = inv @ direction
+        else:
+            param = direction
+
+        param = torch.tensor(param, dtype=torch.float32)
+
+        linear = nn.Linear(direction.shape[0], 1, bias=False)
+        with torch.no_grad():
+            linear.weight.copy_(param.reshape(1, -1))
+        self.model = nn.Sequential(
+            linear,
+            nn.Sigmoid(),
+        )
+
+        return self
+
+
+# class AttentionModule(nn.Module):
+#     def __init__(self, embedding_dim: int):
+#         super().__init__()
+#         self.linear = nn.Linear(embedding_dim, 1, bias=False)
+#         self.sigmoid = nn.Sigmoid()
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         return self.sigmoid(self.linear(x))
+
+# class PytorchAttentionClassifier(PytorchLinearClassifier):
+#     model: nn.Module = field(default_factory=AttentionModule)

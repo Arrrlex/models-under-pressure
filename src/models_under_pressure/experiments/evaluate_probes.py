@@ -156,11 +156,11 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
+        layer=31,
         max_samples=None,
-        model_name=LOCAL_MODELS["llama-8b"],
+        model_name=LOCAL_MODELS["llama-70b"],
         dataset_path=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
-        probe_name="sklearn_difference_of_means",
+        probe_name="difference_of_means",
     )
 
     aggregator = Aggregator(
