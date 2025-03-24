@@ -22,6 +22,10 @@ best_probe:
   preprocessor: "mean"
   postprocessor: "sigmoid"
 
+baseline_models:
+  - llama-1b
+  - gemma-1b
+
 variation_types:
   - prompt_style
   - tone

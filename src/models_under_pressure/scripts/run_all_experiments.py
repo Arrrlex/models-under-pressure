@@ -10,10 +10,11 @@ from models_under_pressure.baselines.continuation import (
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
-    EVAL_DATASETS,
     CONFIG_DIR,
+    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
+    LOCAL_MODELS,
     TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
@@ -138,7 +139,8 @@ def run_all_experiments(config: DictConfig):
 
         # Calculate & save the baselines
         for baseline_model in config.baseline_models:
-            model = LLMModel.load(baseline_model)
+            baseline_model_name = LOCAL_MODELS.get(baseline_model, baseline_model)
+            model = LLMModel.load(baseline_model_name)
             for dataset_name in EVAL_DATASETS.keys():
                 results = evaluate_likelihood_continuation_baseline(
                     model, dataset_name, config.max_samples
@@ -170,4 +172,4 @@ def run_all_experiments(config: DictConfig):
 
 
 if __name__ == "__main__":
-    run_all_experiments()
+    run_all_experiments()  # type: ignore
