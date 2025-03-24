@@ -225,8 +225,8 @@ class LikelihoodContinuationBaseline:
             )
 
             # Find first index where likelihoods differ
-            high_stakes_ll = high_stakes_ll.detach().cpu().numpy()
-            low_stakes_ll = low_stakes_ll.detach().cpu().numpy()
+            high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
+            low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
             diff_idx = np.where(high_stakes_ll != low_stakes_ll)[0][0]
 
             # Sum from that index onwards
