@@ -72,12 +72,14 @@ class SklearnProbe(Probe):
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
 
-    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
+    def predict_proba(
+        self, dataset: BaseDataset
+    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
-        return self._predict_proba(activations_obj)
+        return activations_obj, self._predict_proba(activations_obj)
 
     def _fit(
         self,

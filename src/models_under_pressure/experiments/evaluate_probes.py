@@ -1,6 +1,9 @@
 # Code to generate Figure 2
+import json
 from pathlib import Path
+from typing import Any
 
+import joblib
 import numpy as np
 
 from models_under_pressure.config import (
@@ -46,7 +49,7 @@ def load_eval_datasets(
 def run_evaluation(
     config: EvalRunConfig,
     aggregator: Aggregator,
-) -> list[EvaluationResult]:
+) -> tuple[list[EvaluationResult], list[float], list[dict[str, Any]]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=config.dataset_path,
@@ -81,7 +84,7 @@ def run_evaluation(
     print("Loading eval datasets ...")
     eval_datasets = load_eval_datasets(max_samples=config.max_samples)
 
-    results_dict = evaluate_probe_and_save_results(
+    results_dict, coefs = evaluate_probe_and_save_results(
         model=model,
         probe=probe,
         train_dataset_path=config.dataset_path,
@@ -89,18 +92,6 @@ def run_evaluation(
         layer=config.layer,
         output_dir=EVALUATE_PROBES_DIR,
     )
-
-    # generate calibration plots:
-    # run_calibration(
-    #     EvalRunConfig(
-    #         max_samples=max_samples,
-    #         layer=layer,
-    #         model_name=model_name,
-    #         dataset_path=dataset_path,
-    #         variation_type=variation_type,
-    #         variation_value=variation_value,
-    #     )
-    # )
 
     # Load the ground truth scale labels:
     ground_truth_scale_labels = {}
@@ -110,16 +101,18 @@ def run_evaluation(
         ground_truth_labels[dataset_name] = [
             1 if label == "high-stakes" else 0 for label in data_df["labels"]
         ]
-        if dataset_name != "manual":
+        if dataset_name == "manual":
+            ground_truth_scale_labels[dataset_name] = None
+        else:
             ground_truth_scale_labels[dataset_name] = (
                 data_df["scale_labels"].astype(int).to_list()
             )
-        else:
-            ground_truth_scale_labels[dataset_name] = None
 
     metrics = []
     dataset_names = []
     results_list = []
+    activations_list = []
+
     column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
     for path, (_, results) in results_dict.items():
@@ -128,6 +121,21 @@ def run_evaluation(
         dataset_names.append(Path(path).stem)
         column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
+        # Before creating the EvaluationResult, convert NumPy arrays to lists
+        # If mean_of_masked_activations is a list of arrays
+        mean_of_masked_activations_list = [
+            [arr]
+            for arr in results_dict[dataset_names[-1]][0].other_fields[
+                f"mean_of_masked_activations{column_name_template}"
+            ]
+        ]
+
+        masked_activations = [
+            [arr]
+            for arr in results_dict[dataset_names[-1]][0].other_fields[
+                f"masked_activations{column_name_template}"
+            ]
+        ]
         dataset_results = EvaluationResult(
             config=config,
             metrics=results,
@@ -145,8 +153,17 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
         )
+        activations_list.append(
+            {
+                "dataset_name": Path(path).stem,
+                "mean_activations": mean_of_masked_activations_list,
+                "masked_activations": masked_activations,
+            }
+        )
+
         results_list.append(dataset_results)
-    return results_list
+
+    return results_list, coefs, activations_list
 
 
 if __name__ == "__main__":
@@ -156,11 +173,13 @@ if __name__ == "__main__":
 
     configs = [
         EvalRunConfig(
+            id="urja",
             layer=layer,
             max_samples=None,
-            model_name=LOCAL_MODELS["llama-1b"],
+            model_name=LOCAL_MODELS["llama-70b"],
+            probe_name="sklearn_probe",
         )
-        for layer in [11]
+        for layer in [31]
     ]
 
     aggregator = Aggregator(
@@ -174,7 +193,7 @@ if __name__ == "__main__":
         print(
             f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_evaluation(
+        results, coefs, activations_list = run_evaluation(
             config=config,
             aggregator=aggregator,
         )
@@ -184,3 +203,19 @@ if __name__ == "__main__":
         )
         for result in results:
             result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+        joblib.dump(
+            activations_list,
+            EVALUATE_PROBES_DIR
+            / f"{Path(config.output_filename).stem}_activations.pkl",
+        )
+        coefs_dict = {
+            "id": config.id,
+            "coefs": coefs[0].tolist(),  # type: ignore
+        }
+        json.dump(
+            coefs_dict,
+            open(
+                EVALUATE_PROBES_DIR / f"{Path(config.output_filename).stem}_coefs.json",
+                "w",
+            ),
+        )

@@ -67,7 +67,9 @@ class PytorchProbe(Probe):
         labels = self._classifier.predict(activations_obj)
         return [Label.from_int(label) for label in labels]
 
-    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
+    def predict_proba(
+        self, dataset: BaseDataset
+    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
         """
         Predict and return the probabilities of the dataset.
 
@@ -82,7 +84,7 @@ class PytorchProbe(Probe):
         probs = self._classifier.predict_proba(activations_obj)
 
         # Take the mean over the sequence length:
-        return probs
+        return activations_obj, probs
 
     def per_token_predictions(
         self,

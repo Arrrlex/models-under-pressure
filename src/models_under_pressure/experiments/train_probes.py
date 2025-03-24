@@ -19,6 +19,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
     SklearnProbe,
@@ -124,7 +125,7 @@ def evaluate_probe_and_save_results(
     output_dir: Path,
     save_results: bool = False,
     fpr: float = 0.01,
-) -> dict[str, tuple[LabelledDataset, DatasetResults]]:
+) -> tuple[dict[str, tuple[LabelledDataset, DatasetResults]], list[float]]:
     """
     Evaluate a probe and save the results to a file.
 
@@ -152,7 +153,18 @@ def evaluate_probe_and_save_results(
         desc=f"Evaluating datasets for layer {layer}",
         leave=False,
     ):
-        per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        masked_acts = (
+            activation_obj._activations * activation_obj._attention_mask[:, :, None]
+        )
+        # Sum and divide by the number of non-masked tokens
+        sum_acts = masked_acts.sum(axis=1)
+
+        # Shape: (batch_size, 1)
+        # Add small epsilon to avoid division by zero
+        token_counts = activation_obj._attention_mask.sum(axis=1, keepdims=True) + 1e-10
+        mean_of_masked_activations = sum_acts / token_counts
+        masked_activations = masked_acts.tolist()
 
         per_token_probe_scores = probe.per_token_predictions(
             inputs=eval_dataset.inputs,
@@ -188,14 +200,16 @@ def evaluate_probe_and_save_results(
             "per_entry_probe_scores": per_entry_probe_scores,
             "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
+            "mean_of_masked_activations": mean_of_masked_activations,
+            "masked_activations": masked_activations,
         }
 
         for score, values in probe_scores_dict[eval_dataset_name].items():
             if len(values) != len(eval_dataset.inputs):
                 breakpoint()
-            assert (
-                len(values) == len(eval_dataset.inputs)
-            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+            assert len(values) == len(eval_dataset.inputs), (
+                f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+            )
 
     outputs = {}
     # Eval metric level results
@@ -259,8 +273,12 @@ def evaluate_probe_and_save_results(
             dataset_with_probe_scores,
             dataset_results,
         )
+    if isinstance(probe, SklearnProbe):
+        coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
+    elif isinstance(probe, PytorchProbe):
+        coefs = list(probe._classifier.model.weight.data.cpu().numpy())  # type: ignore
 
-    return outputs
+    return outputs, coefs
 
 
 if __name__ == "__main__":

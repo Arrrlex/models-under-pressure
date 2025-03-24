@@ -1,16 +1,15 @@
-from datetime import datetime
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
+import joblib
 import numpy as np
 from deprecated import deprecated
 from pydantic import BaseModel, Field
 
 from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
-
-from typing import Self
 
 
 class CVIntermediateResults(BaseModel):
@@ -97,11 +96,27 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
+    mean_of_masked_activations: list[Any] | None = None
+    """Mean of the masked activations for each example in the eval dataset"""
+
+    masked_activations: list[Any] | None = None
+    """Masked activations for each example in the eval dataset"""
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
             f.write(self.model_dump_json() + "\n")
+
+    # another save pickle function using joblib
+    def save_pickle(self, path: Path) -> None:
+        joblib.dump(
+            {
+                "mean_activations": self.mean_of_masked_activations,
+                "masked_activations": self.masked_activations,
+            },
+            path,
+        )
 
 
 @deprecated("Use EvaluationResult instead")
