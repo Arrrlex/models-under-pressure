@@ -33,10 +33,9 @@ baseline_results = []
 with open(BASELINE_RESULTS_FILE) as f:
     for line in f:
         if line.strip():
-            baseline_results.append(
-                # ContinuationBaselineResults.model_validate_json(line)
-                LikelihoodBaselineResults.model_validate_json(line)
-            )
+            result = LikelihoodBaselineResults.model_validate_json(line)
+            if result.max_samples is None:
+                baseline_results.append(result)
 
 print(f"Probe results: {len(probe_results)}")
 print(f"Baseline results: {len(baseline_results)}")
@@ -126,8 +125,16 @@ def plot_probe_vs_baseline_auroc(
     plt.title("Probe vs Baseline Model AUROC by Dataset")
     plt.xlabel("Dataset")
     plt.ylabel("AUROC")
-    plt.legend(title="Method")
+    plt.ylim(0.5, 1.0)  # Set y-axis limits from 0.5 to 1
+    plt.legend(
+        title="Method",
+        bbox_to_anchor=(1.05, 1),  # Position slightly to the right of the plot
+        loc="upper left",
+        borderaxespad=0.0,
+    )
     plt.tight_layout()
+    # Add extra space on the right for the legend
+    plt.subplots_adjust(right=0.85)
 
     return plt.gcf()
 

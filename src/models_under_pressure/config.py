@@ -258,6 +258,7 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
+    use_test_set: bool = False
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
@@ -267,7 +268,10 @@ class EvalRunConfig(BaseModel):
 
     @property
     def output_filename(self) -> str:
-        return f"results_{self.id}.jsonl"
+        if self.use_test_set:
+            return f"results_{self.id}_test.jsonl"
+        else:
+            return f"results_{self.id}.jsonl"
 
     @property
     def random_seed(self) -> int:

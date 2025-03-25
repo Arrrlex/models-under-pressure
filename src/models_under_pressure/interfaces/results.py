@@ -75,7 +75,10 @@ class EvaluationResult(BaseModel):
     """Configuration for the evaluation"""
 
     dataset_name: str
-    """Name of the dataset that was evaluated"""
+    """Name of the dataset that was evaluated on"""
+
+    dataset_path: Path
+    """Path to the dataset that was evaluated on"""
 
     metrics: DatasetResults
     """Global metrics for the evaluated dataset"""
@@ -108,6 +111,7 @@ class BaselineResults(BaseModel):
     labels: list[int]
     ground_truth: list[int]
     dataset_name: str
+    dataset_path: Path
     model_name: str
     max_samples: int | None
 
