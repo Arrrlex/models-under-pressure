@@ -73,6 +73,9 @@ def split_by_variation(
     # Get unique values of variation_type
     variation_values = list(set(train_dataset.other_fields[variation_type]))
     test_variation_values = list(set(test_dataset.other_fields[variation_type]))
+    if sorted(variation_values) != sorted(test_variation_values):
+        print(f"Variation values: {variation_values}")
+        print(f"Test variation values: {test_variation_values}")
     assert sorted(variation_values) == sorted(test_variation_values)
 
     train_splits = {}

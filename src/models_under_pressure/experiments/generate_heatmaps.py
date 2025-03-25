@@ -50,10 +50,11 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
 
         for train_variation_value in tqdm(variations.variation_values):
             print(f"Training on variation '{variation_type}'='{train_variation_value}'")
+            train_split = variations.train_splits[train_variation_value]
             probe = ProbeFactory.build(
                 probe=config.probe_spec,
                 model=model,
-                train_dataset=variations.train_splits[train_variation_value],
+                train_dataset=train_split,
                 layer=config.layer,
             )
 
@@ -61,8 +62,8 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                 print(
                     f"Evaluating on variation '{variation_type}'='{test_variation_value}'"
                 )
-                test_dataset = variations.test_splits[test_variation_value]
-                accuracy = compute_accuracy(probe, test_dataset)
+                test_split = variations.test_splits[test_variation_value]
+                accuracy = compute_accuracy(probe, test_split)
 
                 result = HeatmapCellResult(
                     variation_type=variation_type,
