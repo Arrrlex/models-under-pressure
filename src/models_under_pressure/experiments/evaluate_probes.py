@@ -19,11 +19,6 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
@@ -58,7 +53,6 @@ def load_eval_datasets(
 
 def run_evaluation(
     config: EvalRunConfig,
-    aggregator: Aggregator,
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
@@ -87,6 +81,7 @@ def run_evaluation(
         train_dataset=train_dataset,
         layer=config.layer,
         output_dir=EVALUATE_PROBES_DIR,
+        hyper_params=config.hyper_params,
     )
 
     # Load eval datasets
@@ -164,17 +159,13 @@ if __name__ == "__main__":
     configs = [
         EvalRunConfig(
             layer=layer,
-            max_samples=None,
-            model_name=LOCAL_MODELS["llama-70b"],
-            probe_name="sklearn_probe",
+            max_samples=20,
+            model_name=LOCAL_MODELS["llama-1b"],
+            hyper_params={"batch_size": 16, "epochs": 3, "device": "cpu"},
+            probe_name="pytorch_per_token_probe",
         )
         for layer in [31]
     ]
-
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
-    )
 
     double_check_config(configs)
 
@@ -184,7 +175,6 @@ if __name__ == "__main__":
         )
         results, coefs = run_evaluation(
             config=config,
-            aggregator=aggregator,
         )
 
         print(

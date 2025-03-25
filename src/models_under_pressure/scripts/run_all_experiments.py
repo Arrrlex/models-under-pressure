@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import hydra
 from omegaconf import DictConfig
@@ -10,6 +11,7 @@ from models_under_pressure.baselines.continuation import (
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -24,11 +26,6 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.probes.model import LLMModel
 
 
@@ -42,7 +39,7 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[dict[str, str]]
+    probes: list[dict[str, str | dict[str, Any]]]
     best_probe: dict[str, str]
     variation_types: tuple[str, ...]
     use_test_set: bool
@@ -70,11 +67,14 @@ def run_all_experiments(config: DictConfig):
         experiment in config.experiments_to_run for experiment in valid_experiments
     ), f"Must specify at least one experiment from {valid_experiments} to run"
 
+    model_name = LOCAL_MODELS.get(config.model_name, config.model_name)
+
     if "cv" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
-                model_name=config.model_name,
+                model_name=model_name,
                 dataset_spec={
                     "file_path_or_name": TRAIN_DIR / config.training_data,
                 },
@@ -91,19 +91,18 @@ def run_all_experiments(config: DictConfig):
         print("Running compare probes...")
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
-                model_name=config.model_name,
+                model_name=model_name,
                 dataset_path=TRAIN_DIR / config.training_data,
                 layer=config.best_layer,
                 probe_name=probe["name"],
                 max_samples=config.max_samples,
+                hyper_params=probe["hyper_params"]
+                if "hyper_params" in probe
+                else config.default_hyper_params,
                 use_test_set=config.use_test_set,
             )
             eval_results, _ = run_evaluation(
                 eval_run_config,
-                aggregator=Aggregator(
-                    preprocessor=getattr(Preprocessors, probe["preprocessor"]),
-                    postprocessor=getattr(Postprocessors, probe["postprocessor"]),
-                ),
             )
 
             for eval_result in eval_results:
@@ -124,21 +123,18 @@ def run_all_experiments(config: DictConfig):
 
         eval_run_config = EvalRunConfig(
             id="best_probe",
-            model_name=config.model_name,
+            model_name=model_name,
             dataset_path=config.training_data,
             layer=config.best_layer,
             probe_name=config.best_probe["name"],
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
+            hyper_params=config.best_probe["hyper_params"]
+            if "hyper_params" in config.best_probe
+            else config.default_hyper_params,
         )
         eval_results, _ = run_evaluation(
             eval_run_config,
-            aggregator=Aggregator(
-                preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
-                postprocessor=getattr(
-                    Postprocessors, config.best_probe["postprocessor"]
-                ),
-            ),
         )
 
         for eval_result in eval_results:
@@ -161,15 +157,15 @@ def run_all_experiments(config: DictConfig):
                     use_test_set=config.use_test_set,
                 )
 
-                output_path = BASELINE_RESULTS_FILE
                 if config.use_test_set:
-                    # Insert _test before the file extension
-                    parts = str(output_path).rsplit(".", 1)
-                    output_path = Path(f"{parts[0]}_test.{parts[1]}")
+                    output_path = BASELINE_RESULTS_FILE_TEST
+                else:
+                    output_path = BASELINE_RESULTS_FILE
                 print(f"Saving results to {output_path}")
                 results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running generalisation heatmap...")
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(

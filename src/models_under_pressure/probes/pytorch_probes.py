@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Self, Sequence
 
 import numpy as np
@@ -11,9 +11,6 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -31,9 +28,13 @@ from models_under_pressure.probes.sklearn_probes import Probe
 class PytorchProbe(Probe):
     _llm: LLMModel
     layer: int
-    _classifier: PytorchLinearClassifier = field(
-        default_factory=PytorchLinearClassifier
-    )
+
+    hyper_params: dict
+    _classifier: PytorchLinearClassifier | None = None
+
+    def __post_init__(self):
+        if self._classifier is None:
+            self._classifier = PytorchLinearClassifier(training_args=self.hyper_params)
 
     def fit(self, dataset: LabelledDataset) -> Self:
         """
@@ -54,7 +55,7 @@ class PytorchProbe(Probe):
 
     def _fit(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
         # Pass the activations and labels to the pytorch classifier class:
-        return self._classifier.train(activations, y)
+        return self._classifier.train(activations, y)  # type: ignore
 
     def predict(self, dataset: BaseDataset) -> list:
         """
@@ -64,7 +65,7 @@ class PytorchProbe(Probe):
             dataset=dataset,
             layer=self.layer,
         )
-        labels = self._classifier.predict(activations_obj)
+        labels = self._classifier.predict(activations_obj)  # type: ignore
         return [Label.from_int(label) for label in labels]
 
     def predict_proba(
@@ -81,7 +82,7 @@ class PytorchProbe(Probe):
         )
 
         # Get the batch_size, seq_len probabilities:
-        probs = self._classifier.predict_proba(activations_obj)
+        probs = self._classifier.predict_proba(activations_obj)  # type: ignore
 
         # Take the mean over the sequence length:
         return activations_obj, probs
@@ -103,7 +104,7 @@ class PytorchProbe(Probe):
             layer=self.layer,
         )
 
-        probs = self._classifier.predict_token_proba(activations_obj)
+        probs = self._classifier.predict_token_proba(activations_obj)  # type: ignore
 
         return probs
 
@@ -112,12 +113,13 @@ if __name__ == "__main__":
     model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
 
     # Train a probe
-    agg = Aggregator(
-        preprocessor=Preprocessors.per_token,
-        postprocessor=Postprocessors.sigmoid,
-    )
     train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
-    probe = PytorchProbe(_llm=model, layer=11)
+    hyper_params = {
+        "batch_size": 16,
+        "epochs": 3,
+        "device": "cpu",
+    }
+    probe = PytorchProbe(_llm=model, layer=11, hyper_params=hyper_params)
     probe.fit(train_dataset[:10])
 
     # Test the probe

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Self
 
 import einops
@@ -9,7 +9,6 @@ from jaxtyping import Float
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
-from models_under_pressure.config import PYTORCH_PT_TRAINING_ARGS
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
@@ -22,8 +21,8 @@ class PytorchLinearClassifier:
     activations and labels.
     """
 
+    training_args: dict
     model: nn.Module | None = None
-    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
 
     def train(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
         """
@@ -44,7 +43,11 @@ class PytorchLinearClassifier:
             self.model = self.create_model(activations.shape[2]).to(device)
 
         # Initialize optimizer
-        optimizer = torch.optim.AdamW(self.model.parameters())
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.training_args.get("learning_rate", 1e-3),
+            weight_decay=self.training_args.get("weight_decay", 0.01),
+        )
         criterion = nn.BCEWithLogitsLoss()
 
         per_token_dataset = activations.to_dataset(y=y, per_token=True)
@@ -210,8 +213,8 @@ class PytorchAttentionClassifier:
     A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
     """
 
+    training_args: dict
     model: nn.Module | None = None
-    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
 
 
 @dataclass

@@ -5,7 +5,7 @@ import pandas as pd
 from pydantic import ValidationError
 
 from models_under_pressure.config import (
-    BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
 )
@@ -18,6 +18,7 @@ from models_under_pressure.interfaces.results import (
 )
 
 probe_results_file = "results_0UAqFzWs.jsonl"
+baseline_results_file = BASELINE_RESULTS_FILE_TEST
 probe_results_path = EVALUATE_PROBES_DIR / probe_results_file
 
 probe_results = []
@@ -30,7 +31,7 @@ with open(probe_results_path) as f:
                 print(f"Error validating line: {line}")
 
 baseline_results = []
-with open(BASELINE_RESULTS_FILE) as f:
+with open(baseline_results_file) as f:
     for line in f:
         if line.strip():
             result = LikelihoodBaselineResults.model_validate_json(line)
