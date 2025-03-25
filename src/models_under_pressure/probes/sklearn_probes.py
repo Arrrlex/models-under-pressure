@@ -215,7 +215,8 @@ def compute_accuracy(
     activations: Activation,
 ) -> float:
     pred_labels = probe.predict(dataset)
-    return (np.array(pred_labels) == dataset.labels_numpy()).mean()
+    pred_labels_np = np.array([label.to_int() for label in pred_labels])
+    return (pred_labels_np == dataset.labels_numpy()).mean()
 
 
 if __name__ == "__main__":
