@@ -158,8 +158,13 @@ def run_all_experiments(config: DictConfig):
                     use_test_set=config.use_test_set,
                 )
 
-                print(f"Saving results to {BASELINE_RESULTS_FILE}")
-                results.save_to(BASELINE_RESULTS_FILE)
+                output_path = BASELINE_RESULTS_FILE
+                if config.use_test_set:
+                    # Insert _test before the file extension
+                    parts = str(output_path).rsplit(".", 1)
+                    output_path = Path(f"{parts[0]}_test.{parts[1]}")
+                print(f"Saving results to {output_path}")
+                results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")

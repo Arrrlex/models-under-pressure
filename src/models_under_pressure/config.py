@@ -268,7 +268,10 @@ class EvalRunConfig(BaseModel):
 
     @property
     def output_filename(self) -> str:
-        return f"results_{self.id}.jsonl"
+        if self.use_test_set:
+            return f"results_{self.id}_test.jsonl"
+        else:
+            return f"results_{self.id}.jsonl"
 
     @property
     def random_seed(self) -> int:
