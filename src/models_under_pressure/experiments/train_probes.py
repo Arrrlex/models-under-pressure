@@ -25,6 +25,7 @@ from models_under_pressure.probes.sklearn_probes import (
     compute_accuracy,
 )
 
+
 # Set random seed for reproducibility
 RANDOM_SEED = 0
 np.random.seed(RANDOM_SEED)

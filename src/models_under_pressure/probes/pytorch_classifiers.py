@@ -223,16 +223,17 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        acts = torch.tensor(activations.get_activations(), dtype=torch.float16)
-        mask = torch.tensor(activations.get_attention_mask(), dtype=torch.float16)
+        acts = torch.tensor(activations.get_activations(), dtype=torch.float32)
+        mask = torch.tensor(activations.get_attention_mask(), dtype=torch.float32)
 
         batch_size, seq_len, embed_dim = acts.shape
 
         acts = acts.to(self.training_args["device"])
         mask = mask.to(self.training_args["device"])
+        y_tensor = torch.tensor(y, dtype=torch.float32).to(self.training_args["device"])
 
-        pos_acts = acts[(y[:, None] == 1) & (mask == 1)]
-        neg_acts = acts[(y[:, None] == 0) & (mask == 1)]
+        pos_acts = acts[(y_tensor[:, None] == 1) & (mask == 1)]
+        neg_acts = acts[(y_tensor[:, None] == 0) & (mask == 1)]
         pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
         direction = pos_mean - neg_mean
 
@@ -246,7 +247,6 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
             param = direction
 
         assert param.shape == (embed_dim,)
-
 
         self.model = nn.Linear(embed_dim, 1, bias=False)
         with torch.no_grad():

@@ -20,8 +20,6 @@ from models_under_pressure.experiments.train_probes import (
 )
 from models_under_pressure.interfaces.activations import (
     Aggregator,
-    Postprocessors,
-    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
@@ -74,7 +72,6 @@ def run_evaluation(
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
     )
 
@@ -161,11 +158,6 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-70b"],
         dataset_path=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
         probe_name="difference_of_means",
-    )
-
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
     )
 
     double_check_config(config)

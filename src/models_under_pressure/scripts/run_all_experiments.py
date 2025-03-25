@@ -33,8 +33,8 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[dict[str, str]]
-    best_probe: dict[str, str]
+    probes: list[str]
+    best_probe: str
     variation_types: tuple[str, ...]
 
 
@@ -150,22 +150,12 @@ if __name__ == "__main__":
             "scaling_plot",
         ],
         probes=[
-            {
-                "name": "sklearn_probe",
-                "preprocessor": "mean",
-                "postprocessor": "sigmoid",
-            },
-            {
-                "name": "pytorch_per_token_probe",
-                "preprocessor": "mean",
-                "postprocessor": "sigmoid",
-            },
+            "sklearn_mean_agg_probe",
+            "pytorch_per_token_probe",
+            "lda",
+            "difference_of_means",
         ],
-        best_probe={
-            "name": "sklearn_probe",
-            "preprocessor": "mean",
-            "postprocessor": "sigmoid",
-        },
+        best_probe="sklearn_mean_agg_probe",
         variation_types=tuple(VARIATION_TYPES),
     )
 
