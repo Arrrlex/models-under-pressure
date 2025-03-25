@@ -66,6 +66,7 @@ AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
+BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl"

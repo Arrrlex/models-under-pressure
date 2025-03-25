@@ -10,6 +10,7 @@ from models_under_pressure.baselines.continuation import (
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -161,11 +162,10 @@ def run_all_experiments(config: DictConfig):
                     use_test_set=config.use_test_set,
                 )
 
-                output_path = BASELINE_RESULTS_FILE
                 if config.use_test_set:
-                    # Insert _test before the file extension
-                    parts = str(output_path).rsplit(".", 1)
-                    output_path = Path(f"{parts[0]}_test.{parts[1]}")
+                    output_path = BASELINE_RESULTS_FILE_TEST
+                else:
+                    output_path = BASELINE_RESULTS_FILE
                 print(f"Saving results to {output_path}")
                 results.save_to(output_path)
 
