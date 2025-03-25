@@ -166,10 +166,6 @@ def evaluate_probe_and_save_results(
         # mean_of_masked_activations = sum_acts / token_counts
         # masked_activations = masked_acts.tolist()
 
-        probe_scores_dict = {
-            "per_entry_probe_scores": per_entry_probe_scores,
-        }
-
         if save_results:
             # We don't seem to use these fields for the main evaluation
             per_token_probe_scores = probe.per_token_predictions(
@@ -201,35 +197,34 @@ def evaluate_probe_and_save_results(
                     breakpoint()
                 assert not np.any(np.isnan(logits)), "Found NaN values in probe logits"
 
-            probe_scores_dict.update(
-                {
-                    "per_entry_probe_logits": per_entry_probe_logits,
-                    "per_token_probe_logits": per_token_probe_logits,
-                    "per_token_probe_scores": per_token_probe_scores,
-                    # "mean_of_masked_activations": mean_of_masked_activations,
-                    # "masked_activations": masked_activations,
-                }
-            )
-        # TODO: Add back in for activations analysis
-        # activations_dict = {
-        #     "dataset_name": eval_dataset_name,
-        #     "mean_activations": mean_of_masked_activations,
-        #     # "masked_activations": masked_activations,
-        # }
-        # with h5py.File(
-        #     EVALUATE_PROBES_DIR / f"{output_dir}_{eval_dataset_name}_activations.h5",
-        #     "w",
-        # ) as f:
-        #     f.create_dataset(f"{eval_dataset_name}", data=eval_dataset_name)
-        #     for key, value in activations_dict.items():
-        #         f.create_dataset(f"{eval_dataset_name}/{key}", data=value)
+            probe_scores_dict = {
+                "per_entry_probe_scores": per_entry_probe_scores,
+                "per_entry_probe_logits": per_entry_probe_logits,
+                "per_token_probe_logits": per_token_probe_logits,
+                "per_token_probe_scores": per_token_probe_scores,
+                # "mean_of_masked_activations": mean_of_masked_activations,
+                # "masked_activations": masked_activations,
+            }
+            # TODO: Add back in for activations analysis
+            # activations_dict = {
+            #     "dataset_name": eval_dataset_name,
+            #     "mean_activations": mean_of_masked_activations,
+            #     # "masked_activations": masked_activations,
+            # }
+            # with h5py.File(
+            #     EVALUATE_PROBES_DIR / f"{output_dir}_{eval_dataset_name}_activations.h5",
+            #     "w",
+            # ) as f:
+            #     f.create_dataset(f"{eval_dataset_name}", data=eval_dataset_name)
+            #     for key, value in activations_dict.items():
+            #         f.create_dataset(f"{eval_dataset_name}/{key}", data=value)
 
-        for score, values in probe_scores_dict.items():
-            if len(values) != len(eval_dataset.inputs):
-                breakpoint()
-            assert (
-                len(values) == len(eval_dataset.inputs)
-            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+            for score, values in probe_scores_dict.items():
+                if len(values) != len(eval_dataset.inputs):
+                    breakpoint()
+                assert (
+                    len(values) == len(eval_dataset.inputs)
+                ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
 
         if save_results:
             try:
@@ -263,16 +258,16 @@ def evaluate_probe_and_save_results(
         # Calculate the metrics for the dataset:
         auroc = roc_auc_score(
             eval_dataset.labels_numpy(),
-            probe_scores_dict["per_entry_probe_scores"],
+            per_entry_probe_scores,
         )
         accuracy = accuracy_score(
             eval_dataset.labels_numpy(),
-            np.array(probe_scores_dict["per_entry_probe_scores"]) > 0.5,
+            np.array(per_entry_probe_scores) > 0.5,
         )
 
         tpr_at_fpr = tpr_at_fixed_fpr_score(
             eval_dataset.labels_numpy(),
-            probe_scores_dict["per_entry_probe_scores"],
+            per_entry_probe_scores,
             fpr=fpr,
         )
 
