@@ -155,7 +155,6 @@ if __name__ == "__main__":
 
     configs = [
         EvalRunConfig(
-            id="urja",
             layer=layer,
             max_samples=None,
             model_name=LOCAL_MODELS["llama-70b"],
