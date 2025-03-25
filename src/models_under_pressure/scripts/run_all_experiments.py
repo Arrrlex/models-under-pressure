@@ -101,7 +101,7 @@ def run_all_experiments(config: DictConfig):
                 else config.default_hyper_params,
                 use_test_set=config.use_test_set,
             )
-            eval_results = run_evaluation(
+            eval_results, _ = run_evaluation(
                 eval_run_config,
             )
 
@@ -133,7 +133,7 @@ def run_all_experiments(config: DictConfig):
             if "hyper_params" in config.best_probe
             else config.default_hyper_params,
         )
-        eval_results = run_evaluation(
+        eval_results, _ = run_evaluation(
             eval_run_config,
         )
 

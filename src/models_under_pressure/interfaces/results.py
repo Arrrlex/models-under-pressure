@@ -98,6 +98,12 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
+    mean_of_masked_activations: list[Any] | None = None
+    """Mean of the masked activations for each example in the eval dataset"""
+
+    masked_activations: list[Any] | None = None
+    """Masked activations for each example in the eval dataset"""
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
     def save_to(self, path: Path) -> None:

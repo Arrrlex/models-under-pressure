@@ -1,4 +1,5 @@
 # Code to generate Figure 2
+import json
 from pathlib import Path
 
 import numpy as np
@@ -31,13 +32,20 @@ def load_eval_datasets(
 ) -> tuple[dict[str, LabelledDataset], dict[str, Path]]:
     eval_datasets = {}
     eval_dataset_paths = {}
+    # max_samples = 200
     datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
     for name, path in datasets.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples and len(dataset) > max_samples:
-            dataset = dataset.sample(max_samples)
+            # Sample equal number of high and low stakes examples
+            high_stakes = dataset.filter(lambda x: x.label == Label.HIGH_STAKES)
+            low_stakes = dataset.filter(lambda x: x.label == Label.LOW_STAKES)
+            n_per_class = min(len(high_stakes), len(low_stakes), max_samples // 2)
+            dataset = LabelledDataset.concatenate(
+                [high_stakes.sample(n_per_class), low_stakes.sample(n_per_class)]
+            )
         eval_datasets[name] = dataset
         eval_dataset_paths[name] = path
     return eval_datasets, eval_dataset_paths
@@ -45,7 +53,7 @@ def load_eval_datasets(
 
 def run_evaluation(
     config: EvalRunConfig,
-) -> list[EvaluationResult]:
+) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=config.dataset_path,
@@ -83,7 +91,7 @@ def run_evaluation(
         max_samples=config.max_samples,
     )
 
-    results_dict = evaluate_probe_and_save_results(
+    results_dict, coefs = evaluate_probe_and_save_results(
         model=model,
         probe=probe,
         train_dataset_path=config.dataset_path,
@@ -91,18 +99,6 @@ def run_evaluation(
         layer=config.layer,
         output_dir=EVALUATE_PROBES_DIR,
     )
-
-    # generate calibration plots:
-    # run_calibration(
-    #     EvalRunConfig(
-    #         max_samples=max_samples,
-    #         layer=layer,
-    #         model_name=model_name,
-    #         dataset_path=dataset_path,
-    #         variation_type=variation_type,
-    #         variation_value=variation_value,
-    #     )
-    # )
 
     # Load the ground truth scale labels:
     ground_truth_scale_labels = {}
@@ -112,16 +108,17 @@ def run_evaluation(
         ground_truth_labels[dataset_name] = [
             1 if label == "high-stakes" else 0 for label in data_df["labels"]
         ]
-        if dataset_name != "manual":
+        if dataset_name == "manual":
+            ground_truth_scale_labels[dataset_name] = None
+        else:
             ground_truth_scale_labels[dataset_name] = (
                 data_df["scale_labels"].astype(int).to_list()
             )
-        else:
-            ground_truth_scale_labels[dataset_name] = None
 
     metrics = []
     dataset_names = []
     results_list = []
+
     column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
     for path, (_, results) in results_dict.items():
@@ -148,8 +145,10 @@ def run_evaluation(
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
             dataset_path=eval_dataset_paths[dataset_names[-1]],
         )
+
         results_list.append(dataset_results)
-    return results_list
+
+    return results_list, coefs
 
 
 if __name__ == "__main__":
@@ -165,7 +164,7 @@ if __name__ == "__main__":
             hyper_params={"batch_size": 16, "epochs": 3, "device": "cpu"},
             probe_name="pytorch_per_token_probe",
         )
-        for layer in [11]
+        for layer in [31]
     ]
 
     double_check_config(configs)
@@ -174,7 +173,7 @@ if __name__ == "__main__":
         print(
             f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_evaluation(
+        results, coefs = run_evaluation(
             config=config,
         )
 
@@ -183,3 +182,15 @@ if __name__ == "__main__":
         )
         for result in results:
             result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+        coefs_dict = {
+            "id": config.id,
+            "coefs": coefs[0].tolist(),  # type: ignore
+        }
+        json.dump(
+            coefs_dict,
+            open(
+                EVALUATE_PROBES_DIR / f"{Path(config.output_filename).stem}_coefs.json",
+                "w",
+            ),
+        )
