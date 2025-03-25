@@ -106,18 +106,18 @@ class PytorchLinearClassifier:
         probs = self.predict_proba(activations)
 
         # Take the mean over the sequence length:
-        probs = probs.mean(axis=1)
+        # probs = probs.mean(axis=1)
 
         # Get the predictions -> cutoff at 0.5
-        preds = (probs > 0.5).to(torch.int32)  # type: ignore
+        preds = (probs > 0.5).astype(np.int32)
 
         # Convert the predictions to a numpy array
-        return preds.numpy()
+        return preds
 
     @torch.no_grad()
     def predict_proba(
         self, activations: Activation
-    ) -> Float[np.ndarray, " batch_size seq_len"]:
+    ) -> Float[np.ndarray, " batch_size"]:
         """
         Predict the probabilities of the activations.
 
@@ -232,8 +232,21 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         mask = mask.to(self.training_args["device"])
         y_tensor = torch.tensor(y, dtype=torch.float32).to(self.training_args["device"])
 
-        pos_acts = acts[(y_tensor[:, None] == 1) & (mask == 1)]
-        neg_acts = acts[(y_tensor[:, None] == 0) & (mask == 1)]
+        # Apply mask to zero out irrelevant entries
+        masked_acts = acts * mask.unsqueeze(
+            -1
+        )  # broadcast mask across embedding dimension
+
+        # Sum along sequence length and divide by mask sum for each sample
+        mask_sums = mask.sum(dim=1, keepdim=True)  # shape: (batch_size, 1)
+        averaged_acts = (
+            masked_acts.sum(dim=1) / mask_sums
+        )  # shape: (batch_size, embed_dim)
+
+        # Separate positive and negative examples
+        pos_acts = averaged_acts[y_tensor == 1]
+        neg_acts = averaged_acts[y_tensor == 0]
+
         pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
         direction = pos_mean - neg_mean
 
@@ -249,8 +262,7 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         assert param.shape == (embed_dim,)
 
         self.model = nn.Linear(embed_dim, 1, bias=False)
-        with torch.no_grad():
-            self.model.weight.copy_(param.reshape(1, -1))
+        self.model.weight.data.copy_(param.reshape(1, -1))
 
         return self
 

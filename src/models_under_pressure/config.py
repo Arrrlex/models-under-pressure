@@ -93,7 +93,7 @@ EVAL_DATASETS_RAW = {
 }
 
 EVAL_DATASETS_BALANCED = {
-    # "manual": EVALS_DIR / "manual_upsampled.csv",
+    "manual": EVALS_DIR / "manual_upsampled.csv",
     "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
     "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
