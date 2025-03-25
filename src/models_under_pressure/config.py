@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from models_under_pressure.interfaces.probes import ProbeSpec
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
 DEFAULT_MODEL = "gpt-4o"
@@ -335,6 +335,11 @@ class EvalRunConfig(BaseModel):
             return f"results_{self.id}_test.jsonl"
         else:
             return f"results_{self.id}.jsonl"
+
+    @property
+    def coefs_filename(self) -> str:
+        stem = Path(self.output_filename).stem
+        return f"{stem}_coefs.json"
 
     @property
     def random_seed(self) -> int:

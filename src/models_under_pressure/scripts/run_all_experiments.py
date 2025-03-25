@@ -1,5 +1,4 @@
-from models_under_pressure.utils import double_check_config
-
+from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
 )
@@ -20,7 +19,7 @@ from models_under_pressure.experiments.cross_validation import choose_best_layer
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure import pydra
+from models_under_pressure.utils import double_check_config
 
 
 @pydra.main(
@@ -70,7 +69,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 max_samples=config.max_samples,
                 use_test_set=config.use_test_set,
             )
-            eval_results = run_evaluation(eval_run_config)
+            eval_results, _ = run_evaluation(eval_run_config)
 
             for eval_result in eval_results:
                 print(
@@ -98,7 +97,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             use_test_set=config.use_test_set,
         )
 
-        eval_results = run_evaluation(eval_run_config)
+        eval_results, _ = run_evaluation(eval_run_config)
 
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
