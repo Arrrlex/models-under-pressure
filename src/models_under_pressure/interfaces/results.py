@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Self
 
-import joblib
 import numpy as np
 from deprecated import deprecated
 from pydantic import BaseModel, Field
@@ -107,16 +106,6 @@ class EvaluationResult(BaseModel):
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
             f.write(self.model_dump_json() + "\n")
-
-    # another save pickle function using joblib
-    def save_pickle(self, path: Path) -> None:
-        joblib.dump(
-            {
-                "mean_activations": self.mean_of_masked_activations,
-                "masked_activations": self.masked_activations,
-            },
-            path,
-        )
 
 
 @deprecated("Use EvaluationResult instead")
