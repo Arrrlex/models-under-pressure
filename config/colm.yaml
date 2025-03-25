@@ -24,7 +24,8 @@ baseline_models:
   - gemma-1b
 
 variation_types:
-  - prompt_style
-  - tone
-  - language
   - length
+  # - prompt_style
+  # - tone
+  # - language
+  # - length

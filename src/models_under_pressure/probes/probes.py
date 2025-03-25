@@ -16,7 +16,7 @@ class ProbeFactory:
         model: LLMModel,
         train_dataset: LabelledDataset,
         layer: int,
-        output_dir: Path,
+        output_dir: Path | None = None,
     ) -> Probe:
         if probe == "sklearn_mean_acts":
             return SklearnProbe(

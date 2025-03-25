@@ -1,103 +1,102 @@
 import json
 
-import numpy as np
 
 from models_under_pressure.config import (
-    HEATMAPS_DIR,
     LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
+    VARIATION_TYPES,
     HeatmapRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
 )
-from models_under_pressure.experiments.train_probes import train_probes
-from models_under_pressure.interfaces.results import HeatmapResults
+from models_under_pressure.interfaces.results import HeatmapCellResult, HeatmapResults
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.probes.sklearn_probes import compute_accuracy
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.utils import double_check_config, print_progress
+
+from tqdm import tqdm
 
 
-def generate_heatmap(
-    config: HeatmapRunConfig,
-    variation_type: str = "prompt_style",
-) -> HeatmapResults:
-    """Generate a heatmap for the generated dataset.
+def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapResults:
+    """Generate heatmaps for a given model and dataset.
 
-    This creates a global train-test split, then computes a heatmap for each layer
-    by training on train set portions with a single variation value and evaluating
+    This function generates heatmaps for a given model and dataset by training
+    a probe on a train set portion with a single variation value and evaluating
     on all test set portions with various variation values.
-
-    Returns:
-        HeatmapResults: Contains performances and variation values
     """
     train_dataset, test_dataset = load_train_test(
         dataset_path=config.dataset_path,
     )
 
-    train_datasets, test_datasets, variation_values = split_by_variation(
-        train_dataset,  # type: ignore
-        test_dataset,  # type: ignore
-        variation_type,
-        max_samples=config.max_samples,
-    )
-
     model = LLMModel.load(config.model_name)
-    layers = config.layers
-    performances = {i: [] for i in layers}  # Layer index: heatmap values
-    for i, train_ds in enumerate(train_datasets):
-        print(f"Training on variation '{variation_type}'='{variation_values[i]}'")
-        probes = train_probes(model, train_ds, layers=config.layers)
 
-        for layer, probe in probes.items():
-            accuracies = []
-            for test_ds in test_datasets:
-                activations_obj = probe._llm.get_batched_activations(
-                    dataset=test_ds,
-                    layer=layer,
-                )
-                accuracy = compute_accuracy(
-                    probe,
-                    test_ds,
-                    activations_obj,
-                )
-                accuracies.append(accuracy)
-            performances[layer].append(accuracies)
+    results_list = []
 
-    return HeatmapResults(
-        probe="sklearn_probe",
-        performances={
-            layer: np.array(accuracies) for layer, accuracies in performances.items()
-        },
-        variation_values=variation_values,
-        variation_type=variation_type,
-        model_name=config.model_name,
-        layers=config.layers,
-        max_samples=config.max_samples,
+    for variation_type in print_progress(config.variation_types):
+        print(f"\nGenerating heatmap for {variation_type}")
+
+        variations = split_by_variation(
+            train_dataset,
+            test_dataset,
+            variation_type,
+            max_samples=config.max_samples,
+        )
+
+        for train_variation_value in tqdm(variations.variation_values):
+            print(f"Training on variation '{variation_type}'='{train_variation_value}'")
+            probe = ProbeFactory.build(
+                probe=config.probe_name,
+                model=model,
+                train_dataset=variations.train_splits[train_variation_value],
+                layer=config.layer,
+            )
+
+            for test_variation_value in variations.variation_values:
+                print(
+                    f"Evaluating on variation '{variation_type}'='{test_variation_value}'"
+                )
+                test_dataset = variations.test_splits[test_variation_value]
+                accuracy = compute_accuracy(probe, test_dataset)
+
+                result = HeatmapCellResult(
+                    variation_type=variation_type,
+                    train_variation_value=train_variation_value,
+                    test_variation_value=test_variation_value,
+                    accuracy=accuracy,
+                )
+
+                print(result)
+
+                results_list.append(result)
+
+                with open(config.intermediate_output_path, "a") as f:
+                    row = {"id": config.id, "result": result.model_dump(mode="json")}
+                    f.write(json.dumps(row) + "\n")
+
+    results = HeatmapResults(
+        config=config,
+        results=results_list,
     )
+
+    with open(config.output_path, "a") as f:
+        f.write(results.model_dump_json() + "\n")
+
+    return results
 
 
 if __name__ == "__main__":
     config = HeatmapRunConfig(
-        layers=[11],
+        layer=11,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        variation_types=VARIATION_TYPES,
+        probe_name="sklearn_mean_acts",
     )
 
     double_check_config(config)
 
-    for variation_type in config.variation_types:
-        print(f"\nGenerating heatmap for {variation_type}...")
-        out_path = HEATMAPS_DIR / config.output_filename(variation_type)
-
-        heatmap_results = generate_heatmap(
-            config=config,
-            variation_type=variation_type,
-        )
-        print(heatmap_results.performances)
-        print(heatmap_results.variation_values)
-
-        json.dump(
-            heatmap_results.to_dict(),
-            open(out_path, "w"),
-        )
+    generate_heatmaps(config)

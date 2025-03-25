@@ -1,14 +1,18 @@
 import json
-from dataclasses import dataclass, field
+from dataclasses import field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Self
+from typing import Any, List, Optional, Self
 
 import numpy as np
 from deprecated import deprecated
 from pydantic import BaseModel, Field
 
-from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
+from models_under_pressure.config import (
+    ChooseLayerConfig,
+    EvalRunConfig,
+    HeatmapRunConfig,
+)
 
 
 class CVIntermediateResults(BaseModel):
@@ -183,45 +187,14 @@ class ProbeEvaluationResults(BaseModel):
             json.dump(self.to_dict(), f)
 
 
-@dataclass
-class HeatmapResults:
-    probe: str
-    performances: Dict[int, np.ndarray]  # Layer -> performance matrix
-    variation_values: List[str]  # Values of the variation type
+class HeatmapCellResult(BaseModel):
     variation_type: str
-    model_name: str
-    layers: List[int]
-    max_samples: int | None
+    train_variation_value: str
+    test_variation_value: str
+    accuracy: float
 
+
+class HeatmapResults(BaseModel):
+    config: HeatmapRunConfig
+    results: list[HeatmapCellResult]
     timestamp: datetime = field(default_factory=datetime.now)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "probe": self.probe,
-            "performances": {
-                layer: perf.tolist() for layer, perf in self.performances.items()
-            },
-            "variation_values": self.variation_values,
-            "variation_type": self.variation_type,
-            "model_name": self.model_name,
-            "layers": self.layers,
-            "max_samples": self.max_samples,
-            "timestamp": self.timestamp.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HeatmapResults":
-        # Convert performance lists back to numpy arrays
-        performances = {
-            int(layer): np.array(perf) for layer, perf in data["performances"].items()
-        }
-        return cls(
-            probe=data["probe"],
-            performances=performances,
-            variation_values=data["variation_values"],
-            variation_type=data["variation_type"],
-            model_name=data["model_name"],
-            layers=data["layers"],
-            max_samples=data["max_samples"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
-        )

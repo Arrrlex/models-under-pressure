@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -11,7 +10,6 @@ from models_under_pressure.config import (
     CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    HEATMAPS_DIR,
     LOCAL_MODELS,
     TEST_DATASETS,
     TRAIN_DIR,
@@ -21,7 +19,7 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
-from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
+from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.utils import double_check_config
 from models_under_pressure import pydra
@@ -39,7 +37,7 @@ class RunAllExperimentsConfig(BaseModel):
     experiments_to_run: list[str]
     probes: list[str]
     best_probe: str
-    variation_types: tuple[str, ...]
+    variation_types: list[str]
     use_test_set: bool
 
     @property
@@ -154,20 +152,16 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")
-        # Warning: this will fail if we choose a pytorch best_probe
+
         heatmap_config = HeatmapRunConfig(
+            layer=config.best_layer,
             model_name=config.model_name,
             dataset_path=config.train_data_path,
-            layers=[config.best_layer],
             max_samples=config.max_samples,
             variation_types=config.variation_types,
+            probe_name=config.best_probe,
         )
-        for variation_type in config.variation_types:
-            heatmap_results = generate_heatmap(heatmap_config, variation_type)
-
-            out_path = HEATMAPS_DIR / heatmap_config.output_filename(variation_type)
-
-            json.dump(heatmap_results.to_dict(), open(out_path, "w"))
+        generate_heatmaps(heatmap_config)
 
     if "scaling_plot" in config.experiments_to_run:
         pass

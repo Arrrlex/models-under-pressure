@@ -223,16 +223,22 @@ DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
 DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
 
 
-@dataclass(frozen=True)
-class HeatmapRunConfig:
-    layers: list[int]
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
-    max_samples: int | None = None
-    variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
+class HeatmapRunConfig(BaseModel):
+    layer: int
+    model_name: str
+    dataset_path: Path
+    max_samples: int | None
+    variation_types: list[str]
+    probe_name: str
+    id: str = Field(default_factory=generate_short_id)
 
-    def output_filename(self, variation_type: str) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+    @property
+    def output_path(self) -> Path:
+        return HEATMAPS_DIR / f"results_{self.id}.jsonl"
+
+    @property
+    def intermediate_output_path(self) -> Path:
+        return HEATMAPS_DIR / f"intermediate_results_{self.id}.jsonl"
 
 
 class ChooseLayerConfig(BaseModel):

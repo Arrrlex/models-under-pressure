@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -55,20 +56,27 @@ def create_train_test_split(
     return dataset[train_indices], dataset[test_indices]  # type: ignore
 
 
+@dataclass
+class Variations:
+    train_splits: dict[str, LabelledDataset]
+    test_splits: dict[str, LabelledDataset]
+    variation_values: list[str]
+
+
 def split_by_variation(
-    train_dataset: Dataset,
-    test_dataset: Dataset,
+    train_dataset: LabelledDataset,
+    test_dataset: LabelledDataset,
     variation_type: str,
     max_samples: int | None = None,
-) -> tuple[list[LabelledDataset], list[LabelledDataset], list[str]]:
+) -> Variations:
     """Split the dataset into different splits for computing generalization heatmaps."""
     # Get unique values of variation_type
     variation_values = list(set(train_dataset.other_fields[variation_type]))
     test_variation_values = list(set(test_dataset.other_fields[variation_type]))
     assert sorted(variation_values) == sorted(test_variation_values)
 
-    train_datasets = []
-    test_datasets = []
+    train_splits = {}
+    test_splits = {}
     for variation_value in variation_values:
         train_dataset_filtered = train_dataset.filter(
             lambda x: x.other_fields[variation_type] == variation_value
@@ -96,10 +104,14 @@ def split_by_variation(
             train_dataset_filtered = train_dataset_filtered[list(train_indices)]  # type: ignore
             test_dataset_filtered = test_dataset_filtered[list(test_indices)]  # type: ignore
 
-        train_datasets.append(train_dataset_filtered)
-        test_datasets.append(test_dataset_filtered)
+        train_splits[variation_value] = train_dataset_filtered
+        test_splits[variation_value] = test_dataset_filtered
 
-    return train_datasets, test_datasets, variation_values
+    return Variations(
+        train_splits=train_splits,
+        test_splits=test_splits,
+        variation_values=variation_values,
+    )
 
 
 def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDataset]:
