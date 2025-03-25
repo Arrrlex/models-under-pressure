@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import hydra
-from omegaconf import DictConfig
 from pydantic import BaseModel
 
 from models_under_pressure.baselines.continuation import (
@@ -26,6 +24,7 @@ from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.utils import double_check_config
+from models_under_pressure import pydra
 
 
 class RunAllExperimentsConfig(BaseModel):
@@ -48,11 +47,11 @@ class RunAllExperimentsConfig(BaseModel):
         return TRAIN_DIR / self.train_data
 
 
-@hydra.main(
+@pydra.main(
     config_path=str(CONFIG_DIR),
     version_base=None,
 )
-def run_all_experiments(config: DictConfig):
+def run_all_experiments(config: RunAllExperimentsConfig):
     double_check_config(config)
     valid_experiments = [
         "cv",
