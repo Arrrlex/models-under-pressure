@@ -15,7 +15,6 @@ def visualize_activations_pca(
     labels = []
     activations = []
     inputs = []
-    ids = []
     for dataset_name, pickle_file_path in pickle_file_paths.items():
         activations_data = h5py.File(pickle_file_path, "r")
         activations_ = activations_data[dataset_name]["mean_activations"][:]  # type: ignore

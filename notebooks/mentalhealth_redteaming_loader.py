@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-from models_under_pressure.config import DATA_DIR, TEST_EVALS_DIR, RunConfig
+from models_under_pressure.config import DATA_DIR, TEST_EVALS_DIR
 from models_under_pressure.eval_datasets.label_dataset import label_dataset
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -11,7 +11,6 @@ from models_under_pressure.interfaces.dataset import (
 
 def label_and_filter(dataset_name: str):
     # Define the input file path
-    config = RunConfig(run_id="debug")
     field_mapping = {}
     if dataset_name == "mentalhealth":
         input_file = Path(f"{DATA_DIR}/combined_data.csv")
