@@ -1,10 +1,10 @@
 model_name: "llama-1b"
 train_data: "prompts_25_03_25_gpt-4o.jsonl"
-batch_size: 32
+batch_size: 4
 cv_folds: 5
 best_layer: 5
 layers: [5, 6]
-max_samples: 20
+max_samples: 10
 use_test_set: false
 experiments_to_run:
   - cv
@@ -13,12 +13,13 @@ experiments_to_run:
   - generalisation_heatmap
   - scaling_plot
 
+default_hyperparams:
+  C: 1e-3
+  random_state: 42
+  fit_intercept: false
+
 probes:
   - name: sklearn_mean_agg_probe
-    hyperparams:
-      C: 1e-3
-      random_state: 42
-      fit_intercept: false
   - name: pytorch_per_token_probe
     hyperparams:
       batch_size: 16
@@ -39,10 +40,6 @@ probes:
 
 best_probe:
   name: sklearn_mean_agg_probe
-  hyperparams:
-    C: 1e-3
-    random_state: 42
-    fit_intercept: false
 
 baseline_models:
   - llama-1b

@@ -1,8 +1,4 @@
-from pathlib import Path
-
-from models_under_pressure.probes.probes import ProbeSpec
 from models_under_pressure.utils import double_check_config
-from pydantic import BaseModel
 
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
@@ -15,40 +11,16 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     TEST_DATASETS,
-    TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
+    RunAllExperimentsConfig,
 )
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure import pydra
-
-
-class RunAllExperimentsConfig(BaseModel):
-    model_name: str
-    baseline_models: list[str]
-    train_data: str
-    batch_size: int
-    cv_folds: int
-    best_layer: int
-    layers: list[int]
-    max_samples: int | None
-    experiments_to_run: list[str]
-    probes: list[ProbeSpec]
-    best_probe: ProbeSpec
-    variation_types: list[str]
-    use_test_set: bool
-
-    @property
-    def train_data_path(self) -> Path:
-        return TRAIN_DIR / self.train_data
-
-    @property
-    def model_identifier(self) -> str:
-        return LOCAL_MODELS.get(self.model_name, self.model_name)
 
 
 @pydra.main(
@@ -71,16 +43,14 @@ def run_all_experiments(config: RunAllExperimentsConfig):
     if invalid_experiments := set(config.experiments_to_run) - set(valid_experiments):
         raise ValueError(f"Invalid experiments: {invalid_experiments}")
 
-    model_name = LOCAL_MODELS.get(config.model_name, config.model_name)
-
     if "cv" in config.experiments_to_run:
         # TODO Consider hyper params
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
-                model_name=model_name,
+                model_name=config.model_name,
                 dataset_spec={
-                    "file_path_or_name": config.train_data_path,
+                    "file_path_or_name": config.train_data,
                 },
                 cv_folds=config.cv_folds,
                 batch_size=config.batch_size,
@@ -93,8 +63,8 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         print("Running compare probes...")
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
-                model_name=config.model_identifier,
-                dataset_path=config.train_data_path,
+                model_name=config.model_name,
+                dataset_path=config.train_data,
                 layer=config.best_layer,
                 probe_spec=probe,
                 max_samples=config.max_samples,
@@ -120,8 +90,8 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
         eval_run_config = EvalRunConfig(
             id="best_probe",
-            model_name=config.model_identifier,
-            dataset_path=config.train_data_path,
+            model_name=config.model_name,
+            dataset_path=config.train_data,
             layer=config.best_layer,
             probe_spec=config.best_probe,
             max_samples=config.max_samples,
@@ -163,8 +133,8 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
         heatmap_config = HeatmapRunConfig(
             layer=config.best_layer,
-            model_name=config.model_identifier,
-            dataset_path=config.train_data_path,
+            model_name=config.model_name,
+            dataset_path=config.train_data,
             max_samples=config.max_samples,
             variation_types=config.variation_types,
             probe_spec=config.best_probe,

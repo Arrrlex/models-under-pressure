@@ -219,8 +219,11 @@ def unset_random_seeds():
 
     # Unset seeds by using time-based seeds
     current_time = int(time.time() * 1000)
+    # Ensure numpy seed is within valid range (0 to 2**32 - 1)
+    numpy_seed = current_time % (2**32)
+
     random.seed(current_time)
-    np.random.seed(current_time)
+    np.random.seed(numpy_seed)
     torch.manual_seed(current_time)
 
     try:

@@ -6,7 +6,7 @@ from typing import Any
 
 import torch
 from models_under_pressure.interfaces.probes import ProbeSpec
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 from models_under_pressure.utils import generate_short_id
 
@@ -146,6 +146,64 @@ AIS_DATASETS = {
         },
     },
 }
+
+
+class RunAllExperimentsConfig(BaseModel):
+    model_name: str
+    baseline_models: list[str]
+    train_data: Path
+    batch_size: int
+    cv_folds: int
+    best_layer: int
+    layers: list[int]
+    max_samples: int | None
+    experiments_to_run: list[str]
+    probes: list[ProbeSpec]
+    best_probe: ProbeSpec
+    variation_types: list[str]
+    use_test_set: bool
+    default_hyperparams: dict[str, Any] | None = None
+
+    @field_validator("train_data", mode="after")
+    @classmethod
+    def validate_train_data(cls, v: Path, info: ValidationInfo) -> Path:
+        return TRAIN_DIR / v
+
+    @field_validator("model_name", mode="after")
+    @classmethod
+    def validate_model_name(cls, v: str, info: ValidationInfo) -> str:
+        return LOCAL_MODELS.get(v, v)
+
+    @field_validator("baseline_models", mode="after")
+    @classmethod
+    def validate_baseline_models(cls, v: list[str], info: ValidationInfo) -> list[str]:
+        return [LOCAL_MODELS.get(model, model) for model in v]
+
+    @field_validator("probes", mode="after")
+    @classmethod
+    def validate_probes(
+        cls, v: list[ProbeSpec], info: ValidationInfo
+    ) -> list[ProbeSpec]:
+        default_hyperparams = info.data.get("default_hyperparams", {})
+        if default_hyperparams is None:
+            return v
+
+        return [
+            ProbeSpec(
+                name=probe.name,
+                hyperparams=probe.hyperparams or default_hyperparams,
+            )
+            for probe in v
+        ]
+
+    @field_validator("best_probe", mode="after")
+    @classmethod
+    def validate_best_probe(cls, v: ProbeSpec, info: ValidationInfo) -> ProbeSpec:
+        default_hyperparams = info.data.get("default_hyperparams", {})
+        if default_hyperparams is None:
+            return v
+
+        return ProbeSpec(name=v.name, hyperparams=v.hyperparams or default_hyperparams)
 
 
 @dataclass(frozen=True)
