@@ -6,6 +6,7 @@ from models_under_pressure.config import (
     BATCH_SIZE,
     EVAL_DATASETS,
     LOCAL_MODELS,
+    TEST_DATASETS,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -288,9 +289,14 @@ def evaluate_likelihood_continuation_baseline(
     dataset_name: str,
     max_samples: int | None = None,
     batch_size: int = BATCH_SIZE,
+    use_test_set: bool = False,
 ) -> BaselineResults:
-    print(f"Loading dataset from {EVAL_DATASETS[dataset_name]}")
-    dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
+    if use_test_set:
+        dataset_path = TEST_DATASETS[dataset_name]
+    else:
+        dataset_path = EVAL_DATASETS[dataset_name]
+    print(f"Loading dataset from {dataset_path}")
+    dataset = LabelledDataset.load_from(dataset_path)
     if max_samples is not None:
         print(f"Sampling {max_samples} samples")
         indices = np.random.choice(len(dataset), size=max_samples, replace=False)

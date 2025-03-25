@@ -258,6 +258,7 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
+    use_test_set: bool = False
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None

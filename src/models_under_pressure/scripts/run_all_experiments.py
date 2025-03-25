@@ -15,6 +15,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     HEATMAPS_DIR,
     LOCAL_MODELS,
+    TEST_DATASETS,
     TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
@@ -33,6 +34,7 @@ from models_under_pressure.probes.model import LLMModel
 
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
+    baseline_models: list[str]
     training_data: Path
     batch_size: int
     cv_folds: int
@@ -43,7 +45,7 @@ class RunAllExperimentsConfig(BaseModel):
     probes: list[dict[str, str]]
     best_probe: dict[str, str]
     variation_types: tuple[str, ...]
-    baseline_models: list[str]
+    use_test_set: bool
 
 
 @hydra.main(
@@ -94,6 +96,7 @@ def run_all_experiments(config: DictConfig):
                 layer=config.best_layer,
                 probe_name=probe["name"],
                 max_samples=config.max_samples,
+                use_test_set=config.use_test_set,
             )
             eval_results = run_evaluation(
                 eval_run_config,
@@ -123,6 +126,7 @@ def run_all_experiments(config: DictConfig):
             layer=config.best_layer,
             probe_name=config.best_probe["name"],
             max_samples=config.max_samples,
+            use_test_set=config.use_test_set,
         )
         eval_results = run_evaluation(
             eval_run_config,
@@ -141,12 +145,17 @@ def run_all_experiments(config: DictConfig):
         for baseline_model in config.baseline_models:
             baseline_model_name = LOCAL_MODELS.get(baseline_model, baseline_model)
             model = LLMModel.load(baseline_model_name)
-            for dataset_name in EVAL_DATASETS.keys():
+            if config.use_test_set:
+                datasets = list(TEST_DATASETS.keys())
+            else:
+                datasets = list(EVAL_DATASETS.keys())
+            for dataset_name in datasets:
                 results = evaluate_likelihood_continuation_baseline(
                     model=model,
                     dataset_name=dataset_name,
                     max_samples=config.max_samples,
                     batch_size=config.batch_size,
+                    use_test_set=config.use_test_set,
                 )
 
                 print(f"Saving results to {BASELINE_RESULTS_FILE}")

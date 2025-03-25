@@ -9,6 +9,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
+    TEST_DATASETS,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -30,10 +31,12 @@ from models_under_pressure.utils import double_check_config
 
 
 def load_eval_datasets(
+    use_test_set: bool,
     max_samples: int | None = None,
 ) -> dict[str, LabelledDataset]:
     eval_datasets = {}
-    for name, path in EVAL_DATASETS.items():
+    datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
+    for name, path in datasets.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
@@ -79,7 +82,10 @@ def run_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets = load_eval_datasets(max_samples=config.max_samples)
+    eval_datasets = load_eval_datasets(
+        use_test_set=config.use_test_set,
+        max_samples=config.max_samples,
+    )
 
     results_dict = evaluate_probe_and_save_results(
         model=model,
