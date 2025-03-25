@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -23,7 +21,6 @@ class ProbeFactory:
         model: LLMModel,
         train_dataset: LabelledDataset,
         layer: int,
-        output_dir: Path,
     ) -> Probe:
         if isinstance(probe, str):
             probe = ProbeSpec(name=probe)

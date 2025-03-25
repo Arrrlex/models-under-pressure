@@ -55,7 +55,6 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                 model=model,
                 train_dataset=variations.train_splits[train_variation_value],
                 layer=config.layer,
-                output_dir=config.output_dir,
             )
 
             for test_variation_value in variations.variation_values:

@@ -70,7 +70,6 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        output_dir=EVALUATE_PROBES_DIR,
     )
 
     # Load eval datasets
