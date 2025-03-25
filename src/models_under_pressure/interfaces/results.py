@@ -1,16 +1,14 @@
-from datetime import datetime
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
 import numpy as np
 from deprecated import deprecated
 from pydantic import BaseModel, Field
 
 from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
-
-from typing import Self
 
 
 class CVIntermediateResults(BaseModel):
@@ -77,7 +75,10 @@ class EvaluationResult(BaseModel):
     """Configuration for the evaluation"""
 
     dataset_name: str
-    """Name of the dataset that was evaluated"""
+    """Name of the dataset that was evaluated on"""
+
+    dataset_path: Path
+    """Path to the dataset that was evaluated on"""
 
     metrics: DatasetResults
     """Global metrics for the evaluated dataset"""
@@ -102,6 +103,38 @@ class EvaluationResult(BaseModel):
     def save_to(self, path: Path) -> None:
         with open(path, "a") as f:
             f.write(self.model_dump_json() + "\n")
+
+
+class BaselineResults(BaseModel):
+    ids: list[str]
+    accuracy: float
+    labels: list[int]
+    ground_truth: list[int]
+    dataset_name: str
+    dataset_path: Path
+    model_name: str
+    max_samples: int | None
+
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
+
+
+class ContinuationBaselineResults(BaselineResults):
+    full_response: list[str]
+    valid_response: list[bool]
+
+
+class LikelihoodBaselineResults(BaselineResults):
+    high_stakes_scores: list[float]
+    low_stakes_scores: list[float]
+    high_stakes_log_likelihoods: list[float]
+    low_stakes_log_likelihoods: list[float]
 
 
 @deprecated("Use EvaluationResult instead")

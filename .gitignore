@@ -9,6 +9,7 @@ data/results/
 uv.lock
 temp_data/*
 .DS_Store
+outputs/*
 
 data/training/*.jsonl
 data/training/*.csv
