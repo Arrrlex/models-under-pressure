@@ -16,6 +16,8 @@ from models_under_pressure.probes.sklearn_probes import (
     SklearnProbe,
 )
 
+from pydantic import BaseModel
+
 
 class ProbeSpec(BaseModel):
     probe_type: str
