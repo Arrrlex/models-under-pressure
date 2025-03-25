@@ -1,9 +1,7 @@
 # Code to generate Figure 2
 import json
 from pathlib import Path
-from typing import Any
 
-import joblib
 import numpy as np
 
 from models_under_pressure.config import (
@@ -36,12 +34,19 @@ def load_eval_datasets(
     max_samples: int | None = None,
 ) -> dict[str, LabelledDataset]:
     eval_datasets = {}
+    # max_samples = 200
     for name, path in EVAL_DATASETS.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples and len(dataset) > max_samples:
-            dataset = dataset.sample(max_samples)
+            # Sample equal number of high and low stakes examples
+            high_stakes = dataset.filter(lambda x: x.label == Label.HIGH_STAKES)
+            low_stakes = dataset.filter(lambda x: x.label == Label.LOW_STAKES)
+            n_per_class = min(len(high_stakes), len(low_stakes), max_samples // 2)
+            dataset = LabelledDataset.concatenate(
+                [high_stakes.sample(n_per_class), low_stakes.sample(n_per_class)]
+            )
         eval_datasets[name] = dataset
     return eval_datasets
 
@@ -49,7 +54,7 @@ def load_eval_datasets(
 def run_evaluation(
     config: EvalRunConfig,
     aggregator: Aggregator,
-) -> tuple[list[EvaluationResult], list[float], list[dict[str, Any]]]:
+) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=config.dataset_path,
@@ -111,7 +116,6 @@ def run_evaluation(
     metrics = []
     dataset_names = []
     results_list = []
-    activations_list = []
 
     column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
@@ -121,21 +125,6 @@ def run_evaluation(
         dataset_names.append(Path(path).stem)
         column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
-        # Before creating the EvaluationResult, convert NumPy arrays to lists
-        # If mean_of_masked_activations is a list of arrays
-        mean_of_masked_activations_list = [
-            [arr]
-            for arr in results_dict[dataset_names[-1]][0].other_fields[
-                f"mean_of_masked_activations{column_name_template}"
-            ]
-        ]
-
-        masked_activations = [
-            [arr]
-            for arr in results_dict[dataset_names[-1]][0].other_fields[
-                f"masked_activations{column_name_template}"
-            ]
-        ]
         dataset_results = EvaluationResult(
             config=config,
             metrics=results,
@@ -153,17 +142,10 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
         )
-        activations_list.append(
-            {
-                "dataset_name": Path(path).stem,
-                "mean_activations": mean_of_masked_activations_list,
-                "masked_activations": masked_activations,
-            }
-        )
 
         results_list.append(dataset_results)
 
-    return results_list, coefs, activations_list
+    return results_list, coefs
 
 
 if __name__ == "__main__":
@@ -193,7 +175,7 @@ if __name__ == "__main__":
         print(
             f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results, coefs, activations_list = run_evaluation(
+        results, coefs = run_evaluation(
             config=config,
             aggregator=aggregator,
         )
@@ -203,11 +185,7 @@ if __name__ == "__main__":
         )
         for result in results:
             result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-        joblib.dump(
-            activations_list,
-            EVALUATE_PROBES_DIR
-            / f"{Path(config.output_filename).stem}_activations.pkl",
-        )
+
         coefs_dict = {
             "id": config.id,
             "coefs": coefs[0].tolist(),  # type: ignore

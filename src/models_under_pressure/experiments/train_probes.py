@@ -154,17 +154,19 @@ def evaluate_probe_and_save_results(
         leave=False,
     ):
         activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
-        masked_acts = (
-            activation_obj._activations * activation_obj._attention_mask[:, :, None]
-        )
+
+        # TODO: Add back in for activations analysis
+        # masked_acts = (
+        # activation_obj._activations * activation_obj._attention_mask[:, :, None]
+        # )
         # Sum and divide by the number of non-masked tokens
-        sum_acts = masked_acts.sum(axis=1)
+        # sum_acts = masked_acts.sum(axis=1)
 
         # Shape: (batch_size, 1)
         # Add small epsilon to avoid division by zero
-        token_counts = activation_obj._attention_mask.sum(axis=1, keepdims=True) + 1e-10
-        mean_of_masked_activations = sum_acts / token_counts
-        masked_activations = masked_acts.tolist()
+        # token_counts = activation_obj._attention_mask.sum(axis=1, keepdims=True) + 1e-10
+        # mean_of_masked_activations = sum_acts / token_counts
+        # masked_activations = masked_acts.tolist()
 
         per_token_probe_scores = probe.per_token_predictions(
             inputs=eval_dataset.inputs,
@@ -200,9 +202,22 @@ def evaluate_probe_and_save_results(
             "per_entry_probe_scores": per_entry_probe_scores,
             "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
-            "mean_of_masked_activations": mean_of_masked_activations,
-            "masked_activations": masked_activations,
+            # "mean_of_masked_activations": mean_of_masked_activations,
+            # "masked_activations": masked_activations,
         }
+        # TODO: Add back in for activations analysis
+        # activations_dict = {
+        #     "dataset_name": eval_dataset_name,
+        #     "mean_activations": mean_of_masked_activations,
+        #     # "masked_activations": masked_activations,
+        # }
+        # with h5py.File(
+        #     EVALUATE_PROBES_DIR / f"{output_dir}_{eval_dataset_name}_activations.h5",
+        #     "w",
+        # ) as f:
+        #     f.create_dataset(f"{eval_dataset_name}", data=eval_dataset_name)
+        #     for key, value in activations_dict.items():
+        #         f.create_dataset(f"{eval_dataset_name}/{key}", data=value)
 
         for score, values in probe_scores_dict[eval_dataset_name].items():
             if len(values) != len(eval_dataset.inputs):
