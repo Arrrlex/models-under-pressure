@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Self
 
 import einops
@@ -9,7 +9,6 @@ from jaxtyping import Float
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
-from models_under_pressure.config import PYTORCH_PT_TRAINING_ARGS
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
@@ -22,8 +21,8 @@ class PytorchLinearClassifier:
     activations and labels.
     """
 
+    training_args: dict
     model: nn.Module | None = None
-    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
 
     def train(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
         """
@@ -210,8 +209,8 @@ class PytorchAttentionClassifier:
     A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
     """
 
+    training_args: dict
     model: nn.Module | None = None
-    training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
 
 
 @dataclass

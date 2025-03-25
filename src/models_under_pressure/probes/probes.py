@@ -1,5 +1,8 @@
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel
+
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -16,8 +19,6 @@ from models_under_pressure.probes.sklearn_probes import (
     SklearnProbe,
 )
 
-from pydantic import BaseModel
-
 
 class ProbeSpec(BaseModel):
     probe_type: str
@@ -33,7 +34,7 @@ class ProbeFactory:
         train_dataset: LabelledDataset,
         layer: int,
         output_dir: Path,
-        hyper_params: dict[str, Any] | None = None,
+        hyper_params: dict[str, Any],
     ) -> Probe:
         if probe == "sklearn_mean_agg_probe":
             aggregator = Aggregator(
@@ -55,15 +56,25 @@ class ProbeFactory:
             return PytorchProbe(
                 _llm=model,
                 layer=layer,
-                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=False),
+                hyper_params=hyper_params,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=False, training_args=hyper_params
+                ),
             ).fit(train_dataset)
         elif probe == "lda":
             return PytorchProbe(
                 _llm=model,
                 layer=layer,
-                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=True),
+                hyper_params=hyper_params,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=True, training_args=hyper_params
+                ),
             ).fit(train_dataset)
         elif probe == "pytorch_per_token_probe":
-            return PytorchProbe(_llm=model, layer=layer).fit(train_dataset)
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=hyper_params,
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")

@@ -15,14 +15,26 @@ default_hyper_params:
   fit_intercept: false
 
 probes:
-  - name: "sklearn_mean_agg_probe"
-    hyper_params:
-      C: 1e-2
-      random_state: 42
-      fit_intercept: false
+  #- name: "sklearn_mean_agg_probe"
+  #  hyper_params:
+  #    C: 1e-2
+  #    random_state: 42
+  #    fit_intercept: false
   - name: "pytorch_per_token_probe"
-  - name: "lda"
-  - name: "difference_of_means"
+    hyper_params:
+      batch_size: 16
+      epochs: 3
+      device: "cpu"
+  #- name: "lda"
+  #  hyper_params:
+  #    batch_size: 16
+  #    epochs: 3
+  #    device: "cpu"
+  #- name: "difference_of_means"
+  #  hyper_params:
+  #    batch_size: 16
+  #    epochs: 3
+  #    device: "cpu"
 
 best_probe:
   name: "sklearn_probe"

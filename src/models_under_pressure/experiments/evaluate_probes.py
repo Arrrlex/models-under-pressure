@@ -160,8 +160,10 @@ if __name__ == "__main__":
     configs = [
         EvalRunConfig(
             layer=layer,
-            max_samples=None,
+            max_samples=20,
             model_name=LOCAL_MODELS["llama-1b"],
+            hyper_params={"batch_size": 16, "epochs": 3, "device": "cpu"},
+            probe_name="pytorch_per_token_probe",
         )
         for layer in [11]
     ]
