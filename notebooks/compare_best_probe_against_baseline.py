@@ -163,7 +163,28 @@ def plot_probe_vs_baseline_auroc(
 
     # Plot setup
     fig, ax = plt.subplots(figsize=(12, 6))
-    methods = df_pivot.columns.tolist()
+
+    # Sort methods by provider and size, keeping Probe first
+    probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
+    other_methods = [m for m in df_pivot.columns if not m.startswith("Probe")]
+
+    # Group methods by provider
+    provider_groups = {}
+    for method in other_methods:
+        provider = method.split("/")[0] if "/" in method else "other"
+        if provider not in provider_groups:
+            provider_groups[provider] = []
+        provider_groups[provider].append(method)
+
+    # Sort methods within each provider group by size
+    sorted_methods = []
+    for provider in sorted(provider_groups.keys()):
+        provider_methods = provider_groups[provider]
+        provider_methods.sort(key=get_model_size)
+        sorted_methods.extend(provider_methods)
+
+    methods = [probe_method] + sorted_methods
+
     datasets = df_pivot.index.tolist()
     n_methods = len(methods)
     x = np.arange(len(datasets))
