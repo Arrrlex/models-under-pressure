@@ -33,16 +33,24 @@ class ProbeFactory:
         train_dataset: LabelledDataset,
         layer: int,
         output_dir: Path,
+        hyper_params: Optional[dict] = None,
     ) -> Probe:
         if probe == "sklearn_mean_agg_probe":
-            return SklearnProbe(
-                _llm=model,
-                layer=layer,
-                aggregator=Aggregator(
-                    preprocessor=Preprocessors.mean,
-                    postprocessor=Postprocessors.sigmoid,
-                ),
-            ).fit(train_dataset)
+            aggregator=Aggregator(
+                preprocessor=Preprocessors.mean,
+                postprocessor=Postprocessors.sigmoid,
+            )
+            if hyper_params is not None:
+                return SklearnProbe(
+                    _llm=model,
+                    layer=layer,
+                    aggregator=aggregator,
+                    hyper_params=hyper_params,
+                ).fit(train_dataset)
+            else:
+                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+                    train_dataset
+                )
         elif probe == "difference_of_means":
             return PytorchProbe(
                 _llm=model,

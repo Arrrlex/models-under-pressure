@@ -66,6 +66,7 @@ AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
 BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
+BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl"
@@ -116,6 +117,8 @@ TEST_DATASETS_RAW = {
     "toolace": TEST_EVALS_DIR / "toolace_samples.csv",
     "mt": TEST_EVALS_DIR / "mt_samples_clean.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples.csv",
+    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
+    "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
 }
 
 TEST_DATASETS_BALANCED = {
@@ -124,6 +127,8 @@ TEST_DATASETS_BALANCED = {
     "toolace": TEST_EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
+    "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
+    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
@@ -265,6 +270,7 @@ class EvalRunConfig(BaseModel):
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    hyper_params: dict | None = None
 
     @property
     def output_filename(self) -> str:

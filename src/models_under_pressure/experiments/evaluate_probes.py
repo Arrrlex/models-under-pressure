@@ -80,6 +80,7 @@ def run_evaluation(
         layer=config.layer,
         aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
+        hyper_params=config.hyper_params,
     )
 
     # Load eval datasets
