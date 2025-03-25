@@ -23,17 +23,22 @@ def generate_heatmap_plot(heatmap_id: str, variation_type: str, result: pd.DataF
         annot=True,  # Show numbers in cells
         fmt=".3f",  # Format numbers to 3 decimal places
         cmap="Blues",
-        vmin=0.5,  # Minimum value for color scaling
+        vmin=0.7,  # Minimum value for color scaling
         vmax=1.0,  # Maximum value for color scaling
         center=0.925,  # Center point for color divergence
         square=True,  # Make cells square
+        annot_kws={"size": 12},  # Increase cell annotation font size
     )
 
-    # Customize the plot
-    plt.title(f"Probe Generalization Across {variation_type.replace('_', ' ').title()}")
-    plt.xlabel("Test Variation")
-    plt.ylabel("Train Variation")
-    plt.xticks(rotation=45, ha="right")
+    # Customize the plot with larger fonts
+    plt.title(
+        f"Probe Generalization Across {variation_type.replace('_', ' ').title()}",
+        fontsize=14,
+    )
+    plt.xlabel("Test Variation", fontsize=12)
+    plt.ylabel("Train Variation", fontsize=12)
+    plt.xticks(rotation=45, ha="right", fontsize=11)
+    plt.yticks(fontsize=11)
     plt.tight_layout()
 
     plt.savefig(PLOTS_DIR / f"heatmap_{heatmap_id}_{variation_type}.png")
