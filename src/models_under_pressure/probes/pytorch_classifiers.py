@@ -264,6 +264,14 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         self.model = nn.Linear(embed_dim, 1, bias=False)
         self.model.weight.data.copy_(param.reshape(1, -1))
 
+        # Set bias to put decision boundary halfway between positive and negative means
+        # TODO Unsure if this is fine for unbalanced datasets
+        # TODO Setting a bias leads to much lower AUROC, which doesn't really make sense
+        # pos_logits = (pos_mean @ param).mean()
+        # neg_logits = (neg_mean @ param).mean()
+        # bias = -(pos_logits + neg_logits) / 2
+        # self.model.bias.data.copy_(bias.reshape(1))
+
         return self
 
 
