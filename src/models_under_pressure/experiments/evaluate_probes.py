@@ -10,6 +10,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
+    TEST_DATASETS,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -31,11 +32,14 @@ from models_under_pressure.utils import double_check_config
 
 
 def load_eval_datasets(
+    use_test_set: bool,
     max_samples: int | None = None,
-) -> dict[str, LabelledDataset]:
+) -> tuple[dict[str, LabelledDataset], dict[str, Path]]:
     eval_datasets = {}
+    eval_dataset_paths = {}
     # max_samples = 200
-    for name, path in EVAL_DATASETS.items():
+    datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
+    for name, path in datasets.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
@@ -48,7 +52,8 @@ def load_eval_datasets(
                 [high_stakes.sample(n_per_class), low_stakes.sample(n_per_class)]
             )
         eval_datasets[name] = dataset
-    return eval_datasets
+        eval_dataset_paths[name] = path
+    return eval_datasets, eval_dataset_paths
 
 
 def run_evaluation(
@@ -87,7 +92,10 @@ def run_evaluation(
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets = load_eval_datasets(max_samples=config.max_samples)
+    eval_datasets, eval_dataset_paths = load_eval_datasets(
+        use_test_set=config.use_test_set,
+        max_samples=config.max_samples,
+    )
 
     results_dict, coefs = evaluate_probe_and_save_results(
         model=model,
@@ -101,7 +109,7 @@ def run_evaluation(
     # Load the ground truth scale labels:
     ground_truth_scale_labels = {}
     ground_truth_labels = {}
-    for dataset_name in EVAL_DATASETS.keys():
+    for dataset_name in eval_datasets.keys():
         data_df = eval_datasets[dataset_name].to_pandas()
         ground_truth_labels[dataset_name] = [
             1 if label == "high-stakes" else 0 for label in data_df["labels"]
@@ -141,6 +149,7 @@ def run_evaluation(
             ),
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
+            dataset_path=eval_dataset_paths[dataset_names[-1]],
         )
 
         results_list.append(dataset_results)
