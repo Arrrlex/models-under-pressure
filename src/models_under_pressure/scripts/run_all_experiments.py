@@ -98,7 +98,7 @@ def run_all_experiments(config: DictConfig):
                 max_samples=config.max_samples,
                 use_test_set=config.use_test_set,
             )
-            eval_results = run_evaluation(
+            eval_results, _ = run_evaluation(
                 eval_run_config,
                 aggregator=Aggregator(
                     preprocessor=getattr(Preprocessors, probe["preprocessor"]),
@@ -131,7 +131,7 @@ def run_all_experiments(config: DictConfig):
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
         )
-        eval_results = run_evaluation(
+        eval_results, _ = run_evaluation(
             eval_run_config,
             aggregator=Aggregator(
                 preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),

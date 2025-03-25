@@ -86,7 +86,6 @@ def run_evaluation(
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
     )
 
