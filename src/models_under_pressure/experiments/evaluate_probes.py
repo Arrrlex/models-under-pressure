@@ -19,6 +19,7 @@ from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
@@ -157,6 +158,10 @@ if __name__ == "__main__":
         layer=11,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
+        probe_spec=ProbeSpec(
+            name="pytorch_per_token_probe",
+            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+        ),
     )
 
     double_check_config(config)

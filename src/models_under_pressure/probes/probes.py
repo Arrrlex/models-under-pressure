@@ -26,29 +26,47 @@ class ProbeFactory:
             probe = ProbeSpec(name=probe)
 
         if probe.name == "sklearn_mean_agg_probe":
-            assert probe.preprocessor is not None
-            assert probe.postprocessor is not None
-            return SklearnProbe(
+            aggregator = Aggregator(
+                preprocessor=Preprocessors.mean,
+                postprocessor=Postprocessors.sigmoid,
+            )
+            if probe.hyperparams is not None:
+                return SklearnProbe(
+                    _llm=model,
+                    layer=layer,
+                    aggregator=aggregator,
+                    hyper_params=probe.hyperparams,
+                ).fit(train_dataset)
+            else:
+                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+                    train_dataset
+                )
+        elif probe.name == "difference_of_means":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
                 _llm=model,
                 layer=layer,
-                aggregator=Aggregator(
-                    preprocessor=getattr(Preprocessors, probe.preprocessor),
-                    postprocessor=getattr(Postprocessors, probe.postprocessor),
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=False, training_args=probe.hyperparams
                 ),
             ).fit(train_dataset)
-        elif probe.name == "difference_of_means":
-            return PytorchProbe(
-                _llm=model,
-                layer=layer,
-                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=False),
-            ).fit(train_dataset)
         elif probe.name == "lda":
+            assert probe.hyperparams is not None
             return PytorchProbe(
                 _llm=model,
                 layer=layer,
-                _classifier=PytorchDifferenceOfMeansClassifier(use_lda=True),
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=True, training_args=probe.hyperparams
+                ),
             ).fit(train_dataset)
         elif probe.name == "pytorch_per_token_probe":
-            return PytorchProbe(_llm=model, layer=layer).fit(train_dataset)
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=probe.hyperparams,
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")

@@ -1,7 +1,7 @@
+from typing import Any
 from pydantic import BaseModel
 
 
 class ProbeSpec(BaseModel):
     name: str
-    preprocessor: str | None = None
-    postprocessor: str | None = None
+    hyperparams: dict[str, Any] | None = None

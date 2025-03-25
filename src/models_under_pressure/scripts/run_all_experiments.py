@@ -9,6 +9,7 @@ from models_under_pressure.baselines.continuation import (
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -45,6 +46,10 @@ class RunAllExperimentsConfig(BaseModel):
     def train_data_path(self) -> Path:
         return TRAIN_DIR / self.train_data
 
+    @property
+    def model_identifier(self) -> str:
+        return LOCAL_MODELS.get(self.model_name, self.model_name)
+
 
 @pydra.main(
     config_path=str(CONFIG_DIR),
@@ -66,11 +71,14 @@ def run_all_experiments(config: RunAllExperimentsConfig):
     if invalid_experiments := set(config.experiments_to_run) - set(valid_experiments):
         raise ValueError(f"Invalid experiments: {invalid_experiments}")
 
+    model_name = LOCAL_MODELS.get(config.model_name, config.model_name)
+
     if "cv" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
-                model_name=config.model_name,
+                model_name=model_name,
                 dataset_spec={
                     "file_path_or_name": config.train_data_path,
                 },
@@ -85,7 +93,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         print("Running compare probes...")
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
-                model_name=config.model_name,
+                model_name=config.model_identifier,
                 dataset_path=config.train_data_path,
                 layer=config.best_layer,
                 probe_spec=probe,
@@ -112,13 +120,14 @@ def run_all_experiments(config: RunAllExperimentsConfig):
 
         eval_run_config = EvalRunConfig(
             id="best_probe",
-            model_name=config.model_name,
+            model_name=config.model_identifier,
             dataset_path=config.train_data_path,
             layer=config.best_layer,
             probe_spec=config.best_probe,
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
         )
+
         eval_results = run_evaluation(eval_run_config)
 
         for eval_result in eval_results:
@@ -141,20 +150,20 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                     use_test_set=config.use_test_set,
                 )
 
-                output_path = BASELINE_RESULTS_FILE
                 if config.use_test_set:
-                    # Insert _test before the file extension
-                    parts = str(output_path).rsplit(".", 1)
-                    output_path = Path(f"{parts[0]}_test.{parts[1]}")
+                    output_path = BASELINE_RESULTS_FILE_TEST
+                else:
+                    output_path = BASELINE_RESULTS_FILE
                 print(f"Saving results to {output_path}")
                 results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running generalisation heatmap...")
 
         heatmap_config = HeatmapRunConfig(
             layer=config.best_layer,
-            model_name=config.model_name,
+            model_name=config.model_identifier,
             dataset_path=config.train_data_path,
             max_samples=config.max_samples,
             variation_types=config.variation_types,
