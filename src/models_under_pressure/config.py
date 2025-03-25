@@ -80,7 +80,7 @@ PYTORCH_PT_TRAINING_ARGS = {
 
 
 # Evals files
-USE_BALANCED_DATASETS = False  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
+USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
 EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
