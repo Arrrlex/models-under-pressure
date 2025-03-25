@@ -1,5 +1,5 @@
 from pathlib import Path
-
+from typing import Any
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -33,10 +33,10 @@ class ProbeFactory:
         train_dataset: LabelledDataset,
         layer: int,
         output_dir: Path,
-        hyper_params: Optional[dict] = None,
+        hyper_params: dict[str, Any] | None = None,
     ) -> Probe:
         if probe == "sklearn_mean_agg_probe":
-            aggregator=Aggregator(
+            aggregator = Aggregator(
                 preprocessor=Preprocessors.mean,
                 postprocessor=Postprocessors.sigmoid,
             )

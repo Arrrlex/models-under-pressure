@@ -18,11 +18,6 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
@@ -50,7 +45,6 @@ def load_eval_datasets(
 
 def run_evaluation(
     config: EvalRunConfig,
-    aggregator: Aggregator,
 ) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
@@ -78,7 +72,6 @@ def run_evaluation(
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
         hyper_params=config.hyper_params,
     )
@@ -173,11 +166,6 @@ if __name__ == "__main__":
         for layer in [11]
     ]
 
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
-    )
-
     double_check_config(configs)
 
     for config in configs:
@@ -186,7 +174,6 @@ if __name__ == "__main__":
         )
         results = run_evaluation(
             config=config,
-            aggregator=aggregator,
         )
 
         print(

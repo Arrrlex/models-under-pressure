@@ -26,11 +26,6 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.probes.model import LLMModel
 
 
@@ -101,15 +96,13 @@ def run_all_experiments(config: DictConfig):
                 layer=config.best_layer,
                 probe_name=probe["name"],
                 max_samples=config.max_samples,
-                hyper_params=probe["hyper_params"] or config.default_hyper_params,
+                hyper_params=probe["hyper_params"]
+                if "hyper_params" in probe
+                else config.default_hyper_params,
                 use_test_set=config.use_test_set,
             )
             eval_results = run_evaluation(
                 eval_run_config,
-                aggregator=Aggregator(
-                    preprocessor=getattr(Preprocessors, probe["preprocessor"]),
-                    postprocessor=getattr(Postprocessors, probe["postprocessor"]),
-                ),
             )
 
             for eval_result in eval_results:
@@ -137,16 +130,11 @@ def run_all_experiments(config: DictConfig):
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
             hyper_params=config.best_probe["hyper_params"]
-            or config.default_hyper_params,
+            if "hyper_params" in config.best_probe
+            else config.default_hyper_params,
         )
         eval_results = run_evaluation(
             eval_run_config,
-            aggregator=Aggregator(
-                preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
-                postprocessor=getattr(
-                    Postprocessors, config.best_probe["postprocessor"]
-                ),
-            ),
         )
 
         for eval_result in eval_results:
