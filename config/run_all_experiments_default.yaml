@@ -25,6 +25,8 @@ probes:
       batch_size: 16
       epochs: 3
       device: "cpu"
+      learning_rate: 1e-2
+      weight_decay: 0.1
   #- name: "lda"
   #  hyper_params:
   #    batch_size: 16

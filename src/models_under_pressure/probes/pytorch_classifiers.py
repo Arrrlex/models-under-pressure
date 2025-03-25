@@ -43,7 +43,11 @@ class PytorchLinearClassifier:
             self.model = self.create_model(activations.shape[2]).to(device)
 
         # Initialize optimizer
-        optimizer = torch.optim.AdamW(self.model.parameters())
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.training_args.get("learning_rate", 1e-3),
+            weight_decay=self.training_args.get("weight_decay", 0.01),
+        )
         criterion = nn.BCEWithLogitsLoss()
 
         per_token_dataset = activations.to_dataset(y=y, per_token=True)
