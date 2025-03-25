@@ -1,4 +1,4 @@
-model_name: "meta-llama/Llama-3.3-70B-Instruct"
+model_name: llama-70b
 train_data: "prompts_25_03_25_gpt-4o.jsonl"
 batch_size: 4
 cv_folds: 5
@@ -15,14 +15,34 @@ experiments_to_run:
 
 probes:
   - name: sklearn_mean_agg_probe
-    preprocessor: mean
-    postprocessor: sigmoid
+    hyperparams:
+      C: 1e-3
+      random_state: 42
+      fit_intercept: false
   - name: pytorch_per_token_probe
+    hyperparams:
+      batch_size: 16
+      epochs: 3
+      device: "cpu"
+      learning_rate: 1e-2
+      weight_decay: 0.1
+  - name: lda
+    hyperparams:
+      batch_size: 16
+      epochs: 3
+      device: "cpu"
+  - name: difference_of_means
+    hyperparams:
+      batch_size: 16
+      epochs: 3
+      device: "cpu"
 
 best_probe:
   name: sklearn_mean_agg_probe
-  preprocessor: mean
-  postprocessor: sigmoid
+  hyperparams:
+    C: 1e-3
+    random_state: 42
+    fit_intercept: false
 
 baseline_models:
   - llama-1b
