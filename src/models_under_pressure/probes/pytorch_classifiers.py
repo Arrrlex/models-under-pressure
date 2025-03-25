@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Self
 
 import einops
 import numpy as np
@@ -54,7 +55,7 @@ class PytorchLinearClassifier:
         # Create weighted sampler
         # Only sample points that are not masked
         sampler = WeightedRandomSampler(
-            weights=sample_weights.numpy(),
+            weights=sample_weights.numpy(),  # type: ignore
             num_samples=len(sample_weights),
             replacement=True,
         )
@@ -105,18 +106,18 @@ class PytorchLinearClassifier:
         probs = self.predict_proba(activations)
 
         # Take the mean over the sequence length:
-        probs = probs.mean(axis=1)
+        # probs = probs.mean(axis=1)
 
         # Get the predictions -> cutoff at 0.5
-        preds = (probs > 0.5).to(torch.int32)  # type: ignore
+        preds = (probs > 0.5).astype(np.int32)
 
         # Convert the predictions to a numpy array
-        return preds.numpy()
+        return preds
 
     @torch.no_grad()
     def predict_proba(
         self, activations: Activation
-    ) -> Float[np.ndarray, " batch_size seq_len"]:
+    ) -> Float[np.ndarray, " batch_size"]:
         """
         Predict the probabilities of the activations.
 
@@ -211,3 +212,64 @@ class PytorchAttentionClassifier:
 
     model: nn.Module | None = None
     training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
+
+
+@dataclass
+class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
+    use_lda: bool = False
+
+    def train(
+        self,
+        activations: Activation,
+        y: Float[np.ndarray, " batch_size"],
+    ) -> Self:
+        acts = torch.tensor(activations.get_activations(), dtype=torch.float32)
+        mask = torch.tensor(activations.get_attention_mask(), dtype=torch.float32)
+
+        batch_size, seq_len, embed_dim = acts.shape
+
+        acts = acts.to(self.training_args["device"])
+        mask = mask.to(self.training_args["device"])
+        y_tensor = torch.tensor(y, dtype=torch.float32).to(self.training_args["device"])
+
+        # Apply mask to zero out irrelevant entries
+        masked_acts = acts * mask.unsqueeze(
+            -1
+        )  # broadcast mask across embedding dimension
+
+        # Sum along sequence length and divide by mask sum for each sample
+        mask_sums = mask.sum(dim=1, keepdim=True)  # shape: (batch_size, 1)
+        averaged_acts = (
+            masked_acts.sum(dim=1) / mask_sums
+        )  # shape: (batch_size, embed_dim)
+
+        # Separate positive and negative examples
+        pos_acts = averaged_acts[y_tensor == 1]
+        neg_acts = averaged_acts[y_tensor == 0]
+
+        pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
+        direction = pos_mean - neg_mean
+
+        if self.use_lda:
+            centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
+            covariance = centered_data.t() @ centered_data / acts.shape[0]
+
+            inv = torch.linalg.pinv(covariance, hermitian=True, atol=1e-3)
+            param = inv @ direction
+        else:
+            param = direction
+
+        assert param.shape == (embed_dim,)
+
+        self.model = nn.Linear(embed_dim, 1, bias=False)
+        self.model.weight.data.copy_(param.reshape(1, -1))
+
+        # Set bias to put decision boundary halfway between positive and negative means
+        # TODO Unsure if this is fine for unbalanced datasets
+        # TODO Setting a bias leads to much lower AUROC, which doesn't really make sense
+        # pos_logits = (pos_mean @ param).mean()
+        # neg_logits = (neg_mean @ param).mean()
+        # bias = -(pos_logits + neg_logits) / 2
+        # self.model.bias.data.copy_(bias.reshape(1))
+
+        return self
