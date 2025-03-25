@@ -1,0 +1,31 @@
+model_name: "meta-llama/Llama-3.2-1B-Instruct"
+train_data: "prompts_13_03_25_gpt-4o_filtered.jsonl"
+batch_size: 32
+cv_folds: 5
+best_layer: 5
+layers: [5, 6]
+max_samples: null
+use_test_set: false
+experiments_to_run:
+  - cv
+  - compare_probes
+  - compare_best_probe_against_baseline
+  - generalisation_heatmap
+  - scaling_plot
+
+probes:
+  - sklearn_mean_acts
+  - pytorch_per_token
+
+best_probe:
+  name: sklearn_mean_acts
+
+baseline_models:
+  - llama-1b
+  - gemma-1b
+
+variation_types:
+  - prompt_style
+  - tone
+  - language
+  - length

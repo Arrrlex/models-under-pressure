@@ -24,36 +24,36 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.utils import double_check_config
 
 
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
     baseline_models: list[str]
-    training_data: Path
+    train_data: str
     batch_size: int
     cv_folds: int
     best_layer: int
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[dict[str, str]]
-    best_probe: dict[str, str]
+    probes: list[str]
+    best_probe: str
     variation_types: tuple[str, ...]
     use_test_set: bool
+
+    @property
+    def train_data_path(self) -> Path:
+        return TRAIN_DIR / self.train_data
 
 
 @hydra.main(
     config_path=str(CONFIG_DIR),
-    config_name="run_all_experiments_default.yaml",
     version_base=None,
 )
 def run_all_experiments(config: DictConfig):
+    double_check_config(config)
     valid_experiments = [
         "cv",
         "compare_probes",
@@ -76,11 +76,9 @@ def run_all_experiments(config: DictConfig):
             ChooseLayerConfig(
                 model_name=config.model_name,
                 dataset_spec={
-                    "file_path_or_name": TRAIN_DIR / config.training_data,
+                    "file_path_or_name": config.train_data_path,
                 },
                 cv_folds=config.cv_folds,
-                preprocessor=config.best_probe["preprocessor"],
-                postprocessor=config.best_probe["postprocessor"],
                 batch_size=config.batch_size,
                 max_samples=config.max_samples,
                 layers=config.layers,
@@ -92,19 +90,13 @@ def run_all_experiments(config: DictConfig):
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
                 model_name=config.model_name,
-                dataset_path=TRAIN_DIR / config.training_data,
+                dataset_path=config.train_data_path,
                 layer=config.best_layer,
-                probe_name=probe["name"],
+                probe_name=probe,
                 max_samples=config.max_samples,
                 use_test_set=config.use_test_set,
             )
-            eval_results = run_evaluation(
-                eval_run_config,
-                aggregator=Aggregator(
-                    preprocessor=getattr(Preprocessors, probe["preprocessor"]),
-                    postprocessor=getattr(Postprocessors, probe["postprocessor"]),
-                ),
-            )
+            eval_results = run_evaluation(eval_run_config)
 
             for eval_result in eval_results:
                 print(
@@ -125,21 +117,13 @@ def run_all_experiments(config: DictConfig):
         eval_run_config = EvalRunConfig(
             id="best_probe",
             model_name=config.model_name,
-            dataset_path=config.training_data,
+            dataset_path=config.train_data_path,
             layer=config.best_layer,
-            probe_name=config.best_probe["name"],
+            probe_name=config.best_probe,
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
         )
-        eval_results = run_evaluation(
-            eval_run_config,
-            aggregator=Aggregator(
-                preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
-                postprocessor=getattr(
-                    Postprocessors, config.best_probe["postprocessor"]
-                ),
-            ),
-        )
+        eval_results = run_evaluation(eval_run_config)
 
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
@@ -174,7 +158,7 @@ def run_all_experiments(config: DictConfig):
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(
             model_name=config.model_name,
-            dataset_path=TRAIN_DIR / config.training_data,
+            dataset_path=config.train_data_path,
             layers=[config.best_layer],
             max_samples=config.max_samples,
             variation_types=config.variation_types,

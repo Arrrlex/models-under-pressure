@@ -239,8 +239,6 @@ class ChooseLayerConfig(BaseModel):
     model_name: str
     dataset_spec: dict[str, Any]
     cv_folds: int
-    preprocessor: str
-    postprocessor: str
     batch_size: int
     max_samples: int | None = None
     layers: list[int] | None = None

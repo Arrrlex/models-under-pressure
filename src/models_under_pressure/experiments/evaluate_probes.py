@@ -18,11 +18,6 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
@@ -48,10 +43,7 @@ def load_eval_datasets(
     return eval_datasets, eval_dataset_paths
 
 
-def run_evaluation(
-    config: EvalRunConfig,
-    aggregator: Aggregator,
-) -> list[EvaluationResult]:
+def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=config.dataset_path,
@@ -78,7 +70,6 @@ def run_evaluation(
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
     )
 
@@ -163,33 +154,18 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    configs = [
-        EvalRunConfig(
-            layer=layer,
-            max_samples=None,
-            model_name=LOCAL_MODELS["llama-1b"],
-        )
-        for layer in [11]
-    ]
-
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
+    config = EvalRunConfig(
+        layer=11,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-1b"],
     )
 
-    double_check_config(configs)
+    double_check_config(config)
 
-    for config in configs:
-        print(
-            f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        results = run_evaluation(
-            config=config,
-            aggregator=aggregator,
-        )
+    print(f"Running probe evaluation with ID {config.id}")
+    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
+    results = run_evaluation(config=config)
 
-        print(
-            f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        for result in results:
-            result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)

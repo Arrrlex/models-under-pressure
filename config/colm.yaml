@@ -1,0 +1,30 @@
+model_name: "meta-llama/Llama-3.3-70B-Instruct"
+train_data: "prompts_13_03_25_gpt-4o_filtered.jsonl"
+batch_size: 4
+cv_folds: 5
+best_layer: 31
+layers: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80]
+use_test_set: false
+experiments_to_run:
+  - cv
+  - compare_probes
+  - compare_best_probe_against_baseline
+  - generalisation_heatmap
+  - scaling_plot
+
+probes:
+  - sklearn_mean_acts
+  - pytorch_per_token
+
+best_probe:
+  name: sklearn_mean_acts
+
+baseline_models:
+  - llama-1b
+  - gemma-1b
+
+variation_types:
+  - prompt_style
+  - tone
+  - language
+  - length
