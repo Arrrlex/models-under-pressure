@@ -273,16 +273,3 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         # self.model.bias.data.copy_(bias.reshape(1))
 
         return self
-
-
-# class AttentionModule(nn.Module):
-#     def __init__(self, embedding_dim: int):
-#         super().__init__()
-#         self.linear = nn.Linear(embedding_dim, 1, bias=False)
-#         self.sigmoid = nn.Sigmoid()
-
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         return self.sigmoid(self.linear(x))
-
-# class PytorchAttentionClassifier(PytorchLinearClassifier):
-#     model: nn.Module = field(default_factory=AttentionModule)

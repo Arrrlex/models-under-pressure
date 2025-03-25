@@ -158,6 +158,7 @@ class CVSplitsWithActivations:
 def _train_and_evaluate_fold(
     train_test_pair: Tuple[DatasetWithActivations, DatasetWithActivations],
     layer: int,
+    aggregator: Aggregator,
 ) -> float:
     """Worker function to train and evaluate a probe on a single fold.
 
@@ -174,10 +175,7 @@ def _train_and_evaluate_fold(
     probe = SklearnProbe(
         _llm=None,  # type: ignore
         layer=layer,
-        aggregator=Aggregator(
-            preprocessor=Preprocessors.mean,
-            postprocessor=Postprocessors.sigmoid,
-        ),
+        aggregator=aggregator,
     )
     probe._fit(train.activations, train.dataset.labels_numpy())
 
@@ -188,6 +186,7 @@ def _train_and_evaluate_fold(
 def get_cross_validation_accuracies(
     llm: LLMModel,
     layer: int,
+    aggregator: Aggregator,
     cv_splits: CVSplits,
     batch_size: int,
 ) -> list[float]:
@@ -211,7 +210,7 @@ def get_cross_validation_accuracies(
     fold_pairs = list(cv_splits_with_activations.splits())
 
     # Create partial function with fixed arguments
-    worker_fn = partial(_train_and_evaluate_fold, layer=layer)
+    worker_fn = partial(_train_and_evaluate_fold, layer=layer, aggregator=aggregator)
 
     # Use multiprocessing to evaluate folds in parallel
     with Pool() as pool:
@@ -251,6 +250,11 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
     else:
         assert all(0 <= layer < llm.n_layers for layer in config.layers)
 
+    aggregator = Aggregator(
+        getattr(Preprocessors, config.preprocessor),
+        getattr(Postprocessors, config.postprocessor),
+    )
+
     results = CVIntermediateResults(config=config)
 
     cv_splits = CVSplits.create(train_dataset, config.cv_folds)
@@ -261,6 +265,7 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
         layer_results = get_cross_validation_accuracies(
             llm=llm,
             layer=layer,
+            aggregator=aggregator,
             cv_splits=cv_splits,
             batch_size=config.batch_size,
         )
@@ -287,6 +292,8 @@ if __name__ == "__main__":
         },
         max_samples=None,
         cv_folds=4,
+        preprocessor="mean",
+        postprocessor="sigmoid",
         layers=list(range(10, 40, 2)),
         batch_size=16,
         output_dir=RESULTS_DIR / "cross_validation",
