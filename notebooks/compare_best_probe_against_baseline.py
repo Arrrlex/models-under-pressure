@@ -1,6 +1,7 @@
 # %%
 from typing import List
 
+import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
@@ -17,7 +18,7 @@ from models_under_pressure.interfaces.results import (
     LikelihoodBaselineResults,
 )
 
-probe_results_file = "results_0UAqFzWs.jsonl"
+probe_results_file = "results_best_probe_test.jsonl"
 baseline_results_file = BASELINE_RESULTS_FILE_TEST
 probe_results_path = EVALUATE_PROBES_DIR / probe_results_file
 
@@ -65,7 +66,11 @@ def plot_probe_vs_baseline_auroc(
 
     # Extract probe AUROC per dataset
     probe_data = {
-        result.dataset_name: result.metrics.metrics["auroc"] for result in probe_results
+        result.dataset_name: {
+            "auroc": result.metrics.metrics["auroc"],
+            "model_name": result.config.model_name,
+        }
+        for result in probe_results
     }
 
     # Calculate baseline AUROC per dataset and model
@@ -78,7 +83,11 @@ def plot_probe_vs_baseline_auroc(
     plot_data = []
     for dataset in probe_data.keys():
         plot_data.append(
-            {"Dataset": dataset, "Method": "Probe", "AUROC": probe_data[dataset]}
+            {
+                "Dataset": dataset,
+                "Method": f"Probe ({probe_data[dataset]['model_name']})",
+                "AUROC": probe_data[dataset]["auroc"],
+            }
         )
 
         # Group models by provider
@@ -113,35 +122,113 @@ def plot_probe_vs_baseline_auroc(
 
     df = pd.DataFrame(plot_data)
 
-    # Create grouped bar plot
-    plt.figure(figsize=(10, 6))
-    ax = plt.gca()
+    # Create color mapping for model families
+    providers = {
+        model.split("/")[0] if "/" in model else "other"
+        for model in df["Method"].unique()
+        if not model.startswith("Probe")
+    }
 
-    # Plot bars grouped by dataset, maintaining order from plot_data
-    methods = df["Method"].unique()
+    # Create color palette - one base color per provider
+
+    # Simpler pattern set: diagonal right, diagonal left, cross-hatch
+    patterns = ["//", "\\\\", "xx"]
+
+    # Create base colors for each provider
+    base_colors = {provider: plt.cm.Set3(i) for i, provider in enumerate(providers)}
+
+    # Create color map and pattern map
+    color_map = {}
+    pattern_map = {}
+
+    # Add probe pattern mapping first
+    probe_method = [m for m in df["Method"].unique() if m.startswith("Probe")][0]
+    pattern_map[probe_method] = "x"
+    color_map[probe_method] = "black"
+
+    for provider in providers:
+        provider_models = [
+            m for m in df["Method"].unique() if m != probe_method and (provider in m)
+        ]
+        provider_models = list(set(provider_models))
+        # Sort models by size to ensure consistent pattern assignment
+        provider_models.sort(key=lambda x: get_model_size(x))
+
+        for i, model in enumerate(provider_models):
+            # Same color for all models from same provider
+            color_map[model] = base_colors[provider]
+            # Different pattern based on model size
+            pattern_map[model] = patterns[i % len(patterns)]
+
+    # Pivot the dataframe for plotting
     df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
-    df_pivot = df_pivot[methods]
-    df_pivot.plot(kind="bar", ax=ax)
 
-    plt.title("Probe vs Baseline Model AUROC by Dataset")
-    plt.xlabel("Dataset")
-    plt.ylabel("AUROC")
-    plt.ylim(0.5, 1.0)  # Set y-axis limits from 0.5 to 1
-    plt.legend(
-        title="Method",
-        bbox_to_anchor=(1.05, 1),  # Position slightly to the right of the plot
-        loc="upper left",
-        borderaxespad=0.0,
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Sort methods by provider and size, keeping Probe first
+    probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
+    other_methods = [m for m in df_pivot.columns if not m.startswith("Probe")]
+
+    # Group methods by provider
+    provider_groups = {}
+    for method in other_methods:
+        provider = method.split("/")[0] if "/" in method else "other"
+        if provider not in provider_groups:
+            provider_groups[provider] = []
+        provider_groups[provider].append(method)
+
+    # Sort methods within each provider group by size
+    sorted_methods = []
+    for provider in sorted(provider_groups.keys()):
+        provider_methods = provider_groups[provider]
+        provider_methods.sort(key=get_model_size)
+        sorted_methods.extend(provider_methods)
+
+    methods = [probe_method] + sorted_methods
+
+    datasets = df_pivot.index.tolist()
+    n_methods = len(methods)
+    x = np.arange(len(datasets))
+    bar_width = 0.8 / n_methods  # total width is 0.8, divided by number of methods
+
+    # Create bars manually with precise control over hatches and colors
+    for i, method in enumerate(methods):
+        positions = x - 0.4 + (i + 0.5) * bar_width
+        _ = ax.bar(
+            positions,
+            df_pivot[method],
+            bar_width,
+            label=method,
+            color=color_map[method],
+            edgecolor="black",
+            hatch=pattern_map[method],
+            linewidth=1,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(datasets)
+    ax.set_ylim(0.5, 1.0)
+    ax.set_xlabel("Dataset")
+    ax.set_ylabel("AUROC")
+    ax.set_title(
+        f"Probe ({probe_results[0].config.model_name}) vs Baseline Model AUROC by Dataset"
     )
-    plt.tight_layout()
-    # Add extra space on the right for the legend
-    plt.subplots_adjust(right=0.85)
 
-    return plt.gcf()
+    # Legend outside plot
+    ax.legend(
+        title="Method", bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.85)
+    plt.show()
 
 
 _ = plot_probe_vs_baseline_auroc(probe_results, baseline_results)
+
 # %%
+
 
 # NOTE STUFF BELOW IS FOR ANALYZING CONTINUATION BASELINE RESULTS (NOT LIKELIHOOD BASELINE)
 
