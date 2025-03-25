@@ -320,6 +320,7 @@ def evaluate_likelihood_continuation_baseline(
         labels=labels,
         ground_truth=ground_truth.tolist(),
         dataset_name=dataset_name,
+        dataset_path=dataset_path,
         model_name=model.name,
         max_samples=max_samples,
         high_stakes_scores=results.other_fields["high_stakes_score"],  # type: ignore

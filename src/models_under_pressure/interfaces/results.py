@@ -111,6 +111,7 @@ class BaselineResults(BaseModel):
     labels: list[int]
     ground_truth: list[int]
     dataset_name: str
+    dataset_path: Path
     model_name: str
     max_samples: int | None
 
