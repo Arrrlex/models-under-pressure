@@ -80,7 +80,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                         json.dumps(
                             {
                                 "id": config.id,
-                                "timestamp": config.timestamp,
+                                "timestamp": config.timestamp.isoformat(),
                                 "result": result.model_dump(mode="json"),
                             }
                         )
