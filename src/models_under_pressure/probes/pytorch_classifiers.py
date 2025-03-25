@@ -12,6 +12,8 @@ from models_under_pressure.config import PYTORCH_PT_TRAINING_ARGS
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
+from typing import Callable
+import functools
 
 
 @dataclass
@@ -134,7 +136,7 @@ class PytorchLinearClassifier:
     @torch.no_grad()
     def predict_token_logits(
         self, activations: Activation
-    ) -> Float[np.ndarray, " batch_size seq_len"]:
+    ) -> Float[torch.Tensor, " batch_size seq_len"]:
         """
         Predict the logits of the activations.
 
@@ -189,7 +191,7 @@ class PytorchLinearClassifier:
         logits = self.predict_token_logits(activations)
 
         # Convert the logits to probabilities
-        return torch.sigmoid(torch.tensor(logits)).numpy()
+        return torch.sigmoid(logits).numpy()
 
     def create_model(self, embedding_dim: int) -> nn.Module:
         """
@@ -211,3 +213,64 @@ class PytorchAttentionClassifier:
 
     model: nn.Module | None = None
     training_args: dict = field(default_factory=lambda: PYTORCH_PT_TRAINING_ARGS)
+
+
+def mean_score(
+    x: Float[np.ndarray, " batch_size seq_len"],
+) -> Float[np.ndarray, " batch_size"]:
+    return x.mean(axis=1)
+
+
+def max_score(
+    x: Float[np.ndarray, " batch_size seq_len"],
+) -> Float[np.ndarray, " batch_size"]:
+    return x.max(axis=1)
+
+
+def max_of_rolling_mean(
+    window_size: int,
+) -> Callable[
+    [Float[torch.Tensor, " batch_size seq_len"]], Float[torch.Tensor, " batch_size"]
+]:
+    def max_of_rolling_mean_impl(
+        x: Float[torch.Tensor, " batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
+        return (
+            x.unfold(dimension=1, size=window_size, step=1)
+            .mean(dim=2)
+            .max(dim=1)
+            .values
+        )
+
+    return max_of_rolling_mean_impl
+
+
+@dataclass
+class PytorchAggregationClassifier(PytorchLinearClassifier):
+    """
+    A linear classifier that uses PyTorch. The sequence is aggregated using a custom aggregation function.
+    """
+
+    aggregation_function: Callable = mean_score
+    before_sigmoid: bool = False
+
+    def predict_proba(
+        self, activations: Activation
+    ) -> Float[np.ndarray, " batch_size"]:
+        """
+        Predict the probabilities of the activations.
+        """
+        if self.before_sigmoid:
+            functions = [
+                self.predict_token_logits,
+                torch.sigmoid,
+                self.aggregation_function,
+            ]
+        else:
+            functions = [
+                self.predict_token_logits,
+                self.aggregation_function,
+                torch.sigmoid,
+            ]
+
+        return functools.reduce(lambda x, f: f(x), functions, activations)
