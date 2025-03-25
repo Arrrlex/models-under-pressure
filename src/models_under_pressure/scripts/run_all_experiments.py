@@ -42,8 +42,8 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[dict[str, str]]
-    best_probe: dict[str, str]
+    probes: list[str]
+    best_probe: str
     variation_types: tuple[str, ...]
     use_test_set: bool
 

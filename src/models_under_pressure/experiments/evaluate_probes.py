@@ -10,6 +10,7 @@ from models_under_pressure.config import (
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
     TEST_DATASETS,
+    TRAIN_DIR,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -20,8 +21,6 @@ from models_under_pressure.experiments.train_probes import (
 )
 from models_under_pressure.interfaces.activations import (
     Aggregator,
-    Postprocessors,
-    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
@@ -78,7 +77,6 @@ def run_evaluation(
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
         output_dir=EVALUATE_PROBES_DIR,
     )
 
@@ -163,33 +161,26 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    configs = [
-        EvalRunConfig(
-            layer=layer,
-            max_samples=None,
-            model_name=LOCAL_MODELS["llama-1b"],
-        )
-        for layer in [11]
-    ]
-
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
+    config = EvalRunConfig(
+        layer=11,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
+        dataset_path=TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl",
+        probe_name="difference_of_means",
     )
 
-    double_check_config(configs)
+    double_check_config(config)
 
-    for config in configs:
-        print(
-            f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        results = run_evaluation(
-            config=config,
-            aggregator=aggregator,
-        )
+    print(
+        f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
+    )
+    results = run_evaluation(
+        config=config,
+        aggregator=aggregator,
+    )
 
-        print(
-            f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        for result in results:
-            result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+    print(
+        f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename}"
+    )
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
