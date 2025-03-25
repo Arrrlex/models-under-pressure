@@ -174,7 +174,7 @@ def run_all_experiments(config: DictConfig):
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(
             model_name=config.model_name,
-            dataset_path=config.training_data,
+            dataset_path=TRAIN_DIR / config.training_data,
             layers=[config.best_layer],
             max_samples=config.max_samples,
             variation_types=config.variation_types,
