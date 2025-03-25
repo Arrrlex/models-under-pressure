@@ -10,11 +10,6 @@ from omegaconf import DictConfig, OmegaConf
 T = TypeVar("T")
 
 
-def _dictconfig_to_dict(config: DictConfig) -> dict:
-    """Recursively converts DictConfig to a regular dictionary."""
-    return OmegaConf.to_container(config, resolve=True, enum_to_str=True)  # type: ignore
-
-
 def main(*args: Any, **kwargs: Any) -> Callable:
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @hydra.main(*args, **kwargs)
@@ -25,7 +20,9 @@ def main(*args: Any, **kwargs: Any) -> Callable:
             config_type = type_hints["config"]
 
             # Convert DictConfig to a regular dictionary, handling nested DictConfigs
-            config_dict = _dictconfig_to_dict(dict_config)
+            config_dict = OmegaConf.to_container(
+                dict_config, resolve=True, enum_to_str=True
+            )
 
             # Create the typed config
             typed_config = config_type.model_validate(config_dict)
