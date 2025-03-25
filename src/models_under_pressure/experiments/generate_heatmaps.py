@@ -92,8 +92,10 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
         results=results_list,
     )
 
+    print(f"\nSaving final heatmap results to {config.output_path}")
     with open(config.output_path, "a") as f:
         f.write(results.model_dump_json() + "\n")
+    print(f"Done! Results saved to {config.output_path}")
 
     return results
 

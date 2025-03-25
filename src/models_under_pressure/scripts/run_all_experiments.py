@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from models_under_pressure.probes.probes import ProbeSpec
+from models_under_pressure.utils import double_check_config
 from pydantic import BaseModel
 
 from models_under_pressure.baselines.continuation import (
@@ -50,6 +51,7 @@ class RunAllExperimentsConfig(BaseModel):
     version_base=None,
 )
 def run_all_experiments(config: RunAllExperimentsConfig):
+    double_check_config(config)
     valid_experiments = [
         "cv",
         "compare_probes",

@@ -1,5 +1,5 @@
 model_name: "meta-llama/Llama-3.3-70B-Instruct"
-train_data: "prompts_13_03_25_gpt-4o_filtered.jsonl"
+train_data: "prompts_25_03_25_gpt-4o.jsonl"
 batch_size: 4
 cv_folds: 5
 best_layer: 31
@@ -29,8 +29,7 @@ baseline_models:
   - gemma-1b
 
 variation_types:
+  - prompt_style
+  - tone
+  - language
   - length
-  # - prompt_style
-  # - tone
-  # - language
-  # - length

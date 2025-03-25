@@ -1,5 +1,5 @@
 model_name: "meta-llama/Llama-3.2-1B-Instruct"
-train_data: "prompts_13_03_25_gpt-4o_filtered.jsonl"
+train_data: "prompts_25_03_25_gpt-4o.jsonl"
 batch_size: 32
 cv_folds: 5
 best_layer: 5
