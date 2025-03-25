@@ -92,7 +92,6 @@ def run_evaluation(
     )
 
     results_dict, coefs = evaluate_probe_and_save_results(
-        model=model,
         probe=probe,
         train_dataset_path=config.dataset_path,
         eval_datasets=eval_datasets,
@@ -105,9 +104,8 @@ def run_evaluation(
     ground_truth_labels = {}
     for dataset_name in eval_datasets.keys():
         data_df = eval_datasets[dataset_name].to_pandas()
-        ground_truth_labels[dataset_name] = [
-            1 if label == "high-stakes" else 0 for label in data_df["labels"]
-        ]
+        ground_truth_labels[dataset_name] = eval_datasets[dataset_name].labels_numpy()
+
         if dataset_name == "manual":
             ground_truth_scale_labels[dataset_name] = None
         else:
