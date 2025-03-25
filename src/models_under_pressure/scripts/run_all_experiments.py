@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import hydra
 from omegaconf import DictConfig
@@ -43,7 +44,7 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[dict[str, str]]
+    probes: list[dict[str, str | dict[str, Any]]]
     best_probe: dict[str, str]
     variation_types: tuple[str, ...]
     use_test_set: bool
@@ -74,6 +75,7 @@ def run_all_experiments(config: DictConfig):
     model_name = LOCAL_MODELS.get(config.model_name, config.model_name)
 
     if "cv" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
@@ -99,6 +101,7 @@ def run_all_experiments(config: DictConfig):
                 layer=config.best_layer,
                 probe_name=probe["name"],
                 max_samples=config.max_samples,
+                hyper_params=probe["hyper_params"] or config.default_hyper_params,
                 use_test_set=config.use_test_set,
             )
             eval_results = run_evaluation(
@@ -133,6 +136,8 @@ def run_all_experiments(config: DictConfig):
             probe_name=config.best_probe["name"],
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
+            hyper_params=config.best_probe["hyper_params"]
+            or config.default_hyper_params,
         )
         eval_results = run_evaluation(
             eval_run_config,
@@ -172,6 +177,7 @@ def run_all_experiments(config: DictConfig):
                 results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running generalisation heatmap...")
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(

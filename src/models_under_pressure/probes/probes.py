@@ -18,14 +18,23 @@ class ProbeFactory:
         layer: int,
         output_dir: Path,
         aggregator: Optional[Aggregator] = None,
+        hyper_params: Optional[dict] = None,
     ) -> Probe:
         if probe == "sklearn_probe":
             assert (
                 aggregator is not None
             ), f"aggregator: {aggregator} is required for sklearn probe"
-            return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-                train_dataset
-            )
+            if hyper_params is not None:
+                return SklearnProbe(
+                    _llm=model,
+                    layer=layer,
+                    aggregator=aggregator,
+                    hyper_params=hyper_params,
+                ).fit(train_dataset)
+            else:
+                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+                    train_dataset
+                )
         elif probe == "pytorch_per_token_probe":
             return PytorchProbe(_llm=model, layer=layer).fit(train_dataset)
         else:

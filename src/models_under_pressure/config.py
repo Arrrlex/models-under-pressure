@@ -270,6 +270,7 @@ class EvalRunConfig(BaseModel):
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    hyper_params: dict | None = None
 
     @property
     def output_filename(self) -> str:
