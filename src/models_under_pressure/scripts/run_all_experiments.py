@@ -71,11 +71,13 @@ def run_all_experiments(config: DictConfig):
         experiment in config.experiments_to_run for experiment in valid_experiments
     ), f"Must specify at least one experiment from {valid_experiments} to run"
 
+    model_name = LOCAL_MODELS.get(config.model_name, config.model_name)
+
     if "cv" in config.experiments_to_run:
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
-                model_name=config.model_name,
+                model_name=model_name,
                 dataset_spec={
                     "file_path_or_name": TRAIN_DIR / config.training_data,
                 },
@@ -92,7 +94,7 @@ def run_all_experiments(config: DictConfig):
         print("Running compare probes...")
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
-                model_name=config.model_name,
+                model_name=model_name,
                 dataset_path=TRAIN_DIR / config.training_data,
                 layer=config.best_layer,
                 probe_name=probe["name"],
@@ -125,7 +127,7 @@ def run_all_experiments(config: DictConfig):
 
         eval_run_config = EvalRunConfig(
             id="best_probe",
-            model_name=config.model_name,
+            model_name=model_name,
             dataset_path=config.training_data,
             layer=config.best_layer,
             probe_name=config.best_probe["name"],
@@ -173,7 +175,7 @@ def run_all_experiments(config: DictConfig):
         print("Running generalisation heatmap...")
         # Warning: this will fail if we choose a pytorch best_probe
         heatmap_config = HeatmapRunConfig(
-            model_name=config.model_name,
+            model_name=model_name,
             dataset_path=config.training_data,
             layers=[config.best_layer],
             max_samples=config.max_samples,
