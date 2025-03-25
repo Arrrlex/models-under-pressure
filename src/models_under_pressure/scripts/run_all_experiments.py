@@ -107,6 +107,9 @@ def run_all_experiments(config: DictConfig):
             )
 
             for eval_result in eval_results:
+                print(
+                    f"Saving results to {EVALUATE_PROBES_DIR / eval_run_config.output_filename}"
+                )
                 eval_result.save_to(
                     EVALUATE_PROBES_DIR / eval_run_config.output_filename
                 )
