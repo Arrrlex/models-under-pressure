@@ -291,7 +291,8 @@ def evaluate_probe_and_save_results(
     if isinstance(probe, SklearnProbe):
         coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
     elif isinstance(probe, PytorchProbe):
-        coefs = list(probe._classifier.model.weight.data.cpu().numpy())  # type: ignore
+        # Access the last layer of the Sequential model which should be the linear layer
+        coefs = list(probe._classifier.model[-1].weight.data.cpu().numpy())  # type: ignore
 
     return outputs, coefs
 
