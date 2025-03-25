@@ -39,16 +39,21 @@ class SklearnProbe(Probe):
 
     aggregator: Aggregator
 
-    _classifier: Classifier = field(
-        default_factory=lambda: make_pipeline(
-            StandardScaler(),
-            LogisticRegression(
-                C=1e-3,
-                random_state=42,
-                fit_intercept=False,
-            ),
-        )
-    )  # type: ignore
+    hyper_params: dict = field(
+        default_factory=lambda: {
+            "C": 1e-3,
+            "random_state": 42,
+            "fit_intercept": False,
+        }
+    )
+    _classifier: Classifier | None = None
+
+    def __post_init__(self):
+        if self._classifier is None:
+            self._classifier = make_pipeline(
+                StandardScaler(),
+                LogisticRegression(**self.hyper_params),
+            )  # type: ignore
 
     def fit(self, dataset: LabelledDataset) -> Self:
         activations_obj = self._llm.get_batched_activations(
@@ -87,7 +92,7 @@ class SklearnProbe(Probe):
         # Preprocess the aggregations to be of the correct shape:
         X, _ = self.aggregator.preprocess(activations, y)
 
-        self._classifier.fit(X, y)
+        self._classifier.fit(X, y)  # type: ignore
         return self
 
     def _predict(
@@ -107,7 +112,7 @@ class SklearnProbe(Probe):
     def _get_logits(
         self, X: Float[np.ndarray, " batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]:
-        probs = self._classifier.predict_proba(X)[:, 1]
+        probs = self._classifier.predict_proba(X)[:, 1]  # type: ignore
         return np.log(probs / (1 - probs))
 
     def per_token_predictions(
@@ -135,7 +140,7 @@ class SklearnProbe(Probe):
             # Apply attention mask to zero out padding tokens
             X = activations * attention_mask[:, None]
             # Only keep predictions for non-zero attention mask tokens
-            predicted_probs = self._classifier.predict_proba(X)[:, 1]
+            predicted_probs = self._classifier.predict_proba(X)[:, 1]  # type: ignore
 
             # Set the values to -1 if they're attention masked out
             predicted_probs[attention_mask == 0] = -1
