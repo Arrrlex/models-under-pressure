@@ -117,6 +117,8 @@ TEST_DATASETS_RAW = {
     "toolace": TEST_EVALS_DIR / "toolace_samples.csv",
     "mt": TEST_EVALS_DIR / "mt_samples_clean.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples.csv",
+    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
+    "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
 }
 
 TEST_DATASETS_BALANCED = {
@@ -125,6 +127,8 @@ TEST_DATASETS_BALANCED = {
     "toolace": TEST_EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
+    "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
+    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.jsonl",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
