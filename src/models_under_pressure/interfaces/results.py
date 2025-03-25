@@ -1,11 +1,11 @@
 import json
-from dataclasses import field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Self
 
 import numpy as np
 from deprecated import deprecated
+import pandas as pd
 from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
@@ -194,7 +194,17 @@ class HeatmapCellResult(BaseModel):
     accuracy: float
 
 
-class HeatmapResults(BaseModel):
+class HeatmapRunResults(BaseModel):
     config: HeatmapRunConfig
     results: list[HeatmapCellResult]
-    timestamp: datetime = field(default_factory=datetime.now)
+
+    def as_pandas(self) -> pd.DataFrame:
+        return pd.DataFrame([result.model_dump() for result in self.results])
+
+    def heatmaps(self) -> dict[str, pd.DataFrame]:
+        df = self.as_pandas()
+        variation_types = df["variation_type"].unique()
+        return {
+            variation_type: df[df["variation_type"] == variation_type]
+            for variation_type in variation_types
+        }

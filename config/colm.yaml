@@ -14,10 +14,15 @@ experiments_to_run:
   - scaling_plot
 
 probes:
-  - sklearn_mean_acts
-  - pytorch_per_token
+  - name: sklearn_mean_agg_probe
+    preprocessor: mean
+    postprocessor: sigmoid
+  - name: pytorch_per_token_probe
 
-best_probe: sklearn_mean_acts
+best_probe:
+  name: sklearn_mean_agg_probe
+  preprocessor: mean
+  postprocessor: sigmoid
 
 baseline_models:
   - llama-1b

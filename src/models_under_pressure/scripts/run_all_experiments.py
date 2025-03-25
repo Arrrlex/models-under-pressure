@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from models_under_pressure.probes.probes import ProbeSpec
 from pydantic import BaseModel
 
 from models_under_pressure.baselines.continuation import (
@@ -21,7 +22,6 @@ from models_under_pressure.experiments.cross_validation import choose_best_layer
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.utils import double_check_config
 from models_under_pressure import pydra
 
 
@@ -35,8 +35,8 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
-    probes: list[str]
-    best_probe: str
+    probes: list[ProbeSpec]
+    best_probe: ProbeSpec
     variation_types: list[str]
     use_test_set: bool
 
@@ -50,7 +50,6 @@ class RunAllExperimentsConfig(BaseModel):
     version_base=None,
 )
 def run_all_experiments(config: RunAllExperimentsConfig):
-    double_check_config(config)
     valid_experiments = [
         "cv",
         "compare_probes",
@@ -59,13 +58,11 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         "scaling_plot",
     ]
 
-    assert (
-        len(config.experiments_to_run) > 0
-    ), "Must specify at least one experiment to run"
+    if len(config.experiments_to_run) == 0:
+        raise ValueError("Must specify at least one experiment to run")
 
-    assert any(
-        experiment in config.experiments_to_run for experiment in valid_experiments
-    ), f"Must specify at least one experiment from {valid_experiments} to run"
+    if invalid_experiments := set(config.experiments_to_run) - set(valid_experiments):
+        raise ValueError(f"Invalid experiments: {invalid_experiments}")
 
     if "cv" in config.experiments_to_run:
         print("Running CV...")
@@ -89,7 +86,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 model_name=config.model_name,
                 dataset_path=config.train_data_path,
                 layer=config.best_layer,
-                probe_name=probe,
+                probe_spec=probe,
                 max_samples=config.max_samples,
                 use_test_set=config.use_test_set,
             )
@@ -116,7 +113,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             model_name=config.model_name,
             dataset_path=config.train_data_path,
             layer=config.best_layer,
-            probe_name=config.best_probe,
+            probe_spec=config.best_probe,
             max_samples=config.max_samples,
             use_test_set=config.use_test_set,
         )
@@ -159,7 +156,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             dataset_path=config.train_data_path,
             max_samples=config.max_samples,
             variation_types=config.variation_types,
-            probe_name=config.best_probe,
+            probe_spec=config.best_probe,
         )
         generate_heatmaps(heatmap_config)
 

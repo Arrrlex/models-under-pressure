@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from models_under_pressure.interfaces.probes import ProbeSpec
 from pydantic import BaseModel, Field
 
 from models_under_pressure.utils import generate_short_id
@@ -168,11 +169,11 @@ class RunConfig:
     """
 
     num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 150
+    num_situations_to_sample: int = 20
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
-    num_combinations_for_prompts: int = 5
+    num_combinations_for_prompts: int = 8
     combination_variation: bool = False  # If None, all factors are used
 
     sample_seperately: bool = False
@@ -229,8 +230,9 @@ class HeatmapRunConfig(BaseModel):
     dataset_path: Path
     max_samples: int | None
     variation_types: list[str]
-    probe_name: str
+    probe_spec: ProbeSpec
     id: str = Field(default_factory=generate_short_id)
+    timestamp: datetime = Field(default_factory=datetime.now)
 
     @property
     def output_path(self) -> Path:
@@ -267,7 +269,7 @@ class EvalRunConfig(BaseModel):
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    probe_name: str = "pytorch_per_token_probe"
+    probe_spec: ProbeSpec = ProbeSpec(name="pytorch_per_token_probe")
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property

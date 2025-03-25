@@ -66,7 +66,7 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_name,
+        probe=config.probe_spec,
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,

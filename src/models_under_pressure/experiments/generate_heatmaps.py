@@ -11,7 +11,10 @@ from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
 )
-from models_under_pressure.interfaces.results import HeatmapCellResult, HeatmapResults
+from models_under_pressure.interfaces.results import (
+    HeatmapCellResult,
+    HeatmapRunResults,
+)
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.probes.sklearn_probes import compute_accuracy
@@ -20,7 +23,7 @@ from models_under_pressure.utils import double_check_config, print_progress
 from tqdm import tqdm
 
 
-def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapResults:
+def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
     """Generate heatmaps for a given model and dataset.
 
     This function generates heatmaps for a given model and dataset by training
@@ -48,10 +51,11 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapResults:
         for train_variation_value in tqdm(variations.variation_values):
             print(f"Training on variation '{variation_type}'='{train_variation_value}'")
             probe = ProbeFactory.build(
-                probe=config.probe_name,
+                probe=config.probe_spec,
                 model=model,
                 train_dataset=variations.train_splits[train_variation_value],
                 layer=config.layer,
+                output_dir=config.output_dir,
             )
 
             for test_variation_value in variations.variation_values:
@@ -73,10 +77,18 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapResults:
                 results_list.append(result)
 
                 with open(config.intermediate_output_path, "a") as f:
-                    row = {"id": config.id, "result": result.model_dump(mode="json")}
-                    f.write(json.dumps(row) + "\n")
+                    f.write(
+                        json.dumps(
+                            {
+                                "id": config.id,
+                                "timestamp": config.timestamp,
+                                "result": result.model_dump(mode="json"),
+                            }
+                        )
+                        + "\n"
+                    )
 
-    results = HeatmapResults(
+    results = HeatmapRunResults(
         config=config,
         results=results_list,
     )
@@ -94,7 +106,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-1b"],
         dataset_path=SYNTHETIC_DATASET_PATH,
         variation_types=VARIATION_TYPES,
-        probe_name="sklearn_mean_acts",
+        probe_name="sklearn_mean_agg_probe",
     )
 
     double_check_config(config)
