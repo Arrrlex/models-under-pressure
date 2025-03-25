@@ -117,28 +117,18 @@ def run_evaluation(
     dataset_names = []
     results_list = []
 
-    column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
-
-    for path, (_, results) in results_dict.items():
+    for path, (probe_scores, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
-        column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
         dataset_results = EvaluationResult(
             config=config,
             metrics=results,
             dataset_name=Path(path).stem,
             method="linear_probe",
-            output_scores=results_dict[dataset_names[-1]][0].other_fields[
-                f"per_entry_probe_scores{column_name_template}"
-            ],  # type: ignore
-            output_labels=list(
-                int(a > 0.5)
-                for a in results_dict[dataset_names[-1]][0].other_fields[
-                    f"per_entry_probe_scores{column_name_template}"
-                ]
-            ),
+            output_scores=probe_scores,
+            output_labels=list(int(a > 0.5) for a in probe_scores),
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
             dataset_path=eval_dataset_paths[dataset_names[-1]],

@@ -124,7 +124,7 @@ def evaluate_probe_and_save_results(
     output_dir: Path,
     save_results: bool = False,
     fpr: float = 0.01,
-) -> tuple[dict[str, tuple[LabelledDataset, DatasetResults]], list[float]]:
+) -> tuple[dict[str, tuple[list[float], DatasetResults]], list[float]]:
     """
     Evaluate a probe and save the results to a file.
 
@@ -286,7 +286,7 @@ def evaluate_probe_and_save_results(
         dataset_results = DatasetResults(layer=layer, metrics=metrics)
 
         outputs[eval_dataset_name] = (
-            eval_dataset,
+            per_entry_probe_scores,
             dataset_results,
         )
     if isinstance(probe, SklearnProbe):
