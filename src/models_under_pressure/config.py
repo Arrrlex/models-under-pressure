@@ -128,7 +128,7 @@ TEST_DATASETS_BALANCED = {
     "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
-    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.jsonl",
+    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
