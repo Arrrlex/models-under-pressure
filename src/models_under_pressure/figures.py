@@ -6,36 +6,44 @@ import seaborn as sns
 from models_under_pressure.config import PLOTS_DIR
 from models_under_pressure.interfaces.results import (
     EvaluationResult,
-    HeatmapResults,
 )
 
 
-def generate_heatmap_plot(result: HeatmapResults):
+def generate_heatmap_plot(heatmap_id: str, variation_type: str, result: pd.DataFrame):
     # Create dataframe from performances
-    for layer in result.layers:
-        performances = result.performances[layer]
-        variation_values = result.variation_values
 
-        # Create dataframe with rows=train variations, cols=test variations
-        df = pd.DataFrame(
-            performances, index=variation_values, columns=variation_values
-        )
+    heatmap_matrix = result.pivot(
+        index="train_variation_value", columns="test_variation_value", values="accuracy"
+    )
 
-        # Create heatmap
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(df, annot=True, fmt=".3f", cmap="RdBu", vmin=0, vmax=1)
+    # Create the plot
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(
+        heatmap_matrix,
+        annot=True,  # Show numbers in cells
+        fmt=".3f",  # Format numbers to 3 decimal places
+        cmap="Blues",
+        vmin=0.7,  # Minimum value for color scaling
+        vmax=1.0,  # Maximum value for color scaling
+        center=0.925,  # Center point for color divergence
+        square=True,  # Make cells square
+        annot_kws={"size": 12},  # Increase cell annotation font size
+    )
 
-        variation_type_title = result.variation_type.replace("_", " ").title()
+    # Customize the plot with larger fonts
+    plt.title(
+        f"Probe Generalization Across {variation_type.replace('_', ' ').title()}",
+        fontsize=14,
+    )
+    plt.xlabel("Test Variation", fontsize=12)
+    plt.ylabel("Train Variation", fontsize=12)
+    plt.xticks(rotation=45, ha="right", fontsize=11)
+    plt.yticks(fontsize=11)
+    plt.tight_layout()
 
-        plt.title(f"Probe Generalization Across {variation_type_title}, Layer {layer}")
-        plt.xlabel("Test Variation")
-        plt.ylabel("Train Variation")
-        plt.xticks(rotation=45, ha="right")
-        plt.tight_layout()
+    plt.savefig(PLOTS_DIR / f"heatmap_{heatmap_id}_{variation_type}.png")
 
-        # Save plot
-        plt.savefig(PLOTS_DIR / f"heatmap_layer_{layer}_{result.variation_type}.png")
-        plt.show()
+    plt.show()
 
 
 def plot_aurocs(

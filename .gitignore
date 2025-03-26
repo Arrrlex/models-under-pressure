@@ -11,6 +11,8 @@ temp_data/*
 .DS_Store
 outputs/*
 
+config/*local*.yaml
+
 data/training/*.jsonl
 data/training/*.csv
 data/training/*.json

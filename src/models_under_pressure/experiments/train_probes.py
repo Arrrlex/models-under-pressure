@@ -8,9 +8,6 @@ from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from tqdm import tqdm
 
 from models_under_pressure.config import EVALUATE_PROBES_DIR
-from models_under_pressure.experiments.dataset_splitting import (
-    create_cross_validation_splits,
-)
 from models_under_pressure.interfaces.activations import (
     Aggregator,
     Postprocessors,
@@ -23,7 +20,6 @@ from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
     SklearnProbe,
-    compute_accuracy,
 )
 
 # Set random seed for reproducibility
@@ -64,34 +60,6 @@ def train_probes(
         layer: SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(dataset)
         for layer in tqdm(layers, desc="Training probes")
     }
-
-
-def cross_validate_probe(
-    probe: Probe, dataset_splits: list[LabelledDataset]
-) -> np.ndarray:
-    accuracies = []
-
-    for dataset in dataset_splits:
-        activations_obj = probe._llm.get_batched_activations(
-            dataset=dataset,
-            layer=probe.layer,
-        )
-        accuracy = compute_accuracy(
-            probe,
-            dataset,
-            activations_obj,
-        )
-        accuracies.append(accuracy)
-
-    return np.mean(np.array(accuracies), axis=1)
-
-
-def cross_validate_probes(probes: list[Probe], dataset: LabelledDataset) -> np.ndarray:
-    dataset_splits = create_cross_validation_splits(dataset)
-    accuracies = np.array(
-        [cross_validate_probe(probe, dataset_splits) for probe in probes]
-    )
-    return np.mean(accuracies, axis=1)
 
 
 def tpr_at_fixed_fpr_score(
