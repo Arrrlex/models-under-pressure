@@ -1,14 +1,18 @@
 import json
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Self
+from typing import Any, List, Optional, Self
 
 import numpy as np
 from deprecated import deprecated
+import pandas as pd
 from pydantic import BaseModel, Field
 
-from models_under_pressure.config import ChooseLayerConfig, EvalRunConfig
+from models_under_pressure.config import (
+    ChooseLayerConfig,
+    EvalRunConfig,
+    HeatmapRunConfig,
+)
 
 
 class CVIntermediateResults(BaseModel):
@@ -75,7 +79,10 @@ class EvaluationResult(BaseModel):
     """Configuration for the evaluation"""
 
     dataset_name: str
-    """Name of the dataset that was evaluated"""
+    """Name of the dataset that was evaluated on"""
+
+    dataset_path: Path
+    """Path to the dataset that was evaluated on"""
 
     metrics: DatasetResults
     """Global metrics for the evaluated dataset"""
@@ -95,6 +102,12 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
+    mean_of_masked_activations: list[Any] | None = None
+    """Mean of the masked activations for each example in the eval dataset"""
+
+    masked_activations: list[Any] | None = None
+    """Masked activations for each example in the eval dataset"""
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
     def save_to(self, path: Path) -> None:
@@ -108,6 +121,7 @@ class BaselineResults(BaseModel):
     labels: list[int]
     ground_truth: list[int]
     dataset_name: str
+    dataset_path: Path
     model_name: str
     max_samples: int | None
 
@@ -179,45 +193,24 @@ class ProbeEvaluationResults(BaseModel):
             json.dump(self.to_dict(), f)
 
 
-@dataclass
-class HeatmapResults:
-    probe: str
-    performances: Dict[int, np.ndarray]  # Layer -> performance matrix
-    variation_values: List[str]  # Values of the variation type
+class HeatmapCellResult(BaseModel):
     variation_type: str
-    model_name: str
-    layers: List[int]
-    max_samples: int | None
+    train_variation_value: str
+    test_variation_value: str
+    accuracy: float
 
-    timestamp: datetime = field(default_factory=datetime.now)
 
-    def to_dict(self) -> dict[str, Any]:
+class HeatmapRunResults(BaseModel):
+    config: HeatmapRunConfig
+    results: list[HeatmapCellResult]
+
+    def as_pandas(self) -> pd.DataFrame:
+        return pd.DataFrame([result.model_dump() for result in self.results])
+
+    def heatmaps(self) -> dict[str, pd.DataFrame]:
+        df = self.as_pandas()
+        variation_types = df["variation_type"].unique()
         return {
-            "probe": self.probe,
-            "performances": {
-                layer: perf.tolist() for layer, perf in self.performances.items()
-            },
-            "variation_values": self.variation_values,
-            "variation_type": self.variation_type,
-            "model_name": self.model_name,
-            "layers": self.layers,
-            "max_samples": self.max_samples,
-            "timestamp": self.timestamp.isoformat(),
+            variation_type: df[df["variation_type"] == variation_type]
+            for variation_type in variation_types
         }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HeatmapResults":
-        # Convert performance lists back to numpy arrays
-        performances = {
-            int(layer): np.array(perf) for layer, perf in data["performances"].items()
-        }
-        return cls(
-            probe=data["probe"],
-            performances=performances,
-            variation_values=data["variation_values"],
-            variation_type=data["variation_type"],
-            model_name=data["model_name"],
-            layers=data["layers"],
-            max_samples=data["max_samples"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
-        )

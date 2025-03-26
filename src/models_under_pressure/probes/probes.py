@@ -1,9 +1,14 @@
-from pathlib import Path
-from typing import Optional
-
-from models_under_pressure.interfaces.activations import Aggregator
+from models_under_pressure.interfaces.activations import (
+    Aggregator,
+    Postprocessors,
+    Preprocessors,
+)
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchDifferenceOfMeansClassifier,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import Probe, SklearnProbe
 
@@ -12,21 +17,56 @@ class ProbeFactory:
     @classmethod
     def build(
         cls,
-        probe: str,
+        probe: str | ProbeSpec,
         model: LLMModel,
         train_dataset: LabelledDataset,
         layer: int,
-        output_dir: Path,
-        aggregator: Optional[Aggregator] = None,
     ) -> Probe:
-        if probe == "sklearn_probe":
-            assert (
-                aggregator is not None
-            ), f"aggregator: {aggregator} is required for sklearn probe"
-            return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-                train_dataset
+        if isinstance(probe, str):
+            probe = ProbeSpec(name=probe)
+
+        if probe.name == "sklearn_mean_agg_probe":
+            aggregator = Aggregator(
+                preprocessor=Preprocessors.mean,
+                postprocessor=Postprocessors.sigmoid,
             )
-        elif probe == "pytorch_per_token_probe":
-            return PytorchProbe(_llm=model, layer=layer).fit(train_dataset)
+            if probe.hyperparams is not None:
+                return SklearnProbe(
+                    _llm=model,
+                    layer=layer,
+                    aggregator=aggregator,
+                    hyper_params=probe.hyperparams,
+                ).fit(train_dataset)
+            else:
+                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
+                    train_dataset
+                )
+        elif probe.name == "difference_of_means":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=False, training_args=probe.hyperparams
+                ),
+            ).fit(train_dataset)
+        elif probe.name == "lda":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchDifferenceOfMeansClassifier(
+                    use_lda=True, training_args=probe.hyperparams
+                ),
+            ).fit(train_dataset)
+        elif probe.name == "pytorch_per_token_probe":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=probe.hyperparams,
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")

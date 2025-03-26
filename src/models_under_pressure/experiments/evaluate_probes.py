@@ -1,4 +1,5 @@
 # Code to generate Figure 2
+import json
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     MODEL_MAX_MEMORY,
+    TEST_DATASETS,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -17,12 +19,8 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
@@ -30,23 +28,33 @@ from models_under_pressure.utils import double_check_config
 
 
 def load_eval_datasets(
+    use_test_set: bool,
     max_samples: int | None = None,
-) -> dict[str, LabelledDataset]:
+) -> tuple[dict[str, LabelledDataset], dict[str, Path]]:
     eval_datasets = {}
-    for name, path in EVAL_DATASETS.items():
+    eval_dataset_paths = {}
+    # max_samples = 200
+    datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
+    for name, path in datasets.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
         if max_samples and len(dataset) > max_samples:
-            dataset = dataset.sample(max_samples)
+            # Sample equal number of high and low stakes examples
+            high_stakes = dataset.filter(lambda x: x.label == Label.HIGH_STAKES)
+            low_stakes = dataset.filter(lambda x: x.label == Label.LOW_STAKES)
+            n_per_class = min(len(high_stakes), len(low_stakes), max_samples // 2)
+            dataset = LabelledDataset.concatenate(
+                [high_stakes.sample(n_per_class), low_stakes.sample(n_per_class)]
+            )
         eval_datasets[name] = dataset
-    return eval_datasets
+        eval_dataset_paths[name] = path
+    return eval_datasets, eval_dataset_paths
 
 
 def run_evaluation(
     config: EvalRunConfig,
-    aggregator: Aggregator,
-) -> list[EvaluationResult]:
+) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
         dataset_path=config.dataset_path,
@@ -69,19 +77,20 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_name,
+        probe=config.probe_spec,
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        aggregator=aggregator,
-        output_dir=EVALUATE_PROBES_DIR,
     )
 
     # Load eval datasets
     print("Loading eval datasets ...")
-    eval_datasets = load_eval_datasets(max_samples=config.max_samples)
+    eval_datasets, eval_dataset_paths = load_eval_datasets(
+        use_test_set=config.use_test_set,
+        max_samples=config.max_samples,
+    )
 
-    results_dict = evaluate_probe_and_save_results(
+    results_dict, coefs = evaluate_probe_and_save_results(
         model=model,
         probe=probe,
         train_dataset_path=config.dataset_path,
@@ -90,36 +99,25 @@ def run_evaluation(
         output_dir=EVALUATE_PROBES_DIR,
     )
 
-    # generate calibration plots:
-    # run_calibration(
-    #     EvalRunConfig(
-    #         max_samples=max_samples,
-    #         layer=layer,
-    #         model_name=model_name,
-    #         dataset_path=dataset_path,
-    #         variation_type=variation_type,
-    #         variation_value=variation_value,
-    #     )
-    # )
-
     # Load the ground truth scale labels:
     ground_truth_scale_labels = {}
     ground_truth_labels = {}
-    for dataset_name in EVAL_DATASETS.keys():
+    for dataset_name in eval_datasets.keys():
         data_df = eval_datasets[dataset_name].to_pandas()
         ground_truth_labels[dataset_name] = [
             1 if label == "high-stakes" else 0 for label in data_df["labels"]
         ]
-        if dataset_name != "manual":
+        if dataset_name == "manual":
+            ground_truth_scale_labels[dataset_name] = None
+        else:
             ground_truth_scale_labels[dataset_name] = (
                 data_df["scale_labels"].astype(int).to_list()
             )
-        else:
-            ground_truth_scale_labels[dataset_name] = None
 
     metrics = []
     dataset_names = []
     results_list = []
+
     column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
     for path, (_, results) in results_dict.items():
@@ -144,9 +142,12 @@ def run_evaluation(
             ),
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
+            dataset_path=eval_dataset_paths[dataset_names[-1]],
         )
+
         results_list.append(dataset_results)
-    return results_list
+
+    return results_list, coefs
 
 
 if __name__ == "__main__":
@@ -154,33 +155,29 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    configs = [
-        EvalRunConfig(
-            layer=layer,
-            max_samples=None,
-            model_name=LOCAL_MODELS["llama-1b"],
-        )
-        for layer in [11]
-    ]
-
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
+    config = EvalRunConfig(
+        layer=11,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-1b"],
+        probe_spec=ProbeSpec(
+            name="pytorch_per_token_probe",
+            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+        ),
     )
 
-    double_check_config(configs)
+    double_check_config(config)
 
-    for config in configs:
-        print(
-            f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        results = run_evaluation(
-            config=config,
-            aggregator=aggregator,
-        )
+    print(f"Running probe evaluation with ID {config.id}")
+    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
+    results, coefs = run_evaluation(config=config)
 
-        print(
-            f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        for result in results:
-            result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+    coefs_dict = {
+        "id": config.id,
+        "coefs": coefs[0].tolist(),  # type: ignore
+    }
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump(coefs_dict, f)

@@ -39,16 +39,21 @@ class SklearnProbe(Probe):
 
     aggregator: Aggregator
 
-    _classifier: Classifier = field(
-        default_factory=lambda: make_pipeline(
-            StandardScaler(),
-            LogisticRegression(
-                C=1e-3,
-                random_state=42,
-                fit_intercept=False,
-            ),
-        )
-    )  # type: ignore
+    hyper_params: dict = field(
+        default_factory=lambda: {
+            "C": 1e-3,
+            "random_state": 42,
+            "fit_intercept": False,
+        }
+    )
+    _classifier: Classifier | None = None
+
+    def __post_init__(self):
+        if self._classifier is None:
+            self._classifier = make_pipeline(
+                StandardScaler(),
+                LogisticRegression(**self.hyper_params),
+            )  # type: ignore
 
     def fit(self, dataset: LabelledDataset) -> Self:
         activations_obj = self._llm.get_batched_activations(
@@ -72,12 +77,14 @@ class SklearnProbe(Probe):
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
 
-    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
+    def predict_proba(
+        self, dataset: BaseDataset
+    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,
         )
-        return self._predict_proba(activations_obj)
+        return activations_obj, self._predict_proba(activations_obj)
 
     def _fit(
         self,
@@ -87,7 +94,7 @@ class SklearnProbe(Probe):
         # Preprocess the aggregations to be of the correct shape:
         X, _ = self.aggregator.preprocess(activations, y)
 
-        self._classifier.fit(X, y)
+        self._classifier.fit(X, y)  # type: ignore
         return self
 
     def _predict(
@@ -107,7 +114,7 @@ class SklearnProbe(Probe):
     def _get_logits(
         self, X: Float[np.ndarray, " batch_size ..."]
     ) -> Float[np.ndarray, " batch_size"]:
-        probs = self._classifier.predict_proba(X)[:, 1]
+        probs = self._classifier.predict_proba(X)[:, 1]  # type: ignore
         return np.log(probs / (1 - probs))
 
     def per_token_predictions(
@@ -135,7 +142,7 @@ class SklearnProbe(Probe):
             # Apply attention mask to zero out padding tokens
             X = activations * attention_mask[:, None]
             # Only keep predictions for non-zero attention mask tokens
-            predicted_probs = self._classifier.predict_proba(X)[:, 1]
+            predicted_probs = self._classifier.predict_proba(X)[:, 1]  # type: ignore
 
             # Set the values to -1 if they're attention masked out
             predicted_probs[attention_mask == 0] = -1
@@ -212,10 +219,10 @@ def load_or_train_probe(
 def compute_accuracy(
     probe: Probe,
     dataset: LabelledDataset,
-    activations: Activation,
 ) -> float:
     pred_labels = probe.predict(dataset)
-    return (np.array(pred_labels) == dataset.labels_numpy()).mean()
+    pred_labels_np = np.array([label.to_int() for label in pred_labels])
+    return (pred_labels_np == dataset.labels_numpy()).mean()
 
 
 if __name__ == "__main__":

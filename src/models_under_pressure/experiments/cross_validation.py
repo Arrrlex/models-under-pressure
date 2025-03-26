@@ -157,7 +157,6 @@ class CVSplitsWithActivations:
 def _train_and_evaluate_fold(
     train_test_pair: Tuple[DatasetWithActivations, DatasetWithActivations],
     layer: int,
-    aggregator: Aggregator,
 ) -> float:
     """Worker function to train and evaluate a probe on a single fold.
 
@@ -171,6 +170,10 @@ def _train_and_evaluate_fold(
         Accuracy score for this fold
     """
     train, test = train_test_pair
+    aggregator = Aggregator(
+        Preprocessors.mean,
+        Postprocessors.sigmoid,
+    )
     probe = SklearnProbe(
         _llm=None,  # type: ignore
         layer=layer,
@@ -185,7 +188,6 @@ def _train_and_evaluate_fold(
 def get_cross_validation_accuracies(
     llm: LLMModel,
     layer: int,
-    aggregator: Aggregator,
     cv_splits: CVSplits,
     batch_size: int,
 ) -> list[float]:
@@ -209,7 +211,7 @@ def get_cross_validation_accuracies(
     fold_pairs = list(cv_splits_with_activations.splits())
 
     # Create partial function with fixed arguments
-    worker_fn = partial(_train_and_evaluate_fold, layer=layer, aggregator=aggregator)
+    worker_fn = partial(_train_and_evaluate_fold, layer=layer)
 
     # Use multiprocessing to evaluate folds in parallel
     results = [
@@ -247,11 +249,6 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
     else:
         assert all(0 <= layer < llm.n_layers for layer in config.layers)
 
-    aggregator = Aggregator(
-        getattr(Preprocessors, config.preprocessor),
-        getattr(Postprocessors, config.postprocessor),
-    )
-
     results = CVIntermediateResults(config=config)
 
     cv_splits = CVSplits.create(train_dataset, config.cv_folds)
@@ -262,7 +259,6 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
         layer_results = get_cross_validation_accuracies(
             llm=llm,
             layer=layer,
-            aggregator=aggregator,
             cv_splits=cv_splits,
             batch_size=config.batch_size,
         )

@@ -1,63 +1,40 @@
-import json
-from pathlib import Path
-
-import hydra
 import numpy as np
 import torch
-from omegaconf import DictConfig
-from pydantic import BaseModel
 
+from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    HEATMAPS_DIR,
     LOCAL_MODELS,
-    TRAIN_DIR,
+    TEST_DATASETS,
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
+    RunAllExperimentsConfig,
 )
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
-from models_under_pressure.experiments.generate_heatmaps import generate_heatmap
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
+from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.utils import double_check_config
 
 
-class RunAllExperimentsConfig(BaseModel):
-    model_name: str
-    training_data: Path
-    batch_size: int
-    cv_folds: int
-    best_layer: int
-    layers: list[int]
-    max_samples: int | None
-    experiments_to_run: list[str]
-    probes: list[dict[str, str]]
-    best_probe: dict[str, str]
-    variation_types: tuple[str, ...]
-    baseline_models: list[str]
-
-
-@hydra.main(
+@pydra.main(
     config_path=str(CONFIG_DIR),
-    config_name="run_all_experiments_default.yaml",
+    config_name="run_all_experiments_default",
     version_base=None,
 )
-def run_all_experiments(config: DictConfig):
-    # Set the numpy and torch seeds:
+def run_all_experiments(config: RunAllExperimentsConfig):
     np.random.seed(config.random_seed)
     torch.manual_seed(config.random_seed)
 
+    double_check_config(config)
     valid_experiments = [
         "cv",
         "compare_probes",
@@ -66,25 +43,22 @@ def run_all_experiments(config: DictConfig):
         "scaling_plot",
     ]
 
-    assert (
-        len(config.experiments_to_run) > 0
-    ), "Must specify at least one experiment to run"
+    if len(config.experiments_to_run) == 0:
+        raise ValueError("Must specify at least one experiment to run")
 
-    assert any(
-        experiment in config.experiments_to_run for experiment in valid_experiments
-    ), f"Must specify at least one experiment from {valid_experiments} to run"
+    if invalid_experiments := set(config.experiments_to_run) - set(valid_experiments):
+        raise ValueError(f"Invalid experiments: {invalid_experiments}")
 
     if "cv" in config.experiments_to_run:
+        # TODO Consider hyper params
         print("Running CV...")
         choose_best_layer_via_cv(
             ChooseLayerConfig(
                 model_name=config.model_name,
                 dataset_spec={
-                    "file_path_or_name": TRAIN_DIR / config.training_data,
+                    "file_path_or_name": config.train_data,
                 },
                 cv_folds=config.cv_folds,
-                preprocessor=config.best_probe["preprocessor"],
-                postprocessor=config.best_probe["postprocessor"],
                 batch_size=config.batch_size,
                 max_samples=config.max_samples,
                 layers=config.layers,
@@ -96,20 +70,18 @@ def run_all_experiments(config: DictConfig):
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
                 model_name=config.model_name,
-                dataset_path=TRAIN_DIR / config.training_data,
+                dataset_path=config.train_data,
                 layer=config.best_layer,
-                probe_name=probe["name"],
+                probe_spec=probe,
                 max_samples=config.max_samples,
+                use_test_set=config.use_test_set,
             )
-            eval_results = run_evaluation(
-                eval_run_config,
-                aggregator=Aggregator(
-                    preprocessor=getattr(Preprocessors, probe["preprocessor"]),
-                    postprocessor=getattr(Postprocessors, probe["postprocessor"]),
-                ),
-            )
+            eval_results, _ = run_evaluation(eval_run_config)
 
             for eval_result in eval_results:
+                print(
+                    f"Saving results to {EVALUATE_PROBES_DIR / eval_run_config.output_filename}"
+                )
                 eval_result.save_to(
                     EVALUATE_PROBES_DIR / eval_run_config.output_filename
                 )
@@ -125,20 +97,14 @@ def run_all_experiments(config: DictConfig):
         eval_run_config = EvalRunConfig(
             id="best_probe",
             model_name=config.model_name,
-            dataset_path=config.training_data,
+            dataset_path=config.train_data,
             layer=config.best_layer,
-            probe_name=config.best_probe["name"],
+            probe_spec=config.best_probe,
             max_samples=config.max_samples,
+            use_test_set=config.use_test_set,
         )
-        eval_results = run_evaluation(
-            eval_run_config,
-            aggregator=Aggregator(
-                preprocessor=getattr(Preprocessors, config.best_probe["preprocessor"]),
-                postprocessor=getattr(
-                    Postprocessors, config.best_probe["postprocessor"]
-                ),
-            ),
-        )
+
+        eval_results, _ = run_evaluation(eval_run_config)
 
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
@@ -147,30 +113,38 @@ def run_all_experiments(config: DictConfig):
         for baseline_model in config.baseline_models:
             baseline_model_name = LOCAL_MODELS.get(baseline_model, baseline_model)
             model = LLMModel.load(baseline_model_name)
-            for dataset_name in EVAL_DATASETS.keys():
+            if config.use_test_set:
+                datasets = list(TEST_DATASETS.keys())
+            else:
+                datasets = list(EVAL_DATASETS.keys())
+            for dataset_name in datasets:
                 results = evaluate_likelihood_continuation_baseline(
-                    model, dataset_name, config.max_samples
+                    model=model,
+                    dataset_name=dataset_name,
+                    max_samples=config.max_samples,
+                    batch_size=config.batch_size,
+                    use_test_set=config.use_test_set,
                 )
 
-                print(f"Saving results to {BASELINE_RESULTS_FILE}")
-                results.save_to(BASELINE_RESULTS_FILE)
+                if config.use_test_set:
+                    output_path = BASELINE_RESULTS_FILE_TEST
+                else:
+                    output_path = BASELINE_RESULTS_FILE
+                print(f"Saving results to {output_path}")
+                results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")
-        # Warning: this will fail if we choose a pytorch best_probe
+
         heatmap_config = HeatmapRunConfig(
+            layer=config.best_layer,
             model_name=config.model_name,
-            dataset_path=config.training_data,
-            layers=[config.best_layer],
+            dataset_path=config.train_data,
             max_samples=config.max_samples,
             variation_types=config.variation_types,
+            probe_spec=config.best_probe,
         )
-        for variation_type in config.variation_types:
-            heatmap_results = generate_heatmap(heatmap_config, variation_type)
-
-            out_path = HEATMAPS_DIR / heatmap_config.output_filename(variation_type)
-
-            json.dump(heatmap_results.to_dict(), open(out_path, "w"))
+        generate_heatmaps(heatmap_config)
 
     if "scaling_plot" in config.experiments_to_run:
         scaling_configs = [
@@ -178,28 +152,20 @@ def run_all_experiments(config: DictConfig):
                 layer=layer,
                 model_name=LOCAL_MODELS[model],
                 max_samples=None,
-                dataset_path=TRAIN_DIR / config.training_data,
-                probe_name=config.scaling_probe.get("name", "sklearn_probe"),
+                dataset_path=config.train_data,
+                probe_spec=config.scaling_plot.probe_spec,
             )
-            for layer, model in zip(config.scaling_layers, config.scaling_models)
+            for layer, model in zip(
+                config.scaling_plot.scaling_layers, config.scaling_plot.scaling_models
+            )
         ]
-
-        aggregator = Aggregator(
-            preprocessor=getattr(
-                Preprocessors, config.scaling_probe.get("preprocessor", "sigmoid")
-            ),
-            postprocessor=getattr(
-                Postprocessors, config.scaling_probe.get("postprocessor", "mean")
-            ),
-        )
 
         for scaling_config in scaling_configs:
             print(
                 f"Running evaluation for {scaling_config.id} and results will be saved to {EVALUATE_PROBES_DIR / scaling_config.output_filename}"
             )
-            results = run_evaluation(
+            results, _ = run_evaluation(
                 config=scaling_config,
-                aggregator=aggregator,
             )
 
             print(

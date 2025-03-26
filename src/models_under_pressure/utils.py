@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 import json
 import os
 import random
@@ -7,6 +8,8 @@ import time
 from datetime import timedelta
 from pprint import pformat
 from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
+
+import numpy as np
 
 import huggingface_hub
 import openai
@@ -203,10 +206,40 @@ async def async_map(
     return [r for r in results if r is not None]
 
 
+@contextmanager
+def unset_random_seeds():
+    """
+    Context manager that temporarily unsets random seeds from random, torch, and numpy,
+    then restores them after the context block.
+    """
+    # Store current states
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+
+    # Unset seeds by using time-based seeds
+    current_time = int(time.time() * 1000)
+    # Ensure numpy seed is within valid range (0 to 2**32 - 1)
+    numpy_seed = current_time % (2**32)
+
+    random.seed(current_time)
+    np.random.seed(numpy_seed)
+    torch.manual_seed(current_time)
+
+    try:
+        yield
+    finally:
+        # Restore original states
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)
+        torch.set_rng_state(torch_state)
+
+
 def generate_short_id(length: int = 8) -> str:
     """Generate a short, random ID using base62 encoding."""
     characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
-    return "".join(random.choices(characters, k=length))
+    with unset_random_seeds():
+        return "".join(random.choices(characters, k=length))
 
 
 def double_check_config(config: Any) -> None:
