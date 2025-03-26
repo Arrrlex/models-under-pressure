@@ -129,9 +129,9 @@ def plot_calibration(
 
     prob_pred = np.array(prob_pred)
     # prob_true = np.array(mean_scale)
-    ax1.plot(prob_pred, mean_scale, marker="o", linewidth=2, label="Probe Calibration")
-    ax1.plot([0, 1], [1, 10], linestyle="--", label="Perfect Calibration")
-    ax1.set_title(f"Calibration Curve for {dataset_names[file_name]} dataset")
+    ax1.plot(prob_pred, mean_scale, marker="o", linewidth=2, label="Probe Caliberation")
+    ax1.plot([0, 1], [1, 10], linestyle="--", label="Perfect Caliberation")
+    ax1.set_title(f"Caliberation Curve for {dataset_names[file_name]} dataset")
     ax1.set_xlabel("Predicted Probability (Binned)")
     ax1.set_ylabel("Mean Observed Label")
     ax1.grid()
