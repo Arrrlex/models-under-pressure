@@ -20,6 +20,7 @@ from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
@@ -76,12 +77,10 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_name,
+        probe=config.probe_spec,
         model=model,
         train_dataset=train_dataset,
         layer=config.layer,
-        output_dir=EVALUATE_PROBES_DIR,
-        hyper_params=config.hyper_params,
     )
 
     # Load eval datasets
@@ -144,41 +143,29 @@ if __name__ == "__main__":
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    configs = [
-        EvalRunConfig(
-            layer=layer,
-            max_samples=20,
-            model_name=LOCAL_MODELS["llama-1b"],
-            hyper_params={"batch_size": 16, "epochs": 3, "device": "cpu"},
-            probe_name="pytorch_per_token_probe",
-        )
-        for layer in [31]
-    ]
+    config = EvalRunConfig(
+        layer=11,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-1b"],
+        probe_spec=ProbeSpec(
+            name="pytorch_per_token_probe",
+            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+        ),
+    )
 
-    double_check_config(configs)
+    double_check_config(config)
 
-    for config in configs:
-        print(
-            f"Running evaluation for {config.id} and results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        results, coefs = run_evaluation(
-            config=config,
-        )
+    print(f"Running probe evaluation with ID {config.id}")
+    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
+    results, coefs = run_evaluation(config=config)
 
-        print(
-            f"Saving results for layer {config.layer} to {EVALUATE_PROBES_DIR / config.output_filename}"
-        )
-        for result in results:
-            result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
 
-        coefs_dict = {
-            "id": config.id,
-            "coefs": coefs[0].tolist(),  # type: ignore
-        }
-        json.dump(
-            coefs_dict,
-            open(
-                EVALUATE_PROBES_DIR / f"{Path(config.output_filename).stem}_coefs.json",
-                "w",
-            ),
-        )
+    coefs_dict = {
+        "id": config.id,
+        "coefs": coefs[0].tolist(),  # type: ignore
+    }
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump(coefs_dict, f)

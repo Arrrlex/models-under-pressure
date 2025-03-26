@@ -231,7 +231,6 @@ def load_or_train_probe(
 def compute_accuracy(
     probe: Probe,
     dataset: LabelledDataset,
-    activations: Activation,
 ) -> float:
     pred_labels = probe.predict(dataset)
     pred_labels_np = np.array([label.to_int() for label in pred_labels])

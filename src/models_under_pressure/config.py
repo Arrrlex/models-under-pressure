@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
 DEFAULT_MODEL = "gpt-4o"
@@ -147,6 +148,64 @@ AIS_DATASETS = {
 }
 
 
+class RunAllExperimentsConfig(BaseModel):
+    model_name: str
+    baseline_models: list[str]
+    train_data: Path
+    batch_size: int
+    cv_folds: int
+    best_layer: int
+    layers: list[int]
+    max_samples: int | None
+    experiments_to_run: list[str]
+    probes: list[ProbeSpec]
+    best_probe: ProbeSpec
+    variation_types: list[str]
+    use_test_set: bool
+    default_hyperparams: dict[str, Any] | None = None
+
+    @field_validator("train_data", mode="after")
+    @classmethod
+    def validate_train_data(cls, v: Path, info: ValidationInfo) -> Path:
+        return TRAIN_DIR / v
+
+    @field_validator("model_name", mode="after")
+    @classmethod
+    def validate_model_name(cls, v: str, info: ValidationInfo) -> str:
+        return LOCAL_MODELS.get(v, v)
+
+    @field_validator("baseline_models", mode="after")
+    @classmethod
+    def validate_baseline_models(cls, v: list[str], info: ValidationInfo) -> list[str]:
+        return [LOCAL_MODELS.get(model, model) for model in v]
+
+    @field_validator("probes", mode="after")
+    @classmethod
+    def validate_probes(
+        cls, v: list[ProbeSpec], info: ValidationInfo
+    ) -> list[ProbeSpec]:
+        default_hyperparams = info.data.get("default_hyperparams", {})
+        if default_hyperparams is None:
+            return v
+
+        return [
+            ProbeSpec(
+                name=probe.name,
+                hyperparams=probe.hyperparams or default_hyperparams,
+            )
+            for probe in v
+        ]
+
+    @field_validator("best_probe", mode="after")
+    @classmethod
+    def validate_best_probe(cls, v: ProbeSpec, info: ValidationInfo) -> ProbeSpec:
+        default_hyperparams = info.data.get("default_hyperparams", {})
+        if default_hyperparams is None:
+            return v
+
+        return ProbeSpec(name=v.name, hyperparams=v.hyperparams or default_hyperparams)
+
+
 @dataclass(frozen=True)
 class RunConfig:
     """
@@ -222,24 +281,29 @@ DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
 DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
 
 
-@dataclass(frozen=True)
-class HeatmapRunConfig:
-    layers: list[int]
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
-    max_samples: int | None = None
-    variation_types: tuple[str, ...] = tuple(VARIATION_TYPES)
+class HeatmapRunConfig(BaseModel):
+    layer: int
+    model_name: str
+    dataset_path: Path
+    max_samples: int | None
+    variation_types: list[str]
+    probe_spec: ProbeSpec
+    id: str = Field(default_factory=generate_short_id)
+    timestamp: datetime = Field(default_factory=datetime.now)
 
-    def output_filename(self, variation_type: str) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{variation_type}_heatmap.json"
+    @property
+    def output_path(self) -> Path:
+        return HEATMAPS_DIR / f"results_{self.id}.jsonl"
+
+    @property
+    def intermediate_output_path(self) -> Path:
+        return HEATMAPS_DIR / f"intermediate_results_{self.id}.jsonl"
 
 
 class ChooseLayerConfig(BaseModel):
     model_name: str
     dataset_spec: dict[str, Any]
     cv_folds: int
-    preprocessor: str
-    postprocessor: str
     batch_size: int
     max_samples: int | None = None
     layers: list[int] | None = None
@@ -257,13 +321,13 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
+    probe_spec: ProbeSpec
     use_test_set: bool = False
     hyper_params: dict[str, Any] | None = None
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    probe_name: str = "pytorch_per_token_probe"
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property
@@ -272,6 +336,11 @@ class EvalRunConfig(BaseModel):
             return f"results_{self.id}_test.jsonl"
         else:
             return f"results_{self.id}.jsonl"
+
+    @property
+    def coefs_filename(self) -> str:
+        stem = Path(self.output_filename).stem
+        return f"{stem}_coefs.json"
 
     @property
     def random_seed(self) -> int:
