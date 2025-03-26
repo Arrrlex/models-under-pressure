@@ -5,9 +5,11 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-directory = "/Users/john/Downloads"
+# directory = "/Users/john/Downloads"
 # files = ["results_0UAqFzWs_hyperparams.jsonl", "results_DK4FrUMp_hyperparams.jsonl"]
-files = ["results_0UAqFzWs.jsonl", "results_DK4FrUMp.jsonl"]
+# files = ["results_0UAqFzWs.jsonl", "results_DK4FrUMp.jsonl"]
+directory = "../data/results/evaluate_probes/"
+files = ["results_colm_test.jsonl"]
 
 data = []
 for file in files:
@@ -40,7 +42,13 @@ for result in data:
 # %%
 
 
-def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> None:
+def plot_best_results(
+    data: list[dict],
+    output_path: str | None = None,
+    name_mapping: dict[str, str] | None = None,
+    dataset_mapping: dict[str, str] | None = None,
+    exclude_datasets: list[str] | None = None,
+) -> None:
     # Group results by probe_name and dataset
     probe_results = {}
     probe_best_params = {}
@@ -48,6 +56,11 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
     for result in data:
         probe = result["config"]["probe_name"]
         dataset = result["dataset_name"]
+
+        # Skip excluded datasets
+        if exclude_datasets and dataset in exclude_datasets:
+            continue
+
         auroc = result["metrics"]["metrics"]["auroc"]
         params = result["config"]["hyper_params"]
 
@@ -69,6 +82,10 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
             }
         )
     )
+    # Map dataset names if mapping is provided
+    display_datasets = [
+        dataset_mapping.get(d, d) if dataset_mapping else d for d in datasets
+    ]
     probes = sorted(list(probe_results.keys()))
 
     # Set style and colors - colorblind-friendly palette
@@ -106,7 +123,7 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
             linewidth=1.5,  # Made outline slightly thicker
         )
 
-        # Add value labels on top of bars
+        # Add value labels on top of bars with larger font
         for bar in bars:
             height = bar.get_height()
             ax.text(
@@ -116,26 +133,29 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
                 ha="center",
                 va="bottom",
                 rotation=0,
-                fontsize=8,
+                fontsize=10,  # Increased from 8
             )
 
     # Customize the plot
     ax.set_ylabel("AUROC", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Dataset", fontsize=12, fontweight="bold")  # Added x-axis label
     ax.set_title(
         "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
     )
     ax.set_xticks(x)
-    ax.set_xticklabels(datasets, rotation=45, ha="right", fontsize=10)
+    ax.set_xticklabels(
+        display_datasets, rotation=0, ha="center", fontsize=11
+    )  # Increased from 10
 
     # Customize grid
     ax.yaxis.grid(True, linestyle="--", alpha=0.7)
     ax.set_axisbelow(True)
 
-    # Customize legend
+    # Customize legend with larger fonts
     ax.legend(
         title="Probe Types",
-        title_fontsize=11,
-        fontsize=10,
+        title_fontsize=12,  # Increased from 11
+        fontsize=11,  # Increased from 10
         bbox_to_anchor=(1.02, 1),
         loc="upper left",
     )
@@ -156,6 +176,8 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
                     print(f"     • {param}: {value}")
 
     plt.tight_layout()
+    if output_path:
+        plt.savefig(output_path)
     plt.show()
 
 
@@ -163,8 +185,22 @@ def plot_best_results(data: list[dict], name_mapping: dict[str, str] = None) -> 
 name_mapping = {
     "difference_of_means": "Difference of Means",
     "pytorch_per_token_probe": "Per-Token Linear Probe",
-    "sklearn_linear_probe": "Per-Sample Linear Probe",
+    "sklearn_mean_agg_probe": "Per-Sample Linear Probe",
 }
-plot_best_results(data, name_mapping)
-
+dataset_mapping = {
+    "mt": "MT Samples",
+    "manual": "Manual",
+    "mts": "MTS Dialog",
+    "toolace": "ToolACE",
+    "anthropic": "Anthropic HH",
+    "mental_health": "Mental Health",
+    "redteaming": "Aya Red Teaming",
+}
+plot_best_results(
+    data,
+    name_mapping,
+    dataset_mapping,
+    output_path="../data/results/plots/compare_probes.pdf",
+    exclude_datasets=["redteaming", "mental_health"],
+)
 # %%
