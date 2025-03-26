@@ -257,8 +257,8 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
-    hyper_params: dict[str, Any]
     use_test_set: bool = False
+    hyper_params: dict[str, Any] | None = None
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
