@@ -127,7 +127,6 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
-        # TODO Consider hyper params
         print("Running generalisation heatmap...")
 
         heatmap_config = HeatmapRunConfig(
