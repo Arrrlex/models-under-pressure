@@ -133,12 +133,12 @@ def plot_best_results(
                 ha="center",
                 va="bottom",
                 rotation=0,
-                fontsize=10,  # Increased from 8
+                fontsize=12,
             )
 
     # Customize the plot
-    ax.set_ylabel("AUROC", fontsize=12, fontweight="bold")
-    ax.set_xlabel("Dataset", fontsize=12, fontweight="bold")  # Added x-axis label
+    ax.set_ylabel("AUROC", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Dataset", fontsize=14, fontweight="bold")  # Added x-axis label
     ax.set_title(
         "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
     )
@@ -154,10 +154,12 @@ def plot_best_results(
     # Customize legend with larger fonts
     ax.legend(
         title="Probe Types",
-        title_fontsize=12,  # Increased from 11
-        fontsize=11,  # Increased from 10
-        bbox_to_anchor=(1.02, 1),
-        loc="upper left",
+        title_fontsize=14,
+        fontsize=12,
+        # bbox_to_anchor=(1.02, 1),
+        # loc="upper left",
+        loc="upper right",
+        framealpha=0.9,
     )
 
     # Set y-axis limits with some padding
@@ -198,8 +200,8 @@ dataset_mapping = {
 }
 plot_best_results(
     data,
-    name_mapping,
-    dataset_mapping,
+    name_mapping=name_mapping,
+    dataset_mapping=dataset_mapping,
     output_path="../data/results/plots/compare_probes.pdf",
     exclude_datasets=["redteaming", "mental_health"],
 )
