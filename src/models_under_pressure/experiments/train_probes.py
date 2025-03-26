@@ -154,7 +154,10 @@ def evaluate_probe_and_save_results(
         desc=f"Evaluating datasets for layer {layer}",
         leave=False,
     ):
-        activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        print(f"Evaluating dataset {eval_dataset_name} (save_results: {save_results})")
+        # activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        per_entry_probe_scores = probe.predict_proba_without_activations(eval_dataset)
+        print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
         # TODO: Add back in for activations analysis
         # masked_acts = (
@@ -229,7 +232,6 @@ def evaluate_probe_and_save_results(
                     len(values) == len(eval_dataset.inputs)
                 ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
 
-        if save_results:
             try:
                 dataset_with_probe_scores = LabelledDataset.load_from(
                     output_dir / f"{eval_dataset_name}.jsonl"
