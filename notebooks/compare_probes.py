@@ -138,8 +138,8 @@ def plot_best_results(
                 )
 
     # Customize the plot
-    ax.set_ylabel("AUROC", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Dataset", fontsize=14, fontweight="bold")  # Added x-axis label
+    ax.set_ylabel("AUROC", fontsize=14)
+    ax.set_xlabel("Dataset", fontsize=14)  # Added x-axis label
     # ax.set_title(
     #    "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
     # )
@@ -189,6 +189,7 @@ name_mapping = {
     "difference_of_means": "Difference of Means",
     "pytorch_per_token_probe": "Per-Token Linear Probe",
     "sklearn_mean_agg_probe": "Per-Sample Linear Probe",
+    "lda": "LDA",
 }
 dataset_mapping = {
     "mt": "MT Samples",

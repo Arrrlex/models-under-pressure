@@ -298,6 +298,7 @@ def plot_probe_vs_baseline_auroc(
         ncol=2,
         loc="lower left",
         borderaxespad=0.4,
+        framealpha=1.0,
     )
 
     # Adjust layout - we can reduce bottom margin since labels are horizontal now
@@ -310,7 +311,7 @@ def plot_probe_vs_baseline_auroc(
     plt.show()
 
 
-output_path = "../data/plots/probe_vs_baseline_auroc_test.svg"
+output_path = "../data/plots/probe_vs_baseline_auroc_test.pdf"
 _ = plot_probe_vs_baseline_auroc(
     probe_results, baseline_results, output_path, use_title=False
 )
