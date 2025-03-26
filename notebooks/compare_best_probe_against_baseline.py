@@ -28,8 +28,16 @@ with open(probe_results_path) as f:
         if line.strip():
             try:
                 probe_results.append(EvaluationResult.model_validate_json(line))
-            except ValidationError:
+            except ValidationError as e:
                 print(f"Error validating line: {line}")
+                print(f"Error details: {e}")
+                # Try to load with strict validation disabled
+                try:
+                    probe_results.append(
+                        EvaluationResult.model_validate_json(line, strict=False)
+                    )
+                except Exception as e2:
+                    print(f"Could not load even with strict=False: {e2}")
 
 baseline_results = []
 with open(baseline_results_file) as f:
@@ -53,6 +61,7 @@ for baseline_result in baseline_results:
 def plot_probe_vs_baseline_auroc(
     probe_results: List[EvaluationResult],
     baseline_results: List[LikelihoodBaselineResults],
+    output_path: str,
 ):
     """Create a bar plot comparing AUROC scores of probe vs baseline models across datasets.
 
@@ -222,10 +231,13 @@ def plot_probe_vs_baseline_auroc(
 
     plt.tight_layout()
     plt.subplots_adjust(right=0.85)
+    print(f"Saving plot to {output_path}")
+    plt.savefig("../data/plots/probe_vs_baseline_auroc_test.pdf")
     plt.show()
 
 
-_ = plot_probe_vs_baseline_auroc(probe_results, baseline_results)
+output_path = "../data/plots/probe_vs_baseline_auroc_test.pdf"
+_ = plot_probe_vs_baseline_auroc(probe_results, baseline_results, output_path)
 
 # %%
 
