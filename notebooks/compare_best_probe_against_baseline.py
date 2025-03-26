@@ -100,6 +100,8 @@ DATASET_NAME_MAPPING = {
     "mts": "MTS Dialog",
     "toolace": "ToolACE",
     "anthropic": "Anthropic HH",
+    "mental_health": "Mental Health",
+    "redteaming": "Aya Red Teaming",
 }
 
 
@@ -219,7 +221,7 @@ def plot_probe_vs_baseline_auroc(
     df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
 
     # Plot setup
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(14, 7))
 
     # Sort methods by provider and size, keeping Probe first
     probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
