@@ -91,7 +91,6 @@ def run_evaluation(
     )
 
     results_dict, coefs = evaluate_probe_and_save_results(
-        model=model,
         probe=probe,
         train_dataset_path=config.dataset_path,
         eval_datasets=eval_datasets,
@@ -104,9 +103,8 @@ def run_evaluation(
     ground_truth_labels = {}
     for dataset_name in eval_datasets.keys():
         data_df = eval_datasets[dataset_name].to_pandas()
-        ground_truth_labels[dataset_name] = [
-            1 if label == "high-stakes" else 0 for label in data_df["labels"]
-        ]
+        ground_truth_labels[dataset_name] = eval_datasets[dataset_name].labels_numpy()
+
         if dataset_name == "manual":
             ground_truth_scale_labels[dataset_name] = None
         else:
@@ -118,28 +116,18 @@ def run_evaluation(
     dataset_names = []
     results_list = []
 
-    column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
-
-    for path, (_, results) in results_dict.items():
+    for path, (probe_scores, results) in results_dict.items():
         print(f"Metrics for {Path(path).stem}: {results.metrics}")
         metrics.append(results)
         dataset_names.append(Path(path).stem)
-        column_name_template = f"_{config.model_name.split('/')[-1]}_{config.dataset_path.stem}_l{config.layer}"
 
         dataset_results = EvaluationResult(
             config=config,
             metrics=results,
             dataset_name=Path(path).stem,
             method="linear_probe",
-            output_scores=results_dict[dataset_names[-1]][0].other_fields[
-                f"per_entry_probe_scores{column_name_template}"
-            ],  # type: ignore
-            output_labels=list(
-                int(a > 0.5)
-                for a in results_dict[dataset_names[-1]][0].other_fields[
-                    f"per_entry_probe_scores{column_name_template}"
-                ]
-            ),
+            output_scores=probe_scores,
+            output_labels=list(int(a > 0.5) for a in probe_scores),
             ground_truth_scale_labels=ground_truth_scale_labels[dataset_names[-1]],
             ground_truth_labels=ground_truth_labels[dataset_names[-1]],
             dataset_path=eval_dataset_paths[dataset_names[-1]],

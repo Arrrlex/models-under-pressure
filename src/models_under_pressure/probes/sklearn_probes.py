@@ -86,6 +86,18 @@ class SklearnProbe(Probe):
         )
         return activations_obj, self._predict_proba(activations_obj)
 
+    def predict_proba_without_activations(
+        self, dataset: BaseDataset
+    ) -> Float[np.ndarray, " batch_size"]:
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+        print(
+            f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
+        )
+        return self._predict_proba(activations_obj)
+
     def _fit(
         self,
         activations: Activation,

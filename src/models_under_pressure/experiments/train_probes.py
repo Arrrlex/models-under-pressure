@@ -16,6 +16,9 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchDifferenceOfMeansClassifier,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
@@ -85,7 +88,6 @@ def tpr_at_fixed_fpr_score(
 
 
 def evaluate_probe_and_save_results(
-    model: LLMModel,
     probe: Probe,
     train_dataset_path: Path,
     eval_datasets: dict[str, LabelledDataset],
@@ -93,12 +95,11 @@ def evaluate_probe_and_save_results(
     output_dir: Path,
     save_results: bool = False,
     fpr: float = 0.01,
-) -> tuple[dict[str, tuple[LabelledDataset, DatasetResults]], list[float]]:
+) -> tuple[dict[str, tuple[list[float], DatasetResults]], list[float]]:
     """
     Evaluate a probe and save the results to a file.
 
     Args:
-        model: The model to evaluate the probe on.
         probe: The probe to evaluate.
         train_dataset_path: The path to the train dataset.
         eval_datasets: The datasets to evaluate the probe on.
@@ -113,7 +114,7 @@ def evaluate_probe_and_save_results(
     """
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    probe_scores_dict = {}
+    outputs = {}
 
     # For each eval_dataset, calculate the per entry and per token results:
     for eval_dataset_name, eval_dataset in tqdm(
@@ -121,7 +122,10 @@ def evaluate_probe_and_save_results(
         desc=f"Evaluating datasets for layer {layer}",
         leave=False,
     ):
-        activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        print(f"Evaluating dataset {eval_dataset_name} (save_results: {save_results})")
+        # activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        per_entry_probe_scores = probe.predict_proba_without_activations(eval_dataset)
+        print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
         # TODO: Add back in for activations analysis
         # masked_acts = (
@@ -136,110 +140,107 @@ def evaluate_probe_and_save_results(
         # mean_of_masked_activations = sum_acts / token_counts
         # masked_activations = masked_acts.tolist()
 
-        per_token_probe_scores = probe.per_token_predictions(
-            inputs=eval_dataset.inputs,
-        )
-
-        # Get rid of the padding in the per token probe scores
-        per_token_probe_scores = [
-            probe_score[probe_score != -1] for probe_score in per_token_probe_scores
-        ]
-
-        # calculate logits for the per token probe scores
-        per_token_probe_logits = [
-            (np.log(probe_score) / (1 - probe_score + 1e-7)).tolist()
-            for probe_score in per_token_probe_scores
-        ]
-
-        per_entry_probe_logits = [
-            (
-                np.log(per_entry_probe_score) / (1 - per_entry_probe_score + 1e-7)
-            ).tolist()
-            for per_entry_probe_score in per_entry_probe_scores
-        ]
-
-        # Assert no NaN values in the per token probe logits
-        for i, logits in enumerate(per_token_probe_logits):
-            if np.any(np.isnan(logits)):
-                print(f"Found NaN values in probe logits for entry {i}")
-                breakpoint()
-            assert not np.any(np.isnan(logits)), "Found NaN values in probe logits"
-
-        probe_scores_dict[eval_dataset_name] = {
-            "per_entry_probe_logits": per_entry_probe_logits,
-            "per_entry_probe_scores": per_entry_probe_scores,
-            "per_token_probe_logits": per_token_probe_logits,
-            "per_token_probe_scores": per_token_probe_scores,
-            # "mean_of_masked_activations": mean_of_masked_activations,
-            # "masked_activations": masked_activations,
-        }
-        # TODO: Add back in for activations analysis
-        # activations_dict = {
-        #     "dataset_name": eval_dataset_name,
-        #     "mean_activations": mean_of_masked_activations,
-        #     # "masked_activations": masked_activations,
-        # }
-        # with h5py.File(
-        #     EVALUATE_PROBES_DIR / f"{output_dir}_{eval_dataset_name}_activations.h5",
-        #     "w",
-        # ) as f:
-        #     f.create_dataset(f"{eval_dataset_name}", data=eval_dataset_name)
-        #     for key, value in activations_dict.items():
-        #         f.create_dataset(f"{eval_dataset_name}/{key}", data=value)
-
-        for score, values in probe_scores_dict[eval_dataset_name].items():
-            if len(values) != len(eval_dataset.inputs):
-                breakpoint()
-            assert (
-                len(values) == len(eval_dataset.inputs)
-            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
-
-    outputs = {}
-    # Eval metric level results
-    for eval_dataset_name in eval_datasets.keys():
         if save_results:
+            # We don't seem to use these fields for the main evaluation
+            per_token_probe_scores = probe.per_token_predictions(
+                inputs=eval_dataset.inputs,
+            )
+
+            # Get rid of the padding in the per token probe scores
+            per_token_probe_scores = [
+                probe_score[probe_score != -1] for probe_score in per_token_probe_scores
+            ]
+
+            # calculate logits for the per token probe scores
+            per_token_probe_logits = [
+                (np.log(probe_score) / (1 - probe_score + 1e-7)).tolist()
+                for probe_score in per_token_probe_scores
+            ]
+
+            per_entry_probe_logits = [
+                (
+                    np.log(per_entry_probe_score) / (1 - per_entry_probe_score + 1e-7)
+                ).tolist()
+                for per_entry_probe_score in per_entry_probe_scores
+            ]
+
+            # Assert no NaN values in the per token probe logits
+            for i, logits in enumerate(per_token_probe_logits):
+                if np.any(np.isnan(logits)):
+                    print(f"Found NaN values in probe logits for entry {i}")
+                    breakpoint()
+                assert not np.any(np.isnan(logits)), "Found NaN values in probe logits"
+
+            probe_scores_dict = {
+                "per_entry_probe_scores": per_entry_probe_scores,
+                "per_entry_probe_logits": per_entry_probe_logits,
+                "per_token_probe_logits": per_token_probe_logits,
+                "per_token_probe_scores": per_token_probe_scores,
+                # "mean_of_masked_activations": mean_of_masked_activations,
+                # "masked_activations": masked_activations,
+            }
+            # TODO: Add back in for activations analysis
+            # activations_dict = {
+            #     "dataset_name": eval_dataset_name,
+            #     "mean_activations": mean_of_masked_activations,
+            #     # "masked_activations": masked_activations,
+            # }
+            # with h5py.File(
+            #     EVALUATE_PROBES_DIR / f"{output_dir}_{eval_dataset_name}_activations.h5",
+            #     "w",
+            # ) as f:
+            #     f.create_dataset(f"{eval_dataset_name}", data=eval_dataset_name)
+            #     for key, value in activations_dict.items():
+            #         f.create_dataset(f"{eval_dataset_name}/{key}", data=value)
+
+            for score, values in probe_scores_dict.items():
+                if len(values) != len(eval_dataset.inputs):
+                    breakpoint()
+                assert (
+                    len(values) == len(eval_dataset.inputs)
+                ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+
             try:
                 dataset_with_probe_scores = LabelledDataset.load_from(
                     output_dir / f"{eval_dataset_name}.jsonl"
                 )
             except FileNotFoundError:
                 dataset_with_probe_scores = eval_datasets[eval_dataset_name]
-        else:
-            dataset_with_probe_scores = eval_datasets[eval_dataset_name]
 
-        extra_fields = dict(**dataset_with_probe_scores.other_fields)
+            extra_fields = dict(**dataset_with_probe_scores.other_fields)
 
-        short_model_name = model.name.split("/")[-1]
-        column_name_template = f"_{short_model_name}_{train_dataset_path.stem}_l{layer}"
+            short_model_name = probe._llm.name.split("/")[-1]
+            column_name_template = (
+                f"_{short_model_name}_{train_dataset_path.stem}_l{layer}"
+            )
 
-        for name, scores in probe_scores_dict[eval_dataset_name].items():
-            extra_fields[name + column_name_template] = scores
+            for name, scores in probe_scores_dict.items():
+                extra_fields[name + column_name_template] = scores
 
-        dataset_with_probe_scores.other_fields = extra_fields
+            dataset_with_probe_scores.other_fields = extra_fields
 
-        # Save the dataset to the output path overriding the previous dataset
-        print(
-            f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
-        )
-        dataset_with_probe_scores.save_to(
-            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
-            overwrite=True,
-        )
+            # Save the dataset to the output path overriding the previous dataset
+            print(
+                f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
+            )
+            dataset_with_probe_scores.save_to(
+                EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
+                overwrite=True,
+            )
 
         # Calculate the metrics for the dataset:
         auroc = roc_auc_score(
-            dataset_with_probe_scores.labels_numpy(),
-            probe_scores_dict[eval_dataset_name]["per_entry_probe_scores"],
+            eval_dataset.labels_numpy(),
+            per_entry_probe_scores,
         )
         accuracy = accuracy_score(
-            dataset_with_probe_scores.labels_numpy(),
-            np.array(probe_scores_dict[eval_dataset_name]["per_entry_probe_scores"])
-            > 0.5,
+            eval_dataset.labels_numpy(),
+            np.array(per_entry_probe_scores) > 0.5,
         )
 
         tpr_at_fpr = tpr_at_fixed_fpr_score(
-            dataset_with_probe_scores.labels_numpy(),
-            probe_scores_dict[eval_dataset_name]["per_entry_probe_scores"],
+            eval_dataset.labels_numpy(),
+            per_entry_probe_scores,
             fpr=fpr,
         )
 
@@ -253,14 +254,17 @@ def evaluate_probe_and_save_results(
         dataset_results = DatasetResults(layer=layer, metrics=metrics)
 
         outputs[eval_dataset_name] = (
-            dataset_with_probe_scores,
+            per_entry_probe_scores,
             dataset_results,
         )
     if isinstance(probe, SklearnProbe):
         coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
     elif isinstance(probe, PytorchProbe):
-        # Access the last layer of the Sequential model which should be the linear layer
-        coefs = list(probe._classifier.model[-1].weight.data.cpu().numpy())  # type: ignore
+        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
+            coefs = list(probe._classifier.model.weight.data.cpu().numpy())  # type: ignore
+        else:
+            # Access the last layer of the Sequential model which should be the linear layer
+            coefs = list(probe._classifier.model[-1].weight.data.cpu().numpy())  # type: ignore
 
     return outputs, coefs
 
