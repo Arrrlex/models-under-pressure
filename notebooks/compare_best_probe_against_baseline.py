@@ -219,7 +219,7 @@ def plot_probe_vs_baseline_auroc(
     df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
 
     # Plot setup
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(10, 8))
 
     # Sort methods by provider and size, keeping Probe first
     probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
@@ -290,7 +290,12 @@ def plot_probe_vs_baseline_auroc(
 
     # Legend outside plot
     ax.legend(
-        title="Method", bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0
+        title="Method",
+        # bbox_to_anchor=(1.05, 1),
+        # loc="upper left",
+        ncol=2,
+        loc="lower left",
+        borderaxespad=0.4,
     )
 
     # Adjust layout - we can reduce bottom margin since labels are horizontal now

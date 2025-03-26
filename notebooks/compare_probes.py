@@ -48,6 +48,7 @@ def plot_best_results(
     name_mapping: dict[str, str] | None = None,
     dataset_mapping: dict[str, str] | None = None,
     exclude_datasets: list[str] | None = None,
+    show_values: bool = True,  # New parameter to control value labels
 ) -> None:
     # Group results by probe_name and dataset
     probe_results = {}
@@ -99,7 +100,7 @@ def plot_best_results(
     ]
 
     # Set up the plot with a larger figure and better aspect ratio
-    fig, ax = plt.subplots(figsize=(14, 7))
+    fig, ax = plt.subplots(figsize=(9, 7))
 
     # Set up the plot
     x = np.arange(len(datasets))
@@ -110,7 +111,6 @@ def plot_best_results(
         aurocs = [probe_results[probe].get(dataset, 0) for dataset in datasets]
         offset = width * (i - len(probes) / 2 + 0.5)
 
-        # Use mapped name if available, otherwise use original probe name
         label = name_mapping.get(probe, probe) if name_mapping else probe
 
         bars = ax.bar(
@@ -119,22 +119,23 @@ def plot_best_results(
             width,
             label=label,
             color=colors[i % len(colors)],
-            edgecolor="black",  # Changed to black outline
-            linewidth=1.5,  # Made outline slightly thicker
+            edgecolor="black",
+            linewidth=1.5,
         )
 
-        # Add value labels on top of bars with larger font
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(
-                bar.get_x() + bar.get_width() / 2.0,
-                height,
-                f"{height:.3f}",
-                ha="center",
-                va="bottom",
-                rotation=0,
-                fontsize=12,
-            )
+        # Add value labels only if show_values is True
+        if show_values:
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height,
+                    f"{height:.3f}",
+                    ha="center",
+                    va="bottom",
+                    rotation=0,
+                    fontsize=12,
+                )
 
     # Customize the plot
     ax.set_ylabel("AUROC", fontsize=14, fontweight="bold")
@@ -158,7 +159,7 @@ def plot_best_results(
         fontsize=12,
         # bbox_to_anchor=(1.02, 1),
         # loc="upper left",
-        loc="upper right",
+        loc="lower right",
         framealpha=0.9,
     )
 
@@ -202,7 +203,8 @@ plot_best_results(
     data,
     name_mapping=name_mapping,
     dataset_mapping=dataset_mapping,
-    output_path="../data/results/plots/compare_probes.pdf",
+    output_path="../data/results/plots/compare_probes.svg",
     exclude_datasets=["redteaming", "mental_health"],
+    show_values=False,
 )
 # %%
