@@ -100,7 +100,7 @@ def plot_best_results(
     ]
 
     # Set up the plot with a larger figure and better aspect ratio
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     # Set up the plot
     x = np.arange(len(datasets))
@@ -140,9 +140,9 @@ def plot_best_results(
     # Customize the plot
     ax.set_ylabel("AUROC", fontsize=14, fontweight="bold")
     ax.set_xlabel("Dataset", fontsize=14, fontweight="bold")  # Added x-axis label
-    ax.set_title(
-        "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
-    )
+    # ax.set_title(
+    #    "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
+    # )
     ax.set_xticks(x)
     ax.set_xticklabels(
         display_datasets, rotation=0, ha="center", fontsize=11
@@ -164,7 +164,7 @@ def plot_best_results(
     )
 
     # Set y-axis limits with some padding
-    ax.set_ylim(0, max(max(probe_results[probe].values()) for probe in probes) * 1.1)
+    ax.set_ylim(0.5, 1)
 
     # Print best hyperparameters with better formatting
     print("\nBest hyperparameters for each probe and dataset:")
@@ -203,8 +203,8 @@ plot_best_results(
     data,
     name_mapping=name_mapping,
     dataset_mapping=dataset_mapping,
-    output_path="../data/results/plots/compare_probes.svg",
-    exclude_datasets=["redteaming", "mental_health"],
+    output_path="../data/results/plots/compare_probes_colm.pdf",
+    # exclude_datasets=["redteaming", "mental_health"],
     show_values=False,
 )
 # %%
