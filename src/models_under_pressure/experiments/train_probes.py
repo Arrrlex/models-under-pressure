@@ -19,6 +19,9 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchDifferenceOfMeansClassifier,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
@@ -287,8 +290,11 @@ def evaluate_probe_and_save_results(
     if isinstance(probe, SklearnProbe):
         coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
     elif isinstance(probe, PytorchProbe):
-        # Access the last layer of the Sequential model which should be the linear layer
-        coefs = list(probe._classifier.model[-1].weight.data.cpu().numpy())  # type: ignore
+        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
+            coefs = list(probe._classifier.model.weight.data.cpu().numpy())  # type: ignore
+        else:
+            # Access the last layer of the Sequential model which should be the linear layer
+            coefs = list(probe._classifier.model[-1].weight.data.cpu().numpy())  # type: ignore
 
     return outputs, coefs
 
