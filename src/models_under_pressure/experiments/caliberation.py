@@ -3,7 +3,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.calibration import calibration_curve
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
@@ -12,11 +11,24 @@ from models_under_pressure.config import (
     PLOTS_DIR,
     EvalRunConfig,
 )
+from models_under_pressure.interfaces.probes import ProbeSpec
+
+# Add this before creating any plots
+plt.rcParams.update(
+    {
+        "font.size": 13,
+        "axes.titlesize": 16,
+        "axes.labelsize": 15,
+        "xtick.labelsize": 13,
+        "ytick.labelsize": 13,
+        "legend.fontsize": 13,
+    }
+)
 
 
 # Load data from your JSONL file
 def load_data(file_path: Path) -> list[dict]:
-    with open(EVALUATE_PROBES_DIR / "raw_res_cb/" / file_path, "r") as file:
+    with open(EVALUATE_PROBES_DIR / file_path, "r") as file:
         data = [json.loads(line) for line in file]
     return data
 
@@ -27,7 +39,7 @@ def prepare_data(
     dataset_name: str,
     config: EvalRunConfig,
     use_scale_labels: bool = False,
-) -> tuple[list[int], list[float]]:
+) -> tuple[list[int], list[float], list[float]]:
     dataset_res = [
         entry
         if (
@@ -41,6 +53,7 @@ def prepare_data(
         for entry in data
     ]
     # extract the not none entry first
+
     dataset_res = [entry for entry in dataset_res if entry is not None][-1]
     y_prob = dataset_res["output_scores"]  # type: ignore
     if use_scale_labels:
@@ -48,35 +61,77 @@ def prepare_data(
             print(
                 "Cannot use scale labels for manual dataset, using output labels instead"
             )
-            y_true = dataset_res["ground_truth_labels"]  # type: ignore
+            y_true = dataset_res["output_labels"]  # type: ignore
         else:
-            y_true = dataset_res["ground_truth_labels"]  # type: ignore
-            # y_true = [
-            #     1 if entry > 5 else 0
-            #     for entry in dataset_res["ground_truth_scale_labels"]
-            # ]  # type: ignore
+            y_true = [
+                1 if entry > 5 else 0
+                for entry in dataset_res["ground_truth_scale_labels"]
+            ]  # type: ignore
     else:
         y_true = dataset_res["ground_truth_labels"]  # type: ignore
-    return y_true, y_prob
+
+    # Convert y_prob and y_true to numpy arrays for easier manipulation
+    y_prob = np.array(y_prob)
+    y_true = np.array(y_true)
+
+    if dataset_name == "manual":
+        scale_labels = np.array(dataset_res["ground_truth_labels"])  # type: ignore
+    else:
+        scale_labels = np.array(dataset_res["ground_truth_scale_labels"])  # type: ignore
+
+    # Sort probabilities and corresponding scale labels
+    sort_indices = np.argsort(y_prob)
+    y_prob = y_prob[sort_indices]
+    scale_labels = scale_labels[sort_indices]
+    y_true = y_true[sort_indices]
+    return y_true, y_prob, scale_labels  # type: ignore
 
 
 # Plot calibration curve and histogram
 def plot_calibration(
     y_true: list[int],
     y_prob: list[float],
+    scale_labels: list[float],
     file_name: str,
     config: EvalRunConfig,
     n_bins: int = 10,
 ) -> None:
     fig, (ax1, ax2) = plt.subplots(
-        nrows=2, figsize=(8, 10), gridspec_kw={"height_ratios": [2, 1]}
+        nrows=2,
+        figsize=(9, 10),
+        gridspec_kw={"height_ratios": [2, 1]},
+        constrained_layout=False,
     )
+    fig.subplots_adjust(hspace=0.4)
+
+    dataset_names = {
+        "manual": "Manual",
+        "anthropic": "Anthropic HH-RLHF",
+        "mt": "Medical Transcriptions",
+        "mts": "Medical Transcriptions (Clinical Dialogues)",
+        "toolace": "ToolACE",
+    }
 
     # Calibration curve
-    prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins)
-    ax1.plot(prob_pred, prob_true, marker="o", linewidth=2, label="Model Calibration")
-    ax1.plot([0, 1], [0, 1], linestyle="--", label="Perfect Calibration")
-    ax1.set_title(f"Calibration Curve for {file_name}")
+    # Create bins based on predicted probabilities
+
+    bins = np.linspace(0, 1, n_bins + 1)
+    bin_indices = np.digitize(y_prob, bins) - 1
+
+    # Calculate mean scale label for each bin
+    prob_pred = []
+    mean_scale = []
+    for i in range(n_bins):
+        mask = bin_indices == i
+        if np.any(mask):
+            prob_pred.append(np.mean(y_prob[mask]))
+            mean_scale.append(np.mean(scale_labels[mask]))
+
+    prob_pred = np.array(prob_pred)
+    # prob_true = np.array(mean_scale)
+    ax1.plot(prob_pred, mean_scale, marker="o", linewidth=2, label="Probe Caliberation")
+    ax1.plot([0, 1], [1, 10], linestyle="--", label="Perfect Caliberation")
+    ax1.set_title(f"Caliberation Curve for {dataset_names[file_name]} dataset")
     ax1.set_xlabel("Predicted Probability (Binned)")
     ax1.set_ylabel("Mean Observed Label")
     ax1.grid()
@@ -100,10 +155,11 @@ def plot_calibration(
         alpha=0.7,
     )
 
-    ax2.set_title(f"Histogram of Predicted Probabilities for {file_name}")
+    ax2.set_title(
+        f"Histogram of Predicted Probabilities for\n{dataset_names[file_name]} dataset"
+    )
     ax2.set_xlabel("Predicted Probability")
     ax2.set_ylabel("Frequency")
-    ax2.legend()
     ax2.grid()
 
     # save the plots with data name in the same directory
@@ -117,11 +173,13 @@ def run_calibration(config: EvalRunConfig):
     If no config is provided, a default one will be created.
     """
     for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / "raw_res_cb" / config.output_filename)
-        y_true, y_prob = prepare_data(
+        data = load_data(EVALUATE_PROBES_DIR / "raw_results" / config.output_filename)
+        y_true, y_prob, scale_labels = prepare_data(
             data, eval_dataset, config=config, use_scale_labels=True
         )
-        plot_calibration(y_true, y_prob, eval_dataset, config=config, n_bins=10)
+        plot_calibration(
+            y_true, y_prob, scale_labels, eval_dataset, config=config, n_bins=10
+        )
 
 
 # Main execution
@@ -135,5 +193,8 @@ if __name__ == "__main__":
             model_name=model_name,
             layer=layer,
             max_samples=None,
-        )
+            probe_spec=ProbeSpec(
+                name="pytorch_per_token_probe",
+            ),
+        ),
     )
