@@ -76,8 +76,10 @@ def generate_heatmap_plot(
 
     stem = f"heatmap_{heatmap_id}_{variation_type}_{mode}"
 
-    plt.savefig(PLOTS_DIR / f"{stem}.pdf")
-    plt.savefig(PLOTS_DIR / f"{stem}.svg")
+    if mode == "poster":
+        plt.savefig(PLOTS_DIR / f"{stem}.svg")
+    else:
+        plt.savefig(PLOTS_DIR / f"{stem}.pdf")
 
     plt.show()
 
