@@ -58,9 +58,56 @@ for baseline_result in baseline_results:
 # %%
 
 
+def get_readable_model_name(model_name: str) -> str:
+    """Convert model names to a more readable format.
+
+    Examples:
+        "google/gemma-3-12b-it" -> "Gemma 12B"
+        "meta-llama/Llama-3.2-1B-Instruct" -> "Llama 1B"
+
+    Args:
+        model_name: The original model name
+
+    Returns:
+        A more readable version of the model name
+    """
+    import re
+
+    # Handle Gemma models
+    gemma_match = re.match(r"google/gemma-3-(\d+)b-it", model_name)
+    if gemma_match:
+        size = gemma_match.group(1)
+        return f"Gemma {size}B"
+
+    # Handle Llama models
+    llama_match = re.match(r"meta-llama/Llama-3\.[\d]-(\d+)B-Instruct", model_name)
+    if llama_match:
+        size = llama_match.group(1)
+        return f"Llama {size}B"
+
+    if model_name.startswith("Probe"):
+        return "Probe"
+
+    # Return original name if no matches
+    return model_name
+
+
+# Add this near the top of the file with other constants
+DATASET_NAME_MAPPING = {
+    # "mt": "Medical MT Samples",
+    "mt": "MT Samples",
+    "manual": "Manual",
+    "mts": "MTS Dialog",
+    "toolace": "ToolACE",
+    "anthropic": "Anthropic HH",
+}
+
+
 def plot_probe_vs_baseline_auroc(
     probe_results: List[EvaluationResult],
     baseline_results: List[LikelihoodBaselineResults],
+    output_path: str,
+    use_title: bool = True,
 ):
     """Create a bar plot comparing AUROC scores of probe vs baseline models across datasets.
 
@@ -93,7 +140,7 @@ def plot_probe_vs_baseline_auroc(
         plot_data.append(
             {
                 "Dataset": dataset,
-                "Method": f"Probe ({probe_data[dataset]['model_name']})",
+                "Method": f"Probe ({get_readable_model_name(probe_data[dataset]['model_name'])})",
                 "AUROC": probe_data[dataset]["auroc"],
             }
         )
@@ -172,7 +219,7 @@ def plot_probe_vs_baseline_auroc(
     df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
 
     # Plot setup
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(10, 8))
 
     # Sort methods by provider and size, keeping Probe first
     probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
@@ -207,36 +254,64 @@ def plot_probe_vs_baseline_auroc(
             positions,
             df_pivot[method],
             bar_width,
-            label=method,
+            label=get_readable_model_name(method),
             color=color_map[method],
             edgecolor="black",
             hatch=pattern_map[method],
             linewidth=1,
         )
 
+    # Increase default font sizes
+    plt.rcParams.update(
+        {
+            "font.size": 14,
+            "axes.labelsize": 16,
+            "axes.titlesize": 18,
+            "xtick.labelsize": 14,
+            "ytick.labelsize": 14,
+            "legend.fontsize": 12,
+            "legend.title_fontsize": 14,
+        }
+    )
+
+    # Update x-axis labels with mapped names - remove rotation and adjust alignment
     ax.set_xticks(x)
-    ax.set_xticklabels(datasets)
+    ax.set_xticklabels(
+        [DATASET_NAME_MAPPING.get(d, d) for d in datasets], rotation=0, ha="center"
+    )
+
     ax.set_ylim(0.5, 1.0)
     ax.set_xlabel("Dataset")
     ax.set_ylabel("AUROC")
-    ax.set_title(
-        f"Probe ({probe_results[0].config.model_name}) vs Baseline Model AUROC by Dataset"
-    )
+    if use_title:
+        ax.set_title(
+            f"Probe ({probe_results[0].config.model_name}) vs Baseline Model AUROC by Dataset"
+        )
 
     # Legend outside plot
     ax.legend(
-        title="Method", bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0
+        title="Method",
+        # bbox_to_anchor=(1.05, 1),
+        # loc="upper left",
+        ncol=2,
+        loc="lower left",
+        borderaxespad=0.4,
     )
 
+    # Adjust layout - we can reduce bottom margin since labels are horizontal now
     plt.tight_layout()
-    plt.subplots_adjust(right=0.85)
-    output_path = "../data/plots/probe_vs_baseline_auroc_test.pdf"
+    plt.subplots_adjust(
+        right=0.85, bottom=0.15
+    )  # Reduced bottom margin from 0.2 to 0.15
     print(f"Saving plot to {output_path}")
     plt.savefig(output_path)
     plt.show()
 
 
-_ = plot_probe_vs_baseline_auroc(probe_results, baseline_results)
+output_path = "../data/plots/probe_vs_baseline_auroc_test.svg"
+_ = plot_probe_vs_baseline_auroc(
+    probe_results, baseline_results, output_path, use_title=False
+)
 
 # %%
 
