@@ -41,7 +41,7 @@ def generate_heatmap_plot(heatmap_id: str, variation_type: str, result: pd.DataF
     plt.yticks(fontsize=11)
     plt.tight_layout()
 
-    plt.savefig(PLOTS_DIR / f"heatmap_{heatmap_id}_{variation_type}.png")
+    plt.savefig(PLOTS_DIR / f"heatmap_{heatmap_id}_{variation_type}.pdf")
 
     plt.show()
 
@@ -89,6 +89,6 @@ def plot_aurocs(
     plt.legend()
 
     # Save plot
-    plt.savefig(PLOTS_DIR / "AUROCs.png")
+    plt.savefig(PLOTS_DIR / "AUROCs.pdf")
 
     plt.show()
