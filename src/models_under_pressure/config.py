@@ -331,6 +331,7 @@ class EvalRunConfig(BaseModel):
     layer: int
     probe_spec: ProbeSpec
     use_test_set: bool = False
+    hyper_params: dict[str, Any] | None = None
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None

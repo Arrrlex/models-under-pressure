@@ -28,8 +28,16 @@ with open(probe_results_path) as f:
         if line.strip():
             try:
                 probe_results.append(EvaluationResult.model_validate_json(line))
-            except ValidationError:
+            except ValidationError as e:
                 print(f"Error validating line: {line}")
+                print(f"Error details: {e}")
+                # Try to load with strict validation disabled
+                try:
+                    probe_results.append(
+                        EvaluationResult.model_validate_json(line, strict=False)
+                    )
+                except Exception as e2:
+                    print(f"Could not load even with strict=False: {e2}")
 
 baseline_results = []
 with open(baseline_results_file) as f:
@@ -222,6 +230,9 @@ def plot_probe_vs_baseline_auroc(
 
     plt.tight_layout()
     plt.subplots_adjust(right=0.85)
+    output_path = "../data/plots/probe_vs_baseline_auroc_test.pdf"
+    print(f"Saving plot to {output_path}")
+    plt.savefig(output_path)
     plt.show()
 
 

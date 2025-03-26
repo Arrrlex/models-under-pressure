@@ -185,7 +185,7 @@ class LLMModel:
         # Hook function to capture residual activations before layernorm
         def hook_fn(module: torch.nn.Module, input: torch.Tensor, output: torch.Tensor):
             activations.append(
-                input[0].float().detach().cpu().numpy()
+                input[0].float().detach().cpu().numpy().astype(np.float32)
             )  # Store the residual connection
 
         # Register hooks on each transformer block based on model architecture
@@ -217,8 +217,10 @@ class LLMModel:
         for hook in hooks:
             hook.remove()
 
-        attention_mask = torch_inputs["attention_mask"].detach().cpu().numpy()
-        input_ids = torch_inputs["input_ids"].detach().cpu().numpy()
+        attention_mask = (
+            torch_inputs["attention_mask"].detach().cpu().numpy().astype(np.float32)
+        )
+        input_ids = torch_inputs["input_ids"].detach().cpu().numpy().astype(np.int32)
 
         return Activation(activations[0], attention_mask, input_ids)
 
