@@ -1,8 +1,10 @@
+import gc
 import json
 from pathlib import Path
 from typing import Any
 
 import hydra
+import torch
 from omegaconf import DictConfig
 from pydantic import BaseModel
 
@@ -101,6 +103,7 @@ def run_all_experiments(config: DictConfig):
                 else config.default_hyper_params,
                 use_test_set=config.use_test_set,
             )
+
             eval_results, _ = run_evaluation(
                 eval_run_config,
             )
@@ -113,8 +116,11 @@ def run_all_experiments(config: DictConfig):
                     EVALUATE_PROBES_DIR / eval_run_config.output_filename
                 )
 
-            # TODO: also save the probe coefficients (making sure they're
-            # re-scaled to the activation space)
+            # Clean up memory
+            del eval_results
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     # NOTE: For generating the plot, see notebooks/compare_best_probe_against_baseline.py
     if "compare_best_probe_against_baseline" in config.experiments_to_run:
@@ -139,6 +145,12 @@ def run_all_experiments(config: DictConfig):
 
         for eval_result in eval_results:
             eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
+
+        # Clean up memory
+        del eval_results
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Calculate & save the baselines
         for baseline_model in config.baseline_models:
