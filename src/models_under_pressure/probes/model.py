@@ -36,7 +36,7 @@ class LLMModel:
         if hasattr(self.model.config, "num_hidden_layers"):
             return self.model.config.num_hidden_layers  # type: ignore
         elif hasattr(self.model.config, "n_layers"):
-            return self.model.config.n_layers
+            return self.model.config.n_layers  # type: ignore
         else:
             raise ValueError(
                 f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
@@ -76,6 +76,7 @@ class LLMModel:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
+        print("Model name:", model_name)
         print("Model kwargs:", model_kwargs)
 
         model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
@@ -194,15 +195,15 @@ class LLMModel:
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             # LLaMA-style architecture
 
-            layer_object = self.model.model.layers[layer]
-            hooks.append(layer_object.input_layernorm.register_forward_hook(hook_fn))
+            layer_object = self.model.model.layers[layer]  # type: ignore
+            hooks.append(layer_object.input_layernorm.register_forward_hook(hook_fn))  # type: ignore
 
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
         ):
             # GPT-style architecture (like Qwen)
-            layer_object = self.model.transformer.h[layer]
-            hooks.append(layer_object.ln_1.register_forward_hook(hook_fn))
+            layer_object = self.model.transformer.h[layer]  # type: ignore
+            hooks.append(layer_object.ln_1.register_forward_hook(hook_fn))  # type: ignore
         else:
             raise ValueError(
                 f"Unsupported model architecture: {type(self.model)}. "
