@@ -108,7 +108,7 @@ def plot_calibration(
         "manual": "Manual",
         "anthropic": "Anthropic HH-RLHF",
         "mt": "Medical Transcriptions",
-        "mts": "Clinical Dialogues",
+        "mts": "Medical Transcriptions (Clinical Dialogues)",
         "toolace": "ToolACE",
     }
 
@@ -177,7 +177,6 @@ def plot_calibration(
     # plt.savefig(PLOTS_DIR / f"{config.id}_{file_name}_calibration.png")
     # plt.close()
 
-
 def run_calibration(config: EvalRunConfig):
     """
     Run calibration analysis with the provided EvalRunConfig.
@@ -202,6 +201,7 @@ def run_calibration(config: EvalRunConfig):
         config=config,
         n_bins=10,
     )
+
 
 
 # Main execution
