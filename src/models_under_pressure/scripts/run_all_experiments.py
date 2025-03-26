@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 
 import hydra
+import numpy as np
+import torch
 from omegaconf import DictConfig
 from pydantic import BaseModel
 
@@ -52,6 +54,10 @@ class RunAllExperimentsConfig(BaseModel):
     version_base=None,
 )
 def run_all_experiments(config: DictConfig):
+    # Set the numpy and torch seeds:
+    np.random.seed(config.random_seed)
+    torch.manual_seed(config.random_seed)
+
     valid_experiments = [
         "cv",
         "compare_probes",
@@ -167,8 +173,40 @@ def run_all_experiments(config: DictConfig):
             json.dump(heatmap_results.to_dict(), open(out_path, "w"))
 
     if "scaling_plot" in config.experiments_to_run:
-        pass
-        # TODO: run the scaling plot experiment
+        scaling_configs = [
+            EvalRunConfig(
+                layer=layer,
+                model_name=LOCAL_MODELS[model],
+                max_samples=None,
+                dataset_path=TRAIN_DIR / config.training_data,
+                probe_name=config.scaling_probe.get("name", "sklearn_probe"),
+            )
+            for layer, model in zip(config.scaling_layers, config.scaling_models)
+        ]
+
+        aggregator = Aggregator(
+            preprocessor=getattr(
+                Preprocessors, config.scaling_probe.get("preprocessor", "sigmoid")
+            ),
+            postprocessor=getattr(
+                Postprocessors, config.scaling_probe.get("postprocessor", "mean")
+            ),
+        )
+
+        for scaling_config in scaling_configs:
+            print(
+                f"Running evaluation for {scaling_config.id} and results will be saved to {EVALUATE_PROBES_DIR / scaling_config.output_filename}"
+            )
+            results = run_evaluation(
+                config=scaling_config,
+                aggregator=aggregator,
+            )
+
+            print(
+                f"Saving results for layer {scaling_config.layer} to {EVALUATE_PROBES_DIR / scaling_config.output_filename}"
+            )
+            for result in results:
+                result.save_to(EVALUATE_PROBES_DIR / scaling_config.output_filename)
 
 
 if __name__ == "__main__":
