@@ -1,6 +1,7 @@
 # Code to generate Figure 2
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from models_under_pressure.config import (
@@ -27,6 +28,18 @@ from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config
+
+# Add this before creating any plots
+plt.rcParams.update(
+    {
+        "font.size": 12,
+        "axes.titlesize": 16,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 12,
+    }
+)
 
 
 def load_eval_datasets(

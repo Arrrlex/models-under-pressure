@@ -7,6 +7,7 @@ from typing import Any
 import torch
 from pydantic import BaseModel, Field
 
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
 DEFAULT_MODEL = "gpt-4o"
@@ -248,6 +249,8 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
+    probe_spec: ProbeSpec | None = None
+    use_test_set: bool = False
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
