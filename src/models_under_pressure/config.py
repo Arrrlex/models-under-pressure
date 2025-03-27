@@ -40,13 +40,13 @@ LOCAL_MODELS = {
 }
 
 MODEL_MAX_MEMORY = {
-    "meta-llama/Llama-3.2-1B-Instruct": {2: "60GB"},
-    "meta-llama/Llama-3.2-3B-Instruct": {2: "60GB"},
-    "meta-llama/Llama-3.1-8B-Instruct": {2: "60GB"},
+    "meta-llama/Llama-3.2-1B-Instruct": None,
+    "meta-llama/Llama-3.2-3B-Instruct": None,
+    "meta-llama/Llama-3.1-8B-Instruct": None,
     "meta-llama/Llama-3.3-70B-Instruct": None,
     "google/gemma-3-1b-it": None,
-    "google/gemma-3-12b-it": {2: "60GB"},
-    "google/gemma-3-27b-it": {2: "60GB", 0: "30GB"},
+    "google/gemma-3-12b-it": None,
+    "google/gemma-3-27b-it": None,
 }
 
 # Paths to input files
