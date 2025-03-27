@@ -8,6 +8,7 @@ from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
+    PytorchPerEntryLinearClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import Probe, SklearnProbe
@@ -74,6 +75,9 @@ class ProbeFactory:
                 _llm=model,
                 layer=layer,
                 hyper_params=probe.hyperparams,
+                _classifier=PytorchPerEntryLinearClassifier(
+                    training_args=probe.hyperparams
+                ),
             ).fit(train_dataset)
 
         else:

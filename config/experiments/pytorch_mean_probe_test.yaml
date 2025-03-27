@@ -1,0 +1,15 @@
+# @package _global_
+model_name: llama-70b
+train_data: "prompts_13_03_25_gpt-4o_filtered.jsonl"
+use_test_set: false
+max_samples: null
+experiments_to_run:
+  - scaling_plot
+scaling_plot:
+  scaling_models:
+    - llama-1b
+  scaling_layers:
+    - 6
+
+  probe_spec:
+    name: "pytorch_per_entry_probe_mean"
