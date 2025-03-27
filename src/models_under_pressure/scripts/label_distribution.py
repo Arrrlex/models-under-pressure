@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from models_under_pressure.config import (
     AIS_DATASETS,
@@ -6,7 +8,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS_RAW,
     PLOTS_DIR,
 )
-from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.dataset import Input, Label, LabelledDataset
 
 
 def show_label_distribution_with_field(
@@ -207,6 +209,105 @@ def show_sandbagging_label_distribution(dataset_key: str = "mmlu_sandbagging"):
     show_label_distribution_with_field(dataset_key, "is_sandbagging")
 
 
+def get_text_stats(text_input: Input) -> tuple[int, int]:
+    """
+    Get the length and number of turns for a text input.
+
+    Args:
+        text_input: Either a string or a Dialogue object
+
+    Returns:
+        tuple: (total_length, num_turns)
+    """
+    if isinstance(text_input, str):
+        return len(text_input), 1
+    return sum(len(message.content) for message in text_input), len(text_input)
+
+
+def calculate_dataset_stats(
+    dataset: LabelledDataset,
+) -> tuple[float, str, float, float, str, float]:
+    """
+    Calculate length and turn statistics for a dataset.
+
+    Args:
+        dataset: LabelledDataset object
+
+    Returns:
+        tuple: (mean_length, length_range, length_std, mean_turns, turns_range, turns_std)
+    """
+    lengths, turns = zip(*[get_text_stats(text) for text in dataset.inputs])
+
+    return (
+        np.mean(lengths),
+        f"{min(lengths)}-{max(lengths)}",
+        np.std(lengths),
+        np.mean(turns),
+        f"{min(turns)}-{max(turns)}",
+        np.std(turns),
+    )
+
+
+def print_dataset_length_comparison():
+    """
+    Creates and prints a pandas DataFrame comparing character lengths and turn counts
+    between raw and balanced datasets. Includes mean, range, and standard deviation.
+    """
+    # Define metrics and create data dictionary
+    metrics = [
+        "Mean Length",
+        "Length Range",
+        "Length Std",
+        "Mean Turns",
+        "Turns Range",
+        "Turns Std",
+    ]
+    data = {
+        f"{prefix}{metric}": []
+        for prefix in ["Raw ", "Balanced "]
+        for metric in metrics
+    }
+    dataset_names = []
+
+    # Process each dataset pair
+    for name in EVAL_DATASETS_RAW.keys():
+        dataset_names.append(name)
+
+        # Process both raw and balanced datasets
+        for prefix, datasets_dict in [
+            ("Raw ", EVAL_DATASETS_RAW),
+            ("Balanced ", EVAL_DATASETS_BALANCED),
+        ]:
+            if datasets_dict[name].exists():
+                dataset = LabelledDataset.load_from(datasets_dict[name])
+                stats = calculate_dataset_stats(dataset)
+
+                # Unpack all statistics
+                mean_len, range_len, std_len, mean_turns, range_turns, std_turns = stats
+
+                data[f"{prefix}Mean Length"].append(mean_len)
+                data[f"{prefix}Length Range"].append(range_len)
+                data[f"{prefix}Length Std"].append(std_len)
+                data[f"{prefix}Mean Turns"].append(mean_turns)
+                data[f"{prefix}Turns Range"].append(range_turns)
+                data[f"{prefix}Turns Std"].append(std_turns)
+            else:
+                for metric in metrics:
+                    data[f"{prefix}{metric}"].append(None)
+
+    # Create DataFrame
+    df = pd.DataFrame(data, index=dataset_names)
+
+    # Format numeric columns to 2 decimal places
+    numeric_columns = [col for col in df.columns if "Range" not in col]
+    for col in numeric_columns:
+        df[col] = df[col].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else None)
+
+    print("\nDataset Length and Turn Count Comparison:")
+    print(df.to_string())
+    return df
+
+
 def main():
     # Print distributions for raw datasets
     print("\nRAW DATASETS:")
@@ -222,8 +323,14 @@ def main():
             print(f"\n{name.upper()}")
             LabelledDataset.load_from(path).print_label_distribution()
 
+    # Add the length comparison
+    print()
+    print_dataset_length_comparison()
+
 
 if __name__ == "__main__":
-    main()
+    # main()
+    print_dataset_length_comparison()
+
     # show_label_distribution_with_field("mmlu_sandbagging", "is_sandbagging")
     # show_label_distribution_with_field("deception", "is_deceptive")
