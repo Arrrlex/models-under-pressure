@@ -8,6 +8,8 @@ from models_under_pressure.interfaces.results import (
     EvaluationResult,
 )
 
+sns.set_style("darkgrid")
+
 
 def generate_heatmap_plot(
     heatmap_id: str, variation_type: str, result: pd.DataFrame, mode: str
@@ -17,10 +19,15 @@ def generate_heatmap_plot(
         "Response to Situation": "Response",
         "Prompt to LLM": "Prompt",
         "Third Person": "3rd Person",
-        "overly polite": "polite",
-        "very short": "v short",
+        "overly polite": "Polite",
+        "angry": "Angry",
+        "vulnerable": "Vulnerable",
+        "casual": "Casual",
+        "very short": "V. Short",
+        "short": "Short",
+        "medium": "Medium",
+        "long": "Long",
     }
-    # Create dataframe from performances
 
     heatmap_matrix = result.pivot(
         index="train_variation_value", columns="test_variation_value", values="accuracy"
@@ -45,41 +52,32 @@ def generate_heatmap_plot(
         vmax=1.0,  # Maximum value for color scaling
         center=0.925,  # Center point for color divergence
         square=True,  # Make cells square
-        annot_kws={
-            "size": 16 if mode == "poster" else 12
-        },  # Larger annotations for poster
+        annot_kws={"size": 16},  # Larger annotations for poster
     )
 
     # Add label to colorbar and customize ticks for poster mode
     colorbar = heatmap.collections[0].colorbar
-    colorbar.set_label("Accuracy", size=16 if mode == "poster" else 12)
+    colorbar.set_label("Accuracy", size=16)
     if mode == "poster":
         colorbar.set_ticks([0.7, 1.0])  # Only show min and max ticks
         colorbar.ax.tick_params(labelsize=14)  # Larger colorbar ticks
 
-    # Customize the plot with larger fonts
-    if mode != "poster":
-        plt.title(
-            f"Probe Generalization Across {variation_type.replace('_', ' ').title()}",
-            fontsize=14,
-        )
-
-    plt.xlabel("Test Variation", fontsize=16 if mode == "poster" else 12)
-    plt.ylabel("Train Variation", fontsize=16 if mode == "poster" else 12)
+    plt.xlabel("Test Variation", fontsize=16)
+    plt.ylabel("Train Variation", fontsize=16)
     if mode == "poster":
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
     else:
-        plt.xticks(rotation=45, ha="right", fontsize=11)
-        plt.yticks(fontsize=11)
+        plt.xticks(rotation=45, ha="right", fontsize=16)
+        plt.yticks(fontsize=16)
     plt.tight_layout()
 
     stem = f"heatmap_{heatmap_id}_{variation_type}_{mode}"
 
     if mode == "poster":
-        plt.savefig(PLOTS_DIR / f"{stem}.svg")
+        plt.savefig(PLOTS_DIR / f"{stem}.svg", bbox_inches="tight")
     else:
-        plt.savefig(PLOTS_DIR / f"{stem}.pdf")
+        plt.savefig(PLOTS_DIR / f"{stem}.pdf", bbox_inches="tight")
 
     plt.show()
 
