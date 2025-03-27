@@ -257,10 +257,10 @@ def print_dataset_length_comparison():
     metrics = [
         "Mean Length",
         "Length Range",
-        "Length Std",
+        # "Length Std",
         "Mean Turns",
         "Turns Range",
-        "Turns Std",
+        # "Turns Std",
     ]
     data = {
         f"{prefix}{metric}": []
@@ -287,10 +287,10 @@ def print_dataset_length_comparison():
 
                 data[f"{prefix}Mean Length"].append(mean_len)
                 data[f"{prefix}Length Range"].append(range_len)
-                data[f"{prefix}Length Std"].append(std_len)
+                # data[f"{prefix}Length Std"].append(std_len)
                 data[f"{prefix}Mean Turns"].append(mean_turns)
                 data[f"{prefix}Turns Range"].append(range_turns)
-                data[f"{prefix}Turns Std"].append(std_turns)
+                # data[f"{prefix}Turns Std"].append(std_turns)
             else:
                 for metric in metrics:
                     data[f"{prefix}{metric}"].append(None)
