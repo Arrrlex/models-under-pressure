@@ -10,7 +10,6 @@ It then repeats this process for each layer and reports the best layer.
 import os
 from dataclasses import dataclass
 from functools import partial
-from multiprocessing import Pool
 from typing import Iterator, Tuple
 
 import numpy as np
@@ -215,14 +214,12 @@ def get_cross_validation_accuracies(
     worker_fn = partial(_train_and_evaluate_fold, layer=layer)
 
     # Use multiprocessing to evaluate folds in parallel
-    with Pool() as pool:
-        results = list(
-            tqdm(
-                pool.imap(worker_fn, fold_pairs),
-                total=cv_splits.num_folds,
-                desc="Cross-validating",
-            )
+    results = [
+        worker_fn(fold_pair)
+        for fold_pair in tqdm(
+            fold_pairs, total=cv_splits.num_folds, desc="Cross-validating"
         )
+    ]
 
     return results
 
@@ -280,20 +277,29 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
 
 
 if __name__ == "__main__":
-    config = ChooseLayerConfig(
-        model_name=LOCAL_MODELS["llama-70b"],
-        dataset_spec={
-            "file_path_or_name": TRAIN_DIR / "manual_upsampled.csv",
-            "field_mapping": {"id": "ids"},
-        },
-        max_samples=None,
-        cv_folds=4,
-        preprocessor="mean",
-        postprocessor="sigmoid",
-        layers=list(range(10, 40, 2)),
-        batch_size=16,
-        output_dir=RESULTS_DIR / "cross_validation",
-    )
-    double_check_config(config)
+    configs = [
+        ChooseLayerConfig(
+            model_name=LOCAL_MODELS[model_name],
+            dataset_spec={
+                "file_path_or_name": TRAIN_DIR
+                / "prompts_13_03_25_gpt-4o_filtered.jsonl",
+            },
+            max_samples=None,
+            cv_folds=4,
+            preprocessor="mean",
+            postprocessor="sigmoid",
+            layers=list(range(0, max_layer, 2)),
+            batch_size=4,
+            output_dir=RESULTS_DIR / "cross_validation",
+        )
+        for model_name, max_layer in [
+            ("gemma-27b", 61),
+            ("gemma-1b", 25),
+            ("gemma-12b", 47),
+        ]
+    ]
 
-    choose_best_layer_via_cv(config)
+    double_check_config(configs)
+
+    for config in configs:
+        choose_best_layer_via_cv(config)

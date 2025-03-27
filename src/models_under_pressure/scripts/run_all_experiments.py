@@ -1,5 +1,6 @@
 import gc
 
+import numpy as np
 import torch
 
 from models_under_pressure import pydra
@@ -28,9 +29,13 @@ from models_under_pressure.utils import double_check_config
 
 @pydra.main(
     config_path=str(CONFIG_DIR),
+    config_name="run_all_experiments_default",
     version_base=None,
 )
 def run_all_experiments(config: RunAllExperimentsConfig):
+    np.random.seed(config.random_seed)
+    torch.manual_seed(config.random_seed)
+
     double_check_config(config)
     valid_experiments = [
         "cv",
@@ -153,8 +158,33 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         generate_heatmaps(heatmap_config)
 
     if "scaling_plot" in config.experiments_to_run:
-        pass
-        # TODO: run the scaling plot experiment
+        scaling_configs = [
+            EvalRunConfig(
+                layer=layer,
+                model_name=LOCAL_MODELS[model],
+                max_samples=None,
+                dataset_path=config.train_data,
+                probe_spec=config.scaling_plot.probe_spec,
+                use_test_set=config.use_test_set,
+            )
+            for layer, model in zip(
+                config.scaling_plot.scaling_layers, config.scaling_plot.scaling_models
+            )
+        ]
+
+        for scaling_config in scaling_configs:
+            print(
+                f"Running evaluation for {scaling_config.id} and results will be saved to {EVALUATE_PROBES_DIR / scaling_config.output_filename}"
+            )
+            results, _ = run_evaluation(
+                config=scaling_config,
+            )
+
+            print(
+                f"Saving results for layer {scaling_config.layer} to {EVALUATE_PROBES_DIR / scaling_config.output_filename}"
+            )
+            for result in results:
+                result.save_to(EVALUATE_PROBES_DIR / scaling_config.output_filename)
 
 
 if __name__ == "__main__":

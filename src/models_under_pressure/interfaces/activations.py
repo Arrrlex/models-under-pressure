@@ -185,7 +185,7 @@ class Activation:
         if per_token:
             return einops.rearrange(self._activations, "b s e -> (b s) e")
         else:
-            return self._activations
+            return self._activations.astype(np.float32)
 
     def get_attention_mask(
         self, per_token: bool = False
@@ -193,7 +193,7 @@ class Activation:
         if per_token:
             return einops.rearrange(self._attention_mask, "b s -> (b s)")
         else:
-            return self._attention_mask
+            return self._attention_mask.astype(np.int32)
 
     def get_input_ids(
         self, per_token: bool = False
@@ -201,7 +201,7 @@ class Activation:
         if per_token:
             return einops.rearrange(self._input_ids, "b s -> (b s)")
         else:
-            return self._input_ids
+            return self._input_ids.astype(np.int32)
 
     def __post_init__(self):
         """Validate shapes after initialization, save the input shapes for later use."""
@@ -373,24 +373,35 @@ class RollingMean(Preprocessor):
 class Preprocessors:
     @staticmethod
     def mean(
-        X: Activation, y: Optional[Float[np.ndarray, " batch_size"]] = None
+        X: Activation,
+        y: Optional[Float[np.ndarray, " batch_size"]] = None,
+        batch_size: int = 200,
     ) -> Tuple[
         Float[np.ndarray, " batch_size embed_dim"],
         Optional[Float[np.ndarray, " batch_size"]],
     ]:
-        # Shape: (batch_size, seq_len, embed_dim)
-        masked_acts = X._activations * X._attention_mask[:, :, None]
+        # Initialize accumulators for sum and token counts
+        batch_size_total, seq_len, embed_dim = X._activations.shape
+        sum_acts = np.zeros((batch_size_total, embed_dim))
+        token_counts = np.zeros((batch_size_total, 1))
 
-        # Shape: (batch_size, embed_dim)
-        # Sum and divide by the number of non-masked tokens
-        sum_acts = masked_acts.sum(axis=1)
+        # Process in batches
+        for i in range(0, batch_size_total, batch_size):
+            end_idx = min(i + batch_size, batch_size_total)
 
-        # Shape: (batch_size, 1)
+            # Get current batch
+            batch_acts = X._activations[i:end_idx].astype(np.float32)
+            batch_mask = X._attention_mask[i:end_idx]
+
+            # Process current batch
+            masked_acts = batch_acts * batch_mask[:, :, None]
+            sum_acts[i:end_idx] = masked_acts.sum(axis=1)
+            token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
+
         # Add small epsilon to avoid division by zero
-        token_counts = X._attention_mask.sum(axis=1, keepdims=True) + 1e-10
+        token_counts = token_counts + 1e-10
 
-        # Shape: (batch_size, embed_dim)
-        # Calc mean of the number of non-masked tokens
+        # Calculate final mean
         return sum_acts / token_counts, y
 
     @staticmethod
