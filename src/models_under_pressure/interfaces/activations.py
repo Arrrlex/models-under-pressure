@@ -19,6 +19,7 @@ class ActivationPerTokenDataset(TorchDataset):
         activations: "Activation",
         y: Float[np.ndarray, " batch_size"],
     ):
+        # Convert to activations here:
         self._activations = torch.Tensor(activations.get_activations(per_token=True))
         self._attention_mask = torch.Tensor(
             activations.get_attention_mask(per_token=True)

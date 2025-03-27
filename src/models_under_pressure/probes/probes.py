@@ -4,13 +4,13 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import Probe, SklearnProbe
-from models_under_pressure.interfaces.probes import ProbeSpec
 
 
 class ProbeFactory:
@@ -68,5 +68,13 @@ class ProbeFactory:
                 layer=layer,
                 hyper_params=probe.hyperparams,
             ).fit(train_dataset)
+        elif probe.name == "pytorch_per_entry_probe_mean":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                _llm=model,
+                layer=layer,
+                hyper_params=probe.hyperparams,
+            ).fit(train_dataset)
+
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")

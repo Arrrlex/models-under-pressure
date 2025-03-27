@@ -276,3 +276,96 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         # self.model.bias.data.copy_(bias.reshape(1))
 
         return self
+
+
+class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
+    """
+    A linear classifier that uses Pytorch. The model trains on the [batch_size, embed_dim]
+    tensor of activations where the sequence length is collapsed into the batch dimension via a mean.
+    """
+
+    training_args: dict
+    model: nn.Module | None = None
+
+    def train(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
+        """
+        Train the classifier on the activations and labels. Inherits from PytorchLinearClassifier.
+        as only the training mechanism is different.
+
+        Args:
+            activations: The activations to train on.
+            y: The labels to train on.
+
+        Returns:
+            None - The self.model is updated in place!
+        """
+
+        device = self.training_args["device"]
+
+        # Create a linear model
+        if self.model is None:
+            self.model = self.create_model(activations.shape[2]).to(device)
+
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.training_args.get("learning_rate", 1e-3),
+            weight_decay=self.training_args.get("weight_decay", 0.01),
+        )
+
+        criterion = nn.BCEWithLogitsLoss()
+
+        # Just this bit here is different from the PytorchLinearClassifier
+        per_entry_dataset = activations.to_dataset(y=y, per_token=False)
+
+        # Process the dataset to be the mean across the seq_len:
+        acts = per_entry_dataset._activations
+        mask = per_entry_dataset._attention_mask
+
+        masked_acts = acts * mask[:, None]
+
+        # Shape: (batch_size, embed_dim)
+        # Sum and divide by the number of non-masked tokens
+        sum_acts = masked_acts.sum(dim=1)
+
+        # Shape: (batch_size, 1)
+        # Add small epsilon to avoid division by zero
+        token_counts = mask.sum(dim=1, keepdim=True) + 1e-10
+
+        per_entry_dataset._activations = sum_acts / token_counts
+
+        dataloader = DataLoader(
+            per_entry_dataset,
+            batch_size=self.training_args["batch_size"],
+            shuffle=True,
+        )
+
+        # Training loop
+        self.model.train()
+        for epoch in range(self.training_args["epochs"]):
+            running_loss = 0.0
+            pbar = tqdm(
+                dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
+            )
+            for batch_idx, batch in enumerate(pbar):
+                acts, _, _, y = batch
+
+                # Preprocessing step on the activations:
+                optimizer.zero_grad()
+
+                # Forward pass
+                outputs = self.model(acts.to(device))
+                loss = criterion(outputs.squeeze(), y.to(device))  # type: ignore
+
+                # Backward pass and optimize
+                loss.backward()
+                optimizer.step()
+
+                # Update running loss and progress bar
+                running_loss += loss.item()
+                avg_loss = running_loss / (batch_idx + 1)
+                pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
+
+            # Print epoch summary
+            print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
+
+        return self
