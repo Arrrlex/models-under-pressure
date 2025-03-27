@@ -5,6 +5,7 @@ import torch
 from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
+    likelihood_continuation_prompts,
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
@@ -94,26 +95,26 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         print("Running compare best probe against baseline...")
         # This recomputes the probe evaluation results for the best probe
 
-        eval_run_config = EvalRunConfig(
-            id="best_probe",
-            model_name=config.model_name,
-            dataset_path=config.train_data,
-            layer=config.best_layer,
-            probe_spec=config.best_probe,
-            max_samples=config.max_samples,
-            use_test_set=config.use_test_set,
-        )
+        # eval_run_config = EvalRunConfig(
+        #     id="best_probe",
+        #     model_name=config.model_name,
+        #     dataset_path=config.train_data,
+        #     layer=config.best_layer,
+        #     probe_spec=config.best_probe,
+        #     max_samples=config.max_samples,
+        #     use_test_set=config.use_test_set,
+        # )
 
-        eval_results, _ = run_evaluation(eval_run_config)
+        # eval_results, _ = run_evaluation(eval_run_config)
 
-        for eval_result in eval_results:
-            eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
+        # for eval_result in eval_results:
+        #     eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
 
-        # Clean up memory
-        del eval_results
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # # Clean up memory
+        # del eval_results
+        # gc.collect()
+        # if torch.cuda.is_available():
+        #     torch.cuda.empty_cache()
 
         # Calculate & save the baselines
         for baseline_model in config.baseline_models:
@@ -124,20 +125,22 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             else:
                 datasets = list(EVAL_DATASETS.keys())
             for dataset_name in datasets:
-                results = evaluate_likelihood_continuation_baseline(
-                    model=model,
-                    dataset_name=dataset_name,
-                    max_samples=config.max_samples,
-                    batch_size=config.batch_size,
-                    use_test_set=config.use_test_set,
-                )
+                for prompt_config in config.baseline_prompts:
+                    results = evaluate_likelihood_continuation_baseline(
+                        model=model,
+                        dataset_name=dataset_name,
+                        max_samples=config.max_samples,
+                        batch_size=config.batch_size,
+                        use_test_set=config.use_test_set,
+                        prompt_config=likelihood_continuation_prompts[prompt_config],
+                    )
 
-                if config.use_test_set:
-                    output_path = BASELINE_RESULTS_FILE_TEST
-                else:
-                    output_path = BASELINE_RESULTS_FILE
-                print(f"Saving results to {output_path}")
-                results.save_to(output_path)
+                    if config.use_test_set:
+                        output_path = BASELINE_RESULTS_FILE_TEST
+                    else:
+                        output_path = BASELINE_RESULTS_FILE
+                    print(f"Saving results to {output_path}")
+                    results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")

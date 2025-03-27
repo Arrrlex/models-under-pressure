@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from pydantic import BaseModel
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -20,17 +19,9 @@ from models_under_pressure.interfaces.results import (
     BaselineResults,
     ContinuationBaselineResults,
     LikelihoodBaselineResults,
+    ContinuationPrompt,
 )
 from models_under_pressure.probes.model import LLMModel
-
-
-# Add this class near the top of the file, after the imports
-class ContinuationPrompt(BaseModel):
-    high_stakes_completion: str
-    low_stakes_completion: str
-    system_prompt: str | None = None
-    user_prompt: str = "{conversation}"
-    conversation_input_key: str = "user_prompt"
 
 
 # This prompt seems to work better with Llama
@@ -400,6 +391,7 @@ def evaluate_likelihood_continuation_baseline(
         low_stakes_scores=results.other_fields["low_stakes_score"],  # type: ignore
         high_stakes_log_likelihoods=results.other_fields["high_stakes_log_likelihood"],  # type: ignore
         low_stakes_log_likelihoods=results.other_fields["low_stakes_log_likelihood"],  # type: ignore
+        prompt_config=prompt_config,
     )
 
 
