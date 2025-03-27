@@ -1,5 +1,9 @@
 import json
 
+import numpy as np
+from jaxtyping import Float
+from sklearn.metrics import roc_auc_score, roc_curve
+from tqdm import tqdm
 
 from models_under_pressure.config import (
     LOCAL_MODELS,
@@ -17,10 +21,15 @@ from models_under_pressure.interfaces.results import (
 )
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.probes.sklearn_probes import compute_accuracy
 from models_under_pressure.utils import double_check_config, print_progress
 
-from tqdm import tqdm
+
+def compute_tpr_at_1pct_fpr(
+    pred_scores: Float[np.ndarray, " batch_size"],
+    labels: Float[np.ndarray, " batch_size"],
+) -> float:
+    fpr, tpr, _ = roc_curve(labels, pred_scores)
+    return float(tpr[np.where(fpr <= 0.01)[0][-1]])
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
@@ -63,13 +72,20 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                     f"Evaluating on variation '{variation_type}'='{test_variation_value}'"
                 )
                 test_split = variations.test_splits[test_variation_value]
-                accuracy = compute_accuracy(probe, test_split)
+                _, pred_scores = probe.predict_proba(test_split)
+                pred_labels = pred_scores > 0.5
+                labels = test_split.labels_numpy()
+                metrics = {
+                    "accuracy": (pred_labels == labels).mean(),
+                    "tpr_at_1pct_fpr": compute_tpr_at_1pct_fpr(pred_scores, labels),
+                    "auroc": roc_auc_score(labels, pred_scores),
+                }
 
                 result = HeatmapCellResult(
                     variation_type=variation_type,
                     train_variation_value=train_variation_value,
                     test_variation_value=test_variation_value,
-                    accuracy=accuracy,
+                    metrics=metrics,
                 )
 
                 print(result)

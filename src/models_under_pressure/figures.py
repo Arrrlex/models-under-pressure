@@ -8,76 +8,129 @@ from models_under_pressure.interfaces.results import (
     EvaluationResult,
 )
 
+sns.set_style("darkgrid")
+
 
 def generate_heatmap_plot(
-    heatmap_id: str, variation_type: str, result: pd.DataFrame, mode: str
+    heatmap_id: str,
+    variation_types: list[str],
+    results: list[pd.DataFrame],
+    mode: str,
+    metric: str,
 ):
     label_map = {
         "Character Perspective": "Perspective",
         "Response to Situation": "Response",
         "Prompt to LLM": "Prompt",
         "Third Person": "3rd Person",
-        "overly polite": "polite",
-        "very short": "v short",
+        "overly polite": "Polite",
+        "angry": "Angry",
+        "vulnerable": "Vulnerable",
+        "casual": "Casual",
+        "very short": "V. Short",
+        "short": "Short",
+        "medium": "Medium",
+        "long": "Long",
     }
-    # Create dataframe from performances
+    variation_map = {
+        "length": "Length",
+        "language": "Language",
+        "prompt_style": "Prompt Style",
+        "tone": "Tone",
+    }
 
-    heatmap_matrix = result.pivot(
-        index="train_variation_value", columns="test_variation_value", values="accuracy"
+    metric_map = {
+        "accuracy": "Accuracy",
+        "tpr_at_1pct_fpr": "TPR @ 1% FPR",
+        "auroc": "AUROC",
+    }
+
+    # Create a figure with subplots in one row
+    fig, axes = plt.subplots(
+        1,
+        len(variation_types),
+        figsize=(7 * len(variation_types) + 3, 8),
+    )
+    if len(variation_types) == 1:
+        axes = [axes]
+
+    # Adjust subplot parameters to give specified padding
+    plt.subplots_adjust(
+        left=0.1,  # Adjust if y-labels are cut off
+        right=0.85,  # Make more room for colorbar
+        bottom=0.15,  # Adjust if x-labels are cut off
+        top=0.9,  # Adjust if titles are cut off
+        wspace=0.3,  # Space between plots
     )
 
-    # Split index and column labels and take first word
-    heatmap_matrix.index = pd.Index(
-        [label_map.get(label, label) for label in heatmap_matrix.index]
-    )
-    heatmap_matrix.columns = pd.Index(
-        [label_map.get(label, label) for label in heatmap_matrix.columns]
-    )
-
-    # Create the plot
-    plt.figure(figsize=(10, 8))
-    heatmap = sns.heatmap(
-        heatmap_matrix,
-        annot=True,  # Show numbers in cells
-        fmt=".3f",  # Format numbers to 3 decimal places
-        cmap="Blues",
-        vmin=0.7,  # Minimum value for color scaling
-        vmax=1.0,  # Maximum value for color scaling
-        center=0.925,  # Center point for color divergence
-        square=True,  # Make cells square
-        annot_kws={
-            "size": 16 if mode == "poster" else 12
-        },  # Larger annotations for poster
-    )
-
-    # Add label to colorbar and customize ticks for poster mode
-    colorbar = heatmap.collections[0].colorbar
-    colorbar.set_label("Accuracy", size=16 if mode == "poster" else 12)
-    if mode == "poster":
-        colorbar.set_ticks([0.7, 1.0])  # Only show min and max ticks
-        colorbar.ax.tick_params(labelsize=14)  # Larger colorbar ticks
-
-    # Customize the plot with larger fonts
-    if mode != "poster":
-        plt.title(
-            f"Probe Generalization Across {variation_type.replace('_', ' ').title()}",
-            fontsize=14,
+    for idx, (ax, variation_type, result) in enumerate(
+        zip(axes, variation_types, results)
+    ):
+        heatmap_matrix = result.pivot(
+            index="train_variation_value",
+            columns="test_variation_value",
+            values=metric,
         )
 
-    plt.xlabel("Test Variation", fontsize=16 if mode == "poster" else 12)
-    plt.ylabel("Train Variation", fontsize=16 if mode == "poster" else 12)
-    if mode == "poster":
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
+        # Apply label mapping
+        heatmap_matrix.index = pd.Index(
+            [label_map.get(label, label) for label in heatmap_matrix.index]
+        )
+        heatmap_matrix.columns = pd.Index(
+            [label_map.get(label, label) for label in heatmap_matrix.columns]
+        )
+
+        # Create heatmap
+        _ = sns.heatmap(
+            heatmap_matrix,
+            annot=True,
+            fmt=".2f",
+            cmap="Blues",
+            vmin=0.7,
+            vmax=1.0,
+            center=0.925,
+            square=True,
+            ax=ax,
+            annot_kws={"size": 26 if len(heatmap_matrix.index) < 5 else 24},
+            cbar=False,  # Don't show colorbar for any plot
+        )
+
+        # Customize each subplot
+        if idx == 0:  # Only leftmost plot shows y-label
+            ax.set_ylabel("Train Variation", fontsize=22)
+        else:
+            ax.set_ylabel("")
+            # ax.set_yticklabels([])
+
+        ax.set_xlabel("Test Variation", fontsize=22)
+        ax.set_title(
+            variation_map.get(variation_type, variation_type), fontsize=22, pad=20
+        )
+
+        # Increase tick label sizes
+        ax.tick_params(axis="both", which="major", labelsize=20)
+        if mode != "poster":
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+            ax.set_yticklabels(ax.get_yticklabels(), rotation=0, ha="right")
+
+    # Add a single colorbar for the entire figure
+    if mode != "poster":
+        cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])  # Moved slightly to the right
+        fig.colorbar(axes[-1].collections[0], cax=cbar_ax, label=metric_map[metric])
+        cbar_ax.tick_params(labelsize=20)
+        cbar_ax.set_ylabel(metric_map[metric], fontsize=22)
     else:
-        plt.xticks(rotation=45, ha="right", fontsize=11)
-        plt.yticks(fontsize=11)
-    plt.tight_layout()
+        cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])  # Moved slightly to the right
+        _ = fig.colorbar(axes[-1].collections[0], cax=cbar_ax, ticks=[0.7, 1.0])
+        cbar_ax.tick_params(labelsize=20)
+        cbar_ax.set_ylabel(metric_map[metric], fontsize=22)
 
-    stem = f"heatmap_{heatmap_id}_{variation_type}_{mode}"
-
-    plt.savefig(PLOTS_DIR / f"{stem}.pdf")
-    plt.savefig(PLOTS_DIR / f"{stem}.svg")
+    # Save the figure
+    stem = f"heatmap_{heatmap_id}_{metric}_{mode}"
+    if mode == "poster":
+        plt.savefig(PLOTS_DIR / f"{stem}.svg", bbox_inches="tight")
+    else:
+        plt.savefig(PLOTS_DIR / f"{stem}.pdf", bbox_inches="tight")
 
     plt.show()
 
