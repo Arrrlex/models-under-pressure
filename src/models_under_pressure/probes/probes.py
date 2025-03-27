@@ -4,13 +4,13 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import Probe, SklearnProbe
-from models_under_pressure.interfaces.probes import ProbeSpec
 
 
 class ProbeFactory:
