@@ -12,7 +12,11 @@ sns.set_style("darkgrid")
 
 
 def generate_heatmap_plot(
-    heatmap_id: str, variation_types: list[str], results: list[pd.DataFrame], mode: str
+    heatmap_id: str,
+    variation_types: list[str],
+    results: list[pd.DataFrame],
+    mode: str,
+    metric: str,
 ):
     label_map = {
         "Character Perspective": "Perspective",
@@ -33,6 +37,12 @@ def generate_heatmap_plot(
         "language": "Language",
         "prompt_style": "Prompt Style",
         "tone": "Tone",
+    }
+
+    metric_map = {
+        "accuracy": "Accuracy",
+        "tpr_at_1pct_fpr": "TPR @ 1% FPR",
+        "auroc": "AUROC",
     }
 
     # Create a figure with subplots in one row
@@ -59,7 +69,7 @@ def generate_heatmap_plot(
         heatmap_matrix = result.pivot(
             index="train_variation_value",
             columns="test_variation_value",
-            values="accuracy",
+            values=metric,
         )
 
         # Apply label mapping
@@ -106,17 +116,17 @@ def generate_heatmap_plot(
     # Add a single colorbar for the entire figure
     if mode != "poster":
         cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])  # Moved slightly to the right
-        fig.colorbar(axes[-1].collections[0], cax=cbar_ax, label="Accuracy")
+        fig.colorbar(axes[-1].collections[0], cax=cbar_ax, label=metric_map[metric])
         cbar_ax.tick_params(labelsize=20)
-        cbar_ax.set_ylabel("Accuracy", fontsize=22)
+        cbar_ax.set_ylabel(metric_map[metric], fontsize=22)
     else:
         cbar_ax = fig.add_axes([0.88, 0.15, 0.02, 0.7])  # Moved slightly to the right
         _ = fig.colorbar(axes[-1].collections[0], cax=cbar_ax, ticks=[0.7, 1.0])
         cbar_ax.tick_params(labelsize=20)
-        cbar_ax.set_ylabel("Accuracy", fontsize=22)
+        cbar_ax.set_ylabel(metric_map[metric], fontsize=22)
 
     # Save the figure
-    stem = f"heatmap_{heatmap_id}_combined_{mode}"
+    stem = f"heatmap_{heatmap_id}_{metric}_{mode}"
     if mode == "poster":
         plt.savefig(PLOTS_DIR / f"{stem}.svg", bbox_inches="tight")
     else:
