@@ -3,9 +3,17 @@ import gc
 import torch
 
 from models_under_pressure import pydra
+from models_under_pressure.baselines.continuation import (
+    evaluate_likelihood_continuation_baseline,
+)
 from models_under_pressure.config import (
+    BASELINE_RESULTS_FILE,
+    BASELINE_RESULTS_FILE_TEST,
     CONFIG_DIR,
+    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
+    LOCAL_MODELS,
+    TEST_DATASETS,
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
@@ -14,6 +22,7 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
+from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.utils import double_check_config
 
 
@@ -107,28 +116,28 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             torch.cuda.empty_cache()
 
         # Calculate & save the baselines
-        # for baseline_model in config.baseline_models:
-        #     baseline_model_name = LOCAL_MODELS.get(baseline_model, baseline_model)
-        #     model = LLMModel.load(baseline_model_name)
-        #     if config.use_test_set:
-        #         datasets = list(TEST_DATASETS.keys())
-        #     else:
-        #         datasets = list(EVAL_DATASETS.keys())
-        #     for dataset_name in datasets:
-        #         results = evaluate_likelihood_continuation_baseline(
-        #             model=model,
-        #             dataset_name=dataset_name,
-        #             max_samples=config.max_samples,
-        #             batch_size=config.batch_size,
-        #             use_test_set=config.use_test_set,
-        #         )
+        for baseline_model in config.baseline_models:
+            baseline_model_name = LOCAL_MODELS.get(baseline_model, baseline_model)
+            model = LLMModel.load(baseline_model_name)
+            if config.use_test_set:
+                datasets = list(TEST_DATASETS.keys())
+            else:
+                datasets = list(EVAL_DATASETS.keys())
+            for dataset_name in datasets:
+                results = evaluate_likelihood_continuation_baseline(
+                    model=model,
+                    dataset_name=dataset_name,
+                    max_samples=config.max_samples,
+                    batch_size=config.batch_size,
+                    use_test_set=config.use_test_set,
+                )
 
-        #         if config.use_test_set:
-        #             output_path = BASELINE_RESULTS_FILE_TEST
-        #         else:
-        #             output_path = BASELINE_RESULTS_FILE
-        #         print(f"Saving results to {output_path}")
-        #         results.save_to(output_path)
+                if config.use_test_set:
+                    output_path = BASELINE_RESULTS_FILE_TEST
+                else:
+                    output_path = BASELINE_RESULTS_FILE
+                print(f"Saving results to {output_path}")
+                results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")
