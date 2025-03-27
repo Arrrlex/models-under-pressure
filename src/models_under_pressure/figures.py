@@ -10,7 +10,7 @@ from models_under_pressure.interfaces.results import (
 
 
 def generate_heatmap_plot(
-    heatmap_id: str, variation_type: str, result: pd.DataFrame, mode: str
+    heatmap_id: str, variation_type: str, result: pd.DataFrame, mode: str, metric: str
 ):
     label_map = {
         "Character Perspective": "Perspective",
@@ -23,7 +23,9 @@ def generate_heatmap_plot(
     # Create dataframe from performances
 
     heatmap_matrix = result.pivot(
-        index="train_variation_value", columns="test_variation_value", values="accuracy"
+        index="train_variation_value",
+        columns="test_variation_value",
+        values=metric,
     )
 
     # Split index and column labels and take first word
@@ -52,7 +54,8 @@ def generate_heatmap_plot(
 
     # Add label to colorbar and customize ticks for poster mode
     colorbar = heatmap.collections[0].colorbar
-    colorbar.set_label("Accuracy", size=16 if mode == "poster" else 12)
+    metric_label = metric.replace("_", " ").title()
+    colorbar.set_label(metric_label, size=16 if mode == "poster" else 12)
     if mode == "poster":
         colorbar.set_ticks([0.7, 1.0])  # Only show min and max ticks
         colorbar.ax.tick_params(labelsize=14)  # Larger colorbar ticks

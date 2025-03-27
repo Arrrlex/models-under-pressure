@@ -197,7 +197,12 @@ class HeatmapCellResult(BaseModel):
     variation_type: str
     train_variation_value: str
     test_variation_value: str
-    accuracy: float
+    metrics: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        d = self.model_dump()
+        d.pop("metrics")
+        return d | self.metrics
 
 
 class HeatmapRunResults(BaseModel):
@@ -205,7 +210,7 @@ class HeatmapRunResults(BaseModel):
     results: list[HeatmapCellResult]
 
     def as_pandas(self) -> pd.DataFrame:
-        return pd.DataFrame([result.model_dump() for result in self.results])
+        return pd.DataFrame([result.to_dict() for result in self.results])
 
     def heatmaps(self) -> dict[str, pd.DataFrame]:
         df = self.as_pandas()
