@@ -10,6 +10,7 @@ uv.lock
 temp_data/*
 .DS_Store
 outputs/*
+images/*
 
 config/*local*.yaml
 
