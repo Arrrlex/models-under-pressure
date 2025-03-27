@@ -165,6 +165,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 max_samples=None,
                 dataset_path=config.train_data,
                 probe_spec=config.scaling_plot.probe_spec,
+                use_test_set=config.use_test_set,
             )
             for layer, model in zip(
                 config.scaling_plot.scaling_layers, config.scaling_plot.scaling_models
