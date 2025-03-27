@@ -104,11 +104,16 @@ class LLMModel:
 
         tokenizer_kwargs = default_tokenizer_kwargs | tokenizer_kwargs
 
-        input_str = self.tokenizer.apply_chat_template(
-            [[d.model_dump() for d in dialogue] for dialogue in dialogues],
-            tokenize=False,  # Return string instead of tokens
-            add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
-        )
+        try:
+            input_str = self.tokenizer.apply_chat_template(
+                [[d.model_dump() for d in dialogue] for dialogue in dialogues],
+                tokenize=False,  # Return string instead of tokens
+                add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
+            )
+
+        except Exception as e:
+            print(f"Error tokenizing input: {e}")
+            breakpoint()
 
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
         for k, v in token_dict.items():
@@ -281,7 +286,9 @@ class LLMModel:
 
                 # Append the padding to each activation and attention mask element:
                 if self.tokenizer.padding_side == "left":
-                    all_activations[i] = np.concatenate([act_padding, act], axis=1)
+                    all_activations[i] = np.concatenate(
+                        [act_padding, act], axis=1
+                    ).astype(np.float32)
                     all_attention_masks[i] = np.concatenate(
                         [attn_padding, all_attention_masks[i]], axis=1
                     )
@@ -289,7 +296,9 @@ class LLMModel:
                         [input_ids_padding, all_input_ids[i]], axis=1
                     )
                 else:
-                    all_activations[i] = np.concatenate([act, act_padding], axis=1)
+                    all_activations[i] = np.concatenate(
+                        [act, act_padding], axis=1
+                    ).astype(np.float32)
                     all_attention_masks[i] = np.concatenate(
                         [all_attention_masks[i], attn_padding], axis=1
                     )
