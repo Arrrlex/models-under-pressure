@@ -164,6 +164,7 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
+    default_hyperparams: dict[str, Any] | None = None
     probes: list[ProbeSpec]
     best_probe: ProbeSpec
     variation_types: list[str]
