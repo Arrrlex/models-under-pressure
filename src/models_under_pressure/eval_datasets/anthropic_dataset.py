@@ -17,7 +17,7 @@ def parse_messages(text: str) -> list[Message]:
     current_role = None
 
     for part in text_parts:
-        if part.startswith("Human:"):
+        if (part.startswith("Human:")) or (part.startswith("Humans:")):
             # Save previous message if exists
             if current_message is not None:
                 assert current_role is not None
