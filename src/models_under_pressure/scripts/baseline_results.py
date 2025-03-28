@@ -65,6 +65,9 @@ def print_baseline_results(results_file: Path, fpr: float = 0.2, metric: str = "
     df = df.groupby(["model_prompt", "dataset"])["score"].mean().reset_index()
     pivot_df = df.pivot(index="model_prompt", columns="dataset", values="score")
 
+    # Add average column
+    pivot_df["Average"] = pivot_df.mean(axis=1)
+
     metric_name = "TPR" if metric == "tpr" else "AUROC"
     if metric == "tpr":
         print(f"\n{metric_name} at {fpr * 100:.0f}% FPR for each model and dataset:")
@@ -78,5 +81,5 @@ def print_baseline_results(results_file: Path, fpr: float = 0.2, metric: str = "
 
 if __name__ == "__main__":
     results_file = DATA_DIR / "probes/continuation_baseline_results_variations.jsonl"
-    # print_baseline_results(results_file, fpr=0.01, metric="tpr")
-    print_baseline_results(results_file, fpr=0.01, metric="auroc")
+    print_baseline_results(results_file, fpr=0.01, metric="tpr")
+    # print_baseline_results(results_file, fpr=0.01, metric="auroc")
