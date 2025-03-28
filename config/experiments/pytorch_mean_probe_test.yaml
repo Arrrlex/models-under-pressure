@@ -13,3 +13,9 @@ scaling_plot:
 
   probe_spec:
     name: "pytorch_per_entry_probe_mean"
+    hyperparams:
+      epochs: 20
+      learning_rate: 0.001
+      weight_decay: 0.01
+      device: "cpu"
+      batch_size: 32

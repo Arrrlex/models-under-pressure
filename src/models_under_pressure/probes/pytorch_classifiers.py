@@ -43,11 +43,14 @@ class PytorchLinearClassifier:
             self.model = self.create_model(activations.shape[2]).to(device)
 
         # Initialize optimizer
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(),
-            lr=self.training_args.get("learning_rate", 1e-3),
-            weight_decay=self.training_args.get("weight_decay", 0.01),
-        )
+        # optimizer = torch.optim.AdamW(
+        #     self.model.parameters(),
+        #     lr=self.training_args.get("learning_rate", 1e-3),
+        #     weight_decay=self.training_args.get("weight_decay", 0.01),
+        # )
+
+        optimizer = torch.optim.LBFGS(self.model.parameters(), max_iter=100)
+
         criterion = nn.BCEWithLogitsLoss()
 
         per_token_dataset = activations.to_dataset(y=y, per_token=True)
@@ -321,7 +324,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         acts = per_entry_dataset._activations
         mask = per_entry_dataset._attention_mask
 
-        masked_acts = acts * mask[:, None]
+        masked_acts = acts * mask[..., None]
 
         # Shape: (batch_size, embed_dim)
         # Sum and divide by the number of non-masked tokens
