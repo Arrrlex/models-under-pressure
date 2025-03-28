@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from models_under_pressure.config import (
-    EVAL_DATASETS,
+    EVAL_DATASETS_RAW,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     PLOTS_DIR,
-    TEST_DATASETS,
+    TEST_DATASETS_BALANCED,
     EvalRunConfig,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
@@ -17,9 +17,9 @@ from models_under_pressure.interfaces.probes import ProbeSpec
 # Add this before creating any plots
 plt.rcParams.update(
     {
-        "font.size": 18,
-        "axes.titlesize": 20,
-        "axes.labelsize": 20,
+        "font.size": 17,
+        "axes.titlesize": 22,
+        "axes.labelsize": 19,
         "xtick.labelsize": 17,
         "ytick.labelsize": 17,
         "legend.fontsize": 17,
@@ -107,12 +107,12 @@ def plot_calibration(
 
     dataset_names = {
         "manual": "Manual",
-        "anthropic": "Anthropic HH-RLHF",
-        "mt": "Medical Transcriptions",
-        "mts": "Medical Transcriptions (Clinical Dialogues)",
+        "anthropic": "Anthropic HH",
+        "mt": "MT Samples",
+        "mts": "MTS Dialog",
         "toolace": "ToolACE",
         "mental_health": "Mental Health",
-        "redteaming": "AYA Red Teaming",
+        "redteaming": "Aya Red Teaming",
     }
 
     # Calibration curve
@@ -147,7 +147,7 @@ def plot_calibration(
 
     # ax1.set_title("Caliberation Curves")
     ax1.set_xlabel("Predicted Probability (Binned)")
-    ax1.set_ylabel("Mean Observed Label")
+    ax1.set_ylabel("Mean Stakes Rating")
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
@@ -201,6 +201,7 @@ def plot_stacked_histogram(
     plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
     plt.close()
 
+
 def run_calibration(config: EvalRunConfig):
     """
     Run calibration analysis with the provided EvalRunConfig.
@@ -209,15 +210,17 @@ def run_calibration(config: EvalRunConfig):
     y_true_list = []
     y_prob_list = []
     scale_labels_list = []
-    for eval_dataset in EVAL_DATASETS.keys():
-        data = load_data(EVALUATE_PROBES_DIR / "raw_results" / config.output_filename)
+    for eval_dataset in EVAL_DATASETS_RAW.keys():
+        data = load_data(
+            EVALUATE_PROBES_DIR / "raw_results" / "results_raw_caliberation_all.jsonl"
+        )
         y_true, y_prob, scale_labels = prepare_data(
             data, eval_dataset, config=config, use_scale_labels=True
         )
         y_true_list.append(y_true)
         y_prob_list.append(y_prob)
         scale_labels_list.append(scale_labels)
-    for eval_dataset in TEST_DATASETS.keys():
+    for eval_dataset in TEST_DATASETS_BALANCED.keys():
         data = load_data(
             EVALUATE_PROBES_DIR / "raw_results" / "results_best_probe_test.jsonl"
         )
@@ -231,18 +234,17 @@ def run_calibration(config: EvalRunConfig):
         y_true_list,
         y_prob_list,
         scale_labels_list,
-        list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
+        list(EVAL_DATASETS_RAW.keys()) + list(TEST_DATASETS_BALANCED.keys()),
         config=config,
         n_bins=10,
     )
-    plot_stacked_histogram(
-        y_true_list,
-        y_prob_list,
-        list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
-        config=config,
-        n_bins=10,
-    )
-
+    # plot_stacked_histogram(
+    #     y_true_list,
+    #     y_prob_list,
+    #     list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
+    #     config=config,
+    #     n_bins=10,
+    # )
 
 
 # Main execution
