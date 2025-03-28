@@ -236,8 +236,19 @@ def display_word_level_visualization(
             def get_color(val: float) -> str:
                 # Normalize to 0-1 scale
                 normalized = (val - min_val) / range_val
-                # Use a color scale from blue (low) to red (high)
-                return f"rgb({int(255 * normalized)}, 0, {int(255 * (1 - normalized))})"
+
+                # Calculate opacity based on distance from 0.5 (middle point)
+                # Values close to 0.5 will be nearly transparent
+                alpha = min(
+                    1.0, abs(normalized - 0.5) * 4
+                )  # Scale to make middle values transparent
+
+                if normalized < 0.5:
+                    # Green for lower values (more intense as it approaches 0)
+                    return f"rgba(20, 200, 20, {alpha})"
+                else:
+                    # Red for higher values (more intense as it approaches 1)
+                    return f"rgba(255, 120, 120, {alpha})"
 
             # Build HTML for colored tokens
             html = "<div style='font-size: 18px; line-height: 2;'>"
@@ -252,7 +263,8 @@ def display_word_level_visualization(
                     # For string tokens, handle special characters
                     display_token = str(token).replace("Ġ", " ").replace("▁", " ")
 
-                html += f"<span style='background-color: {color}; color: white; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
+                # Use black text color always, with colored background based on value
+                html += f"<span style='background-color: {color}; color: black; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
             html += "</div>"
 
             # Add color legend
@@ -260,7 +272,7 @@ def display_word_level_visualization(
             <div style='margin-top: 20px;'>
                 <p><strong>Color Legend:</strong></p>
                 <div style='display: flex; align-items: center; margin-bottom: 10px;'>
-                    <div style='width: 300px; height: 30px; background: linear-gradient(to right, rgb(0, 0, 255), rgb(128, 0, 128), rgb(255, 0, 0));'></div>
+                    <div style='width: 300px; height: 30px; background: linear-gradient(to right, rgba(20, 200, 20, 1), rgba(20, 200, 20, 0), rgba(200, 20, 20, 0), rgba(200, 20, 20, 1));'></div>
                 </div>
                 <div style='display: flex; justify-content: space-between; width: 300px;'>
                     <span>{min_val:.4f}</span>
