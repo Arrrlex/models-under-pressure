@@ -109,7 +109,7 @@ def plot_calibration(
         "manual": "Manual",
         "anthropic": "Anthropic HH-RLHF",
         "mt": "Medical Transcriptions",
-        "mts": "Clinical Dialogues",
+        "mts": "Medical Transcriptions (Clinical Dialogues)",
         "toolace": "ToolACE",
         "mental_health": "Mental Health",
         "redteaming": "AYA Red Teaming",
@@ -201,7 +201,6 @@ def plot_stacked_histogram(
     plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
     plt.close()
 
-
 def run_calibration(config: EvalRunConfig):
     """
     Run calibration analysis with the provided EvalRunConfig.
@@ -243,6 +242,7 @@ def run_calibration(config: EvalRunConfig):
         config=config,
         n_bins=10,
     )
+
 
 
 # Main execution
