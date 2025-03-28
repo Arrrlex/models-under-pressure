@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from datasets import load_dataset
-
 from models_under_pressure.config import RunConfig
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
@@ -256,7 +254,7 @@ async def generate_prompts_file(run_config: RunConfig) -> None:
 def label_and_filter():
     # Define the input file path
     config = RunConfig(run_id="debug")
-    # input_file = Path(f"{config.run_dir}/prompts_{config.suffix}.jsonl")
+    input_file = Path(f"{config.run_dir}/prompts_13_03_25_gpt-4o.jsonl")
     # output_file = Path(f"{config.run_dir}/prompts_{config.suffix}_labeled.jsonl")
     # field_mapping = {
     #     "prompt": "inputs",
@@ -352,14 +350,140 @@ def label_and_filter():
 # Install datasets library if you haven't already
 # pip install datasets
 
+import pandas as pd
 
-# Load the dataset
-dataset = load_dataset("CohereForAI/aya_redteaming")
+from models_under_pressure.config import EVALUATE_PROBES_DIR, TEST_DATASETS
+
+# Load and label the datasets
+# for dataset_name in TEST_DATASETS.keys():
+#     input_file = Path(TEST_DATASETS[dataset_name])
+#     try:
+#         output_file = Path(
+#             str(TEST_DATASETS[dataset_name]).replace(".jsonl", "_labeled.jsonl")
+#         )
+#     except Exception:
+#         output_file = Path(
+#             str(TEST_DATASETS[dataset_name]).replace(".csv", "_labeled.jsonl")
+#         )
+
+#     field_mapping = {}
+
+#     print(f"Loading dataset {dataset_name} from {input_file}")
+#     dataset = Dataset.load_from(input_file, field_mapping=field_mapping)
+
+#     # Label the dataset
+#     labeled_dataset = label_dataset(
+#         dataset=dataset,
+#         model="gpt-4o",
+#         max_concurrent=50,
+#         use_rubric=False,
+#         force_override=False,
+#     )
+
+#     # Save the labeled dataset
+#     print(f"Saving labeled dataset to {output_file}")
+#     labeled_dataset.save_to(output_file, overwrite=True)
+#     print(f"Labeling complete for {dataset_name}!")
+
+# load a json file from evaluate probes dir
+results = []
+with open(EVALUATE_PROBES_DIR / "raw_results/results_best_probe_test.jsonl", "r") as f:
+    for line in f:
+        results.append(json.loads(line))
+
+
+for dataset_name in TEST_DATASETS.keys():
+    data_entry = [entry for entry in results if entry["dataset_name"] == dataset_name][
+        -1
+    ]
+    # can you make a datframe having number of rows as number of entries in data_entry["ground_truth_scale_labels"]
+
+    filter_df = pd.DataFrame(
+        {
+            "ground_truth_scale_labels": data_entry["ground_truth_scale_labels"],
+            "output_labels": data_entry["output_labels"],
+            "ground_truth_labels": data_entry["ground_truth_labels"],
+            "output_scores": data_entry["output_scores"],
+        }
+    )
+    if dataset_name != "redteaming":
+        info_df = pd.read_json(
+            str(TEST_DATASETS[dataset_name]).replace(".jsonl", "_labeled.jsonl"),
+            orient="records",
+            lines=True,
+        )
+    else:
+        info_df = pd.read_json(
+            str(TEST_DATASETS[dataset_name]).replace(".csv", "_labeled.jsonl")
+        )
+    assert len(filter_df) == len(info_df)
+    filter_df_categories = pd.concat(
+        [filter_df, info_df["scale_label_categories"]], axis=1
+    )
+
+    filter_df_categories = filter_df_categories[
+        (
+            filter_df_categories["scale_label_categories"].isin(
+                [
+                    # "Low-Stakes",
+                    "Critical High-Stakes",
+                    # "Minimal Impact",
+                    # "Moderate High-Stakes",
+                    # "Context-Specific High-Stakes",
+                    "Context-Specific Low-Stakes",
+                ]
+            )
+        )
+    ]
+    # plot auroc using column probe scores of filter_df_categories
+    import numpy as np
+    from sklearn.metrics import roc_auc_score, roc_curve
+
+    auroc = roc_auc_score(
+        filter_df_categories["ground_truth_labels"],
+        filter_df_categories["output_scores"],
+    )
+    # calculate TPR at 1% FPR
+    fpr, tpr, thresholds = roc_curve(
+        filter_df_categories["ground_truth_labels"],
+        filter_df_categories["output_scores"],
+    )
+    idx_fpr_1 = np.where(fpr <= 0.01)[0]
+    if len(idx_fpr_1) > 0:
+        tpr_at_fpr_1 = np.max(tpr[idx_fpr_1])
+        print(f"TPR at FPR=1 for {dataset_name}: {tpr_at_fpr_1}")
+    # print(f"AUROC for {dataset_name}: {auroc}")
+    # print(f"TPR at 1% FPR for {dataset_name}: {tpr_at_fpr_1}")
+
 
 # Save dataset to disk in JSON format
-json.dump(dataset, open("datasets/aya_redteaming_dataset.json", "w"))
+# json.dump(dataset, open("datasets/aya_redteaming_dataset.json", "w"))
 
 
 # Alternatively, save specific splits (train, test)
 # dataset["train"].to_json("datasets/aya_redteaming_train.json")
 # dataset["test"].to_json("datasets/aya_redteaming_test.json")
+
+# output_file = Path(f"{config.run_dir}/prompts_{config.suffix}_labeled.jsonl")
+# field_mapping = {
+#     "prompt": "inputs",
+#     "id": "ids",
+# }
+# # Load the dataset
+# print(f"Loading dataset from {input_file}")
+# dataset = Dataset.load_from(input_file, field_mapping=field_mapping)
+
+# # Label the dataset
+# labeled_dataset = label_dataset(  # type: ignore
+#     dataset=dataset,
+#     model="gpt-4o",
+#     max_concurrent=10,
+#     use_rubric=False,
+#     force_override=False,
+# )
+
+# # Save the labeled dataset
+# print(f"Saving labeled dataset to {output_file}")
+# labeled_dataset.save_to(output_file)
+
+# print("Labeling complete!")

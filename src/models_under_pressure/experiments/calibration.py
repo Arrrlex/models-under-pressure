@@ -9,6 +9,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     PLOTS_DIR,
+    TEST_DATASETS,
     EvalRunConfig,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
@@ -17,8 +18,8 @@ from models_under_pressure.interfaces.probes import ProbeSpec
 plt.rcParams.update(
     {
         "font.size": 18,
-        "axes.titlesize": 18,
-        "axes.labelsize": 18,
+        "axes.titlesize": 20,
+        "axes.labelsize": 20,
         "xtick.labelsize": 17,
         "ytick.labelsize": 17,
         "legend.fontsize": 17,
@@ -42,9 +43,9 @@ def prepare_data(
 ) -> tuple[list[int], list[float], list[float]]:
     dataset_res = [
         entry
+        # entry["config"]["id"] == config.id
         if (
-            entry["config"]["id"] == config.id
-            and entry["dataset_name"] == dataset_name
+            entry["dataset_name"] == dataset_name
             and entry["metrics"]["layer"] == config.layer
             and entry["config"]["model_name"] == config.model_name
             and entry["config"]["max_samples"] == config.max_samples
@@ -110,6 +111,8 @@ def plot_calibration(
         "mt": "Medical Transcriptions",
         "mts": "Clinical Dialogues",
         "toolace": "ToolACE",
+        "mental_health": "Mental Health",
+        "redteaming": "AYA Red Teaming",
     }
 
     # Calibration curve
@@ -140,42 +143,63 @@ def plot_calibration(
         )
     ax1.plot([0, 1], [1, 10], linestyle="--", linewidth=3, label="Perfect Calibration")
     ax1.set_xlim(0.0, 1.0)
+    ax1.set_ylim(0.0, 10.0)
 
-    # ax1.set_title(f"Caliberation Curve for {dataset_names[file_name]} dataset")
+    # ax1.set_title("Caliberation Curves")
     ax1.set_xlabel("Predicted Probability (Binned)")
     ax1.set_ylabel("Mean Observed Label")
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
-    plt.savefig(PLOTS_DIR / f"{config.id}_calibration_all.svg")
-    # Stacked histogram showing high stakes (1) and low stakes (0) with different colors
-    # bins = np.linspace(0, 1, n_bins + 1)
+    plt.savefig(PLOTS_DIR / f"{config.id}_calibration_all.pdf")
 
-    # # Separate probabilities for high stakes and low stakes
-    # high_stakes_probs = [prob for prob, label in zip(y_prob, y_true) if label == 1]
-    # low_stakes_probs = [prob for prob, label in zip(y_prob, y_true) if label == 0]
 
-    # # Plot stacked histogram
-    # ax2.hist(
-    #     [low_stakes_probs, high_stakes_probs],
-    #     bins=bins,
-    #     stacked=True,
-    #     color=["green", "red"],
-    #     label=["Low Stakes", "High Stakes"],
-    #     edgecolor="black",
-    #     alpha=0.7,
-    # )
+def plot_stacked_histogram(
+    y_true_list: list[list[int]],
+    y_prob_list: list[list[float]],
+    file_names: list[str],
+    config: EvalRunConfig,
+    n_bins: int = 10,
+) -> None:
+    fig, ax2 = plt.subplots(
+        nrows=1,
+        figsize=(10, 10),
+        # gridspec_kw={"height_ratios": [2, 1]},
+        constrained_layout=False,
+    )
+    high_stakes_probs = []
+    low_stakes_probs = []
+    for y_true, y_prob, file_name in zip(y_true_list, y_prob_list, file_names):
+        # Separate probabilities for high stakes and low stakes
+        high_stakes_probs.extend(
+            [prob for prob, label in zip(y_prob, y_true) if label == 1]
+        )
+        low_stakes_probs.extend(
+            [prob for prob, label in zip(y_prob, y_true) if label == 0]
+        )
+    bins = np.linspace(0, 1, n_bins + 1)
+    # Plot stacked histogram
+    ax2.hist(
+        [low_stakes_probs, high_stakes_probs],
+        bins=bins,
+        stacked=True,
+        color=["green", "red"],
+        label=["Low Stakes", "High Stakes"],
+        edgecolor="black",
+        alpha=0.7,
+    )
 
     # ax2.set_title(
     #     f"Histogram of Predicted Probabilities for\n{dataset_names[file_name]} dataset"
     # )
-    # ax2.set_xlabel("Predicted Probability")
-    # ax2.set_ylabel("Frequency")
-    # ax2.grid()
+    ax2.set_xlabel("Predicted Probability")
+    ax2.set_ylabel("Frequency")
+    ax2.grid()
+    ax2.legend()
 
-    # # save the plots with data name in the same directory
-    # plt.savefig(PLOTS_DIR / f"{config.id}_{file_name}_calibration.png")
-    # plt.close()
+    # save the plots with data name in the same directory
+    plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
+    plt.close()
 
 
 def run_calibration(config: EvalRunConfig):
@@ -194,11 +218,28 @@ def run_calibration(config: EvalRunConfig):
         y_true_list.append(y_true)
         y_prob_list.append(y_prob)
         scale_labels_list.append(scale_labels)
+    for eval_dataset in TEST_DATASETS.keys():
+        data = load_data(
+            EVALUATE_PROBES_DIR / "raw_results" / "results_best_probe_test.jsonl"
+        )
+        y_true, y_prob, scale_labels = prepare_data(
+            data, eval_dataset, config=config, use_scale_labels=True
+        )
+        y_true_list.append(y_true)
+        y_prob_list.append(y_prob)
+        scale_labels_list.append(scale_labels)
     plot_calibration(
         y_true_list,
         y_prob_list,
         scale_labels_list,
-        EVAL_DATASETS.keys(),
+        list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
+        config=config,
+        n_bins=10,
+    )
+    plot_stacked_histogram(
+        y_true_list,
+        y_prob_list,
+        list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
         config=config,
         n_bins=10,
     )
