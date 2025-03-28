@@ -17,12 +17,12 @@ from models_under_pressure.interfaces.probes import ProbeSpec
 # Add this before creating any plots
 plt.rcParams.update(
     {
-        "font.size": 17,
+        "font.size": 18,
         "axes.titlesize": 22,
-        "axes.labelsize": 19,
-        "xtick.labelsize": 17,
-        "ytick.labelsize": 17,
-        "legend.fontsize": 17,
+        "axes.labelsize": 20,
+        "xtick.labelsize": 18,
+        "ytick.labelsize": 18,
+        "legend.fontsize": 18,
     }
 )
 
