@@ -1,5 +1,12 @@
 # Models Under Pressure
 
+## Dataset
+
+We contribute 2 new datasets in this repository:
+
+- Our synthetic dataset can be found at [data/training/prompts_25_03_25_gpt-4o.jsonl](./data/training/prompts_25_03_25_gpt-4o.jsonl)
+- Our manual data can be found at [data/evals/test/manual.csv](./data/evals/test/manual.csv), with a GPT-4.5-generated "upsampled" version at [data/evals/dev/manual_upsampled.csv](./data/evals/dev/manual_upsampled.csv).
+
 ## Generating Dev Datasets for Evaluation
 
 Run the files `anthropic_dataset.py`, `mt_dataset.py`, `mts_dataset.py` and `toolace_dataset.py` from `src/models_under_pressure/eval_datasets/`.
