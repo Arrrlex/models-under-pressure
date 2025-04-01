@@ -25,6 +25,7 @@ else:
     DEVICE: str = "cpu"
     BATCH_SIZE = 4
 
+
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
@@ -145,6 +146,23 @@ AIS_DATASETS = {
             "id": "ids",
         },
     },
+}
+
+
+ALL_DATASETS = {
+    "synthetic_13_03_25_filtered": SYNTHETIC_DATASET_PATH,
+    "manual_upsampled": EVALS_DIR / "manual_upsampled.csv",
+    "anthropic_dev": EVALS_DIR / "anthropic_samples.csv",
+    "toolace_dev": EVALS_DIR / "toolace_samples.csv",
+    "mt_dev": EVALS_DIR / "mt_samples.csv",
+    "mts_dev": EVALS_DIR / "mts_samples.csv",
+    "manual_test": TEST_EVALS_DIR / "manual.csv",
+    "anthropic_test": TEST_EVALS_DIR / "anthropic_samples.csv",
+    "toolace_test": TEST_EVALS_DIR / "toolace_samples.csv",
+    "mt_test": TEST_EVALS_DIR / "mt_samples.csv",
+    "mts_test": TEST_EVALS_DIR / "mts_samples.csv",
+    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
+    "aya_redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
 }
 
 
