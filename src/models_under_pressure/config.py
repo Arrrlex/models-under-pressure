@@ -29,6 +29,7 @@ else:
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
+ACTIVATIONS_DIR = DATA_DIR / "activations"
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
@@ -151,6 +152,7 @@ AIS_DATASETS = {
 
 ALL_DATASETS = {
     "synthetic_13_03_25_filtered": SYNTHETIC_DATASET_PATH,
+    "synthetic_25_03_25": TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl",
     "manual_upsampled": EVALS_DIR / "manual_upsampled.csv",
     "anthropic_dev": EVALS_DIR / "anthropic_samples.csv",
     "toolace_dev": EVALS_DIR / "toolace_samples.csv",

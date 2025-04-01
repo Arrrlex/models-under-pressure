@@ -1,7 +1,7 @@
 import hashlib
 import json
 from dataclasses import dataclass
-from functools import cached_property, partial
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -16,7 +16,9 @@ from models_under_pressure.config import (
     BATCH_SIZE,
     CACHE_DIR,
     DEVICE,
+    LOCAL_MODELS,
     MODEL_MAX_MEMORY,
+    ACTIVATIONS_DIR,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -76,18 +78,20 @@ class LLMModel:
             )
 
     def _add_hooks(self, layers: list[int]):
-        def hook_fn(layer: int, module, input, output):  # type: ignore
-            self._cache[layer] = output
+        def make_hook(layer: int):
+            def hook_fn(module, input, output):  # type: ignore
+                self._cache[layer] = output.cpu()
 
-        hooks = [partial(hook_fn, layer=layer) for layer in layers]
-        self._hooks += hooks
+            return hook_fn
+
+        hooks = [make_hook(layer) for layer in layers]
 
         # Different model architectures have different structures
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             # LLaMA-style architecture
             for layer, hook in zip(layers, hooks):
                 resid = self.model.model.layers[layer].input_layernorm
-                resid.register_forward_hook(hook)
+                self._hooks.append(resid.register_forward_hook(hook))
 
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
@@ -95,7 +99,7 @@ class LLMModel:
             # GPT-style architecture (like Qwen)
             for layer, hook in zip(layers, hooks):
                 resid = self.model.transformer.h[layer].ln_1
-                resid.register_forward_hook(hook)
+                self._hooks.append(resid.register_forward_hook(hook))
         else:
             raise ValueError(
                 f"Unsupported model architecture: {type(self.model)}. "
@@ -136,7 +140,6 @@ class LLMModel:
         self.model.generation_config.pad_token_id = self.tokenizer.pad_token_id
 
         default_tokenize_kwargs = {
-            "add_generation_prompt": False,
             "return_tensors": "pt",
             "truncation": True,
             "padding": True,
@@ -158,7 +161,7 @@ class LLMModel:
         input_str = self.tokenizer.apply_chat_template(
             input_dicts,
             tokenize=False,  # Return string instead of tokens
-            add_generation_prompt=True,  # Add final assistant prefix for generation
+            add_generation_prompt=False,  # Add final assistant prefix for generation
         )
 
         token_dict = self.tokenizer(input_str, **self.tokenize_kwargs)  # type: ignore
@@ -234,19 +237,22 @@ class LLMModel:
 @dataclass
 class ActivationStore:
     activations_dir: Path
-    manifest_path: Path
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.activations_dir / "manifest.json"
+
+    @property
+    def tensors_dir(self) -> Path:
+        return self.activations_dir / "tensors"
 
     def _add_spec_to_manifest(self, spec: ActivationsSpec):
         manifest = json.loads(self.manifest_path.read_text())
-        if spec.id in manifest:
-            raise ValueError(f"Activation {spec.id} already exists")
         manifest[spec.id] = spec.model_dump()
         self.manifest_path.write_text(json.dumps(manifest))
 
     def _remove_spec_from_manifest(self, spec: ActivationsSpec):
         manifest = json.loads(self.manifest_path.read_text())
-        if spec.id not in manifest:
-            raise ValueError(f"Activation {spec.id} does not exist")
         del manifest[spec.id]
         self.manifest_path.write_text(json.dumps(manifest))
 
@@ -257,11 +263,12 @@ class ActivationStore:
         layers: list[int],
         activations: Activations,
     ):
-        for layer_idx, layer in enumerate(layers):
+        for layer_idx, layer in tqdm(
+            list(enumerate(layers)), desc="Saving activations..."
+        ):
             spec = ActivationsSpec(
                 model_name=model_name, dataset_name=dataset_name, layer=layer
             )
-            self._add_spec_to_manifest(spec)
 
             # Save layer-specific data
             layer_data = {
@@ -269,10 +276,11 @@ class ActivationStore:
                 "attention_mask": activations.attention_mask,
                 "input_ids": activations.input_ids,
             }
-            save_file(layer_data, self.activations_dir / f"{spec.id}.safetensors")
+            save_file(layer_data, self.tensors_dir / f"{spec.id}.safetensors")
+            self._add_spec_to_manifest(spec)
 
     def load(self, spec: ActivationsSpec) -> Activations:
-        layer_data = load_file(self.activations_dir / f"{spec.id}.safetensors")
+        layer_data = load_file(self.tensors_dir / f"{spec.id}.safetensors")
         return Activations(
             activations=layer_data["activations"],
             attention_mask=layer_data["attention_mask"],
@@ -289,14 +297,12 @@ def compute_activations_and_save(
     dataset_name: str,
     layers: list[int],
     activations_dir: Path,
-    manifest_path: Path,
 ):
     model = LLMModel(model_name)
     dataset = get_dataset(dataset_name)
     print("Getting activations...")
     activations = model.get_batched_activations(dataset, layers)
-    print("Saving activations...")
-    store = ActivationStore(activations_dir, manifest_path)
+    store = ActivationStore(activations_dir)
     store.save(model.name, dataset_name, layers, activations)
 
 
@@ -307,9 +313,8 @@ def get_dataset(dataset_name: str) -> LabelledDataset:
 
 if __name__ == "__main__":
     compute_activations_and_save(
-        model_name="meta-llama/Llama-3.2-1B-Instruct",
-        dataset_name="manual_upsampled",
-        layers=[11],
-        activations_dir=Path("activations/tensors"),
-        manifest_path=Path("activations/manifest.json"),
+        model_name=LOCAL_MODELS["llama-1b"],
+        dataset_name="synthetic_25_03_25",
+        layers=[5, 6, 7, 8],
+        activations_dir=ACTIVATIONS_DIR,
     )
