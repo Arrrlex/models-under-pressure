@@ -11,6 +11,7 @@ temp_data/*
 .DS_Store
 outputs/*
 images/*
+multirun/*
 
 config/*local*.yaml
 
