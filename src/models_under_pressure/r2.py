@@ -14,21 +14,23 @@ from models_under_pressure.config import (
     PROJECT_ROOT,
 )
 
+dotenv.load_dotenv()
+
+ACTIVATIONS_BUCKET = os.getenv("R2_ACTIVATIONS_BUCKET")
+DATASETS_BUCKET = os.getenv("R2_DATASETS_BUCKET")
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+
 
 def get_r2_client():
     """Get an R2 client using boto3."""
-    dotenv.load_dotenv()
-    R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
-    R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
-    R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
-
-    r2_client = boto3.client(
+    return boto3.client(
         "s3",
         endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
         aws_access_key_id=R2_ACCESS_KEY_ID,
         aws_secret_access_key=R2_SECRET_ACCESS_KEY,
     )
-    return r2_client
 
 
 def download_file(bucket_name: str, key: str, local_path: Path) -> bool:
@@ -110,33 +112,27 @@ ALL_DATASETS = [
 
 def download_all_datasets():
     """Download all datasets from R2 storage that are not present locally."""
-    dotenv.load_dotenv()
-    bucket_name = os.getenv("R2_DATASETS_BUCKET")
-    if not bucket_name:
-        raise ValueError("R2_DATASETS_BUCKET environment variable not set")
 
+    assert isinstance(DATASETS_BUCKET, str)
     for local_path in ALL_DATASETS:
         key = str(local_path)
         if not local_path.exists():
             print(f"Downloading {key} to {local_path}")
-            download_file(bucket_name=bucket_name, key=key, local_path=local_path)
+            download_file(bucket_name=DATASETS_BUCKET, key=key, local_path=local_path)
 
 
 def upload_datasets():
     """Upload all datasets to R2 storage that are not present in the bucket."""
-    dotenv.load_dotenv()
-    bucket_name = os.getenv("R2_DATASETS_BUCKET")
-    if not bucket_name:
-        raise ValueError("R2_DATASETS_BUCKET environment variable not set")
 
+    assert isinstance(DATASETS_BUCKET, str)
     for local_path in ALL_DATASETS:
         key = str(local_path)
         if local_path.exists():
-            if file_exists_in_bucket(bucket_name, key):
+            if file_exists_in_bucket(DATASETS_BUCKET, key):
                 print(f"{key} already exists in bucket, skipping")
             else:
                 print(f"Uploading {key}")
-                upload_file(bucket_name=bucket_name, key=key, local_path=local_path)
+                upload_file(bucket_name=DATASETS_BUCKET, key=key, local_path=local_path)
         else:
             print(f"Local file {local_path} does not exist, skipping upload")
 

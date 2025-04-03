@@ -10,14 +10,17 @@ import torch
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from models_under_pressure.config import (
-    ACTIVATIONS_DIR,
-    ALL_DATASETS,
-    LOCAL_MODELS,
-)
+from models_under_pressure.config import ACTIVATIONS_DIR
+
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import DatasetSpec, LabelledDataset
 from models_under_pressure.model import LLMModel
+from models_under_pressure.r2 import (
+    ACTIVATIONS_BUCKET,
+    download_file,
+    file_exists_in_bucket,
+    upload_file,
+)
 
 
 class ManifestRow(BaseModel):
@@ -44,6 +47,10 @@ class ManifestRow(BaseModel):
             attention_mask=Path(f"attention_mask/{common_id}.h5"),
         )
 
+    @property
+    def paths(self) -> list[Path]:
+        return [self.activations, self.input_ids, self.attention_mask]
+
 
 class Manifest(BaseModel):
     rows: list[ManifestRow]
@@ -52,15 +59,23 @@ class Manifest(BaseModel):
 @dataclass
 class ActivationStore:
     path: Path = ACTIVATIONS_DIR
+    bucket: str = ACTIVATIONS_BUCKET  # type: ignore
 
     @contextmanager
     def get_manifest(self):
         manifest_path = self.path / "manifest.json"
+        download_file(self.bucket, "manifest.json", manifest_path)
         with open(manifest_path, "r") as f:
             manifest = Manifest.model_validate_json(f.read())
         yield manifest
         with open(manifest_path, "w") as f:
             f.write(manifest.model_dump_json(indent=2))
+        upload_file(self.bucket, "manifest.json", manifest_path)
+
+        for row in manifest.rows:
+            for path in row.paths:
+                if not file_exists_in_bucket(self.bucket, str(path)):
+                    upload_file(self.bucket, str(path), self.path / path)
 
     def save(
         self,
@@ -123,6 +138,12 @@ class ActivationStore:
         manifest_row = ManifestRow.build(
             model_name=model_name, dataset_spec=spec_all_indices, layer=layer
         )
+
+        for path in manifest_row.paths:
+            key = str(path)
+            local_path = self.path / path
+            if not local_path.exists():
+                download_file(self.bucket, key, local_path)
 
         # Load activations
         with h5py.File(self.path / manifest_row.activations, "r") as f:
@@ -192,30 +213,3 @@ def compute_activations_and_save(
     )
     store = ActivationStore(activations_dir)
     store.save(model.name, dataset_spec, layers, activations, inputs)
-
-
-if __name__ == "__main__":
-    model_name = LOCAL_MODELS["llama-1b"]
-    dataset_spec = DatasetSpec(
-        path=ALL_DATASETS["synthetic_25_03_25"],
-        indices="all",
-    )
-    layers = [5, 6, 7, 8]
-    activations_dir = ACTIVATIONS_DIR
-
-    compute_activations_and_save(
-        model_name=model_name,
-        dataset_spec=dataset_spec,
-        layers=layers,
-        activations_dir=activations_dir,
-    )
-
-    print("loading activations...")
-
-    activations = ActivationStore(activations_dir).load(
-        model_name=model_name,
-        dataset_spec=dataset_spec,
-        layer=5,
-    )
-
-# def upload_all_activations():

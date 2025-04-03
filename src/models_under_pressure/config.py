@@ -11,6 +11,7 @@ from models_under_pressure.interfaces.dataset import DatasetSpec
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
+
 DEFAULT_MODEL = "gpt-4o"
 
 if torch.cuda.is_available():
