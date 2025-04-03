@@ -10,6 +10,7 @@ from models_under_pressure.config import (
     SYNTHETIC_DATASET_PATH,
     VARIATION_TYPES,
     HeatmapRunConfig,
+    ProbeSpec,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
@@ -124,7 +125,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-1b"],
         dataset_path=SYNTHETIC_DATASET_PATH,
         variation_types=VARIATION_TYPES,
-        probe_name="sklearn_mean_agg_probe",
+        probe_spec=ProbeSpec(name="sklearn_mean_agg_probe"),
     )
 
     double_check_config(config)

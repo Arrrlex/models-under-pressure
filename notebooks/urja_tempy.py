@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from models_under_pressure.config import RunConfig
+import pandas as pd
+
+from models_under_pressure.config import EVALUATE_PROBES_DIR, TEST_DATASETS, RunConfig
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
 )
@@ -254,7 +256,7 @@ async def generate_prompts_file(run_config: RunConfig) -> None:
 def label_and_filter():
     # Define the input file path
     config = RunConfig(run_id="debug")
-    input_file = Path(f"{config.run_dir}/prompts_13_03_25_gpt-4o.jsonl")
+    # input_file = Path(f"{config.run_dir}/prompts_13_03_25_gpt-4o.jsonl")
     # output_file = Path(f"{config.run_dir}/prompts_{config.suffix}_labeled.jsonl")
     # field_mapping = {
     #     "prompt": "inputs",
@@ -350,9 +352,6 @@ def label_and_filter():
 # Install datasets library if you haven't already
 # pip install datasets
 
-import pandas as pd
-
-from models_under_pressure.config import EVALUATE_PROBES_DIR, TEST_DATASETS
 
 # Load and label the datasets
 # for dataset_name in TEST_DATASETS.keys():

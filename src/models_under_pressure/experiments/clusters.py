@@ -89,13 +89,13 @@ def visualize_activations_pca(
     # Calculate variance explained by each component
     explained_variance_ratio = pca.explained_variance_ratio_
 
-    with open(coefs_path, "r") as f:
-        probe_weights = np.array(json.load(f)["coefs"])
+    # with open(coefs_path, "r") as f:
+    #     probe_weights = np.array(json.load(f)["coefs"])
     # probe_weights_scaled = (probe_weights - np.mean(probe_weights)) / np.std(
     #     probe_weights
     # )
 
-    probe_weights_pca = pca.components_ @ probe_weights
+    # probe_weights_pca = pca.components_ @ probe_weights
 
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
