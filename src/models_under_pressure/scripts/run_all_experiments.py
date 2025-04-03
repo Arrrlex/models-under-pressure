@@ -98,7 +98,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         eval_run_config = EvalRunConfig(
             id="best_probe",
             model_name=config.model_name,
-            dataset_path=config.train_data,
+            dataset_spec=config.train_data,
             layer=config.best_layer,
             probe_spec=config.best_probe,
             max_samples=config.max_samples,
@@ -129,7 +129,6 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                     model=model,
                     dataset_name=dataset_name,
                     max_samples=config.max_samples,
-                    batch_size=config.batch_size,
                     use_test_set=config.use_test_set,
                 )
 
@@ -146,7 +145,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         heatmap_config = HeatmapRunConfig(
             layer=config.best_layer,
             model_name=config.model_name,
-            dataset_path=config.train_data,
+            dataset_spec=config.train_data,
             max_samples=config.max_samples,
             variation_types=config.variation_types,
             probe_spec=config.best_probe,

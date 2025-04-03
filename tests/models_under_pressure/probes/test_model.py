@@ -6,8 +6,8 @@ import pytest
 import torch
 from transformers import PreTrainedTokenizerBase
 
+from models_under_pressure.deprecated.model import LLMModel
 from models_under_pressure.interfaces.dataset import Message
-from models_under_pressure.probes.model import LLMModel
 
 
 @pytest.fixture

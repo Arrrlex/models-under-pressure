@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
+import h5py
 import torch
 from pydantic import BaseModel
-from safetensors.torch import load_file, save_file
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -26,11 +26,12 @@ class ManifestRow(BaseModel):
     layer: int
     timestamp: datetime.datetime
     activations: Path
-    inputs: Path
+    input_ids: Path
+    attention_mask: Path
 
     @classmethod
     def build(cls, model_name: str, dataset_spec: DatasetSpec, layer: int) -> Self:
-        common_name = model_name + str(dataset_spec.dataset_path)
+        common_name = model_name + str(dataset_spec.path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
@@ -38,8 +39,9 @@ class ManifestRow(BaseModel):
             dataset_spec=dataset_spec,
             layer=layer,
             timestamp=datetime.datetime.now(),
-            activations=Path(f"activations/{common_id}_{layer}.safetensors"),
-            inputs=Path(f"inputs/{common_id}.safetensors"),
+            activations=Path(f"activations/{common_id}_{layer}.h5"),
+            input_ids=Path(f"input_ids/{common_id}.h5"),
+            attention_mask=Path(f"attention_mask/{common_id}.h5"),
         )
 
 
@@ -81,18 +83,32 @@ class ActivationStore:
                 layer=layer,
             )
 
-            save_file(
-                {"activations": activations[layer_idx]},
-                self.path / manifest_row.activations,
-            )
+            # Save activations
+            with h5py.File(self.path / manifest_row.activations, "w") as f:
+                f.create_dataset(
+                    "activations",
+                    data=activations[layer_idx].numpy(),
+                    compression="gzip",
+                    compression_opts=9,  # Maximum compression
+                )
 
-            save_file(
-                {
-                    "input_ids": inputs["input_ids"],
-                    "attention_mask": inputs["attention_mask"],
-                },
-                self.path / manifest_row.inputs,
-            )
+            # Save input_ids
+            with h5py.File(self.path / manifest_row.input_ids, "w") as f:
+                f.create_dataset(
+                    "input_ids",
+                    data=inputs["input_ids"].numpy(),
+                    compression="gzip",
+                    compression_opts=9,
+                )
+
+            # Save attention_mask
+            with h5py.File(self.path / manifest_row.attention_mask, "w") as f:
+                f.create_dataset(
+                    "attention_mask",
+                    data=inputs["attention_mask"].numpy(),
+                    compression="gzip",
+                    compression_opts=9,
+                )
 
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
@@ -105,20 +121,32 @@ class ActivationStore:
         manifest_row = ManifestRow.build(
             model_name=model_name, dataset_spec=spec_all_indices, layer=layer
         )
-        activations = load_file(self.path / manifest_row.activations)["activations"]
-        inputs = load_file(self.path / manifest_row.inputs)
-        attn_mask = inputs["attention_mask"]
-        input_ids = inputs["input_ids"]
 
-        if dataset_spec.indices != "all":
-            attn_mask = attn_mask[dataset_spec.indices]
-            input_ids = input_ids[dataset_spec.indices]
-            activations = activations[dataset_spec.indices]
+        # Load activations
+        with h5py.File(self.path / manifest_row.activations, "r") as f:
+            if dataset_spec.indices != "all":
+                activations = f["activations"][dataset_spec.indices]
+            else:
+                activations = f["activations"][()]
+
+        # Load input_ids
+        with h5py.File(self.path / manifest_row.input_ids, "r") as f:
+            if dataset_spec.indices != "all":
+                input_ids = f["input_ids"][dataset_spec.indices]
+            else:
+                input_ids = f["input_ids"][()]
+
+        # Load attention_mask
+        with h5py.File(self.path / manifest_row.attention_mask, "r") as f:
+            if dataset_spec.indices != "all":
+                attn_mask = f["attention_mask"][dataset_spec.indices]
+            else:
+                attn_mask = f["attention_mask"][()]
 
         return Activation(
-            _activations=activations.numpy(),
-            _attention_mask=attn_mask.numpy(),
-            _input_ids=input_ids.numpy(),
+            _activations=activations,
+            _attention_mask=attn_mask,
+            _input_ids=input_ids,
         )
 
     def delete(self, model_name: str, dataset_spec: DatasetSpec, layer: int):
@@ -127,7 +155,8 @@ class ActivationStore:
             model_name=model_name, dataset_spec=dataset_spec, layer=layer
         )
         (self.path / manifest_row.activations).unlink()
-        (self.path / manifest_row.inputs).unlink()
+        (self.path / manifest_row.input_ids).unlink()
+        (self.path / manifest_row.attention_mask).unlink()
         with self.get_manifest() as manifest:
             manifest.rows = [
                 row
@@ -144,7 +173,7 @@ def compute_activations_and_save(
     activations_dir: Path,
 ):
     model = LLMModel(model_name)
-    dataset = LabelledDataset._load_from(dataset_spec)
+    dataset = LabelledDataset.load_from(dataset_spec)
     print("Getting activations...")
     activations, inputs = model.get_batched_activations(dataset, layers)
     print(
