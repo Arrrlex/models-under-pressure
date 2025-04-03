@@ -100,39 +100,64 @@ DATASET_NAME_MAPPING = {
     "mts": "MTS Dialog",
     "toolace": "ToolACE",
     "anthropic": "Anthropic HH",
+    "mental_health": "Mental Health",
+    "redteaming": "Aya Red Teaming",
 }
 
 
-def plot_probe_vs_baseline_auroc(
+def plot_probe_vs_baseline_metric(
     probe_results: List[EvaluationResult],
     baseline_results: List[LikelihoodBaselineResults],
     output_path: str,
+    metric: str = "auroc",
     use_title: bool = True,
+    fpr_target: float = 0.01,
 ):
-    """Create a bar plot comparing AUROC scores of probe vs baseline models across datasets.
+    """Create a bar plot comparing performance metrics of probe vs baseline models across datasets.
 
     Args:
         probe_results: List of EvaluationResult objects containing probe performance
         baseline_results: List of LikelihoodBaselineResults objects containing baseline model performance
+        output_path: Path to save the plot
+        metric: Metric to plot. Can be "auroc" or "tpr_at_fpr"
+        use_title: Whether to show plot title
     """
     import matplotlib.pyplot as plt
     import pandas as pd
-    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import roc_auc_score, roc_curve
 
-    # Extract probe AUROC per dataset
-    probe_data = {
-        result.dataset_name: {
-            "auroc": result.metrics.metrics["auroc"],
+    # Extract probe metric per dataset
+    probe_data = {}
+    for result in probe_results:
+        if metric == "auroc":
+            metric_value = result.metrics.metrics["auroc"]
+        elif metric == "tpr_at_fpr":
+            # Get the target FPR from the metrics
+            assert fpr_target == result.metrics.metrics["fpr"]
+
+            metric_value = result.metrics.metrics["tpr_at_fpr"]
+        else:
+            raise ValueError(f"Unsupported metric: {metric}")
+
+        probe_data[result.dataset_name] = {
+            "metric_value": metric_value,
             "model_name": result.config.model_name,
         }
-        for result in probe_results
-    }
 
-    # Calculate baseline AUROC per dataset and model
+    # Calculate baseline metric per dataset and model
     baseline_data = {}
     for result in baseline_results:
-        auroc = roc_auc_score(result.ground_truth, result.high_stakes_scores)
-        baseline_data[(result.dataset_name, result.model_name)] = auroc
+        if metric == "auroc":
+            metric_value = roc_auc_score(result.ground_truth, result.high_stakes_scores)
+        elif metric == "tpr_at_fpr":
+            fpr, tpr, _ = roc_curve(result.ground_truth, result.high_stakes_scores)
+            # Get target FPR from probe results for this dataset
+            fpr_target = 0.01
+            # Find TPR at target FPR
+            idx = np.searchsorted(fpr, fpr_target)
+            metric_value = tpr[idx]
+
+        baseline_data[(result.dataset_name, result.model_name)] = metric_value
 
     # Create dataframe for plotting
     plot_data = []
@@ -141,13 +166,13 @@ def plot_probe_vs_baseline_auroc(
             {
                 "Dataset": dataset,
                 "Method": f"Probe ({get_readable_model_name(probe_data[dataset]['model_name'])})",
-                "AUROC": probe_data[dataset]["auroc"],
+                "Value": probe_data[dataset]["metric_value"],
             }
         )
 
         # Group models by provider
         model_groups = {}
-        for (ds, model), auroc in baseline_data.items():
+        for (ds, model), metric_value in baseline_data.items():
             if ds != dataset:
                 continue
 
@@ -155,7 +180,7 @@ def plot_probe_vs_baseline_auroc(
             provider = model.split("/")[0] if "/" in model else "other"
             if provider not in model_groups:
                 model_groups[provider] = []
-            model_groups[provider].append((model, auroc))
+            model_groups[provider].append((model, metric_value))
 
         # Sort each group by model size
         for provider in model_groups:
@@ -172,8 +197,10 @@ def plot_probe_vs_baseline_auroc(
 
         # Add sorted models to plot data
         for provider in model_groups:
-            for model, auroc in model_groups[provider]:
-                plot_data.append({"Dataset": dataset, "Method": model, "AUROC": auroc})
+            for model, metric_value in model_groups[provider]:
+                plot_data.append(
+                    {"Dataset": dataset, "Method": model, "Value": metric_value}
+                )
 
     df = pd.DataFrame(plot_data)
 
@@ -216,10 +243,10 @@ def plot_probe_vs_baseline_auroc(
             pattern_map[model] = patterns[i % len(patterns)]
 
     # Pivot the dataframe for plotting
-    df_pivot = df.pivot(index="Dataset", columns="Method", values="AUROC")
+    df_pivot = df.pivot(index="Dataset", columns="Method", values="Value")
 
     # Plot setup
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(14, 7))
 
     # Sort methods by provider and size, keeping Probe first
     probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
@@ -280,12 +307,25 @@ def plot_probe_vs_baseline_auroc(
         [DATASET_NAME_MAPPING.get(d, d) for d in datasets], rotation=0, ha="center"
     )
 
-    ax.set_ylim(0.5, 1.0)
+    if metric == "auroc":
+        ax.set_ylim(0.5, 1.0)
+    else:
+        ax.set_ylim(0.0, 1.0)
     ax.set_xlabel("Dataset")
-    ax.set_ylabel("AUROC")
+    if metric == "auroc":
+        ax.set_ylabel("AUROC")
+    elif metric == "tpr_at_fpr":
+        # Get FPR target from first probe result
+        ax.set_ylabel(f"TPR at {int(float(fpr_target) * 100)}% FPR")
+
     if use_title:
+        metric_name = (
+            "AUROC"
+            if metric == "auroc"
+            else f"TPR at {float(fpr_target) * 100:.1f}% FPR"
+        )
         ax.set_title(
-            f"Probe ({probe_results[0].config.model_name}) vs Baseline Model AUROC by Dataset"
+            f"Probe ({probe_results[0].config.model_name}) vs Baseline Model {metric_name} by Dataset"
         )
 
     # Legend outside plot
@@ -294,8 +334,9 @@ def plot_probe_vs_baseline_auroc(
         # bbox_to_anchor=(1.05, 1),
         # loc="upper left",
         ncol=2,
-        loc="lower left",
+        loc="lower left" if metric == "auroc" else "upper right",
         borderaxespad=0.4,
+        framealpha=1.0,
     )
 
     # Adjust layout - we can reduce bottom margin since labels are horizontal now
@@ -308,9 +349,13 @@ def plot_probe_vs_baseline_auroc(
     plt.show()
 
 
-output_path = "../data/plots/probe_vs_baseline_auroc_test.svg"
-_ = plot_probe_vs_baseline_auroc(
-    probe_results, baseline_results, output_path, use_title=False
+output_path = "../data/plots/probe_vs_baseline_metric_test.pdf"
+_ = plot_probe_vs_baseline_metric(
+    probe_results,
+    baseline_results,
+    output_path,
+    use_title=False,
+    metric="tpr_at_fpr",
 )
 
 # %%

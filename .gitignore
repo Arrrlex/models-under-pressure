@@ -10,6 +10,8 @@ uv.lock
 temp_data/*
 .DS_Store
 outputs/*
+images/*
+multirun/*
 
 config/*local*.yaml
 
@@ -17,6 +19,7 @@ data/training/*.jsonl
 data/training/*.csv
 data/training/*.json
 
+data/*
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

@@ -1,0 +1,26 @@
+# @package _global_
+model_name: llama-70b
+train_data: "prompts_25_03_25_gpt-4o.jsonl"
+use_test_set: false
+max_samples: null
+experiments_to_run:
+  - scaling_plot
+
+scaling_plot:
+  scaling_models:
+    - llama-1b
+    - llama-3b
+    - llama-8b
+    - gemma-1b
+    - gemma-12b
+    - gemma-27b
+  scaling_layers:
+    - 6
+    - 14
+    - 16
+    - 16
+    - 22
+    - 28
+
+  probe_spec:
+    name: "sklearn_mean_agg_probe"

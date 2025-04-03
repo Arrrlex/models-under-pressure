@@ -40,9 +40,9 @@ LOCAL_MODELS = {
 }
 
 MODEL_MAX_MEMORY = {
-    "meta-llama/Llama-3.2-1B-Instruct": {2: "60GB"},
-    "meta-llama/Llama-3.2-3B-Instruct": {2: "60GB"},
-    "meta-llama/Llama-3.1-8B-Instruct": {2: "60GB"},
+    "meta-llama/Llama-3.2-1B-Instruct": None,
+    "meta-llama/Llama-3.2-3B-Instruct": None,
+    "meta-llama/Llama-3.1-8B-Instruct": None,
     "meta-llama/Llama-3.3-70B-Instruct": None,
     "google/gemma-3-1b-it": None,
     "google/gemma-3-12b-it": None,
@@ -148,6 +148,12 @@ AIS_DATASETS = {
 }
 
 
+class ScalingPlotConfig(BaseModel):
+    scaling_models: list[str]
+    scaling_layers: list[int]
+    probe_spec: ProbeSpec
+
+
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
     baseline_models: list[str]
@@ -158,11 +164,14 @@ class RunAllExperimentsConfig(BaseModel):
     layers: list[int]
     max_samples: int | None
     experiments_to_run: list[str]
+    default_hyperparams: dict[str, Any] | None = None
     probes: list[ProbeSpec]
     best_probe: ProbeSpec
     variation_types: list[str]
     use_test_set: bool
+    scaling_plot: ScalingPlotConfig
     default_hyperparams: dict[str, Any] | None = None
+    random_seed: int = 42
 
     @field_validator("train_data", mode="after")
     @classmethod

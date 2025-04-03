@@ -93,9 +93,9 @@ class SklearnProbe(Probe):
             dataset=dataset,
             layer=self.layer,
         )
-        print(
-            f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
-        )
+        # print(
+        #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
+        # )
         return self._predict_proba(activations_obj)
 
     def _fit(
