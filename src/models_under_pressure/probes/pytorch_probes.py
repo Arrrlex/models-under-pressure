@@ -15,6 +15,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dataset,
+    DatasetSpec,
     Input,
     Label,
     LabelledDataset,
@@ -26,8 +27,9 @@ from models_under_pressure.probes.sklearn_probes import Probe
 
 @dataclass
 class PytorchProbe(Probe):
-    _llm: LLMModel
     layer: int
+    model_name: str
+    dataset_spec: DatasetSpec
 
     hyper_params: dict
     _classifier: PytorchLinearClassifier | None = None
@@ -40,6 +42,10 @@ class PytorchProbe(Probe):
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
         """
+        store = ActivationStore(
+            model_name=self.model_name,
+        )
+        activations = 
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
             layer=self.layer,

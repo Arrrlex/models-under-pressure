@@ -9,6 +9,7 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
+    Literal,
     Mapping,
     Optional,
     Self,
@@ -18,11 +19,12 @@ from typing import (
     overload,
 )
 
-import datasets
 import numpy as np
 import pandas as pd
 from jaxtyping import Float
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from models_under_pressure.config import PROJECT_ROOT
 
 
 class Message(BaseModel):
@@ -65,6 +67,7 @@ def to_dialogue(input: Input) -> Dialogue:
 class Record(BaseModel):
     input: Input
     id: str
+    index: int
     other_fields: Dict[str, Any] = Field(default_factory=dict)
 
     def input_str(self) -> str:
@@ -84,6 +87,18 @@ class LabelledRecord(Record):
 
 
 R = TypeVar("R", bound=Record)
+
+
+class DatasetSpec(BaseModel):
+    dataset_path: Path
+    indices: Sequence[int] | Literal["all"]
+    field_mapping: Mapping[str, str] = Field(default_factory=dict)
+    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
+
+    @field_validator("dataset_path")
+    def resolve_path(cls, v: Path) -> Path:
+        """Resolve dataset_path and make it relative to PROJECT_ROOT"""
+        return v.resolve().relative_to(PROJECT_ROOT)
 
 
 class BaseDataset(BaseModel, Generic[R]):
@@ -124,6 +139,9 @@ class BaseDataset(BaseModel, Generic[R]):
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
+    @overload
+    def __getitem__(self, idx: list[int]) -> Self: ...
+
     def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
             return type(self)(
@@ -143,6 +161,7 @@ class BaseDataset(BaseModel, Generic[R]):
             return self._record_class(
                 input=self.inputs[idx],
                 id=self.ids[idx],
+                index=idx,
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
 
@@ -220,22 +239,11 @@ class BaseDataset(BaseModel, Generic[R]):
         return cls.from_pandas(df, field_mapping=field_mapping)
 
     @classmethod
-    def from_huggingface(
-        cls,
-        dataset_name: str,
-        split: Optional[str] = None,
-        subset: Optional[str] = None,
-        field_mapping: Optional[Mapping[str, str]] = None,
-    ) -> Self:
-        ds = datasets.load_dataset(dataset_name, split=split, name=subset)
-        df = pd.DataFrame(ds)  # type: ignore
-        return cls.from_pandas(df, field_mapping=field_mapping)
-
-    @classmethod
     def load_from(
         cls,
-        file_path_or_name: Path | str,
+        path: Path,
         field_mapping: Optional[Mapping[str, str]] = None,
+        indices: Sequence[int] | Literal["all"] = "all",
         **loader_kwargs: Any,
     ) -> Self:
         """
@@ -249,25 +257,35 @@ class BaseDataset(BaseModel, Generic[R]):
             file_path: The path to the file to load
             loader_kwargs: Additional keyword arguments to pass to the loader
         """
+        spec = DatasetSpec(
+            dataset_path=path,
+            indices=indices,
+            field_mapping=field_mapping or {},
+            loader_kwargs=loader_kwargs,
+        )
+        return cls._load_from(spec)
+
+    @classmethod
+    def _load_from(cls, spec: DatasetSpec) -> Self:
         # Infer from extension
-        if isinstance(file_path_or_name, Path):
-            loaders = {
-                ".csv": cls.from_csv,
-                ".jsonl": cls.from_jsonl,
-            }
-            try:
-                loader = loaders[file_path_or_name.suffix]
-            except KeyError:
-                raise ValueError(f"Unsupported file type: '{file_path_or_name.suffix}'")
-            return loader(
-                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
-            )
+        loaders = {
+            ".csv": cls.from_csv,
+            ".jsonl": cls.from_jsonl,
+        }
+        try:
+            loader = loaders[spec.dataset_path.suffix]
+        except KeyError:
+            raise ValueError(f"Unsupported file type: '{spec.dataset_path.suffix}'")
+        dataset_all_indices = loader(
+            PROJECT_ROOT / spec.dataset_path,
+            field_mapping=spec.field_mapping,
+            **spec.loader_kwargs,
+        )
+
+        if spec.indices == "all":
+            return dataset_all_indices
         else:
-            if not len(file_path_or_name.split("/")) == 2:
-                raise ValueError(f"Invalid dataset name: {file_path_or_name}")
-            return cls.from_huggingface(
-                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
-            )
+            return dataset_all_indices[list(spec.indices)]
 
     @classmethod
     def concatenate(cls, datasets: Sequence[Self]) -> Self:

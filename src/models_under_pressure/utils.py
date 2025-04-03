@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import os
 import random
@@ -7,13 +8,26 @@ import time
 from contextlib import contextmanager
 from datetime import timedelta
 from pprint import pformat
-from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    TypeVar,
+    get_type_hints,
+)
 
 import huggingface_hub
+import hydra
 import numpy as np
 import openai
 import torch
 from dotenv import load_dotenv
+from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
@@ -298,3 +312,25 @@ def batched_range(
         lower = i * batch_size
         upper = min((i + 1) * batch_size, n_samples)
         yield lower, upper
+
+
+T = TypeVar("T")
+
+
+class pydra:
+    @staticmethod
+    def main(*args: Any, **kwargs: Any) -> Callable:
+        def decorator(func: Callable[..., T]) -> Callable[..., T]:
+            @hydra.main(*args, **kwargs)
+            @functools.wraps(func)
+            def wrapper(config: DictConfig) -> T:
+                config_type = get_type_hints(func)["config"]
+                config_dict = OmegaConf.to_container(
+                    config, resolve=True, enum_to_str=True
+                )
+                config_model = config_type.model_validate(config_dict)
+                return func(config_model)
+
+            return wrapper
+
+        return decorator

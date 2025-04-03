@@ -3,9 +3,7 @@ from models_under_pressure.interfaces.activations import (
     Postprocessors,
     Preprocessors,
 )
-from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
@@ -18,8 +16,8 @@ class ProbeFactory:
     def build(
         cls,
         probe: str | ProbeSpec,
-        model: LLMModel,
-        train_dataset: LabelledDataset,
+        model_name: str,
+        train_dataset_name: str,
         layer: int,
     ) -> Probe:
         if isinstance(probe, str):

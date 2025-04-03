@@ -1,41 +1,41 @@
-from contextlib import contextmanager
 import datetime
 import hashlib
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
+import torch
 from pydantic import BaseModel
 from safetensors.torch import load_file, save_file
-import torch
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    ACTIVATIONS_DIR,
     ALL_DATASETS,
     LOCAL_MODELS,
-    ACTIVATIONS_DIR,
 )
-from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.model import LLMModel
 from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.interfaces.dataset import DatasetSpec, LabelledDataset
+from models_under_pressure.model import LLMModel
 
 
 class ManifestRow(BaseModel):
     model_name: str
-    dataset_name: str
+    dataset_spec: DatasetSpec
     layer: int
     timestamp: datetime.datetime
     activations: Path
     inputs: Path
 
     @classmethod
-    def build(cls, model_name: str, dataset_name: str, layer: int) -> Self:
-        common_id = hashlib.sha1(str(model_name + dataset_name).encode()).hexdigest()[
-            :8
-        ]
+    def build(cls, model_name: str, dataset_spec: DatasetSpec, layer: int) -> Self:
+        common_name = model_name + str(dataset_spec.dataset_path)
+        common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
+
         return cls(
             model_name=model_name,
-            dataset_name=dataset_name,
+            dataset_spec=dataset_spec,
             layer=layer,
             timestamp=datetime.datetime.now(),
             activations=Path(f"activations/{common_id}_{layer}.safetensors"),
@@ -63,18 +63,21 @@ class ActivationStore:
     def save(
         self,
         model_name: str,
-        dataset_name: str,
+        dataset_spec: DatasetSpec,
         layers: list[int],
         activations: torch.Tensor,
         inputs: dict[str, torch.Tensor],
     ):
+        if dataset_spec.indices != "all":
+            raise ValueError("Cannot save activations for a subset of the dataset")
+
         # Save layer-specific masked activations
         for layer_idx, layer in tqdm(
             list(enumerate(layers)), desc="Saving activations..."
         ):
             manifest_row = ManifestRow.build(
                 model_name=model_name,
-                dataset_name=dataset_name,
+                dataset_spec=dataset_spec,
                 layer=layer,
             )
 
@@ -94,23 +97,34 @@ class ActivationStore:
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
 
-    def load(self, model_name: str, dataset_name: str, layer: int) -> Activation:
+    def load(
+        self, model_name: str, dataset_spec: DatasetSpec, layer: int
+    ) -> Activation:
+        spec_all_indices = dataset_spec.model_copy(update={"indices": "all"})
         # Load layer-specific masked activation
         manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_name=dataset_name, layer=layer
+            model_name=model_name, dataset_spec=spec_all_indices, layer=layer
         )
         activations = load_file(self.path / manifest_row.activations)["activations"]
         inputs = load_file(self.path / manifest_row.inputs)
+        attn_mask = inputs["attention_mask"]
+        input_ids = inputs["input_ids"]
+
+        if dataset_spec.indices != "all":
+            attn_mask = attn_mask[dataset_spec.indices]
+            input_ids = input_ids[dataset_spec.indices]
+            activations = activations[dataset_spec.indices]
+
         return Activation(
-            _activations=activations.float().numpy(),
-            _attention_mask=inputs["attention_mask"].float().numpy(),
-            _input_ids=inputs["input_ids"].float().numpy(),
+            _activations=activations.numpy(),
+            _attention_mask=attn_mask.numpy(),
+            _input_ids=input_ids.numpy(),
         )
 
-    def delete(self, model_name: str, dataset_name: str, layer: int):
+    def delete(self, model_name: str, dataset_spec: DatasetSpec, layer: int):
         # Delete layer-specific file
         manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_name=dataset_name, layer=layer
+            model_name=model_name, dataset_spec=dataset_spec, layer=layer
         )
         (self.path / manifest_row.activations).unlink()
         (self.path / manifest_row.inputs).unlink()
@@ -118,19 +132,19 @@ class ActivationStore:
             manifest.rows = [
                 row
                 for row in manifest.rows
-                if (row.model_name, row.dataset_name, row.layer)
-                != (model_name, dataset_name, layer)
+                if (row.model_name, row.dataset_spec, row.layer)
+                != (model_name, dataset_spec, layer)
             ]
 
 
 def compute_activations_and_save(
     model_name: str,
-    dataset_name: str,
+    dataset_path: Path,
     layers: list[int],
     activations_dir: Path,
 ):
     model = LLMModel(model_name)
-    dataset = get_dataset(dataset_name)
+    dataset = LabelledDataset.load_from(dataset_path)
     print("Getting activations...")
     activations, inputs = model.get_batched_activations(dataset, layers)
     print(
@@ -146,30 +160,26 @@ def compute_activations_and_save(
         inputs["attention_mask"].dtype,
     )
     store = ActivationStore(activations_dir)
-    store.save(model.name, dataset_name, layers, activations, inputs)
-
-
-def get_dataset(dataset_name: str) -> LabelledDataset:
-    full_dataset_path = ALL_DATASETS[dataset_name]
-    return LabelledDataset.load_from(full_dataset_path)
+    store.save(model.name, dataset_path, layers, activations, inputs)
 
 
 if __name__ == "__main__":
     model_name = LOCAL_MODELS["llama-1b"]
-    dataset_name = "synthetic_25_03_25"
+    dataset_path = ALL_DATASETS["synthetic_25_03_25"]
     layers = [5, 6, 7, 8]
     activations_dir = ACTIVATIONS_DIR
-    # compute_activations_and_save(
-    #     model_name=model_name,
-    #     dataset_name=dataset_name,
-    #     layers=layers,
-    #     activations_dir=activations_dir,
-    # )
+
+    compute_activations_and_save(
+        model_name=model_name,
+        dataset_path=dataset_path,
+        layers=layers,
+        activations_dir=activations_dir,
+    )
 
     print("loading activations...")
 
     activations = ActivationStore(activations_dir).load(
         model_name=model_name,
-        dataset_name=dataset_name,
+        dataset_path=dataset_path,
         layer=5,
     )

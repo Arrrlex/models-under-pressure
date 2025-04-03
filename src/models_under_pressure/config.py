@@ -26,8 +26,9 @@ else:
     BATCH_SIZE = 4
 
 
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
 ACTIVATIONS_DIR = DATA_DIR / "activations"
 
