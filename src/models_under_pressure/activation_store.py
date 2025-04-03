@@ -136,6 +136,11 @@ class ActivationStore:
             model_name=model_name, dataset_path=dataset_spec.path, layer=layer
         )
 
+        if not self.exists(model_name, dataset_spec.path, layer):
+            raise FileNotFoundError(
+                f"Activations for {model_name} on {dataset_spec.path} at layer {layer} not found"
+            )
+
         for path in manifest_row.paths:
             key = str(path)
             local_path = self.path / path

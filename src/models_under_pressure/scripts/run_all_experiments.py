@@ -19,7 +19,7 @@ from models_under_pressure.config import (
     HeatmapRunConfig,
     RunAllExperimentsConfig,
 )
-from models_under_pressure.deprecated.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps

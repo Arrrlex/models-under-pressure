@@ -8,7 +8,7 @@ from models_under_pressure.config import (
     LOCAL_MODELS,
     TEST_DATASETS,
 )
-from models_under_pressure.deprecated.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Input,

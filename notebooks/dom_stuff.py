@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import confusion_matrix, roc_auc_score
 
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import EVAL_DATASETS, LOCAL_MODELS
-from models_under_pressure.deprecated.model import LLMModel
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.probes.pytorch_classifiers import (
@@ -25,14 +25,12 @@ dataset = LabelledDataset.load_from(dataset_path)
 
 # %%
 
-# Load model
-model = LLMModel.load(
-    LOCAL_MODELS["llama-1b"],
-)
-layer = 7
-
 # Get activations for layer 7
-activations = model.get_batched_activations(dataset, layer=layer, batch_size=4)
+activations = ActivationStore().load(
+    model_name=LOCAL_MODELS["llama-1b"],
+    dataset_spec=dataset.spec,
+    layer=5,
+)
 
 print("Activation shape:", activations.get_activations().shape)
 print("Attention mask shape:", activations.get_attention_mask().shape)

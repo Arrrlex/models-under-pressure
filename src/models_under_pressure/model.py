@@ -5,7 +5,12 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
-from models_under_pressure.interfaces.dataset import BaseDataset, Input, to_dialogue
+from models_under_pressure.interfaces.dataset import (
+    BaseDataset,
+    Dialogue,
+    Input,
+    to_dialogue,
+)
 from models_under_pressure.utils import batched_range, hf_login
 
 
@@ -182,3 +187,127 @@ class LLMModel:
                 all_activations[:, start_idx:end_idx] = activations
 
         return all_activations, inputs
+
+    @torch.no_grad()
+    def compute_log_likelihood(
+        self,
+        inputs: Sequence[Input],
+        batch_size: int = BATCH_SIZE,
+    ) -> torch.Tensor:
+        """
+        Compute the log likelihoods for each input sequence with batching.
+
+        Args:
+            inputs: Sequence of Input objects
+            batch_size: Size of batches to process at once
+
+        Returns:
+            torch.Tensor: Log likelihoods for each sequence, shape (n_samples, max_seq_len-1)
+        """
+        n_samples = len(inputs)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        all_log_probs = []
+        max_seq_len = 0
+
+        # Process in batches
+        # for i in tqdm(range(n_batches), desc="Computing log likelihoods..."):
+        for i in range(n_batches):
+            start_idx = i * batch_size
+            end_idx = min((i + 1) * batch_size, n_samples)
+            batch_inputs = inputs[start_idx:end_idx]
+
+            # Convert batch inputs to dialogues and tokenize
+            batch_dialogues = [to_dialogue(inp) for inp in batch_inputs]
+            torch_inputs = self.tokenize(batch_dialogues, add_generation_prompt=False)
+
+            # Forward pass through the model
+            outputs = self.model(
+                input_ids=torch_inputs["input_ids"],
+                attention_mask=torch_inputs["attention_mask"],
+            )
+
+            # Get logits and shift them to align predictions with targets
+            logits = outputs.logits[:, :-1, :]  # (batch, seq_len-1, vocab_size)
+            targets = torch_inputs["input_ids"][:, 1:]  # (batch, seq_len-1)
+            attention_mask = torch_inputs["attention_mask"][:, 1:]  # (batch, seq_len-1)
+
+            # Compute log probabilities
+            log_probs = torch.log_softmax(logits, dim=-1)
+
+            # Gather the log probs of the target tokens
+            token_log_probs = log_probs.gather(
+                dim=-1,
+                index=targets.unsqueeze(-1),
+            ).squeeze(-1)  # (batch, seq_len-1)
+
+            # Mask out padding tokens
+            token_log_probs = token_log_probs * attention_mask
+
+            # Track maximum sequence length
+            max_seq_len = max(max_seq_len, token_log_probs.shape[1])
+
+            # Store batch results
+            all_log_probs.append(token_log_probs)
+
+        # Pad all batches to the same sequence length
+        padded_log_probs = []
+        for log_probs in all_log_probs:
+            if log_probs.shape[1] < max_seq_len:
+                padding = torch.zeros(
+                    (log_probs.shape[0], max_seq_len - log_probs.shape[1]),
+                    device=log_probs.device,
+                )
+                log_probs = torch.cat([log_probs, padding], dim=1)
+            padded_log_probs.append(log_probs)
+
+        # Combine all batches
+        final_log_probs = torch.cat(padded_log_probs, dim=0)
+
+        assert (
+            final_log_probs.shape == (n_samples, max_seq_len)
+        ), f"Expected log probs shape ({n_samples}, {max_seq_len}), got {final_log_probs.shape}"
+
+        return final_log_probs
+
+    def generate(
+        self,
+        dialogue: Dialogue,
+        max_new_tokens: int = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        **generation_kwargs: Any,
+    ) -> str:
+        input_str = self.tokenizer.apply_chat_template(
+            [d.model_dump() for d in dialogue], tokenize=False
+        )  # type: ignore
+
+        tokenized = self.tokenizer(input_str, return_tensors="pt").to(self.model.device)  # type: ignore
+
+        # Generate the answer
+        outputs = self.model.generate(  # type: ignore
+            **tokenized,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=do_sample,
+            top_p=top_p,
+            **generation_kwargs,
+        )
+
+        if return_full_output:
+            answer = self.tokenizer.decode(
+                outputs[0], skip_special_tokens=skip_special_tokens
+            )  # type: ignore
+        else:
+            # Only get the newly generated tokens by slicing from the input length
+            new_tokens = outputs[0][tokenized.input_ids.shape[1] :]
+
+            # Decode just the new tokens
+            answer = self.tokenizer.decode(
+                new_tokens, skip_special_tokens=skip_special_tokens
+            )  # type: ignore
+
+        return answer
