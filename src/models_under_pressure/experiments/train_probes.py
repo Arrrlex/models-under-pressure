@@ -200,9 +200,9 @@ def evaluate_probe_and_save_results(
             for score, values in probe_scores_dict.items():
                 if len(values) != len(eval_dataset.inputs):
                     breakpoint()
-                assert len(values) == len(eval_dataset.inputs), (
-                    f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
-                )
+                assert (
+                    len(values) == len(eval_dataset.inputs)
+                ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
 
             try:
                 dataset_with_probe_scores = LabelledDataset.load_from(

@@ -255,13 +255,13 @@ class LLMModel:
             batch_attn_mask = activation_obj.get_attention_mask()
             batch_input_ids = activation_obj.get_input_ids()
 
-            assert len(batch_activations.shape) == 3, (
-                f"Expected 3 dim activations, got {batch_activations.shape}"
-            )
+            assert (
+                len(batch_activations.shape) == 3
+            ), f"Expected 3 dim activations, got {batch_activations.shape}"
 
-            assert len(batch_attn_mask.shape) == 2, (
-                f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
-            )
+            assert (
+                len(batch_attn_mask.shape) == 2
+            ), f"Expected 2 dim attention mask, got {batch_attn_mask.shape}"
 
             all_input_ids.append(batch_input_ids)
             all_activations.append(batch_activations)
@@ -386,9 +386,9 @@ class LLMModel:
         # Combine all batches
         final_log_probs = torch.cat(padded_log_probs, dim=0)
 
-        assert final_log_probs.shape == (n_samples, max_seq_len), (
-            f"Expected log probs shape ({n_samples}, {max_seq_len}), got {final_log_probs.shape}"
-        )
+        assert (
+            final_log_probs.shape == (n_samples, max_seq_len)
+        ), f"Expected log probs shape ({n_samples}, {max_seq_len}), got {final_log_probs.shape}"
 
         return final_log_probs
 
