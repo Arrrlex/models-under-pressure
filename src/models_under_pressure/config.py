@@ -179,8 +179,8 @@ class RunAllExperimentsConfig(BaseModel):
 
     @field_validator("train_data", mode="after")
     @classmethod
-    def validate_train_data(cls, v: Path, info: ValidationInfo) -> Path:
-        return TRAIN_DIR / v
+    def validate_train_data(cls, v: DatasetSpec, info: ValidationInfo) -> DatasetSpec:
+        return v.model_copy(update={"path": PROJECT_ROOT / v.path})
 
     @field_validator("model_name", mode="after")
     @classmethod

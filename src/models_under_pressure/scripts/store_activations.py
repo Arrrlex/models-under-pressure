@@ -15,19 +15,27 @@ def main(
         help="Comma-separated list of layers to process",
     ),
 ):
+    model_name = LOCAL_MODELS.get(model_name, model_name)
+    store = ActivationStore(ACTIVATIONS_DIR)
     layers = [int(layer) for layer in layers_str.split(",")]
+    for layer in layers[:1]:
+        if store.exists(model_name, dataset_path, layer):
+            print(f"Layer {layer} already exists, skipping")
+            layers.remove(layer)
 
-    model = LLMModel(LOCAL_MODELS.get(model_name, model_name))
+    model = LLMModel(model_name, batch_size=32)
     dataset_spec = DatasetSpec(path=dataset_path)
     dataset = LabelledDataset.load_from(dataset_spec)
 
     activations, inputs = model.get_batched_activations(dataset, layers)
 
     approx_size = activations.numel() * activations.element_size()
-    print(f"Approximately {approx_size / 10**9:.2f}GB of activations")
+    print(
+        f"Approximately {approx_size / 10**9:.2f}GB of activations without compression"
+    )
 
     store = ActivationStore(ACTIVATIONS_DIR)
-    store.save(model.name, dataset_spec, layers, activations, inputs)
+    store.save(model_name, dataset_spec, layers, activations, inputs)
 
 
 if __name__ == "__main__":

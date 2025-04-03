@@ -63,11 +63,12 @@ class SklearnProbe(Probe):
         return self
 
     def predict(self, dataset: BaseDataset) -> list[Label]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
+        activations = ActivationStore().load(
+            model_name=self.model_name,
+            dataset_spec=dataset.spec,
             layer=self.layer,
         )
-        labels = self._predict(activations_obj)
+        labels = self._predict(activations)
         return [Label.from_int(pred) for pred in labels]
 
     def predict_proba(

@@ -45,14 +45,13 @@ def download_file(bucket_name: str, key: str, local_path: Path) -> bool:
         response = r2_client.head_object(Bucket=bucket_name, Key=key)
         file_size = response["ContentLength"]
 
-        # Create progress bar with nesting support
         progress = tqdm(
             total=file_size,
             unit="B",
             unit_scale=True,
             desc=f"Downloading {key}",
-            position=1,
-            leave=False,  # Don't leave the inner bar
+            position=1,  # Allow nesting
+            leave=False,  # This bar disappears when done
         )
 
         def callback(chunk: int):
@@ -81,14 +80,13 @@ def upload_file(bucket_name: str, key: str, local_path: Path) -> bool:
     r2_client = get_r2_client()
     try:
         file_size = local_path.stat().st_size
-        # Create progress bar with nesting support
         progress = tqdm(
             total=file_size,
             unit="B",
             unit_scale=True,
             desc=f"Uploading {key}",
-            position=1,
-            leave=False,  # Don't leave the inner bar
+            position=1,  # Allow nesting
+            leave=False,  # This bar disappears when done
         )
 
         def callback(chunk: int):

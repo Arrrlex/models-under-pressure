@@ -30,7 +30,8 @@ def compute_tpr_at_1pct_fpr(
     labels: Float[np.ndarray, " batch_size"],
 ) -> float:
     fpr, tpr, _ = roc_curve(labels, pred_scores)
-    return float(tpr[np.where(fpr <= 0.01)[0][-1]])
+    closest_idx = np.argmin(np.abs(fpr - 0.01))
+    return float(tpr[closest_idx])
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:

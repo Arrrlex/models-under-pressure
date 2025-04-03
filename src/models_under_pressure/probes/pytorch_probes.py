@@ -33,6 +33,9 @@ class PytorchProbe(Probe):
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
         """
+        print(
+            f"Loading activations for {self.model_name} {dataset.path.stem} {self.layer}"
+        )
         activations = ActivationStore().load(
             model_name=self.model_name,
             dataset_spec=dataset.spec,

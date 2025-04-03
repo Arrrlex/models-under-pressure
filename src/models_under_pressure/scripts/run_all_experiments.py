@@ -158,7 +158,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
                 layer=layer,
                 model_name=LOCAL_MODELS[model],
                 max_samples=None,
-                dataset_path=config.train_data,
+                dataset_spec=config.train_data,
                 probe_spec=config.scaling_plot.probe_spec,
                 use_test_set=config.use_test_set,
             )

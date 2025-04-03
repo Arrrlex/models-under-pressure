@@ -9,7 +9,6 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
-    TEST_DATASETS,
     EvalRunConfig,
 )
 from models_under_pressure.experiments.dataset_splitting import (
@@ -32,7 +31,8 @@ def load_eval_datasets(
     eval_datasets = {}
     eval_dataset_paths = {}
     # max_samples = 200
-    datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
+    # datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
+    datasets = {"anthropic": EVAL_DATASETS["anthropic"]}
     for name, path in datasets.items():
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
+        layer=5,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
         dataset_spec=DatasetSpec(path=SYNTHETIC_DATASET_PATH),

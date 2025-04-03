@@ -367,6 +367,9 @@ class BaseDataset(BaseModel, Generic[R]):
         return [
             self._record_class(
                 input=input,
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
                 id=id,
                 index=self.indices[i],
                 other_fields={k: v[i] for k, v in self.other_fields.items()},

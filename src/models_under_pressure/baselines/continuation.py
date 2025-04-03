@@ -281,7 +281,15 @@ class LikelihoodContinuationBaseline:
                 other_fields["low_stakes_score"].append(float(probs[0]))
                 other_fields["model"].append(self.model.name)
 
-        return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
+        return LabelledDataset(
+            inputs=inputs,
+            ids=ids,
+            other_fields=other_fields,
+            path=dataset.path,
+            indices=dataset.indices,
+            field_mapping=dataset.field_mapping,
+            loader_kwargs=dataset.loader_kwargs,
+        )
 
 
 def evaluate_likelihood_continuation_baseline(

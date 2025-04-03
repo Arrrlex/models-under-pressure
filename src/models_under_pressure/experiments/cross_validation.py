@@ -165,7 +165,7 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-    dataset = LabelledDataset.load_from(**config.dataset_spec)
+    dataset = LabelledDataset.load_from(config.dataset_spec)
 
     train_dataset = dataset.filter(
         lambda x: x.other_fields.get("split", "train") == "train"
