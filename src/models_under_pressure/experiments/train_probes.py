@@ -123,9 +123,9 @@ def evaluate_probe_and_save_results(
         leave=False,
     ):
         print(f"Evaluating dataset {eval_dataset_name} (save_results: {save_results})")
-        # activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+        activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
 
-        per_entry_probe_scores = probe.predict_proba_without_activations(eval_dataset)
+        # per_entry_probe_scores = probe.predict_proba_without_activations(eval_dataset)
         print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
         # TODO: Add back in for activations analysis
@@ -197,9 +197,9 @@ def evaluate_probe_and_save_results(
             for score, values in probe_scores_dict.items():
                 if len(values) != len(eval_dataset.inputs):
                     breakpoint()
-                assert (
-                    len(values) == len(eval_dataset.inputs)
-                ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+                assert len(values) == len(eval_dataset.inputs), (
+                    f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+                )
 
             try:
                 dataset_with_probe_scores = LabelledDataset.load_from(

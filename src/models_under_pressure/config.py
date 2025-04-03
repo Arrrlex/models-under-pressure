@@ -70,7 +70,7 @@ BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
 BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
 
 GENERATED_DATASET = {
     "file_path": SYNTHETIC_DATASET_PATH,
