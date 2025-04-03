@@ -295,9 +295,7 @@ def hf_login():
     huggingface_hub.login(token=HF_TOKEN)
 
 
-def batched_range(
-    n_samples: int, batch_size: int
-) -> Generator[tuple[int, int], None, None]:
+def batched_range(n_samples: int, batch_size: int) -> list[tuple[int, int]]:
     """Generate start and end indices for batches of size batch_size.
 
     Args:
@@ -308,10 +306,9 @@ def batched_range(
         List of (start_idx, end_idx) tuples for each batch
     """
     n_batches = (n_samples + batch_size - 1) // batch_size
-    for i in range(n_batches):
-        lower = i * batch_size
-        upper = min((i + 1) * batch_size, n_samples)
-        yield lower, upper
+    return [
+        (i * batch_size, min((i + 1) * batch_size, n_samples)) for i in range(n_batches)
+    ]
 
 
 T = TypeVar("T")
