@@ -91,7 +91,7 @@ class PytorchLinearClassifier:
 
                 # Backward pass and optimize
                 loss.backward()
-                optimizer.step()
+                optimizer.step()  # type: ignore
 
                 # Update running loss and progress bar
                 running_loss += loss.item()
