@@ -95,26 +95,26 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         print("Running compare best probe against baseline...")
         # This recomputes the probe evaluation results for the best probe
 
-        # eval_run_config = EvalRunConfig(
-        #     id="best_probe",
-        #     model_name=config.model_name,
-        #     dataset_path=config.train_data,
-        #     layer=config.best_layer,
-        #     probe_spec=config.best_probe,
-        #     max_samples=config.max_samples,
-        #     use_test_set=config.use_test_set,
-        # )
+        eval_run_config = EvalRunConfig(
+            id="best_probe",
+            model_name=config.model_name,
+            dataset_path=config.train_data,
+            layer=config.best_layer,
+            probe_spec=config.best_probe,
+            max_samples=config.max_samples,
+            use_test_set=config.use_test_set,
+        )
 
-        # eval_results, _ = run_evaluation(eval_run_config)
+        eval_results, _ = run_evaluation(eval_run_config)
 
-        # for eval_result in eval_results:
-        #     eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
+        for eval_result in eval_results:
+            eval_result.save_to(EVALUATE_PROBES_DIR / eval_run_config.output_filename)
 
-        # # Clean up memory
-        # del eval_results
-        # gc.collect()
-        # if torch.cuda.is_available():
-        #     torch.cuda.empty_cache()
+        # Clean up memory
+        del eval_results
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Calculate & save the baselines
         for baseline_model in config.baseline_models:
