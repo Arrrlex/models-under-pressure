@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader
 from transformers import (
@@ -15,7 +16,12 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
-from models_under_pressure.config import GENERATED_DATASET, SYNTHETIC_DATASET_PATH
+from models_under_pressure.config import (
+    EVAL_DATASETS_BALANCED,
+    GENERATED_DATASET,
+    SYNTHETIC_DATASET_PATH,
+    TEST_DATASETS_BALANCED,
+)
 from models_under_pressure.interfaces.dataset import LabelledDataset
 
 
@@ -62,6 +68,7 @@ class ClassifierModule(pl.LightningModule):
         self.num_classes = num_classes
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
+        self.test_results = {}
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -339,6 +346,36 @@ def load_datasets(
     return train_dataset, test_dataset
 
 
+def load_eval_datasets(use_test_set: bool = False) -> List[StakesDataset]:
+    """Load the evaluation datasets."""
+
+    if use_test_set:
+        # Download the EVAL_DATASETS_BALANCED datasets
+        datasets = []
+        for dataset_name in TEST_DATASETS_BALANCED:
+            datasets.append(
+                LabelledDataset.load_from(
+                    TEST_DATASETS_BALANCED[dataset_name],
+                    field_mapping=GENERATED_DATASET["field_mapping"],
+                )
+            )
+    else:
+        datasets = []
+        for dataset_name in EVAL_DATASETS_BALANCED:
+            datasets.append(
+                LabelledDataset.load_from(
+                    EVAL_DATASETS_BALANCED[dataset_name],
+                    field_mapping=GENERATED_DATASET["field_mapping"],
+                )
+            )
+
+    # For each dataset, create a StakesDataset:
+    for dataset in datasets:
+        dataset = StakesDataset(dataset.to_pandas())
+        datasets.append(dataset)
+    return datasets
+
+
 def train(
     model_name_or_path: str,
     num_classes: int,
@@ -388,17 +425,16 @@ def train(
         accelerator="gpu",
         devices=devices,
         precision=16,
-        enable_checkpointing=True,
-        default_root_dir="/scratch/ucabwjn/.cache",
-        # callbacks=[
-        #     ModelCheckpoint(
-        #         monitor="val_loss",
-        #         mode="min",
-        #         dirpath="~/models-under-pressure",
-        #         filename="best_model",
-        #         save_top_k=2,
-        #     )
-        # ],  # type: ignore
+        default_root_dir="/scratch/ucabwjn/models-under-pressure",
+        callbacks=[
+            ModelCheckpoint(
+                monitor="val_loss",
+                mode="min",
+                dirpath="/scratch/ucabwjn/models-under-pressure",
+                filename="best_model",
+                save_top_k=2,
+            )
+        ],  # type: ignore
         logger=logger,
     )
 
