@@ -23,7 +23,8 @@ def main(
 
     activations, inputs = model.get_batched_activations(dataset, layers)
 
-    print(activations.shape)
+    approx_size = activations.numel() * activations.element_size()
+    print(f"Approximately {approx_size / 10**9:.2f}GB of activations")
 
     store = ActivationStore(ACTIVATIONS_DIR)
     store.save(model.name, dataset_spec, layers, activations, inputs)

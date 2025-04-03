@@ -3,6 +3,7 @@ from pathlib import Path
 
 import boto3
 import dotenv
+from tqdm import tqdm
 
 
 dotenv.load_dotenv()
@@ -26,7 +27,7 @@ def get_r2_client():
 
 def download_file(bucket_name: str, key: str, local_path: Path) -> bool:
     """
-    Download a file from R2 storage to a local path.
+    Download a file from R2 storage to a local path with a progress bar.
 
     Args:
         bucket_name: Name of the R2 bucket
@@ -39,8 +40,26 @@ def download_file(bucket_name: str, key: str, local_path: Path) -> bool:
     r2_client = get_r2_client()
     try:
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"Downloading {key} to {local_path}")
-        r2_client.download_file(bucket_name, key, str(local_path))
+
+        # Get file size
+        response = r2_client.head_object(Bucket=bucket_name, Key=key)
+        file_size = response["ContentLength"]
+
+        # Create progress bar with nesting support
+        progress = tqdm(
+            total=file_size,
+            unit="B",
+            unit_scale=True,
+            desc=f"Downloading {key}",
+            position=1,
+            leave=False,  # Don't leave the inner bar
+        )
+
+        def callback(chunk: int):
+            progress.update(chunk)
+
+        r2_client.download_file(bucket_name, key, str(local_path), Callback=callback)
+        progress.close()
         return True
     except Exception as e:
         print(f"Failed to download {key}: {e}")
@@ -49,7 +68,7 @@ def download_file(bucket_name: str, key: str, local_path: Path) -> bool:
 
 def upload_file(bucket_name: str, key: str, local_path: Path) -> bool:
     """
-    Upload a file to R2 storage.
+    Upload a file to R2 storage with a progress bar.
 
     Args:
         bucket_name: Name of the R2 bucket
@@ -61,8 +80,22 @@ def upload_file(bucket_name: str, key: str, local_path: Path) -> bool:
     """
     r2_client = get_r2_client()
     try:
-        print(f"Uploading {key} to {bucket_name}")
-        r2_client.upload_file(str(local_path), bucket_name, key)
+        file_size = local_path.stat().st_size
+        # Create progress bar with nesting support
+        progress = tqdm(
+            total=file_size,
+            unit="B",
+            unit_scale=True,
+            desc=f"Uploading {key}",
+            position=1,
+            leave=False,  # Don't leave the inner bar
+        )
+
+        def callback(chunk: int):
+            progress.update(chunk)
+
+        r2_client.upload_file(str(local_path), bucket_name, key, Callback=callback)
+        progress.close()
         return True
     except Exception as e:
         print(f"Failed to upload {key}: {e}")
