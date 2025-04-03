@@ -94,7 +94,7 @@ R = TypeVar("R", bound=Record)
 
 class DatasetSpec(BaseModel):
     path: Path
-    indices: Sequence[int] | Literal["all"]
+    indices: Sequence[int] | Literal["all"] = "all"
     field_mapping: Mapping[str, str] = Field(default_factory=dict)
     loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
 
@@ -289,9 +289,26 @@ class BaseDataset(BaseModel, Generic[R]):
         return cls.from_pandas(df, path=path, field_mapping=field_mapping)
 
     @classmethod
+    @overload
     def load_from(
         cls,
         path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
+        indices: Sequence[int] | Literal["all"] = "all",
+        **loader_kwargs: Any,
+    ) -> Self: ...
+
+    @classmethod
+    @overload
+    def load_from(
+        cls,
+        dataset_spec: DatasetSpec,
+    ) -> Self: ...
+
+    @classmethod
+    def load_from(
+        cls,
+        path_or_spec: Path | DatasetSpec,
         field_mapping: Optional[Mapping[str, str]] = None,
         indices: Sequence[int] | Literal["all"] = "all",
         **loader_kwargs: Any,
@@ -304,19 +321,21 @@ class BaseDataset(BaseModel, Generic[R]):
         - hf: A Hugging Face dataset, specified by a dataset name or path to a local file
 
         Args:
-            file_path: The path to the file to load
+            path_or_spec: Either a Path to the file to load, or a DatasetSpec
+            field_mapping: Optional mapping of field names
+            indices: Which indices to load, or "all" for all indices
             loader_kwargs: Additional keyword arguments to pass to the loader
         """
-        spec = DatasetSpec(
-            path=path,
-            indices=indices,
-            field_mapping=field_mapping or {},
-            loader_kwargs=loader_kwargs,
-        )
-        return cls._load_from(spec)
+        if isinstance(path_or_spec, DatasetSpec):
+            spec = path_or_spec
+        else:
+            spec = DatasetSpec(
+                path=path_or_spec,
+                indices=indices,
+                field_mapping=field_mapping or {},
+                loader_kwargs=loader_kwargs,
+            )
 
-    @classmethod
-    def _load_from(cls, spec: DatasetSpec) -> Self:
         # Infer from extension
         loaders = {
             ".csv": cls.from_csv,

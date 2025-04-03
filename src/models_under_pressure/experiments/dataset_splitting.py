@@ -1,59 +1,15 @@
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
 
-from models_under_pressure.config import GENERATED_DATASET
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
+from models_under_pressure.interfaces.dataset import (
+    BaseDataset,
+    DatasetSpec,
+    LabelledDataset,
+)
 
-
-def create_train_test_split(
-    dataset: Dataset,
-    test_size: float = 0.2,
-    split_field: str | None = None,
-) -> tuple[LabelledDataset, LabelledDataset]:
-    """Create a train-test split of the dataset.
-
-    Args:
-        dataset: Dataset to split
-        test_size: Fraction of data to use for test set
-        split_field: If provided, ensures examples with the same value for this field
-                    are kept together in either train or test set
-    """
-    if split_field is None:
-        # Simple random split
-        train_indices = np.random.choice(
-            range(len(dataset.ids)),
-            size=int(len(dataset.ids) * (1 - test_size)),
-            replace=False,
-        )
-        test_indices = np.random.permutation(
-            np.setdiff1d(np.arange(len(dataset.ids)), train_indices)
-        )
-        train_indices = list(train_indices)
-        test_indices = list(test_indices)
-    else:
-        # Split based on unique values of the field
-        assert (
-            split_field in dataset.other_fields
-        ), f"Field {split_field} not found in dataset"
-        unique_values = list(set(dataset.other_fields[split_field]))
-        n_test = int(len(unique_values) * test_size)
-
-        test_values = set(np.random.choice(unique_values, size=n_test, replace=False))
-
-        train_indices = [
-            i
-            for i, val in enumerate(dataset.other_fields[split_field])
-            if val not in test_values
-        ]
-        test_indices = [
-            i
-            for i, val in enumerate(dataset.other_fields[split_field])
-            if val in test_values
-        ]
-
-    return dataset[train_indices], dataset[test_indices]  # type: ignore
+D = TypeVar("D", bound=BaseDataset)
 
 
 @dataclass
@@ -122,20 +78,17 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 
 def load_train_test(
-    dataset_path: Path,
+    dataset_spec: DatasetSpec,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
     Args:
-        dataset_path: Path to the generated dataset
+        dataset_spec: DatasetSpec to load the train-test split from
 
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
-    dataset = LabelledDataset.load_from(
-        dataset_path,
-        field_mapping=GENERATED_DATASET["field_mapping"],
-    )
+    dataset = LabelledDataset.load_from(dataset_spec)
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
     test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
@@ -144,13 +97,13 @@ def load_train_test(
 
 
 def load_filtered_train_dataset(
-    dataset_path: Path,
+    dataset_spec: DatasetSpec,
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
 ) -> LabelledDataset:
     # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(dataset_path)
+    train_dataset, _ = load_train_test(dataset_spec)
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(

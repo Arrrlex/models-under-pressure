@@ -7,6 +7,7 @@ from typing import Any
 import torch
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from models_under_pressure.interfaces.dataset import DatasetSpec
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
@@ -178,8 +179,7 @@ class ScalingPlotConfig(BaseModel):
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
     baseline_models: list[str]
-    train_data: Path
-    batch_size: int
+    train_data: DatasetSpec
     cv_folds: int
     best_layer: int
     layers: list[int]
@@ -314,7 +314,7 @@ DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
 class HeatmapRunConfig(BaseModel):
     layer: int
     model_name: str
-    dataset_path: Path
+    dataset_spec: DatasetSpec
     max_samples: int | None
     variation_types: list[str]
     probe_spec: ProbeSpec
@@ -332,11 +332,10 @@ class HeatmapRunConfig(BaseModel):
 
 class ChooseLayerConfig(BaseModel):
     model_name: str
-    dataset_spec: dict[str, Any]
+    dataset_spec: DatasetSpec
     cv_folds: int
-    batch_size: int
+    layers: list[int]
     max_samples: int | None = None
-    layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
 
     @property
@@ -357,7 +356,7 @@ class EvalRunConfig(BaseModel):
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
+    dataset_spec: DatasetSpec = DatasetSpec(path=SYNTHETIC_DATASET_PATH)
     model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
 
     @property

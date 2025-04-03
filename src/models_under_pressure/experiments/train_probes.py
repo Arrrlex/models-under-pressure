@@ -15,7 +15,6 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
-from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
@@ -34,7 +33,9 @@ dotenv.load_dotenv()
 
 
 def train_probes(
-    model: LLMModel, dataset: LabelledDataset, layers: list[int] | None = None
+    model_name: str,
+    dataset: LabelledDataset,
+    layers: list[int],
 ) -> dict[int, Probe]:
     """Train a probe for each layer in the model.
 
@@ -49,7 +50,6 @@ def train_probes(
     Used in the generate_heatmaps script...
     """
 
-    layers = layers or list(range(model.n_layers))
     aggregator = Aggregator(
         preprocessor=Preprocessors.mean,
         postprocessor=Postprocessors.sigmoid,
@@ -60,7 +60,9 @@ def train_probes(
 
     # Iterate over layers. For each layer, create a config, then train a probe and store it
     return {
-        layer: SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(dataset)
+        layer: SklearnProbe(
+            model_name=model_name, layer=layer, aggregator=aggregator
+        ).fit(dataset)
         for layer in tqdm(layers, desc="Training probes")
     }
 
@@ -89,10 +91,11 @@ def tpr_at_fixed_fpr_score(
 
 def evaluate_probe_and_save_results(
     probe: Probe,
-    train_dataset_path: Path,
+    train_dataset: LabelledDataset,
     eval_datasets: dict[str, LabelledDataset],
     layer: int,
     output_dir: Path,
+    model_name: str,
     save_results: bool = False,
     fpr: float = 0.01,
 ) -> tuple[dict[str, tuple[list[float], DatasetResults]], list[float]]:
@@ -125,7 +128,7 @@ def evaluate_probe_and_save_results(
         print(f"Evaluating dataset {eval_dataset_name} (save_results: {save_results})")
         # activation_obj, per_entry_probe_scores = probe.predict_proba(eval_dataset)
 
-        per_entry_probe_scores = probe.predict_proba_without_activations(eval_dataset)
+        _, per_entry_probe_scores = probe.predict_proba(eval_dataset)
         print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
         # TODO: Add back in for activations analysis
@@ -197,9 +200,9 @@ def evaluate_probe_and_save_results(
             for score, values in probe_scores_dict.items():
                 if len(values) != len(eval_dataset.inputs):
                     breakpoint()
-                assert (
-                    len(values) == len(eval_dataset.inputs)
-                ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+                assert len(values) == len(eval_dataset.inputs), (
+                    f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+                )
 
             try:
                 dataset_with_probe_scores = LabelledDataset.load_from(
@@ -210,9 +213,9 @@ def evaluate_probe_and_save_results(
 
             extra_fields = dict(**dataset_with_probe_scores.other_fields)
 
-            short_model_name = probe._llm.name.split("/")[-1]
+            short_model_name = model_name.split("/")[-1]
             column_name_template = (
-                f"_{short_model_name}_{train_dataset_path.stem}_l{layer}"
+                f"_{short_model_name}_{train_dataset.path.stem}_l{layer}"
             )
 
             for name, scores in probe_scores_dict.items():

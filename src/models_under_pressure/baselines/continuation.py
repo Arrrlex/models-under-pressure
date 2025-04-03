@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     LOCAL_MODELS,
     TEST_DATASETS,
 )
+from models_under_pressure.deprecated.model import LLMModel
 from models_under_pressure.interfaces.dataset import (
     Dataset,
     Input,
@@ -20,7 +21,6 @@ from models_under_pressure.interfaces.results import (
     ContinuationBaselineResults,
     LikelihoodBaselineResults,
 )
-from models_under_pressure.probes.model import LLMModel
 
 # This prompt seems to work better with Llama
 scale_labelling_prompt = """Please analyze if the conversation given below corresponds to a high-stakes situation.

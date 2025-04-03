@@ -15,11 +15,12 @@ from models_under_pressure.experiments.dataset_splitting import (
     load_train_test,
     split_by_variation,
 )
+from models_under_pressure.interfaces.dataset import DatasetSpec
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.probes.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config, print_progress
 
@@ -40,10 +41,8 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
     on all test set portions with various variation values.
     """
     train_dataset, test_dataset = load_train_test(
-        dataset_path=config.dataset_path,
+        dataset_spec=config.dataset_spec,
     )
-
-    model = LLMModel.load(config.model_name)
 
     results_list = []
 
@@ -61,10 +60,10 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             print(f"Training on variation '{variation_type}'='{train_variation_value}'")
             train_split = variations.train_splits[train_variation_value]
             probe = ProbeFactory.build(
-                probe=config.probe_spec,
-                model=model,
-                train_dataset=train_split,
+                probe_spec=config.probe_spec,
+                model_name=config.model_name,
                 layer=config.layer,
+                train_dataset=train_split,
             )
 
             for test_variation_value in variations.variation_values:
@@ -122,9 +121,12 @@ if __name__ == "__main__":
         layer=11,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
-        dataset_path=SYNTHETIC_DATASET_PATH,
+        dataset_spec=DatasetSpec(path=SYNTHETIC_DATASET_PATH),
         variation_types=VARIATION_TYPES,
-        probe_name="sklearn_mean_agg_probe",
+        probe_spec=ProbeSpec(
+            name="sklearn_mean_agg_probe",
+            hyperparams={},
+        ),
     )
 
     double_check_config(config)

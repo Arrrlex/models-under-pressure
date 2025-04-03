@@ -5,6 +5,7 @@ from typing import Protocol, Self, Sequence
 import numpy as np
 from jaxtyping import Float
 
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Input,
@@ -27,7 +28,7 @@ class Probe(ABC):
     @abstractmethod
     def predict_proba(
         self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]: ...
+    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]: ...
 
     @abstractmethod
     def per_token_predictions(

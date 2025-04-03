@@ -3,7 +3,6 @@ import gc
 import numpy as np
 import torch
 
-from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
 )
@@ -20,11 +19,11 @@ from models_under_pressure.config import (
     HeatmapRunConfig,
     RunAllExperimentsConfig,
 )
+from models_under_pressure.deprecated.model import LLMModel
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
-from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.utils import double_check_config, pydra
 
 
 @pydra.main(
@@ -57,11 +56,8 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         choose_best_layer_via_cv(
             ChooseLayerConfig(
                 model_name=config.model_name,
-                dataset_spec={
-                    "file_path_or_name": config.train_data,
-                },
+                dataset_spec=config.train_data,
                 cv_folds=config.cv_folds,
-                batch_size=config.batch_size,
                 max_samples=config.max_samples,
                 layers=config.layers,
             )
@@ -72,7 +68,7 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         for probe in config.probes:
             eval_run_config = EvalRunConfig(
                 model_name=config.model_name,
-                dataset_path=config.train_data,
+                dataset_spec=config.train_data,
                 layer=config.best_layer,
                 probe_spec=probe,
                 max_samples=config.max_samples,
