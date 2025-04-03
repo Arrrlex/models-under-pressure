@@ -12,8 +12,7 @@ from tqdm import tqdm
 from models_under_pressure.config import ACTIVATIONS_DIR
 
 from models_under_pressure.interfaces.activations import Activation
-from models_under_pressure.interfaces.dataset import DatasetSpec, LabelledDataset
-from models_under_pressure.model import LLMModel
+from models_under_pressure.interfaces.dataset import DatasetSpec
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
     download_file,
@@ -24,7 +23,7 @@ from models_under_pressure.r2 import (
 
 class ManifestRow(BaseModel):
     model_name: str
-    dataset_spec: DatasetSpec
+    dataset_path: Path
     layer: int
     timestamp: datetime.datetime
     activations: Path
@@ -32,18 +31,18 @@ class ManifestRow(BaseModel):
     attention_mask: Path
 
     @classmethod
-    def build(cls, model_name: str, dataset_spec: DatasetSpec, layer: int) -> Self:
-        common_name = model_name + str(dataset_spec.path)
+    def build(cls, model_name: str, dataset_path: Path, layer: int) -> Self:
+        common_name = model_name + str(dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
             model_name=model_name,
-            dataset_spec=dataset_spec,
+            dataset_path=dataset_path,
             layer=layer,
             timestamp=datetime.datetime.now(),
             activations=Path(f"activations/{common_id}_{layer}.pt"),
             input_ids=Path(f"input_ids/{common_id}.pt"),
-            attention_mask=Path(f"attention_mask/{common_id}.pt"),
+            attention_mask=Path(f"attention_masks/{common_id}.pt"),
         )
 
     @property
@@ -62,15 +61,20 @@ class ActivationStore:
 
     @contextmanager
     def get_manifest(self):
+        # Download manifest from R2 and load it
         manifest_path = self.path / "manifest.json"
         download_file(self.bucket, "manifest.json", manifest_path)
         with open(manifest_path, "r") as f:
             manifest = Manifest.model_validate_json(f.read())
+
         yield manifest
+
+        # Upload modified manifest to R2
         with open(manifest_path, "w") as f:
             f.write(manifest.model_dump_json(indent=2))
         upload_file(self.bucket, "manifest.json", manifest_path)
 
+        # Upload any new files mentioned in manifest to R2
         for row in manifest.rows:
             for path in row.paths:
                 if not file_exists_in_bucket(self.bucket, str(path)):
@@ -93,7 +97,7 @@ class ActivationStore:
         ):
             manifest_row = ManifestRow.build(
                 model_name=model_name,
-                dataset_spec=dataset_spec,
+                dataset_path=dataset_spec.path,
                 layer=layer,
             )
 
@@ -124,10 +128,9 @@ class ActivationStore:
     def load(
         self, model_name: str, dataset_spec: DatasetSpec, layer: int
     ) -> Activation:
-        spec_all_indices = dataset_spec.model_copy(update={"indices": "all"})
         # Load layer-specific masked activation
         manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_spec=spec_all_indices, layer=layer
+            model_name=model_name, dataset_path=dataset_spec.path, layer=layer
         )
 
         for path in manifest_row.paths:
@@ -157,44 +160,19 @@ class ActivationStore:
             _input_ids=input_ids.numpy(),
         )
 
-    def delete(self, model_name: str, dataset_spec: DatasetSpec, layer: int):
+    def delete(self, model_name: str, dataset_path: Path, layer: int):
         # Delete layer-specific file
         manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_spec=dataset_spec, layer=layer
+            model_name=model_name, dataset_path=dataset_path, layer=layer
         )
-        (self.path / manifest_row.activations).unlink()
-        (self.path / manifest_row.input_ids).unlink()
-        (self.path / manifest_row.attention_mask).unlink()
+
+        for path in manifest_row.paths:
+            (self.path / path).unlink()
+
         with self.get_manifest() as manifest:
             manifest.rows = [
                 row
                 for row in manifest.rows
-                if (row.model_name, row.dataset_spec, row.layer)
-                != (model_name, dataset_spec, layer)
+                if (row.model_name, row.dataset_path, row.layer)
+                != (model_name, dataset_path, layer)
             ]
-
-
-def compute_activations_and_save(
-    model_name: str,
-    dataset_spec: DatasetSpec,
-    layers: list[int],
-    activations_dir: Path,
-):
-    model = LLMModel(model_name)
-    dataset = LabelledDataset.load_from(dataset_spec)
-    print("Getting activations...")
-    activations, inputs = model.get_batched_activations(dataset, layers)
-    print(
-        "Sizes:",
-        activations.shape,
-        inputs["input_ids"].shape,
-        inputs["attention_mask"].shape,
-    )
-    print(
-        "Dtypes:",
-        activations.dtype,
-        inputs["input_ids"].dtype,
-        inputs["attention_mask"].dtype,
-    )
-    store = ActivationStore(activations_dir)
-    store.save(model.name, dataset_spec, layers, activations, inputs)
