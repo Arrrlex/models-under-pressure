@@ -157,6 +157,7 @@ class ScalingPlotConfig(BaseModel):
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
     baseline_models: list[str]
+    baseline_prompts: list[str]
     train_data: Path
     batch_size: int
     cv_folds: int
