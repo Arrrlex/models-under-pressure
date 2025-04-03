@@ -38,7 +38,6 @@ dependencies = [
     "h5py>=3.13.0",
     "omegaconf>=2.3.0",
     "hydra-core>=1.3.2",
-    "safetensors>=0.5.3",
     "boto3>=1.37.26",
     "zstandard>=0.23.0",
 ]
