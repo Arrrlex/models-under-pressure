@@ -157,18 +157,26 @@ def compare_probes(
 
     # Configure pytorch probe
     print("Training pytorch probe...")
+    previous_args = {
+        "batch_size": 32,
+        "epochs": 6,
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "learning_rate": 1e-4,
+        "weight_decay": 0.01,
+    }
+    new_args = {
+        "batch_size": 32,
+        "epochs": 6,
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "learning_rate": 1e-4,
+        "weight_decay": 0.01,
+    }
     pytorch_probe = PytorchProbe(
         _llm=model,
         layer=layer,
         hyper_params={},  # Doesn't apply when giving the classifier
         _classifier=PytorchPerEntryLinearClassifier(
-            training_args={
-                "batch_size": 32,
-                "epochs": 5,
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
-                "learning_rate": 1e-3,
-                "weight_decay": 0.01,
-            }
+            training_args=previous_args,
         ),
     )
     # Initial weights shape: (2048,)
