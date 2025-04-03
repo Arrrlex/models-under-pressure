@@ -1,17 +1,16 @@
 import asyncio
-from contextlib import contextmanager
 import json
 import os
 import random
 import string
 import time
+from contextlib import contextmanager
 from datetime import timedelta
 from pprint import pformat
 from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
 
-import numpy as np
-
 import huggingface_hub
+import numpy as np
 import openai
 import torch
 from dotenv import load_dotenv
@@ -280,3 +279,22 @@ def hf_login():
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")
     huggingface_hub.login(token=HF_TOKEN)
+
+
+def batched_range(
+    n_samples: int, batch_size: int
+) -> Generator[tuple[int, int], None, None]:
+    """Generate start and end indices for batches of size batch_size.
+
+    Args:
+        n_samples: Total number of samples to process
+        batch_size: Size of each batch
+
+    Returns:
+        List of (start_idx, end_idx) tuples for each batch
+    """
+    n_batches = (n_samples + batch_size - 1) // batch_size
+    for i in range(n_batches):
+        lower = i * batch_size
+        upper = min((i + 1) * batch_size, n_samples)
+        yield lower, upper
