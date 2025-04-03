@@ -17,7 +17,6 @@ class ProbeFactory:
         cls,
         probe: str | ProbeSpec,
         model_name: str,
-        train_dataset_name: str,
         layer: int,
     ) -> Probe:
         if isinstance(probe, str):
@@ -30,41 +29,43 @@ class ProbeFactory:
             )
             if probe.hyperparams is not None:
                 return SklearnProbe(
-                    _llm=model,
+                    model_name=model_name,
                     layer=layer,
                     aggregator=aggregator,
                     hyper_params=probe.hyperparams,
-                ).fit(train_dataset)
+                )
             else:
-                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-                    train_dataset
+                return SklearnProbe(
+                    model_name=model_name,
+                    layer=layer,
+                    aggregator=aggregator,
                 )
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
+                model_name=model_name,
                 layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=False, training_args=probe.hyperparams
                 ),
-            ).fit(train_dataset)
+            )
         elif probe.name == "lda":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
+                model_name=model_name,
                 layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=True, training_args=probe.hyperparams
                 ),
-            ).fit(train_dataset)
+            )
         elif probe.name == "pytorch_per_token_probe":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
+                model_name=model_name,
                 layer=layer,
                 hyper_params=probe.hyperparams,
-            ).fit(train_dataset)
+            )
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")

@@ -1,7 +1,6 @@
-import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Self, Sequence
+from typing import Self
 
 import numpy as np
 from jaxtyping import Float
@@ -9,32 +8,25 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
-    LOCAL_MODELS,
     PROBES_DIR,
-    SYNTHETIC_DATASET_PATH,
 )
-from models_under_pressure.experiments.dataset_splitting import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
     Aggregator,
-    Postprocessors,
-    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
-    Dataset,
-    Input,
     Label,
     LabelledDataset,
 )
 from models_under_pressure.probes.base import Classifier, Probe
-from models_under_pressure.probes.model import LLMModel
 
 
 @dataclass
 class SklearnProbe(Probe):
-    _llm: LLMModel
+    model_name: str
     layer: int
 
     aggregator: Aggregator
@@ -56,8 +48,9 @@ class SklearnProbe(Probe):
             )  # type: ignore
 
     def fit(self, dataset: LabelledDataset) -> Self:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
+        activations_obj = ActivationStore().load(
+            model_name=self.model_name,
+            dataset_spec=dataset.spec,
             layer=self.layer,
         )
 
@@ -80,23 +73,18 @@ class SklearnProbe(Probe):
     def predict_proba(
         self, dataset: BaseDataset
     ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
+        activations = ActivationStore().load(
+            model_name=self.model_name,
+            dataset_spec=dataset.spec,
             layer=self.layer,
         )
-        return activations_obj, self._predict_proba(activations_obj)
+        return activations, self._predict_proba(activations)
 
     def predict_proba_without_activations(
         self, dataset: BaseDataset
     ) -> Float[np.ndarray, " batch_size"]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layer=self.layer,
-        )
-        # print(
-        #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
-        # )
-        return self._predict_proba(activations_obj)
+        _, probs = self.predict_proba(dataset)
+        return probs
 
     def _fit(
         self,
@@ -130,25 +118,19 @@ class SklearnProbe(Probe):
         return np.log(probs / (1 - probs))
 
     def per_token_predictions(
-        self,
-        inputs: Sequence[Input],
+        self, dataset: BaseDataset
     ) -> Float[np.ndarray, "batch_size seq_len"]:
-        dataset = Dataset(
-            inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
-        )
-
-        # TODO: Change such that it uses the aggregation framework
-
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
+        activations = ActivationStore().load(
+            model_name=self.model_name,
+            dataset_spec=dataset.spec,
             layer=self.layer,
         )
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
-        for i in range(len(activations_obj.get_activations(per_token=False))):
-            activations = activations_obj.get_activations(per_token=False)[i]
-            attention_mask = activations_obj.get_attention_mask(per_token=False)[i]
+        for i in range(len(activations.get_activations(per_token=False))):
+            activations = activations.get_activations(per_token=False)[i]
+            attention_mask = activations.get_attention_mask(per_token=False)[i]
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
@@ -182,52 +164,6 @@ class ProbeInfo:
         return PROBES_DIR / f"{self.name}.pkl"
 
 
-def save_probe(probe: SklearnProbe, probe_info: ProbeInfo):
-    output_path = probe_info.path
-
-    print(f"Saving probe to {output_path}")
-    with open(output_path, "wb") as f:
-        pickle.dump(probe._classifier, f)
-
-
-def load_probe(model: LLMModel, probe_info: ProbeInfo) -> SklearnProbe:
-    probe_path = probe_info.path
-    print(f"Loading probe from {probe_path}")
-    with open(probe_path, "rb") as f:
-        classifier = pickle.load(f)
-    return SklearnProbe(
-        _llm=model,
-        layer=probe_info.layer,
-        aggregator=probe_info.aggregator,
-        _classifier=classifier,
-    )
-
-
-def load_or_train_probe(
-    model: LLMModel,
-    train_dataset: LabelledDataset,
-    train_dataset_path: Path,
-    layer: int,
-    aggregator: Aggregator,
-    seq_pos: int | str = "all",
-) -> SklearnProbe:
-    probe_info = ProbeInfo(
-        model_name_short=model.name.split("/")[-1],
-        dataset_path=train_dataset_path.stem,
-        layer=layer,
-        aggregator=aggregator,
-        seq_pos=seq_pos,
-    )
-    if probe_info.path.exists():
-        probe = load_probe(model, probe_info)
-    else:
-        probe = SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-            train_dataset
-        )
-        save_probe(probe, probe_info)
-    return probe
-
-
 def compute_accuracy(
     probe: Probe,
     dataset: LabelledDataset,
@@ -235,24 +171,3 @@ def compute_accuracy(
     pred_labels = probe.predict(dataset)
     pred_labels_np = np.array([label.to_int() for label in pred_labels])
     return (pred_labels_np == dataset.labels_numpy()).mean()
-
-
-if __name__ == "__main__":
-    model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
-
-    # Train a probe
-    agg = Aggregator(
-        preprocessor=Preprocessors.per_token,
-        postprocessor=Postprocessors.sigmoid,
-    )
-    train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
-    probe = SklearnProbe(_llm=model, layer=11, aggregator=agg)
-    probe.fit(train_dataset[:10])
-
-    # Test the probe
-    inputs = [
-        "Hello, how are you?",
-        "What is the capital of France?",
-    ]
-    predictions = probe.per_token_predictions(inputs)
-    print(predictions)

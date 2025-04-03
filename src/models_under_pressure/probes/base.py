@@ -11,12 +11,11 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.probes.model import LLMModel
 
 
 @dataclass
 class Probe(ABC):
-    _llm: LLMModel
+    model_name: str
     layer: int
 
     @abstractmethod

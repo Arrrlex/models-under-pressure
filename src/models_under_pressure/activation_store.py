@@ -49,7 +49,7 @@ class Manifest(BaseModel):
 
 @dataclass
 class ActivationStore:
-    path: Path
+    path: Path = ACTIVATIONS_DIR
 
     @contextmanager
     def get_manifest(self):
@@ -139,12 +139,12 @@ class ActivationStore:
 
 def compute_activations_and_save(
     model_name: str,
-    dataset_path: Path,
+    dataset_spec: DatasetSpec,
     layers: list[int],
     activations_dir: Path,
 ):
     model = LLMModel(model_name)
-    dataset = LabelledDataset.load_from(dataset_path)
+    dataset = LabelledDataset._load_from(dataset_spec)
     print("Getting activations...")
     activations, inputs = model.get_batched_activations(dataset, layers)
     print(
@@ -160,18 +160,21 @@ def compute_activations_and_save(
         inputs["attention_mask"].dtype,
     )
     store = ActivationStore(activations_dir)
-    store.save(model.name, dataset_path, layers, activations, inputs)
+    store.save(model.name, dataset_spec, layers, activations, inputs)
 
 
 if __name__ == "__main__":
     model_name = LOCAL_MODELS["llama-1b"]
-    dataset_path = ALL_DATASETS["synthetic_25_03_25"]
+    dataset_spec = DatasetSpec(
+        path=ALL_DATASETS["synthetic_25_03_25"],
+        indices="all",
+    )
     layers = [5, 6, 7, 8]
     activations_dir = ACTIVATIONS_DIR
 
     compute_activations_and_save(
         model_name=model_name,
-        dataset_path=dataset_path,
+        dataset_spec=dataset_spec,
         layers=layers,
         activations_dir=activations_dir,
     )
@@ -180,6 +183,6 @@ if __name__ == "__main__":
 
     activations = ActivationStore(activations_dir).load(
         model_name=model_name,
-        dataset_path=dataset_path,
+        dataset_spec=dataset_spec,
         layer=5,
     )

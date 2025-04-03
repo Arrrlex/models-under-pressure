@@ -65,6 +65,9 @@ def to_dialogue(input: Input) -> Dialogue:
 
 
 class Record(BaseModel):
+    path: Path
+    field_mapping: Mapping[str, str]
+    loader_kwargs: Mapping[str, Any]
     input: Input
     id: str
     index: int
@@ -90,18 +93,22 @@ R = TypeVar("R", bound=Record)
 
 
 class DatasetSpec(BaseModel):
-    dataset_path: Path
+    path: Path
     indices: Sequence[int] | Literal["all"]
     field_mapping: Mapping[str, str] = Field(default_factory=dict)
     loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
 
-    @field_validator("dataset_path")
+    @field_validator("path")
     def resolve_path(cls, v: Path) -> Path:
         """Resolve dataset_path and make it relative to PROJECT_ROOT"""
         return v.resolve().relative_to(PROJECT_ROOT)
 
 
 class BaseDataset(BaseModel, Generic[R]):
+    path: Path
+    indices: Sequence[int]
+    field_mapping: Mapping[str, str] = Field(default_factory=dict)
+    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
     inputs: Sequence[Input]
     ids: Sequence[str]
     other_fields: Mapping[str, Sequence[Any]]
@@ -122,6 +129,12 @@ class BaseDataset(BaseModel, Generic[R]):
             raise ValueError(
                 f"Length mismatch: inputs ({input_len}) != ids ({len(self.ids)})"
             )
+
+        if self.indices != "all":
+            if len(self.indices) != input_len:
+                raise ValueError(
+                    f"Length mismatch: inputs ({input_len}) != indices ({len(self.indices)})"
+                )
 
         for field_name, field_values in self.other_fields.items():
             if len(field_values) != input_len:
@@ -145,6 +158,10 @@ class BaseDataset(BaseModel, Generic[R]):
     def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
             return type(self)(
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
+                indices=[self.indices[i] for i in idx],
                 inputs=[self.inputs[i] for i in idx],
                 ids=[self.ids[i] for i in idx],
                 other_fields={
@@ -153,6 +170,10 @@ class BaseDataset(BaseModel, Generic[R]):
             )
         elif isinstance(idx, slice):
             return type(self)(
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
+                indices=self.indices[idx],
                 inputs=self.inputs[idx],
                 ids=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
@@ -161,7 +182,7 @@ class BaseDataset(BaseModel, Generic[R]):
             return self._record_class(
                 input=self.inputs[idx],
                 id=self.ids[idx],
-                index=idx,
+                index=self.indices[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
             )
 
@@ -171,10 +192,24 @@ class BaseDataset(BaseModel, Generic[R]):
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
 
+    @property
+    def spec(self) -> DatasetSpec:
+        indices = "all" if self.indices == list(range(len(self))) else self.indices
+        return DatasetSpec(
+            path=self.path,
+            indices=indices,
+            field_mapping=self.field_mapping,
+            loader_kwargs=self.loader_kwargs,
+        )
+
     @classmethod
     def from_records(cls, records: Sequence[R]) -> Self:
         field_keys = records[0].other_fields.keys()
         return cls(
+            path=records[0].path,
+            field_mapping=records[0].field_mapping,
+            loader_kwargs=records[0].loader_kwargs,
+            indices=[r.index for r in records],
             inputs=[r.input for r in records],
             ids=[r.id for r in records],
             other_fields={k: [r.other_fields[k] for r in records] for k in field_keys},
@@ -182,7 +217,10 @@ class BaseDataset(BaseModel, Generic[R]):
 
     @classmethod
     def from_pandas(
-        cls, df: pd.DataFrame, field_mapping: Optional[Mapping[str, str]] = None
+        cls,
+        df: pd.DataFrame,
+        path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
         # Extract the required columns
         df = df.rename(columns=field_mapping or {})
@@ -220,23 +258,35 @@ class BaseDataset(BaseModel, Generic[R]):
             if col not in {"inputs", "ids"}
         }
 
-        return cls(inputs=inputs, ids=ids, other_fields=other_fields)
+        return cls(
+            path=path,
+            indices=list(range(len(inputs))),
+            field_mapping=field_mapping or {},
+            loader_kwargs={},
+            inputs=inputs,
+            ids=ids,
+            other_fields=other_fields,
+        )
 
     @classmethod
     def from_jsonl(
-        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+        cls,
+        path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
-        with open(file_path, "r") as f:
+        with open(path, "r") as f:
             df = pd.DataFrame([json.loads(line) for line in f])
 
-        return cls.from_pandas(df, field_mapping=field_mapping)
+        return cls.from_pandas(df, path=path, field_mapping=field_mapping)
 
     @classmethod
     def from_csv(
-        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+        cls,
+        path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
-        df = pd.read_csv(file_path)
-        return cls.from_pandas(df, field_mapping=field_mapping)
+        df = pd.read_csv(path)
+        return cls.from_pandas(df, path=path, field_mapping=field_mapping)
 
     @classmethod
     def load_from(
@@ -258,7 +308,7 @@ class BaseDataset(BaseModel, Generic[R]):
             loader_kwargs: Additional keyword arguments to pass to the loader
         """
         spec = DatasetSpec(
-            dataset_path=path,
+            path=path,
             indices=indices,
             field_mapping=field_mapping or {},
             loader_kwargs=loader_kwargs,
@@ -273,11 +323,11 @@ class BaseDataset(BaseModel, Generic[R]):
             ".jsonl": cls.from_jsonl,
         }
         try:
-            loader = loaders[spec.dataset_path.suffix]
+            loader = loaders[spec.path.suffix]
         except KeyError:
-            raise ValueError(f"Unsupported file type: '{spec.dataset_path.suffix}'")
+            raise ValueError(f"Unsupported file type: '{spec.path.suffix}'")
         dataset_all_indices = loader(
-            PROJECT_ROOT / spec.dataset_path,
+            PROJECT_ROOT / spec.path,
             field_mapping=spec.field_mapping,
             **spec.loader_kwargs,
         )
@@ -298,6 +348,7 @@ class BaseDataset(BaseModel, Generic[R]):
             self._record_class(
                 input=input,
                 id=id,
+                index=self.indices[i],
                 other_fields={k: v[i] for k, v in self.other_fields.items()},
             )
             for i, (input, id) in enumerate(zip(self.inputs, self.ids))
