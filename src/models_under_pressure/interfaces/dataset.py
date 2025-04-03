@@ -24,7 +24,8 @@ import pandas as pd
 from jaxtyping import Float
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from models_under_pressure.config import PROJECT_ROOT
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 class Message(BaseModel):

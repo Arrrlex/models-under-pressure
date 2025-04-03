@@ -113,6 +113,8 @@ class ActivationStore:
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
 
+        # upload_all_activations()
+
     def load(
         self, model_name: str, dataset_spec: DatasetSpec, layer: int
     ) -> Activation:
@@ -215,3 +217,5 @@ if __name__ == "__main__":
         dataset_spec=dataset_spec,
         layer=5,
     )
+
+# def upload_all_activations():

@@ -74,7 +74,7 @@ BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
 BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_13_03_25_gpt-4o_filtered.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
 
 GENERATED_DATASET = {
     "file_path": SYNTHETIC_DATASET_PATH,
@@ -149,24 +149,6 @@ AIS_DATASETS = {
             "id": "ids",
         },
     },
-}
-
-
-ALL_DATASETS = {
-    "synthetic_13_03_25_filtered": SYNTHETIC_DATASET_PATH,
-    "synthetic_25_03_25": TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl",
-    "manual_upsampled": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic_dev": EVALS_DIR / "anthropic_samples.csv",
-    "toolace_dev": EVALS_DIR / "toolace_samples.csv",
-    "mt_dev": EVALS_DIR / "mt_samples.csv",
-    "mts_dev": EVALS_DIR / "mts_samples.csv",
-    "manual_test": TEST_EVALS_DIR / "manual.csv",
-    "anthropic_test": TEST_EVALS_DIR / "anthropic_samples.csv",
-    "toolace_test": TEST_EVALS_DIR / "toolace_samples.csv",
-    "mt_test": TEST_EVALS_DIR / "mt_samples.csv",
-    "mts_test": TEST_EVALS_DIR / "mts_samples.csv",
-    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
-    "aya_redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
 }
 
 
