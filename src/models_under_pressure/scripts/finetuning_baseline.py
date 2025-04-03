@@ -1,3 +1,5 @@
+import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -19,6 +21,7 @@ from transformers import (
 from models_under_pressure.config import (
     EVAL_DATASETS_BALANCED,
     GENERATED_DATASET,
+    RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
 )
@@ -68,7 +71,7 @@ class ClassifierModule(pl.LightningModule):
         self.num_classes = num_classes
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
-        self.test_results = {}
+        self.test_results = []
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -176,6 +179,8 @@ class ClassifierModule(pl.LightningModule):
         acc = (preds == y).float().mean()
         self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
 
+        self.test_results.append([logits, y])
+
         return {"test_loss": loss, "test_acc": acc}
 
     def configure_optimizers(self):
@@ -210,6 +215,9 @@ class ClassifierModule(pl.LightningModule):
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(logits, dim=1)
         return {"logits": logits, "probs": probs, "preds": preds}
+
+    def reset_test_results(self):
+        self.test_results = []
 
 
 class LLMModel(nn.Module):
@@ -363,17 +371,21 @@ def load_eval_datasets(use_test_set: bool = False) -> List[StakesDataset]:
         datasets = []
         for dataset_name in EVAL_DATASETS_BALANCED:
             datasets.append(
-                LabelledDataset.load_from(
-                    EVAL_DATASETS_BALANCED[dataset_name],
-                    field_mapping=GENERATED_DATASET["field_mapping"],
+                (
+                    LabelledDataset.load_from(
+                        EVAL_DATASETS_BALANCED[dataset_name],
+                        field_mapping=GENERATED_DATASET["field_mapping"],
+                    ),
+                    dataset_name,
                 )
             )
 
     # For each dataset, create a StakesDataset:
-    for dataset in datasets:
+    torch_datasets = []
+    for dataset, dataset_name in datasets:
         dataset = StakesDataset(dataset.to_pandas())
-        datasets.append(dataset)
-    return datasets
+        torch_datasets.append((dataset, dataset_name))
+    return torch_datasets
 
 
 def train(
@@ -389,6 +401,8 @@ def train(
     shuffle: bool = True,
     wandb_entity: str = "models-under-pressure",
     devices: List[int] = [0],
+    use_test_set: bool = False,
+    logger: Optional[WandbLogger] = None,
 ):
     # Create the specific model instance
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, cache_dir=cache_dir)
@@ -416,8 +430,15 @@ def train(
         val_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
     )
 
-    # Create a wandb logger
-    logger = WandbLogger(project="models-under-pressure", entity=wandb_entity)
+    # Create checkpoint callback:
+    best_model_path_template = f"finetune-baselines-{model_name_or_path}"
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val_loss",
+        mode="min",
+        dirpath="/scratch/ucabwjn/models-under-pressure",
+        filename=best_model_path_template
+        + "-val_loss_{val_loss:.2f}-epoch_{epoch:02d}",
+    )
 
     # Setup the pytorch lightning trainer:
     trainer = pl.Trainer(
@@ -426,22 +447,57 @@ def train(
         devices=devices,
         precision=16,
         default_root_dir="/scratch/ucabwjn/models-under-pressure",
-        callbacks=[
-            ModelCheckpoint(
-                monitor="val_loss",
-                mode="min",
-                dirpath="/scratch/ucabwjn/models-under-pressure",
-                filename="best_model",
-                save_top_k=2,
-            )
-        ],  # type: ignore
+        callbacks=[checkpoint_callback],  # type: ignore
         logger=logger,
     )
 
     trainer.fit(classifier, train_dataloader, val_dataloaders=val_dataloader)
 
-    # Evaluate the model on the test set:
-    # trainer.test(classifier, test_dataloader)
+    print(
+        f"Loading best model checkpoint from {checkpoint_callback.best_model_path}..."
+    )
+    classifier = ClassifierModule.load_from_checkpoint(
+        checkpoint_callback.best_model_path,
+        model=model,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        scheduler_params=scheduler_params,
+        num_classes=num_classes,
+    )
+    classifier.eval()
+
+    print("Loading eval datasets...")
+    eval_datasets = load_eval_datasets(use_test_set=use_test_set)
+
+    # For each dataset create a DataLoader:
+    print("Loading eval dataloaders...")
+    dataloaders = []
+    for dataset, dataset_name in eval_datasets:
+        dataloaders.append(
+            (
+                DataLoader(
+                    dataset,  # type: ignore
+                    batch_size=batch_size,
+                    shuffle=False,
+                    collate_fn=collate_fn,
+                ),
+                dataset_name,
+            )
+        )
+
+    print("Testing model...")
+    output_results = {}
+    for i, (test_dataloader, dataset_name) in enumerate(dataloaders):
+        print(f"Testing on {dataset_name}, {i} of {len(dataloaders)}")
+        trainer.test(classifier, test_dataloader)
+
+        # Save the preds and labels:
+        output_results[dataset_name] = classifier.test_results
+
+        # Reset the test results:
+        classifier.reset_test_results()
+
+    return output_results
 
 
 if __name__ == "__main__":
@@ -515,6 +571,12 @@ if __name__ == "__main__":
         default="william_bankes",
         help="Weights & Biases entity name",
     )
+    parser.add_argument(
+        "--use_test_set",
+        action="store_true",
+        default=False,
+        help="Use the test set for evaluation",
+    )
 
     args = parser.parse_args()
 
@@ -525,7 +587,10 @@ if __name__ == "__main__":
         print(f"{arg:20} : {value}")
     print("-" * 50 + "\n")
 
-    train(
+    # Create a wandb logger:
+    logger = WandbLogger(project="models-under-pressure", entity=args.wandb_entity)
+
+    results = train(
         model_name_or_path=args.model_name_or_path,
         num_classes=args.num_classes,
         cache_dir=args.cache_dir,
@@ -535,6 +600,18 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         max_epochs=args.max_epochs,
         shuffle=args.shuffle,
-        wandb_entity=args.wandb_entity,
         devices=args.devices,
+        logger=logger,
+        use_test_set=args.use_test_set,
     )
+
+    breakpoint()
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = os.path.join(
+        RESULTS_DIR,
+        "finetuned_baselines",
+        f"{args.model_name_or_path.split('//')[-1]}_{timestamp}.pt",
+    )
+
+    torch.save(results, results_path)
