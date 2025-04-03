@@ -24,7 +24,6 @@ def main(
     activations, inputs = model.get_batched_activations(dataset, layers)
 
     print(activations.shape)
-    raise Exception("Stop here")
 
     store = ActivationStore(ACTIVATIONS_DIR)
     store.save(model.name, dataset_spec, layers, activations, inputs)

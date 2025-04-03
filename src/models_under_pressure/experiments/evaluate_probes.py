@@ -8,6 +8,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
     TEST_DATASETS,
     EvalRunConfig,
 )
@@ -17,7 +18,7 @@ from models_under_pressure.experiments.dataset_splitting import (
 from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.dataset import DatasetSpec, Label, LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.probes import ProbeFactory
@@ -54,7 +55,7 @@ def run_evaluation(
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset = load_filtered_train_dataset(
-        dataset_path=config.dataset_path,
+        dataset_spec=config.dataset_spec,
         variation_type=config.variation_type,
         variation_value=config.variation_value,
         max_samples=config.max_samples,
@@ -76,12 +77,15 @@ def run_evaluation(
         max_samples=config.max_samples,
     )
 
+    train_dataset = LabelledDataset.load_from(config.dataset_spec)
+
     results_dict, coefs = evaluate_probe_and_save_results(
         probe=probe,
-        train_dataset_path=config.dataset_path,
+        train_dataset=train_dataset,
         eval_datasets=eval_datasets,
         layer=config.layer,
         output_dir=EVALUATE_PROBES_DIR,
+        model_name=config.model_name,
     )
 
     # Load the ground truth scale labels:
@@ -133,6 +137,7 @@ if __name__ == "__main__":
         layer=11,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
+        dataset_spec=DatasetSpec(path=SYNTHETIC_DATASET_PATH),
         probe_spec=ProbeSpec(
             name="pytorch_per_token_probe",
             hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
