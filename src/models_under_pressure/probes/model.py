@@ -36,7 +36,7 @@ class LLMModel:
         if hasattr(self.model.config, "num_hidden_layers"):
             return self.model.config.num_hidden_layers  # type: ignore
         elif hasattr(self.model.config, "n_layers"):
-            return self.model.config.n_layers
+            return self.model.config.n_layers  # type: ignore
         else:
             raise ValueError(
                 f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
@@ -76,6 +76,7 @@ class LLMModel:
         if tokenizer_kwargs is None:
             tokenizer_kwargs = {}
 
+        print("Model name:", model_name)
         print("Model kwargs:", model_kwargs)
 
         model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
@@ -103,11 +104,16 @@ class LLMModel:
 
         tokenizer_kwargs = default_tokenizer_kwargs | tokenizer_kwargs
 
-        input_str = self.tokenizer.apply_chat_template(
-            [[d.model_dump() for d in dialogue] for dialogue in dialogues],
-            tokenize=False,  # Return string instead of tokens
-            add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
-        )
+        try:
+            input_str = self.tokenizer.apply_chat_template(
+                [[d.model_dump() for d in dialogue] for dialogue in dialogues],
+                tokenize=False,  # Return string instead of tokens
+                add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
+            )
+
+        except Exception as e:
+            print(f"Error tokenizing input: {e}")
+            breakpoint()
 
         token_dict = self.tokenizer(input_str, **tokenizer_kwargs)  # type: ignore
         for k, v in token_dict.items():
@@ -194,15 +200,15 @@ class LLMModel:
         if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             # LLaMA-style architecture
 
-            layer_object = self.model.model.layers[layer]
-            hooks.append(layer_object.input_layernorm.register_forward_hook(hook_fn))
+            layer_object = self.model.model.layers[layer]  # type: ignore
+            hooks.append(layer_object.input_layernorm.register_forward_hook(hook_fn))  # type: ignore
 
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
         ):
             # GPT-style architecture (like Qwen)
-            layer_object = self.model.transformer.h[layer]
-            hooks.append(layer_object.ln_1.register_forward_hook(hook_fn))
+            layer_object = self.model.transformer.h[layer]  # type: ignore
+            hooks.append(layer_object.ln_1.register_forward_hook(hook_fn))  # type: ignore
         else:
             raise ValueError(
                 f"Unsupported model architecture: {type(self.model)}. "
@@ -280,7 +286,9 @@ class LLMModel:
 
                 # Append the padding to each activation and attention mask element:
                 if self.tokenizer.padding_side == "left":
-                    all_activations[i] = np.concatenate([act_padding, act], axis=1)
+                    all_activations[i] = np.concatenate(
+                        [act_padding, act], axis=1
+                    ).astype(np.float32)
                     all_attention_masks[i] = np.concatenate(
                         [attn_padding, all_attention_masks[i]], axis=1
                     )
@@ -288,7 +296,9 @@ class LLMModel:
                         [input_ids_padding, all_input_ids[i]], axis=1
                     )
                 else:
-                    all_activations[i] = np.concatenate([act, act_padding], axis=1)
+                    all_activations[i] = np.concatenate(
+                        [act, act_padding], axis=1
+                    ).astype(np.float32)
                     all_attention_masks[i] = np.concatenate(
                         [all_attention_masks[i], attn_padding], axis=1
                     )

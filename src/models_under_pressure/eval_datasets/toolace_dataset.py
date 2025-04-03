@@ -30,7 +30,19 @@ def load_toolace_raw_data(num_samples: int | None = None) -> Dataset:
             Message(role="system", content=system_prompt),
         ]
         for turn in row["conversations"]:
-            dialogue.append(Message(role=turn["from"], content=turn["value"]))
+            if turn["from"] in ["system", "user", "assistant"]:
+                dialogue.append(Message(role=turn["from"], content=turn["value"]))
+            elif turn["from"] == "tool":
+                dialogue.append(
+                    Message(
+                        role="user",
+                        content="Sure, here's the result of the tool call: "
+                        + turn["value"],
+                    )
+                )
+            else:
+                raise ValueError(f"Invalid role: {turn['from']}")
+
         inputs.append(dialogue)
 
     return Dataset(inputs=inputs, ids=[str(i) for i in ids], other_fields={})
