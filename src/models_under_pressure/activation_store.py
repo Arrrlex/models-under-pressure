@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
-import h5py
 import torch
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -42,9 +41,9 @@ class ManifestRow(BaseModel):
             dataset_spec=dataset_spec,
             layer=layer,
             timestamp=datetime.datetime.now(),
-            activations=Path(f"activations/{common_id}_{layer}.h5"),
-            input_ids=Path(f"input_ids/{common_id}.h5"),
-            attention_mask=Path(f"attention_mask/{common_id}.h5"),
+            activations=Path(f"activations/{common_id}_{layer}.pt"),
+            input_ids=Path(f"input_ids/{common_id}.pt"),
+            attention_mask=Path(f"attention_mask/{common_id}.pt"),
         )
 
     @property
@@ -99,36 +98,28 @@ class ActivationStore:
             )
 
             # Save activations
-            with h5py.File(self.path / manifest_row.activations, "w") as f:
-                f.create_dataset(
-                    "activations",
-                    data=activations[layer_idx].numpy(),
-                    compression="gzip",
-                    compression_opts=9,  # Maximum compression
-                )
+            torch.save(
+                activations[layer_idx],
+                self.path / manifest_row.activations,
+                _use_new_zipfile_serialization=True,
+            )
 
             # Save input_ids
-            with h5py.File(self.path / manifest_row.input_ids, "w") as f:
-                f.create_dataset(
-                    "input_ids",
-                    data=inputs["input_ids"].numpy(),
-                    compression="gzip",
-                    compression_opts=9,
-                )
+            torch.save(
+                inputs["input_ids"],
+                self.path / manifest_row.input_ids,
+                _use_new_zipfile_serialization=True,
+            )
 
             # Save attention_mask
-            with h5py.File(self.path / manifest_row.attention_mask, "w") as f:
-                f.create_dataset(
-                    "attention_mask",
-                    data=inputs["attention_mask"].numpy(),
-                    compression="gzip",
-                    compression_opts=9,
-                )
+            torch.save(
+                inputs["attention_mask"],
+                self.path / manifest_row.attention_mask,
+                _use_new_zipfile_serialization=True,
+            )
 
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
-
-        # upload_all_activations()
 
     def load(
         self, model_name: str, dataset_spec: DatasetSpec, layer: int
@@ -146,30 +137,24 @@ class ActivationStore:
                 download_file(self.bucket, key, local_path)
 
         # Load activations
-        with h5py.File(self.path / manifest_row.activations, "r") as f:
-            if dataset_spec.indices != "all":
-                activations = f["activations"][dataset_spec.indices]
-            else:
-                activations = f["activations"][()]
+        activations = torch.load(self.path / manifest_row.activations)
+        if dataset_spec.indices != "all":
+            activations = activations[dataset_spec.indices]
 
         # Load input_ids
-        with h5py.File(self.path / manifest_row.input_ids, "r") as f:
-            if dataset_spec.indices != "all":
-                input_ids = f["input_ids"][dataset_spec.indices]
-            else:
-                input_ids = f["input_ids"][()]
+        input_ids = torch.load(self.path / manifest_row.input_ids)
+        if dataset_spec.indices != "all":
+            input_ids = input_ids[dataset_spec.indices]
 
         # Load attention_mask
-        with h5py.File(self.path / manifest_row.attention_mask, "r") as f:
-            if dataset_spec.indices != "all":
-                attn_mask = f["attention_mask"][dataset_spec.indices]
-            else:
-                attn_mask = f["attention_mask"][()]
+        attn_mask = torch.load(self.path / manifest_row.attention_mask)
+        if dataset_spec.indices != "all":
+            attn_mask = attn_mask[dataset_spec.indices]
 
         return Activation(
-            _activations=activations,
-            _attention_mask=attn_mask,
-            _input_ids=input_ids,
+            _activations=activations.numpy(),
+            _attention_mask=attn_mask.numpy(),
+            _input_ids=input_ids.numpy(),
         )
 
     def delete(self, model_name: str, dataset_spec: DatasetSpec, layer: int):
