@@ -29,8 +29,12 @@ def compute_tpr_at_1pct_fpr(
     pred_scores: Float[np.ndarray, " batch_size"],
     labels: Float[np.ndarray, " batch_size"],
 ) -> float:
-    fpr, tpr, _ = roc_curve(labels, pred_scores)
-    return float(tpr[np.where(fpr <= 0.01)[0][-1]])
+    try:
+        fpr, tpr, _ = roc_curve(labels, pred_scores)
+        return float(tpr[np.where(fpr <= 0.01)[0][-1]])
+    except Exception as e:
+        print(f"Error computing TPR at 1% FPR: {e}")
+        return -1.0
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
@@ -81,12 +85,12 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             for j in tqdm(range(len(impact_factors_combinations))):
                 test_impact_factors = impact_factors_combinations[j]
                 test_dataset_impact_factor = train_dataset.filter(
-                    lambda x: x.other_fields["impact_factor"] not in test_impact_factors
+                    lambda x: x.other_fields["impact_factor"] in test_impact_factors
                 )
                 test_dataset_impact_factor = test_dataset_impact_factor.sample(
-                    min(config.max_samples, len(train_dataset_impact_factor))
+                    min(config.max_samples, len(test_dataset_impact_factor))
                     if config.max_samples is not None
-                    else len(train_dataset_impact_factor)
+                    else len(test_dataset_impact_factor)
                 )
                 _, pred_scores = probe.predict_proba(test_dataset_impact_factor)
                 pred_labels = pred_scores > 0.5
@@ -120,15 +124,15 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                         + "\n"
                     )
 
-    results = HeatmapRunResults(
-        config=config,
-        results=results_list,
-    )
+        results = HeatmapRunResults(
+            config=config,
+            results=results_list,
+        )
 
-    print(f"\nSaving final heatmap results to {config.output_path}")
-    with open(config.output_path, "a") as f:
-        f.write(results.model_dump_json() + "\n")
-    print(f"Done! Results saved to {config.output_path}")
+        print(f"\nSaving final heatmap results to {config.output_path}")
+        with open(config.output_path, "a") as f:
+            f.write(results.model_dump_json() + "\n")
+        print(f"Done! Results saved to {config.output_path}")
 
     return results
 
