@@ -1,12 +1,22 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
-from transformers import AutoModelForCausalLM
+from torch.utils.data import DataLoader
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
+
+from models_under_pressure.config import GENERATED_DATASET, SYNTHETIC_DATASET_PATH
+from models_under_pressure.interfaces.dataset import LabelledDataset
 
 
 class ClassifierModule(pl.LightningModule):
@@ -69,16 +79,29 @@ class ClassifierModule(pl.LightningModule):
         else:
             self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
         """Forward pass through the model."""
-        return self.model(x)
+        return self.model(input_ids=input_ids, attention_mask=attention_mask)
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         """Training step."""
-        x, y = batch
-        logits = self(x)
+
+        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
+            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
+            f"got {batch.keys()}"
+        )
+
+        input_ids, attention_mask, y = (
+            batch["input_ids"],
+            batch["attention_mask"],
+            batch["labels"],
+        )
+
+        logits = self(input_ids, attention_mask)
         loss = self.criterion(logits, y)
 
         # Log metrics
@@ -92,11 +115,22 @@ class ClassifierModule(pl.LightningModule):
         return loss
 
     def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> Dict[str, torch.Tensor]:
         """Validation step."""
-        x, y = batch
-        logits = self(x)
+
+        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
+            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
+            f"got {batch.keys()}"
+        )
+
+        input_ids, attention_mask, y = (
+            batch["input_ids"],
+            batch["attention_mask"],
+            batch["labels"],
+        )
+
+        logits = self(input_ids, attention_mask)
         loss = self.criterion(logits, y)
 
         # Log metrics
@@ -110,11 +144,21 @@ class ClassifierModule(pl.LightningModule):
         return {"val_loss": loss, "val_acc": acc}
 
     def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> Dict[str, torch.Tensor]:
         """Test step."""
-        x, y = batch
-        logits = self(x)
+        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
+            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
+            f"got {batch.keys()}"
+        )
+
+        input_ids, attention_mask, y = (
+            batch["input_ids"],
+            batch["attention_mask"],
+            batch["labels"],
+        )
+
+        logits = self(input_ids, attention_mask)
         loss = self.criterion(logits, y)
 
         # Log metrics
@@ -173,13 +217,9 @@ class LLMModel(nn.Module):
             model_name_or_path, cache_dir=cache_dir
         )
 
-        # Infere the last layer hidden dimension of the loaded model
-        # Find the last Linear layer's output dimension by iterating through model layers in reverse
         last_linear_dim = None
-        for module in reversed(list(self.model.modules())):
-            if isinstance(module, nn.Linear):
-                last_linear_dim = module.out_features
-                break
+        # Get hidden size from model config
+        last_linear_dim = self.model.config.hidden_size
 
         if last_linear_dim is None:
             raise ValueError("Could not find any Linear layers in the model")
@@ -196,22 +236,112 @@ class LLMModel(nn.Module):
     ) -> torch.Tensor:
         outputs = self.model(input_ids, attention_mask, output_hidden_states=True)
         outputs.hidden_states[-1]  # Get the last layer's hidden states
-
         # Put the last sequence token through a classifier layer:
         return self.classifier_layer(outputs.hidden_states[-1][:, -1, :])
 
 
+class StakesDataset(torch.utils.data.Dataset):
+    def __init__(self, df: pd.DataFrame):
+        self.inputs = df["inputs"].values
+        self.labels = (df["labels"] == "high-stakes").astype(int).values
+
+    def __len__(self):
+        return len(self.inputs)
+
+    def __getitem__(self, idx: Union[int, slice]):
+        return {"text": self.inputs[idx], "label": self.labels[idx]}
+
+
+def create_collate_fn(
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 2048
+):
+    """
+    Create a collate function for a pytorch dataloader.
+    """
+
+    def collate_fn(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Collate function for a pytorch dataloader.
+        """
+
+        # Extract texts and labels from batch
+        texts = [item["text"] for item in batch]
+        labels = [item["label"] for item in batch]
+
+        # Tokenize the texts
+        encoded = tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt",
+        )  # type: ignore
+
+        # Convert labels to tensor
+        labels = torch.tensor(labels)
+
+        return {
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
+            "labels": labels,
+        }
+
+    return collate_fn
+
+
 def load_datasets(
-    dataset_path: str, cache_dir: Optional[str] = None
-) -> None:  # Tuple[DataLoader, DataLoader, DataLoader]:
+    cache_dir: Optional[str] = None,
+) -> Tuple[StakesDataset, StakesDataset]:
     """Load the datasets."""
-    pass
+
+    dataset = LabelledDataset.load_from(
+        SYNTHETIC_DATASET_PATH,
+        field_mapping=GENERATED_DATASET["field_mapping"],
+    )
+
+    df = dataset.to_pandas()
+
+    # Get the high and low stakes situations:
+    df["high_stakes_situations"] = df["situations"].apply(lambda x: x["high_stakes"])
+
+    # Splitting the dataset into train and test sets using the high-stake ids is the same as
+    # splitting the dataset into train and test sets using the combined situations.
+    # Get unique high stakes situations
+    unique_high_stakes = df["high_stakes_situations"].unique()
+
+    # Set random seed for reproducibility
+    np.random.seed(0)
+
+    # Split unique situations into train and test
+    train_test_split = 0.8
+    n_train = int(len(unique_high_stakes) * train_test_split)
+
+    # Randomly sample train situations
+    train_situations = np.random.choice(unique_high_stakes, size=n_train, replace=False)
+    test_situations = np.array(
+        [s for s in unique_high_stakes if s not in train_situations]
+    )
+
+    # Create train and test masks based on whether high stakes situation is in train set
+    train_mask = df["high_stakes_situations"].isin(train_situations)
+    test_mask = df["high_stakes_situations"].isin(test_situations)
+
+    # Create train and test datasets
+    train_dataset = df[train_mask].reset_index(drop=True)
+    test_dataset = df[test_mask].reset_index(drop=True)
+
+    print(f"Train dataset size: {len(train_dataset)}")
+    print(f"Test dataset size: {len(test_dataset)}")
+
+    train_dataset = StakesDataset(train_dataset)
+    test_dataset = StakesDataset(test_dataset)
+
+    return train_dataset, test_dataset
 
 
 def train(
     model_name_or_path: str,
     num_classes: int,
-    dataset_name: str,
     cache_dir: Optional[str] = None,
     learning_rate: float = 1e-3,
     weight_decay: float = 0.0,
@@ -221,8 +351,12 @@ def train(
     max_epochs: int = 10,
     shuffle: bool = True,
     wandb_entity: str = "models-under-pressure",
+    devices: List[int] = [0],
 ):
     # Create the specific model instance
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
     model = LLMModel(model_name_or_path, num_classes, cache_dir)
 
     # Create the classifier module with the model and training parameters
@@ -235,8 +369,14 @@ def train(
     )
 
     # Load the dataset -> sort this out
-    train_dataloader, val_dataloader, test_dataloader = load_datasets(
-        dataset_name, cache_dir=cache_dir
+    train_dataset, val_dataset = load_datasets(cache_dir=cache_dir)
+    collate_fn = create_collate_fn(tokenizer)
+
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
+    )
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
     )
 
     # Create a wandb logger
@@ -244,16 +384,28 @@ def train(
 
     # Setup the pytorch lightning trainer:
     trainer = pl.Trainer(
-        max_epochs=10,
+        max_epochs=max_epochs,
         accelerator="gpu",
-        devices=1,
+        devices=devices,
         precision=16,
-        callbacks=[ModelCheckpoint(monitor="val_loss", mode="min")],
+        enable_checkpointing=True,
+        default_root_dir="/scratch/ucabwjn/.cache",
+        # callbacks=[
+        #     ModelCheckpoint(
+        #         monitor="val_loss",
+        #         mode="min",
+        #         dirpath="~/models-under-pressure",
+        #         filename="best_model",
+        #         save_top_k=2,
+        #     )
+        # ],  # type: ignore
         logger=logger,
     )
 
     trainer.fit(classifier, train_dataloader, val_dataloaders=val_dataloader)
-    trainer.test(classifier, test_dataloader)
+
+    # Evaluate the model on the test set:
+    # trainer.test(classifier, test_dataloader)
 
 
 if __name__ == "__main__":
@@ -273,10 +425,11 @@ if __name__ == "__main__":
         help="Number of classes for classification",
     )
     parser.add_argument(
-        "--dataset_name",
-        type=str,
-        required=True,
-        help="Name of the dataset to use",
+        "--devices",
+        type=int,
+        nargs="+",
+        default=[0],
+        help="Devices to use for training",
     )
     parser.add_argument(
         "--cache_dir",
@@ -323,16 +476,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb_entity",
         type=str,
-        default="models-under-pressure",
+        default="william_bankes",
         help="Weights & Biases entity name",
     )
 
     args = parser.parse_args()
 
+    # Print command line arguments
+    print("\nCommand Line Arguments:")
+    print("-" * 50)
+    for arg, value in vars(args).items():
+        print(f"{arg:20} : {value}")
+    print("-" * 50 + "\n")
+
     train(
         model_name_or_path=args.model_name_or_path,
         num_classes=args.num_classes,
-        dataset_name=args.dataset_name,
         cache_dir=args.cache_dir,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
@@ -341,4 +500,5 @@ if __name__ == "__main__":
         max_epochs=args.max_epochs,
         shuffle=args.shuffle,
         wandb_entity=args.wandb_entity,
+        devices=args.devices,
     )
