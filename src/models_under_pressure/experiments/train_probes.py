@@ -15,7 +15,7 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
