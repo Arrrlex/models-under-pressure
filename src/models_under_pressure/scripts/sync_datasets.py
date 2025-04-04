@@ -19,6 +19,8 @@ from models_under_pressure.r2 import (
     upload_file,
 )
 
+from tqdm import tqdm
+
 # Paths to datasets to sync
 ALL_DATASETS = [
     path.resolve().relative_to(PROJECT_ROOT)
@@ -38,27 +40,33 @@ def download_all_datasets():
     """Download all datasets from R2 storage that are not present locally."""
 
     assert isinstance(DATASETS_BUCKET, str)
-    for local_path in ALL_DATASETS:
-        key = str(local_path)
-        if not local_path.exists():
-            print(f"Downloading {key} to {local_path}")
-            download_file(bucket_name=DATASETS_BUCKET, key=key, local_path=local_path)
+    to_download = [local_path for local_path in ALL_DATASETS if not local_path.exists()]
+    if not to_download:
+        print("All datasets are already downloaded")
+        return
+    for local_path in tqdm(to_download, desc="Downloading datasets"):
+        download_file(
+            bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
+        )
 
 
 def upload_datasets():
     """Upload all datasets to R2 storage that are not present in the bucket."""
 
     assert isinstance(DATASETS_BUCKET, str)
-    for local_path in ALL_DATASETS:
-        key = str(local_path)
-        if local_path.exists():
-            if file_exists_in_bucket(DATASETS_BUCKET, key):
-                print(f"{key} already exists in bucket, skipping")
-            else:
-                print(f"Uploading {key}")
-                upload_file(bucket_name=DATASETS_BUCKET, key=key, local_path=local_path)
-        else:
-            print(f"Local file {local_path} does not exist, skipping upload")
+    to_upload = [
+        local_path
+        for local_path in ALL_DATASETS
+        if local_path.exists()
+        and not file_exists_in_bucket(DATASETS_BUCKET, str(local_path))
+    ]
+    if not to_upload:
+        print("All datasets are already uploaded")
+        return
+    for local_path in tqdm(to_upload, desc="Uploading datasets"):
+        upload_file(
+            bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
+        )
 
 
 def sync_all_datasets():
