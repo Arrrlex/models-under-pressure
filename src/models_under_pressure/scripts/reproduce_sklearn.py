@@ -149,34 +149,57 @@ def compare_probes(
         layer=layer,
         aggregator=sklearn_aggregator,
         hyper_params={
-            "C": 1e-3,
+            # "C": 1e-3,
+            "C": 1,
             "random_state": 42,
             "fit_intercept": False,
+            # "max_iter": 1,
+            # "solver": "liblinear",
+            # "solver": "newton-cg",
         },
     )
 
     # Configure pytorch probe
     print("Training pytorch probe...")
-    previous_args = {
-        "batch_size": 32,
-        "epochs": 6,
+    # previous_args = {
+    #     "batch_size": 32,
+    #     "epochs": 6,
+    #     "device": "cuda" if torch.cuda.is_available() else "cpu",
+    #     "learning_rate": 1e-4,
+    #     "weight_decay": 0.01,
+    # }
+    lbfgs_args = {
+        "optimizer_type": "lbfgs",
+        "batch_size": 256,
+        "epochs": 20,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "learning_rate": 1e-4,
+        "learning_rate": 1e-2,
+        "max_iter": 20,
+        "line_search_fn": "strong_wolfe",
         "weight_decay": 0.01,
+        "tolerance_change": 1e-4,
+        # "tolerance_grad": 64 * np.finfo(float).eps,
     }
-    new_args = {
-        "batch_size": 32,
-        "epochs": 6,
+    adamw_args = {
+        "optimizer_type": "adamw",
+        "batch_size": 128,
+        "epochs": 20,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "learning_rate": 1e-4,
-        "weight_decay": 0.01,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.001,
+        # "betas": (0.9, 0.999),  # -> Made things worse to change
+        # "differentiable": True,
+        # "learning_rate": 1e-3,
+        # "weight_decay": 0.001,
+        # "amsgrad": True,
     }
     pytorch_probe = PytorchProbe(
         _llm=model,
         layer=layer,
         hyper_params={},  # Doesn't apply when giving the classifier
         _classifier=PytorchPerEntryLinearClassifier(
-            training_args=previous_args,
+            # training_args=adamw_args,
+            training_args=lbfgs_args,
         ),
     )
     # Initial weights shape: (2048,)
@@ -185,10 +208,11 @@ def compare_probes(
     # Sample weight: None
     # L2 regularization strength: 100.0
     # Number of threads: 1
-    # Max iterations: 100
     # Max line search steps: 50
-    # Tolerance (gtol): 0.0001
     # Tolerance (ftol): 1.4210854715202004e-14
+    # DONE:
+    # Max iterations: 100
+    # Tolerance (gtol): 0.0001
 
     # Train both probes on training activations
     train_activations, train_labels = activations_dict["train"]
