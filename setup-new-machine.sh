@@ -19,37 +19,45 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILhZTNPVEMnfG5K5mMzMs3POZBe530J3oqygeWPUOoWg
 KEYS
 
 # Prompt for SSH key
+echo "What is your name?"
+read name
+
 echo "Please paste your private SSH key (including BEGIN and END lines):"
 mkdir -p ~/.ssh
 while IFS= read -r line; do
     [[ "$line" == "-----END"* ]] && { echo "$line"; break; }
     echo "$line"
-done > ~/.ssh/github_phil
+done > ~/.ssh/github_$name
 
 # Set correct permissions
-chmod 400 ~/.ssh/github_phil
+chmod 400 ~/.ssh/github_$name
 
-# Prompt for Huggingface token
-echo "Please enter your Huggingface API token:"
-read -r hf_token
+# Prompt for .env file
+echo "Please enter your .env file contents:"
+while IFS= read -r line; do
+    [[ -z "$line" ]] && break
+    echo "$line"
+done > .env
+
 
 # Rest of setup
-mkdir -p phil && \
-cd phil && \
+mkdir -p $name && \
+cd $name && \
 # Set git config for this specific directory before cloning
 git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig" && \
 cat << 'GITCONFIG' > .gitconfig
 [core]
-    sshCommand = "ssh -i ~/.ssh/github_phil"
+    sshCommand = "ssh -i ~/.ssh/github_$name"
 [user]
-    email = philipp.blandfort@rtl-extern.de
-    name = Philipp Blandfort
+    email = me+github@alexmck.com
+    name = Alex McKenzie
 GITCONFIG
 
 git clone git@github.com:Arrrlex/models-under-pressure.git && \
 curl -LsSf https://astral.sh/uv/install.sh | sh && \
 cd models-under-pressure && \
-echo "HF_TOKEN=$hf_token" > .env && \
+mv ../.env .env && \
 uv sync && \
-uv run pre-commit install
+uv run pre-commit install && \
+uv run src/models_under_pressure/scripts/sync_datasets.py
 EOF
