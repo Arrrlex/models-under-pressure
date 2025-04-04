@@ -1,3 +1,9 @@
+"""
+Utilities for interacting with Cloudflare R2 storage.
+
+We use R2 for storing activations and datasets.
+"""
+
 import os
 from pathlib import Path
 

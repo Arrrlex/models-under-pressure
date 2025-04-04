@@ -1,3 +1,7 @@
+"""
+Script to sync datasets between local storage and R2 storage.
+"""
+
 from models_under_pressure.config import (
     AIS_DATASETS,
     EVAL_DATASETS_BALANCED,
@@ -15,6 +19,7 @@ from models_under_pressure.r2 import (
     upload_file,
 )
 
+# Paths to datasets to sync
 ALL_DATASETS = [
     path.resolve().relative_to(PROJECT_ROOT)
     for path in [
@@ -57,7 +62,7 @@ def upload_datasets():
 
 
 def sync_all_datasets():
-    """Sync all datasets from R2 storage to local storage."""
+    """Sync all datasets between R2 storage and local storage."""
     download_all_datasets()
     upload_datasets()
 
