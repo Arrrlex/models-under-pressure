@@ -28,11 +28,12 @@ dataset = LabelledDataset.load_from(dataset_path)
 # Load model
 model = LLMModel.load(
     LOCAL_MODELS["llama-1b"],
+    batch_size=4,
 )
 layer = 7
 
 # Get activations for layer 7
-activations = model.get_batched_activations(dataset, layer=layer, batch_size=4)
+activations = model.get_batched_activations(dataset, layers=[layer])
 
 print("Activation shape:", activations.get_activations().shape)
 print("Attention mask shape:", activations.get_attention_mask().shape)

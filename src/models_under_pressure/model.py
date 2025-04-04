@@ -13,6 +13,7 @@ from models_under_pressure.interfaces.dataset import (
     to_dialogue,
 )
 from models_under_pressure.utils import batched_range, hf_login
+from models_under_pressure.interfaces.activations import Activation
 
 
 class HookedModel:
@@ -65,7 +66,7 @@ class HookedModel:
 
 @dataclass
 class LLMModel:
-    model_name: str
+    name: str
     device: str
     batch_size: int
     tokenize_kwargs: dict[str, Any]
@@ -75,26 +76,32 @@ class LLMModel:
     @classmethod
     def load(
         cls,
-        model_name: str,
+        name: str,
         device: str = DEVICE,
         batch_size: int = BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
-        **model_tokenizer_kwargs: Any,
+        model_kwargs: dict[str, Any] | None = None,
+        tokenizer_kwargs: dict[str, Any] | None = None,
     ) -> Self:
         hf_login()
 
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 
-        kwargs = {
-            "pretrained_model_name_or_path": model_name,
+        model_kwargs = {
+            "pretrained_model_name_or_path": name,
             "device_map": device,
             "torch_dtype": dtype,
             "cache_dir": CACHE_DIR,
-            "max_memory": MODEL_MAX_MEMORY.get(model_name),
-            **model_tokenizer_kwargs,
+            "max_memory": MODEL_MAX_MEMORY.get(name),
+            **(model_kwargs or {}),
         }
-        model = AutoModelForCausalLM.from_pretrained(**kwargs)
-        tokenizer = AutoTokenizer.from_pretrained(**kwargs)
+        tokenizer_kwargs = {
+            "pretrained_model_name_or_path": name,
+            "cache_dir": CACHE_DIR,
+            **(tokenizer_kwargs or {}),
+        }
+        model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(**tokenizer_kwargs)
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token_id = tokenizer.eos_token_id
 
@@ -110,7 +117,7 @@ class LLMModel:
         tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
 
         return cls(
-            model_name=model_name,
+            name=name,
             batch_size=batch_size,
             device=device,
             tokenize_kwargs=tokenize_kwargs,
@@ -165,12 +172,15 @@ class LLMModel:
         self,
         dataset: BaseDataset,
         layers: list[int],
-    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        batch_size: int = -1,
+    ) -> Activation:
         """
         Get activations for a given model and config.
 
         Handles batching of activations.
         """
+        if batch_size == -1:
+            batch_size = self.batch_size
 
         hidden_dim = self.model.config.hidden_size  # type: ignore
         n_samples = len(dataset.inputs)
@@ -189,7 +199,7 @@ class LLMModel:
         with HookedModel(self.model, layers) as hooked_model:
             # Process each batch
             for start_idx, end_idx in tqdm(
-                batched_range(n_samples, self.batch_size),
+                batched_range(n_samples, batch_size),
                 desc="Generating activations...",
             ):
                 # Get batch of tokenized inputs
@@ -201,7 +211,11 @@ class LLMModel:
                 # Write to the relevant slice of the big tensor
                 all_activations[:, start_idx:end_idx] = activations
 
-        return all_activations, inputs
+        return Activation(
+            _activations=all_activations.numpy(),
+            _attention_mask=inputs["attention_mask"].numpy(),
+            _input_ids=inputs["input_ids"].numpy(),
+        )
 
     @torch.no_grad()
     def compute_log_likelihood(

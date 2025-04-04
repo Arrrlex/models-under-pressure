@@ -42,7 +42,7 @@ class PytorchProbe(Probe):
         """
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layer=self.layer,
+            layers=[self.layer],
         )
 
         print("Training probe...")
@@ -63,7 +63,7 @@ class PytorchProbe(Probe):
         """
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layer=self.layer,
+            layers=[self.layer],
         )
         labels = self._classifier.predict(activations_obj)  # type: ignore
         return [Label.from_int(label) for label in labels]
@@ -78,7 +78,7 @@ class PytorchProbe(Probe):
         """
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layer=self.layer,
+            layers=[self.layer],
         )
 
         # Get the batch_size, seq_len probabilities:
@@ -101,7 +101,7 @@ class PytorchProbe(Probe):
         # TODO: Change such that it uses the aggregation framework
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layer=self.layer,
+            layers=[self.layer],
         )
 
         probs = self._classifier.predict_token_proba(activations_obj)  # type: ignore
@@ -110,7 +110,7 @@ class PytorchProbe(Probe):
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
+    model = LLMModel.load(LOCAL_MODELS["llama-1b"])
 
     # Train a probe
     train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
