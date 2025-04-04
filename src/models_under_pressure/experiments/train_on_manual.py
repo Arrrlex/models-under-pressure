@@ -274,7 +274,7 @@ if __name__ == "__main__":
         "--dataset_path",
         type=str,
         default=None,
-        help="Path to dataset for train/test evaluation (defaults to GENERATED_DATASET_PATH)",
+        help="Path to dataset for train/test evaluation (defaults to SYNTHETIC_DATASET_PATH)",
     )
     parser.add_argument(
         "--train_dataset_type",
