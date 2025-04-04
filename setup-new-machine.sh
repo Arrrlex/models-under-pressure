@@ -41,10 +41,10 @@ done > .env
 
 
 # Rest of setup
-mkdir -p $name && \
-cd $name && \
+mkdir -p $name
+cd $name
 # Set git config for this specific directory before cloning
-git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig" && \
+git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig"
 cat << 'GITCONFIG' > .gitconfig
 [core]
     sshCommand = "ssh -i ~/.ssh/github_$name"
@@ -53,11 +53,11 @@ cat << 'GITCONFIG' > .gitconfig
     name = Alex McKenzie
 GITCONFIG
 
-git clone git@github.com:Arrrlex/models-under-pressure.git && \
-curl -LsSf https://astral.sh/uv/install.sh | sh && \
-cd models-under-pressure && \
-mv ../.env .env && \
-uv sync && \
-uv run pre-commit install && \
+git clone git@github.com:Arrrlex/models-under-pressure.git
+curl -LsSf https://astral.sh/uv/install.sh | sh
+cd models-under-pressure
+mv ../.env .env
+uv sync
+uv run pre-commit install
 uv run src/models_under_pressure/scripts/sync_datasets.py
 EOF
