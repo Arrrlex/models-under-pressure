@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.config import GENERATED_DATASET
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -132,10 +131,7 @@ def load_train_test(
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
-    dataset = LabelledDataset.load_from(
-        dataset_path,
-        field_mapping=GENERATED_DATASET["field_mapping"],
-    )
+    dataset = LabelledDataset.load_from(dataset_path)
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
     test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
