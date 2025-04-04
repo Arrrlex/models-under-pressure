@@ -22,6 +22,30 @@ KEYS
 echo "What is your name?"
 read name
 
+# Set git config based on name
+case $name in
+    phil)
+        git_email="philipp.blandfort@rtl-extern.de"
+        git_name="Philipp Blandfort"
+        ;;
+    urja)
+        git_email="urjapawar@gmail.com"
+        git_name="Urja Pawar"
+        ;;
+    will)
+        git_email="williamjamesbankes@gmail.com"
+        git_name="William Bankes"
+        ;;
+    alex)
+        git_email="me+github@alexmck.com"
+        git_name="Alex McKenzie"
+        ;;
+    *)
+        echo "Error: Invalid name. Must be one of: alex, will, urja, phil"
+        exit 1
+        ;;
+esac
+
 echo "Please paste your private SSH key (including BEGIN and END lines):"
 mkdir -p ~/.ssh
 while IFS= read -r line; do
@@ -45,12 +69,14 @@ mkdir -p $name
 cd $name
 # Set git config for this specific directory before cloning
 git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig"
-cat << 'GITCONFIG' > .gitconfig
+cat << GITCONFIG > .gitconfig
 [core]
     sshCommand = "ssh -i ~/.ssh/github_$name"
 [user]
-    email = me+github@alexmck.com
-    name = Alex McKenzie
+    email = $git_email
+    name = $git_name
+[push]
+    autoSetupRemote = true
 GITCONFIG
 
 git clone git@github.com:Arrrlex/models-under-pressure.git
