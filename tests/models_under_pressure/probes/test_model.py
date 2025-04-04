@@ -7,7 +7,7 @@ import torch
 from transformers import PreTrainedTokenizerBase
 
 from models_under_pressure.interfaces.dataset import Message
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def test_load_model(
         pad_token_id=None, eos_token_id=2
     )
 
-    model = LLMModel.load("test/model")
+    model = LLMModel("test/model")
 
     assert isinstance(model, LLMModel)
     mock_auto_model.from_pretrained.assert_called_once()

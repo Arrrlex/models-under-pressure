@@ -32,7 +32,7 @@ from models_under_pressure.interfaces.results import (
     CVFinalResults,
     CVIntermediateResults,
 )
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config, print_progress
 

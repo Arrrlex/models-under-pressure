@@ -20,7 +20,7 @@ from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config, print_progress
 

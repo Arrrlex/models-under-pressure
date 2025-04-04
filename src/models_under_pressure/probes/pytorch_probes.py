@@ -19,7 +19,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import PytorchLinearClassifier
 from models_under_pressure.probes.sklearn_probes import Probe
 

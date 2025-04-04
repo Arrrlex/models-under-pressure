@@ -3,7 +3,6 @@ import gc
 import numpy as np
 import torch
 
-from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
     likelihood_continuation_prompts,
@@ -24,8 +23,8 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
-from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.model import LLMModel
+from models_under_pressure.utils import double_check_config, pydra
 
 
 @pydra.main(
