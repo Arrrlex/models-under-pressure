@@ -9,6 +9,7 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
+    Literal,
     Mapping,
     Optional,
     Self,
@@ -21,6 +22,7 @@ from typing import (
 import datasets
 import numpy as np
 import pandas as pd
+import torch
 from jaxtyping import Float
 from pydantic import BaseModel, Field, model_validator
 
@@ -86,18 +88,34 @@ class LabelledRecord(Record):
 R = TypeVar("R", bound=Record)
 
 
-class BaseDataset(BaseModel, Generic[R]):
-    inputs: Sequence[Input]
-    ids: Sequence[str]
-    other_fields: Mapping[str, Sequence[Any]]
-    _record_class: ClassVar[Type]
+class DatasetSpec(BaseModel):
+    """
+    A dataset spec is a specification for a dataset. It contains all information needed to load the dataset from a file.
+    A dataset spec has:
+      - a path (Path), which is the path to the dataset
+      - indices (Sequence[int] or Literal["all"]), which are the indices of the records to load
+      - field_mapping (Mapping[str, str]), which is a mapping of field names to the field names in the original dataset
+      - loader_kwargs (Mapping[str, Any]), which are additional keyword arguments to pass to the loader
+    """
 
+    path: Path
+    indices: Sequence[int] | Literal["all"] = "all"
+    field_mapping: Mapping[str, str] = Field(default_factory=dict)
+    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
+
+
+class BaseDataset(BaseModel, Generic[R]):
     """
     Interface for a dataset class, the dataset is stored as a list of inputs, ids, and
     a mapping to 'other fields' which are arbitrary additional fields.
 
     The base dataset class is used to store the dataset in a way that is agnostic to the label field.
     """
+
+    inputs: Sequence[Input]
+    ids: Sequence[str]
+    other_fields: Mapping[str, Sequence[Any] | np.ndarray | torch.Tensor]
+    _record_class: ClassVar[Type]
 
     @model_validator(mode="after")
     def validate_lengths(self) -> Self:
@@ -124,14 +142,21 @@ class BaseDataset(BaseModel, Generic[R]):
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
+    @overload
+    def __getitem__(self, idx: list[int]) -> Self: ...
+
     def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
+            indexed_other_fields = {}
+            for key, value in self.other_fields.items():
+                if isinstance(value, (np.ndarray, torch.Tensor)):
+                    indexed_other_fields[key] = value[idx]
+                else:
+                    indexed_other_fields[key] = [v[i] for v in value for i in idx]
             return type(self)(
                 inputs=[self.inputs[i] for i in idx],
                 ids=[self.ids[i] for i in idx],
-                other_fields={
-                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
-                },
+                other_fields=indexed_other_fields,
             )
         elif isinstance(idx, slice):
             return type(self)(
@@ -147,10 +172,27 @@ class BaseDataset(BaseModel, Generic[R]):
             )
 
     def sample(self, num_samples: int) -> Self:
-        return type(self).from_records(random.sample(self.to_records(), num_samples))
+        idxs = random.sample(range(len(self)), num_samples)
+        return self[idxs]
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
-        return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+        idxs = [i for i, r in enumerate(self.to_records()) if filter_fn(r)]
+        return self[idxs]
+
+    def assign(self, **kwargs: Sequence[Any] | np.ndarray | torch.Tensor) -> Self:
+        """
+        Assign new fields to the dataset (works like pandas assign)
+
+        Args:
+            kwargs: A mapping of field names to values. The values can be a sequence, a numpy array, or a torch tensor.
+
+        Returns:
+        """
+        return type(self)(
+            inputs=self.inputs,
+            ids=self.ids,
+            other_fields=dict(self.other_fields) | kwargs,
+        )
 
     @classmethod
     def from_records(cls, records: Sequence[R]) -> Self:
