@@ -4,56 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.config import GENERATED_DATASET
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
-
-
-def create_train_test_split(
-    dataset: Dataset,
-    test_size: float = 0.2,
-    split_field: str | None = None,
-) -> tuple[LabelledDataset, LabelledDataset]:
-    """Create a train-test split of the dataset.
-
-    Args:
-        dataset: Dataset to split
-        test_size: Fraction of data to use for test set
-        split_field: If provided, ensures examples with the same value for this field
-                    are kept together in either train or test set
-    """
-    if split_field is None:
-        # Simple random split
-        train_indices = np.random.choice(
-            range(len(dataset.ids)),
-            size=int(len(dataset.ids) * (1 - test_size)),
-            replace=False,
-        )
-        test_indices = np.random.permutation(
-            np.setdiff1d(np.arange(len(dataset.ids)), train_indices)
-        )
-        train_indices = list(train_indices)
-        test_indices = list(test_indices)
-    else:
-        # Split based on unique values of the field
-        assert (
-            split_field in dataset.other_fields
-        ), f"Field {split_field} not found in dataset"
-        unique_values = list(set(dataset.other_fields[split_field]))
-        n_test = int(len(unique_values) * test_size)
-
-        test_values = set(np.random.choice(unique_values, size=n_test, replace=False))
-
-        train_indices = [
-            i
-            for i, val in enumerate(dataset.other_fields[split_field])
-            if val not in test_values
-        ]
-        test_indices = [
-            i
-            for i, val in enumerate(dataset.other_fields[split_field])
-            if val in test_values
-        ]
-
-    return dataset[train_indices], dataset[test_indices]  # type: ignore
+from models_under_pressure.interfaces.dataset import LabelledDataset
 
 
 @dataclass
