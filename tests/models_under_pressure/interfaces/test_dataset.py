@@ -20,9 +20,19 @@ from models_under_pressure.interfaces.dataset import (
 def sample_records() -> List[Record]:
     return [
         Record(
-            input="test input 1", id="1", other_fields={"field1": "value1", "field2": 1}
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            index=0,
+            input="test input 1",
+            id="1",
+            other_fields={"field1": "value1", "field2": 1},
         ),
         Record(
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            index=1,
             input=[
                 Message(role="user", content="hello"),
                 Message(role="assistant", content="hi"),
@@ -105,7 +115,7 @@ def test_dataset_from_pandas() -> None:
             "extra": ["a", "b"],
         }
     )
-    dataset = Dataset.from_pandas(df)
+    dataset = Dataset.from_pandas(df, path=Path("test.csv"), field_mapping={})
     assert len(dataset) == 2
     assert isinstance(dataset[0].input, str)
     assert isinstance(dataset[1].input, list)
@@ -114,10 +124,26 @@ def test_dataset_from_pandas() -> None:
 def test_validation_errors(tmp_path: Path) -> None:
     # Test length mismatch
     with pytest.raises(ValueError):
-        Dataset(inputs=["test1"], ids=["1", "2"], other_fields={"field1": ["a"]})
+        Dataset(
+            inputs=["test1"],
+            ids=["1", "2"],
+            other_fields={"field1": ["a"]},
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            indices=[0, 1],
+        )
 
     # Test file exists error
-    dataset = Dataset(inputs=["test1"], ids=["1"], other_fields={})
+    dataset = Dataset(
+        inputs=["test1"],
+        ids=["1"],
+        other_fields={},
+        path=Path("test.csv"),
+        field_mapping={},
+        loader_kwargs={},
+        indices=[0],
+    )
     with pytest.raises(FileExistsError):
         path = tmp_path / "test.csv"
         path.touch()
@@ -131,7 +157,7 @@ def test_invalid_file_type(sample_dataset: Dataset, tmp_path: Path) -> None:
 
 def test_invalid_huggingface_dataset_name() -> None:
     with pytest.raises(ValueError):
-        Dataset.load_from("invalid_dataset_name")
+        Dataset.load_from(Path("invalid_dataset_name"))
 
 
 @pytest.fixture
@@ -141,6 +167,10 @@ def sample_labelled_records() -> List[LabelledRecord]:
             input="test input 1",
             id="1",
             other_fields={"labels": Label.LOW_STAKES.value, "field1": "value1"},
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            index=0,
         ),
         LabelledRecord(
             input=[
@@ -149,11 +179,19 @@ def sample_labelled_records() -> List[LabelledRecord]:
             ],
             id="2",
             other_fields={"labels": Label.HIGH_STAKES.value, "field1": "value2"},
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            index=1,
         ),
         LabelledRecord(
             input="test input 3",
             id="3",
             other_fields={"labels": Label.AMBIGUOUS.value, "field1": "value3"},
+            path=Path("test.csv"),
+            field_mapping={},
+            loader_kwargs={},
+            index=2,
         ),
     ]
 
@@ -214,7 +252,7 @@ def test_labelled_dataset_from_pandas() -> None:
             "extra": ["a", "b"],
         }
     )
-    dataset = LabelledDataset.from_pandas(df)
+    dataset = LabelledDataset.from_pandas(df, path=Path("test.csv"), field_mapping={})
     assert len(dataset) == 2
     assert dataset.labels == [Label.LOW_STAKES, Label.HIGH_STAKES]
 
@@ -223,8 +261,12 @@ def test_labelled_dataset_validation_error() -> None:
     # Test missing labels field
     with pytest.raises(ValueError):
         LabelledDataset(
+            path=Path("test.csv"),
+            field_mapping={},
             inputs=["test1"],
             ids=["1"],
+            indices=[0],
+            loader_kwargs={},
             other_fields={"field1": ["a"]},  # Missing labels field
         )
 
@@ -248,6 +290,10 @@ def test_labelled_record_label_property(
         input="test",
         id="1",
         other_fields={"labels": 0},  # Using integer label
+        path=Path("test.csv"),
+        field_mapping={},
+        loader_kwargs={},
+        index=0,
     )
     assert record_int.label == Label.LOW_STAKES
 
@@ -283,7 +329,7 @@ def test_to_dialogue() -> None:
     """Test the to_dialogue conversion function"""
     from models_under_pressure.interfaces.dataset import to_dialogue
 
-    # Test string input
+    # Test string inputx
     str_input = "hello world"
     dialogue = to_dialogue(str_input)
     assert len(dialogue) == 1
@@ -315,7 +361,14 @@ def test_message_validation() -> None:
 def test_record_input_str() -> None:
     """Test Record.input_str() method"""
     # Test with string input
-    record = Record(input="hello world", id="1")
+    record = Record(
+        input="hello world",
+        id="1",
+        path=Path("test.csv"),
+        field_mapping={},
+        loader_kwargs={},
+        index=0,
+    )
     assert record.input_str() == "hello world"
 
     # Test with dialogue input
@@ -325,5 +378,9 @@ def test_record_input_str() -> None:
             Message(role="assistant", content="hi"),
         ],
         id="2",
+        path=Path("test.csv"),
+        field_mapping={},
+        loader_kwargs={},
+        index=0,
     )
     assert record.input_str() == "user: hello\nassistant: hi"

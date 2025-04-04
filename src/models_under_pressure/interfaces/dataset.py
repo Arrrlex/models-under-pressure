@@ -9,6 +9,7 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
+    Literal,
     Mapping,
     Optional,
     Self,
@@ -18,11 +19,12 @@ from typing import (
     overload,
 )
 
-import datasets
 import numpy as np
 import pandas as pd
 from jaxtyping import Float
 from pydantic import BaseModel, Field, model_validator
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 class Message(BaseModel):
@@ -63,8 +65,30 @@ def to_dialogue(input: Input) -> Dialogue:
 
 
 class Record(BaseModel):
+    """
+    A record is a single example from a dataset.
+
+    A record has:
+      - an input (str or Dialogue)
+      - an id (str), which should come from the original dataset
+      - an index (int), which is the index of the record in the dataset
+      - other fields (Dict[str, Any]), which are arbitrary additional fields
+
+    Additionally, a record has:
+     - a path (Path), which is the path to the original dataset
+     - a field_mapping (Mapping[str, str]), which is a mapping of field names to the field names in the original dataset
+     - a loader_kwargs (Mapping[str, Any]), which are additional keyword arguments to pass to the loader
+
+     path, field_mapping, and loader_kwargs ensure that the Dataset object knows how to
+     load the dataset from a file.
+    """
+
+    path: Path
+    field_mapping: Mapping[str, str]
+    loader_kwargs: Mapping[str, Any]
     input: Input
     id: str
+    index: int
     other_fields: Dict[str, Any] = Field(default_factory=dict)
 
     def input_str(self) -> str:
@@ -77,6 +101,10 @@ class Record(BaseModel):
 
 
 class LabelledRecord(Record):
+    """
+    A labelled record is a record with a label field.
+    """
+
     @property
     def label(self) -> Label:
         label_ = self.other_fields["labels"]
@@ -86,7 +114,49 @@ class LabelledRecord(Record):
 R = TypeVar("R", bound=Record)
 
 
+class DatasetSpec(BaseModel):
+    """
+    A dataset spec is a specification for a dataset. It contains all information needed to load the dataset from a file.
+
+    A dataset spec has:
+      - a path (Path), which is the path to the dataset
+      - indices (Sequence[int] or Literal["all"]), which are the indices of the records to load
+      - field_mapping (Mapping[str, str]), which is a mapping of field names to the field names in the original dataset
+      - loader_kwargs (Mapping[str, Any]), which are additional keyword arguments to pass to the loader
+    """
+
+    path: Path
+    indices: Sequence[int] | Literal["all"] = "all"
+    field_mapping: Mapping[str, str] = Field(default_factory=dict)
+    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
+
+
 class BaseDataset(BaseModel, Generic[R]):
+    """
+    Generic base class for all datasets.
+
+    A base dataset has:
+      - a path (Path), which is the path to the dataset
+      - indices (Sequence[int] or Literal["all"]), which are the indices of the records to load
+      - field_mapping (Mapping[str, str]), which is a mapping of field names to the field names in the original dataset
+      - loader_kwargs (Mapping[str, Any]), which are additional keyword arguments to pass to the loader
+      - inputs (Sequence[Input]), which are the inputs of the dataset
+      - ids (Sequence[str]), which are the ids of the dataset
+      - other_fields (Mapping[str, Sequence[Any]]), which are arbitrary additional fields
+      - _record_class (ClassVar[Type]), which is the class of the records in the dataset
+
+    BaseDatasets store data in columnar format with each column being a sequence of values.
+
+    BaseDatasets contain path, indices, field_mapping, and loader_kwargs, so that
+    the Dataset can be loaded from a file. This information is preserved when we
+    modify the dataset by filtering, indexing or subsampling. This is useful e.g.
+    for retrieving stored activations.
+    """
+
+    path: Path
+    indices: Sequence[int]
+    field_mapping: Mapping[str, str] = Field(default_factory=dict)
+    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
     inputs: Sequence[Input]
     ids: Sequence[str]
     other_fields: Mapping[str, Sequence[Any]]
@@ -108,6 +178,12 @@ class BaseDataset(BaseModel, Generic[R]):
                 f"Length mismatch: inputs ({input_len}) != ids ({len(self.ids)})"
             )
 
+        if self.indices != "all":
+            if len(self.indices) != input_len:
+                raise ValueError(
+                    f"Length mismatch: inputs ({input_len}) != indices ({len(self.indices)})"
+                )
+
         for field_name, field_values in self.other_fields.items():
             if len(field_values) != input_len:
                 raise ValueError(
@@ -119,14 +195,64 @@ class BaseDataset(BaseModel, Generic[R]):
         return len(self.inputs)
 
     @overload
-    def __getitem__(self, idx: int) -> R: ...
+    def __getitem__(self, idx: int) -> R:
+        """
+        Get the record at index `idx`.
+
+        Note: when using square bracket indexing (e.g. dataset[0]), the index refers to the
+        position in the current dataset's sequence, not the original dataset indices stored
+        in self.indices. For example, if you have a dataset with 1000 records and filter it
+        to keep only records 100-199, accessing filtered_dataset[0] will give you the first
+        record in the filtered dataset (which was record 100 in the original dataset). The
+        original indices are preserved in self.indices but are not used for indexing. For example:
+
+            full_dataset = LabelledDataset.load_from(path)  # 1000 records
+            filtered = full_dataset[100:200]  # Keeps records 100-199
+            record = filtered[0]  # Gets record 100 from original dataset
+        """
 
     @overload
-    def __getitem__(self, idx: slice) -> Self: ...
+    def __getitem__(self, idx: slice) -> Self:
+        """
+        Get a slice of the dataset.
+
+        Note: when using square bracket indexing (e.g. dataset[0]), the index refers to the
+        position in the current dataset's sequence, not the original dataset indices stored
+        in self.indices. For example, if you have a dataset with 1000 records and filter it
+        to keep only records 100-199, accessing filtered_dataset[0] will give you the first
+        record in the filtered dataset (which was record 100 in the original dataset). The
+        original indices are preserved in self.indices but are not used for indexing. For example:
+
+            full_dataset = LabelledDataset.load_from(path)  # 1000 records
+            filtered = full_dataset[100:200]  # Keeps records 100-199
+            record = filtered[0]  # Gets record 100 from original dataset
+
+        """
+
+    @overload
+    def __getitem__(self, idx: list[int]) -> Self:
+        """
+        Get a list of records at indices `idx`.
+
+        Note: when using square bracket indexing (e.g. dataset[0]), the index refers to the
+        position in the current dataset's sequence, not the original dataset indices stored
+        in self.indices. For example, if you have a dataset with 1000 records and filter it
+        to keep only records 100-199, accessing filtered_dataset[0] will give you the first
+        record in the filtered dataset (which was record 100 in the original dataset). The
+        original indices are preserved in self.indices but are not used for indexing. For example:
+
+            full_dataset = LabelledDataset.load_from(path)  # 1000 records
+            filtered = full_dataset[100:200]  # Keeps records 100-199
+            record = filtered[0]  # Gets record 100 from original dataset
+        """
 
     def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
             return type(self)(
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
+                indices=[self.indices[i] for i in idx],
                 inputs=[self.inputs[i] for i in idx],
                 ids=[self.ids[i] for i in idx],
                 other_fields={
@@ -135,6 +261,10 @@ class BaseDataset(BaseModel, Generic[R]):
             )
         elif isinstance(idx, slice):
             return type(self)(
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
+                indices=self.indices[idx],
                 inputs=self.inputs[idx],
                 ids=self.ids[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
@@ -143,19 +273,53 @@ class BaseDataset(BaseModel, Generic[R]):
             return self._record_class(
                 input=self.inputs[idx],
                 id=self.ids[idx],
+                index=self.indices[idx],
                 other_fields={k: v[idx] for k, v in self.other_fields.items()},
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
             )
 
     def sample(self, num_samples: int) -> Self:
+        """
+        Sample a random subset of `num_samples` records from the dataset.
+        """
         return type(self).from_records(random.sample(self.to_records(), num_samples))
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
+        """
+        Filter the dataset by a boolean function `filter_fn` that returns True for
+        records to keep and False for records to discard.
+        """
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+
+    @property
+    def spec(self) -> DatasetSpec:
+        """
+        Get the dataset spec for the dataset.
+        """
+        indices = "all" if self.indices == list(range(len(self))) else self.indices
+        return DatasetSpec(
+            path=self.path,
+            indices=indices,
+            field_mapping=self.field_mapping,
+            loader_kwargs=self.loader_kwargs,
+        )
 
     @classmethod
     def from_records(cls, records: Sequence[R]) -> Self:
+        """
+        Create a new dataset from a sequence of records.
+
+        Args:
+            records: A sequence of records
+        """
         field_keys = records[0].other_fields.keys()
         return cls(
+            path=records[0].path,
+            field_mapping=records[0].field_mapping,
+            loader_kwargs=records[0].loader_kwargs,
+            indices=[r.index for r in records],
             inputs=[r.input for r in records],
             ids=[r.id for r in records],
             other_fields={k: [r.other_fields[k] for r in records] for k in field_keys},
@@ -163,8 +327,26 @@ class BaseDataset(BaseModel, Generic[R]):
 
     @classmethod
     def from_pandas(
-        cls, df: pd.DataFrame, field_mapping: Optional[Mapping[str, str]] = None
+        cls,
+        df: pd.DataFrame,
+        path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
+        """
+        Create a new dataset from a pandas DataFrame.
+
+        Args:
+            df: A pandas DataFrame
+            path: The path to the dataset
+            field_mapping: A mapping of field names to the field names in the original dataset
+
+        Though the data is already present in `df`, we need `path` and `field_mapping`
+        to know how to load the dataset from a file, an important design consideration
+        for Dataset objects.
+
+        This method handles parsing the inputs and ids from the DataFrame, and
+        converting them to the correct format for the Dataset object.
+        """
         # Extract the required columns
         df = df.rename(columns=field_mapping or {})
 
@@ -201,41 +383,56 @@ class BaseDataset(BaseModel, Generic[R]):
             if col not in {"inputs", "ids"}
         }
 
-        return cls(inputs=inputs, ids=ids, other_fields=other_fields)
+        return cls(
+            path=path,
+            indices=list(range(len(inputs))),
+            field_mapping=field_mapping or {},
+            loader_kwargs={},
+            inputs=inputs,
+            ids=ids,
+            other_fields=other_fields,
+        )
 
     @classmethod
     def from_jsonl(
-        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
+        cls,
+        path: Path,
+        field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
-        with open(file_path, "r") as f:
+        """
+        Create a new dataset from a JSONL file.
+
+        Args:
+            path: The path to the JSONL file
+            field_mapping: A mapping of field names to the field names in the original dataset
+        """
+        with open(path, "r") as f:
             df = pd.DataFrame([json.loads(line) for line in f])
 
-        return cls.from_pandas(df, field_mapping=field_mapping)
+        return cls.from_pandas(df, path=path, field_mapping=field_mapping)
 
     @classmethod
     def from_csv(
-        cls, file_path: Path, field_mapping: Optional[Mapping[str, str]] = None
-    ) -> Self:
-        df = pd.read_csv(file_path)
-        return cls.from_pandas(df, field_mapping=field_mapping)
-
-    @classmethod
-    def from_huggingface(
         cls,
-        dataset_name: str,
-        split: Optional[str] = None,
-        subset: Optional[str] = None,
+        path: Path,
         field_mapping: Optional[Mapping[str, str]] = None,
     ) -> Self:
-        ds = datasets.load_dataset(dataset_name, split=split, name=subset)
-        df = pd.DataFrame(ds)  # type: ignore
-        return cls.from_pandas(df, field_mapping=field_mapping)
+        """
+        Create a new dataset from a CSV file.
+
+        Args:
+            path: The path to the CSV file
+            field_mapping: A mapping of field names to the field names in the original dataset
+        """
+        df = pd.read_csv(path)
+        return cls.from_pandas(df, path=path, field_mapping=field_mapping)
 
     @classmethod
     def load_from(
         cls,
-        file_path_or_name: Path | str,
+        path: Path,
         field_mapping: Optional[Mapping[str, str]] = None,
+        indices: Sequence[int] | Literal["all"] = "all",
         **loader_kwargs: Any,
     ) -> Self:
         """
@@ -243,50 +440,95 @@ class BaseDataset(BaseModel, Generic[R]):
         Supported types are:
         - csv: A CSV file with columns "input", "id", and other fields
         - jsonl: A JSONL file with each line being a JSON object with keys "input" and "id"
-        - hf: A Hugging Face dataset, specified by a dataset name or path to a local file
 
         Args:
-            file_path: The path to the file to load
+            path: Path to the file to load
+            field_mapping: Optional mapping of field names
+            indices: Which indices to load, or "all" for all indices
             loader_kwargs: Additional keyword arguments to pass to the loader
         """
+        spec = DatasetSpec(
+            path=path,
+            indices=indices,
+            field_mapping=field_mapping or {},
+            loader_kwargs=loader_kwargs,
+        )
+        return cls.load_from_spec(spec)
+
+    @classmethod
+    def load_from_spec(cls, spec: DatasetSpec) -> Self:
+        """
+        Load the dataset from a dataset spec.
+
+        Args:
+            spec: The dataset spec
+        """
         # Infer from extension
-        if isinstance(file_path_or_name, Path):
-            loaders = {
-                ".csv": cls.from_csv,
-                ".jsonl": cls.from_jsonl,
-            }
-            try:
-                loader = loaders[file_path_or_name.suffix]
-            except KeyError:
-                raise ValueError(f"Unsupported file type: '{file_path_or_name.suffix}'")
-            return loader(
-                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
-            )
+        loaders = {
+            ".csv": cls.from_csv,
+            ".jsonl": cls.from_jsonl,
+        }
+        try:
+            loader = loaders[spec.path.suffix]
+        except KeyError:
+            raise ValueError(f"Unsupported file type: '{spec.path.suffix}'")
+        dataset_all_indices = loader(
+            PROJECT_ROOT / spec.path,
+            field_mapping=spec.field_mapping,
+            **spec.loader_kwargs,
+        )
+
+        if spec.indices == "all":
+            return dataset_all_indices
         else:
-            if not len(file_path_or_name.split("/")) == 2:
-                raise ValueError(f"Invalid dataset name: {file_path_or_name}")
-            return cls.from_huggingface(
-                file_path_or_name, field_mapping=field_mapping, **loader_kwargs
-            )
+            return dataset_all_indices[list(spec.indices)]
 
     @classmethod
     def concatenate(cls, datasets: Sequence[Self]) -> Self:
+        """
+        Concatenate a sequence of datasets.
+
+        Args:
+            datasets: A sequence of datasets
+        """
+        if not datasets:
+            raise ValueError("Cannot concatenate empty sequence of datasets")
+
+        # Check that all datasets have consistent metadata
+        first = datasets[0]
+        for dataset in datasets[1:]:
+            if dataset.path != first.path:
+                raise ValueError("All datasets must have the same path")
+            if dataset.field_mapping != first.field_mapping:
+                raise ValueError("All datasets must have the same field mapping")
+            if dataset.loader_kwargs != first.loader_kwargs:
+                raise ValueError("All datasets must have the same loader kwargs")
         return cls.from_records(
             [r for dataset in datasets for r in dataset.to_records()]
         )
 
     def to_records(self) -> Sequence[R]:
+        """
+        Convert the dataset to a sequence of records.
+        """
         return [
             self._record_class(
                 input=input,
+                path=self.path,
+                field_mapping=self.field_mapping,
+                loader_kwargs=self.loader_kwargs,
                 id=id,
+                index=self.indices[i],
                 other_fields={k: v[i] for k, v in self.other_fields.items()},
             )
             for i, (input, id) in enumerate(zip(self.inputs, self.ids))
         ]
 
     def to_pandas(self) -> pd.DataFrame:
-        # Convert Dialogue inputs to dictionaries for pandas compatibility
+        """
+        Convert the dataset to a pandas DataFrame.
+        """
+        # Convert Dialogue inputs to JSON strings for pandas compatibility
         processed_inputs = []
         for input_item in self.inputs:
             if isinstance(input_item, str):
@@ -332,6 +574,13 @@ class BaseDataset(BaseModel, Generic[R]):
         return df
 
     def save_to(self, file_path: Path, overwrite: bool = False) -> None:
+        """
+        Save the dataset to a file.
+
+        Args:
+            file_path: The path to save the dataset to
+            overwrite: Whether to overwrite the file if it already exists
+        """
         if not overwrite and file_path.exists():
             raise FileExistsError(
                 f"File {file_path} already exists. Use overwrite=True to overwrite."
@@ -347,6 +596,10 @@ class BaseDataset(BaseModel, Generic[R]):
 
 
 class Dataset(BaseDataset[Record]):
+    """
+    A dataset with no label field.
+    """
+
     _record_class: ClassVar[Type] = Record
 
 

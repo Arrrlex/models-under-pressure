@@ -1,4 +1,5 @@
 from collections import defaultdict
+from pathlib import Path
 
 from datasets import load_dataset
 
@@ -69,6 +70,10 @@ def load_anthropic_raw_data(split: str = "train") -> Dataset:
         inputs=inputs,
         ids=ids,
         other_fields=other_fields,
+        path=Path("anthropic_raw.jsonl"),
+        field_mapping={},
+        loader_kwargs={},
+        indices=list(range(len(inputs))),
     )
 
 

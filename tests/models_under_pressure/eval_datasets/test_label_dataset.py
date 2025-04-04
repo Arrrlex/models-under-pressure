@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -54,6 +55,10 @@ def sample_dataset():
         ],
         ids=["id1", "id2", "id3"],
         other_fields={"metadata": ["meta1", "meta2", "meta3"]},
+        path=Path("test.csv"),
+        field_mapping={},
+        loader_kwargs={},
+        indices=[0, 1, 2],
     )
 
 

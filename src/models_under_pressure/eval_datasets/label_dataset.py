@@ -173,6 +173,10 @@ async def label_dataset_async(
         inputs=dataset.inputs,
         ids=dataset.ids,
         other_fields=other_fields,
+        path=dataset.path,
+        field_mapping=dataset.field_mapping,
+        loader_kwargs=dataset.loader_kwargs,
+        indices=dataset.indices,
     )
 
 
