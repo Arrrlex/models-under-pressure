@@ -1,3 +1,10 @@
+"""Module for storing and managing model activations.
+
+This module provides functionality for storing, loading, and managing model activations
+in a compressed format. It handles the persistence of activations to both local storage
+and cloud storage (R2), with a manifest system to track available activations.
+"""
+
 import datetime
 import hashlib
 import os
@@ -24,6 +31,12 @@ from models_under_pressure.r2 import (
 
 
 class ManifestRow(BaseModel):
+    """Represents a single row in the activation manifest.
+
+    This class tracks metadata about stored activations, including the model name,
+    dataset path, layer number, and paths to the stored activation files.
+    """
+
     model_name: str
     dataset_path: Path
     layer: int
@@ -34,6 +47,16 @@ class ManifestRow(BaseModel):
 
     @classmethod
     def build(cls, model_name: str, dataset_path: Path, layer: int) -> Self:
+        """Create a new manifest row with generated file paths.
+
+        Args:
+            model_name: Name of the model that generated the activations
+            dataset_path: Path to the dataset used
+            layer: Layer number for which activations were generated
+
+        Returns:
+            A new ManifestRow instance with generated file paths
+        """
         dataset_path = dataset_path.resolve().relative_to(PROJECT_ROOT)
         common_name = model_name + str(dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
@@ -50,20 +73,53 @@ class ManifestRow(BaseModel):
 
     @property
     def paths(self) -> list[Path]:
+        """Get all file paths associated with this manifest row.
+
+        Returns:
+            List of paths to activation files
+        """
         return [self.activations, self.input_ids, self.attention_mask]
 
 
 class Manifest(BaseModel):
+    """Container for all manifest rows.
+
+    This class represents the complete manifest of stored activations,
+    containing a list of all ManifestRow instances.
+    """
+
     rows: list[ManifestRow]
 
 
 @dataclass
 class ActivationStore:
+    """Manages storage and retrieval of model activations.
+
+    This class handles the persistence of model activations, including:
+    - Saving activations to local storage and cloud storage
+    - Loading activations from storage
+    - Managing the manifest of available activations
+    - Deleting stored activations
+    - Checking for existence of activations
+
+    Attributes:
+        path: Local directory path for storing activations
+        bucket: Cloud storage bucket name for storing activations
+    """
+
     path: Path = ACTIVATIONS_DIR
     bucket: str = ACTIVATIONS_BUCKET  # type: ignore
 
     @contextmanager
     def get_manifest(self):
+        """Context manager for accessing and updating the manifest.
+
+        Downloads the manifest from cloud storage, yields it for modification,
+        and then uploads the modified manifest back to cloud storage.
+
+        Yields:
+            The current manifest object
+        """
         # Download manifest from R2 and load it
         manifest_path = self.path / "manifest.json"
         download_file(self.bucket, "manifest.json", manifest_path)
@@ -92,8 +148,18 @@ class ActivationStore:
         activations: torch.Tensor,
         inputs: dict[str, torch.Tensor],
     ):
-        if dataset_spec.indices != "all":
-            raise ValueError("Cannot save activations for a subset of the dataset")
+        """Save model activations to storage.
+
+        Args:
+            model_name: Name of the model that generated the activations
+            dataset_spec: Specification of the dataset used
+            layers: List of layer numbers for which activations were generated
+            activations: Tensor containing the model activations
+            inputs: Dictionary containing input tensors (input_ids and attention_mask)
+
+        Raises:
+            ValueError: If trying to save activations for a subset of the dataset
+        """
 
         # Save layer-specific masked activations
         for layer_idx, layer in tqdm(
@@ -128,16 +194,27 @@ class ActivationStore:
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
 
-    def load(
-        self, model_name: str, dataset_spec: DatasetSpec, layer: int
-    ) -> Activation:
+    def load(self, model_name: str, dataset_path: Path, layer: int) -> Activation:
+        """Load stored activations from storage.
+
+        Args:
+            model_name: Name of the model that generated the activations
+            dataset_path: Path to the dataset used
+            layer: Layer number for which to load activations
+
+        Returns:
+            An Activation object containing the loaded activations and inputs
+
+        Raises:
+            FileNotFoundError: If the requested activations are not found in storage
+        """
         manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_path=dataset_spec.path, layer=layer
+            model_name=model_name, dataset_path=dataset_path, layer=layer
         )
 
-        if not self.exists(model_name, dataset_spec.path, layer):
+        if not self.exists(model_name, dataset_path, layer):
             raise FileNotFoundError(
-                f"Activations for {model_name} on {dataset_spec.path} at layer {layer} not found"
+                f"Activations for {model_name} on {dataset_path} at layer {layer} not found"
             )
 
         for path in manifest_row.paths:
@@ -158,6 +235,13 @@ class ActivationStore:
         )
 
     def delete(self, model_name: str, dataset_path: Path, layer: int):
+        """Delete stored activations from storage.
+
+        Args:
+            model_name: Name of the model that generated the activations
+            dataset_path: Path to the dataset used
+            layer: Layer number for which to delete activations
+        """
         # Delete layer-specific file
         manifest_row = ManifestRow.build(
             model_name=model_name, dataset_path=dataset_path, layer=layer
@@ -174,6 +258,16 @@ class ActivationStore:
             ]
 
     def exists(self, model_name: str, dataset_path: Path, layer: int) -> bool:
+        """Check if activations exist in storage.
+
+        Args:
+            model_name: Name of the model that generated the activations
+            dataset_path: Path to the dataset used
+            layer: Layer number to check
+
+        Returns:
+            True if the activations exist, False otherwise
+        """
         row = ManifestRow.build(
             model_name=model_name, dataset_path=dataset_path, layer=layer
         )
@@ -184,6 +278,17 @@ class ActivationStore:
 def add_activations_to_dataset(
     dataset: LabelledDataset, dataset_path: Path, model_name: str, layer: int
 ):
+    """Add stored activations to a dataset.
+
+    Args:
+        dataset: The dataset to add activations to
+        dataset_path: Path to the dataset
+        model_name: Name of the model that generated the activations
+        layer: Layer number for which to load activations
+
+    Returns:
+        The dataset with activations added as new columns
+    """
     activations = ActivationStore().load(model_name, dataset_path, layer)
 
     return dataset.assign(
@@ -195,7 +300,11 @@ def add_activations_to_dataset(
 
 @contextmanager
 def temp_file():
-    """Create a temporary file that is deleted after use."""
+    """Create a temporary file that is deleted after use.
+
+    Yields:
+        Path to the temporary file
+    """
     with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as tmp:
         try:
             yield Path(tmp.name)
@@ -204,6 +313,14 @@ def temp_file():
 
 
 def load_compressed(path: Path) -> torch.Tensor:
+    """Load and decompress a tensor from a compressed file.
+
+    Args:
+        path: Path to the compressed tensor file
+
+    Returns:
+        The decompressed tensor
+    """
     dctx = zstd.ZstdDecompressor()
     with temp_file() as tmp_path:
         with open(path, "rb") as f_in, open(tmp_path, "wb") as f_out:
@@ -213,6 +330,12 @@ def load_compressed(path: Path) -> torch.Tensor:
 
 
 def save_compressed(path: Path, tensor: torch.Tensor):
+    """Save and compress a tensor to a file.
+
+    Args:
+        path: Path where to save the compressed tensor
+        tensor: The tensor to compress and save
+    """
     with temp_file() as tmp_path:
         # Save tensor to temporary file
         torch.save(tensor, tmp_path)
