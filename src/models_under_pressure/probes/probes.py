@@ -39,18 +39,14 @@ class ProbeFactory:
             )
             if probe.hyperparams is not None:
                 return SklearnProbe(
-                    layer=layer,
                     aggregator=aggregator,
                     hyper_params=probe.hyperparams,
                 ).fit(train_dataset)
             else:
-                return SklearnProbe(layer=layer, aggregator=aggregator).fit(
-                    train_dataset
-                )
+                return SklearnProbe(aggregator=aggregator).fit(train_dataset)
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=False, training_args=probe.hyperparams
@@ -59,7 +55,6 @@ class ProbeFactory:
         elif probe.name == "lda":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=True, training_args=probe.hyperparams
@@ -68,7 +63,6 @@ class ProbeFactory:
         elif probe.name == "pytorch_per_token_probe":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                layer=layer,
                 hyper_params=probe.hyperparams,
             ).fit(train_dataset)
         else:

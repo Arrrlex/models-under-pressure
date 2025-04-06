@@ -40,10 +40,7 @@ class PytorchProbe(Probe):
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
         """
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
         self._classifier = self._fit(
@@ -61,10 +58,7 @@ class PytorchProbe(Probe):
         """
         Predict and return the labels of the dataset.
         """
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
         labels = self._classifier.predict(activations_obj)  # type: ignore
         return [Label.from_int(label) for label in labels]
 
@@ -76,10 +70,7 @@ class PytorchProbe(Probe):
 
         Probabilities are expected from the classifier in the shape (batch_size,)
         """
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
 
         # Get the batch_size, seq_len probabilities:
         probs = self._classifier.predict_proba(activations_obj)  # type: ignore
@@ -99,10 +90,7 @@ class PytorchProbe(Probe):
         """
 
         # TODO: Change such that it uses the aggregation framework
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
 
         probs = self._classifier.predict_token_proba(activations_obj)  # type: ignore
 
