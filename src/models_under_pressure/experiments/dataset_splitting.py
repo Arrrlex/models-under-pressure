@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.activation_store import add_activations_to_dataset
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -122,6 +123,8 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 def load_train_test(
     dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
@@ -132,6 +135,11 @@ def load_train_test(
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
     dataset = LabelledDataset.load_from(dataset_path)
+
+    if model_name is not None and layer is not None:
+        dataset = add_activations_to_dataset(
+            dataset, model_name=model_name, layer=layer, dataset_path=dataset_path
+        )
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
     test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
@@ -144,9 +152,11 @@ def load_filtered_train_dataset(
     variation_type: str | None = None,
     variation_value: str | None = None,
     max_samples: int | None = None,
+    model_name: str | None = None,
+    layer: int | None = None,
 ) -> LabelledDataset:
     # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(dataset_path)
+    train_dataset, _ = load_train_test(dataset_path, model_name, layer)
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(

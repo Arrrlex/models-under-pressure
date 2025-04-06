@@ -7,6 +7,8 @@ import torch
 from jaxtyping import Float
 from torch.utils.data import Dataset as TorchDataset
 
+from models_under_pressure.interfaces.dataset import BaseDataset
+
 
 class ActivationPerTokenDataset(TorchDataset):
     """
@@ -167,6 +169,14 @@ class Activation:
     _activations: Float[np.ndarray, "batch_size seq_len embed_dim"]
     _attention_mask: Float[np.ndarray, "batch_size seq_len"]
     _input_ids: Float[np.ndarray, "batch_size seq_len"]
+
+    @classmethod
+    def from_dataset(cls, dataset: BaseDataset) -> "Activation":
+        return cls(
+            _activations=dataset.other_fields["activations"],
+            _attention_mask=dataset.other_fields["attention_mask"],
+            _input_ids=dataset.other_fields["input_ids"],
+        )
 
     @classmethod
     def concatenate(cls, activations: list["Activation"]) -> "Activation":

@@ -34,9 +34,6 @@ from models_under_pressure.probes.base import Classifier, Probe
 
 @dataclass
 class SklearnProbe(Probe):
-    _llm: LLMModel
-    layer: int
-
     aggregator: Aggregator
 
     hyper_params: dict = field(
@@ -56,10 +53,7 @@ class SklearnProbe(Probe):
             )  # type: ignore
 
     def fit(self, dataset: LabelledDataset) -> Self:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
         self._fit(
@@ -70,29 +64,20 @@ class SklearnProbe(Probe):
         return self
 
     def predict(self, dataset: BaseDataset) -> list[Label]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
 
     def predict_proba(
         self, dataset: BaseDataset
     ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
         return activations_obj, self._predict_proba(activations_obj)
 
     def predict_proba_without_activations(
         self, dataset: BaseDataset
     ) -> Float[np.ndarray, " batch_size"]:
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
         # print(
         #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
         # )
@@ -139,10 +124,7 @@ class SklearnProbe(Probe):
 
         # TODO: Change such that it uses the aggregation framework
 
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layers=[self.layer],
-        )
+        activations_obj = Activation.from_dataset(dataset)
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
@@ -196,36 +178,9 @@ def load_probe(model: LLMModel, probe_info: ProbeInfo) -> SklearnProbe:
     with open(probe_path, "rb") as f:
         classifier = pickle.load(f)
     return SklearnProbe(
-        _llm=model,
-        layer=probe_info.layer,
         aggregator=probe_info.aggregator,
         _classifier=classifier,
     )
-
-
-def load_or_train_probe(
-    model: LLMModel,
-    train_dataset: LabelledDataset,
-    train_dataset_path: Path,
-    layer: int,
-    aggregator: Aggregator,
-    seq_pos: int | str = "all",
-) -> SklearnProbe:
-    probe_info = ProbeInfo(
-        model_name_short=model.name.split("/")[-1],
-        dataset_path=train_dataset_path.stem,
-        layer=layer,
-        aggregator=aggregator,
-        seq_pos=seq_pos,
-    )
-    if probe_info.path.exists():
-        probe = load_probe(model, probe_info)
-    else:
-        probe = SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-            train_dataset
-        )
-        save_probe(probe, probe_info)
-    return probe
 
 
 def compute_accuracy(
@@ -246,7 +201,7 @@ if __name__ == "__main__":
         postprocessor=Postprocessors.sigmoid,
     )
     train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
-    probe = SklearnProbe(_llm=model, layer=11, aggregator=agg)
+    probe = SklearnProbe(layer=11, aggregator=agg)
     probe.fit(train_dataset[:10])
 
     # Test the probe

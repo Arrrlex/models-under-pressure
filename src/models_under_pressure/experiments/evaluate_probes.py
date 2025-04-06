@@ -5,11 +5,9 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.config import (
-    CACHE_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    MODEL_MAX_MEMORY,
     TEST_DATASETS,
     EvalRunConfig,
 )
@@ -22,7 +20,6 @@ from models_under_pressure.experiments.train_probes import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config
 
@@ -61,24 +58,14 @@ def run_evaluation(
         variation_type=config.variation_type,
         variation_value=config.variation_value,
         max_samples=config.max_samples,
-    )
-
-    # Create the model:
-    print("Loading model ...")
-    model = LLMModel.load(
-        config.model_name,
-        model_kwargs={
-            "device_map": "auto",
-            "max_memory": MODEL_MAX_MEMORY[config.model_name],
-            "cache_dir": CACHE_DIR,
-        },
+        model_name=config.model_name,
+        layer=config.layer,
     )
 
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
-        model=model,
         train_dataset=train_dataset,
         layer=config.layer,
     )

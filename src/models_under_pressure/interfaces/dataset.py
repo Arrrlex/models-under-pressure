@@ -9,7 +9,6 @@ from typing import (
     ClassVar,
     Dict,
     Generic,
-    Literal,
     Mapping,
     Optional,
     Self,
@@ -99,7 +98,6 @@ class DatasetSpec(BaseModel):
     """
 
     path: Path
-    indices: Sequence[int] | Literal["all"] = "all"
     field_mapping: Mapping[str, str] = Field(default_factory=dict)
     loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
 
