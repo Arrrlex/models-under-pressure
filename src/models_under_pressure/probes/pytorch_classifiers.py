@@ -208,16 +208,6 @@ class PytorchLinearClassifier:
 
 
 @dataclass
-class PytorchAttentionClassifier:
-    """
-    A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
-    """
-
-    training_args: dict
-    model: nn.Module | None = None
-
-
-@dataclass
 class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
     use_lda: bool = False
 
