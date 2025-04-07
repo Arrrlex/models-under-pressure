@@ -22,7 +22,6 @@ from models_under_pressure.config import (
     ChooseLayerConfig,
 )
 from models_under_pressure.interfaces.activations import (
-    Activation,
     Aggregator,
     Postprocessors,
     Preprocessors,
@@ -86,21 +85,13 @@ class CVSplits:
 
 
 @dataclass
-class DatasetWithActivations:
-    """Simple wrapper class containing a dataset and its activations."""
-
-    dataset: LabelledDataset
-    activations: Activation
-
-
-@dataclass
 class CVSplitsWithActivations:
     """
     Wrapper class containing the cross validation splits and their activations.
     """
 
     cv_splits: CVSplits
-    activation_folds: list[DatasetWithActivations]
+    activation_folds: list[LabelledDataset]
 
     @classmethod
     def create(
@@ -128,12 +119,16 @@ class CVSplitsWithActivations:
 
         # Create DatasetWithActivations for each fold
         activation_folds = [
-            DatasetWithActivations(fold, act)
+            fold.assign(
+                activations=act.get_activations(),
+                attention_mask=act.get_attention_mask(),
+                input_ids=act.get_input_ids(),
+            )
             for fold, act in zip(cv_splits.folds, activation_splits)
         ]
         return cls(cv_splits, activation_folds)
 
-    def splits(self) -> Iterator[Tuple[DatasetWithActivations, DatasetWithActivations]]:
+    def splits(self) -> Iterator[Tuple[LabelledDataset, LabelledDataset]]:
         """Get train/test splits for cross validation.
 
         Returns:
@@ -146,23 +141,19 @@ class CVSplitsWithActivations:
 
             # Train set is all other folds combined
             train_folds = self.activation_folds[:i] + self.activation_folds[i + 1 :]
-            train = DatasetWithActivations(
-                LabelledDataset.concatenate([fold.dataset for fold in train_folds]),
-                Activation.concatenate([fold.activations for fold in train_folds]),
-            )
+            train = LabelledDataset.concatenate(train_folds)
 
             yield train, test
 
 
 def _train_and_evaluate_fold(
-    train_test_pair: Tuple[DatasetWithActivations, DatasetWithActivations],
+    train_test_pair: Tuple[LabelledDataset, LabelledDataset],
     layer: int,
 ) -> float:
     """Worker function to train and evaluate a probe on a single fold.
 
     Args:
-        train_test_pair: Tuple of (train, test) DatasetWithActivations
-        llm: LLMModel
+        train_test_pair: Tuple of (train, test) LabelledDataset
         layer: Layer being evaluated
         aggregator: Aggregator for the probe
 
@@ -175,14 +166,12 @@ def _train_and_evaluate_fold(
         Postprocessors.sigmoid,
     )
     probe = SklearnProbe(
-        _llm=None,  # type: ignore
-        layer=layer,
         aggregator=aggregator,
     )
-    probe._fit(train.activations, train.dataset.labels_numpy())
+    probe.fit(train)
 
-    test_scores = probe._predict(test.activations)
-    return (np.array(test_scores) == test.dataset.labels_numpy()).mean()
+    test_scores = probe.predict(test)
+    return (np.array(test_scores) == test.labels_numpy()).mean()
 
 
 def get_cross_validation_accuracies(

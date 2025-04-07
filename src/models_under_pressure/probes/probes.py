@@ -20,11 +20,9 @@ class ProbeFactory:
         train_dataset: LabelledDataset,
         layer: int,
     ) -> Probe:
-        if {
-            "activations",
-            "attention_mask",
-            "input_ids",
-        } not in train_dataset.other_fields:
+        if not {"activations", "attention_mask", "input_ids"}.issubset(
+            train_dataset.other_fields
+        ):
             raise ValueError(
                 "Dataset must contain activations, attention_mask, and input_ids"
             )

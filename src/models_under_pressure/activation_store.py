@@ -30,6 +30,18 @@ from models_under_pressure.r2 import (
 )
 
 
+class ActivationsSpec(BaseModel):
+    """Specification for a set of activations.
+
+    This class represents a set of activations, including the model name,
+    dataset path, and layer number.
+    """
+
+    model_name: str
+    dataset_path: Path
+    layer: int
+
+
 class ManifestRow(BaseModel):
     """Represents a single row in the activation manifest.
 
@@ -46,7 +58,7 @@ class ManifestRow(BaseModel):
     attention_mask: Path
 
     @classmethod
-    def build(cls, model_name: str, dataset_path: Path, layer: int) -> Self:
+    def from_spec(cls, spec: ActivationsSpec) -> Self:
         """Create a new manifest row with generated file paths.
 
         Args:
@@ -57,16 +69,16 @@ class ManifestRow(BaseModel):
         Returns:
             A new ManifestRow instance with generated file paths
         """
-        dataset_path = dataset_path.resolve().relative_to(PROJECT_ROOT)
-        common_name = model_name + str(dataset_path)
+        dataset_path = spec.dataset_path.resolve().relative_to(PROJECT_ROOT)
+        common_name = spec.model_name + str(dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
-            model_name=model_name,
+            model_name=spec.model_name,
             dataset_path=dataset_path,
-            layer=layer,
+            layer=spec.layer,
             timestamp=datetime.datetime.now(),
-            activations=Path(f"activations/{common_id}_{layer}.pt.zst"),
+            activations=Path(f"activations/{common_id}_{spec.layer}.pt.zst"),
             input_ids=Path(f"input_ids/{common_id}.pt.zst"),
             attention_mask=Path(f"attention_masks/{common_id}.pt.zst"),
         )
@@ -165,11 +177,12 @@ class ActivationStore:
         for layer_idx, layer in tqdm(
             list(enumerate(layers)), desc="Saving activations..."
         ):
-            manifest_row = ManifestRow.build(
+            spec = ActivationsSpec(
                 model_name=model_name,
                 dataset_path=dataset_path,
                 layer=layer,
             )
+            manifest_row = ManifestRow.from_spec(spec)
 
             # Save and compress each tensor
             save_compressed(
@@ -194,13 +207,11 @@ class ActivationStore:
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
 
-    def load(self, model_name: str, dataset_path: Path, layer: int) -> Activation:
+    def load(self, spec: ActivationsSpec) -> Activation:
         """Load stored activations from storage.
 
         Args:
-            model_name: Name of the model that generated the activations
-            dataset_path: Path to the dataset used
-            layer: Layer number for which to load activations
+            spec: Specification for the activations to load
 
         Returns:
             An Activation object containing the loaded activations and inputs
@@ -208,14 +219,10 @@ class ActivationStore:
         Raises:
             FileNotFoundError: If the requested activations are not found in storage
         """
-        manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_path=dataset_path, layer=layer
-        )
+        manifest_row = ManifestRow.from_spec(spec)
 
-        if not self.exists(model_name, dataset_path, layer):
-            raise FileNotFoundError(
-                f"Activations for {model_name} on {dataset_path} at layer {layer} not found"
-            )
+        if not self.exists(spec):
+            raise FileNotFoundError(f"Activations for {spec} not found")
 
         for path in manifest_row.paths:
             key = str(path)
@@ -234,18 +241,14 @@ class ActivationStore:
             _input_ids=input_ids.numpy(),
         )
 
-    def delete(self, model_name: str, dataset_path: Path, layer: int):
+    def delete(self, spec: ActivationsSpec):
         """Delete stored activations from storage.
 
         Args:
             model_name: Name of the model that generated the activations
-            dataset_path: Path to the dataset used
-            layer: Layer number for which to delete activations
         """
         # Delete layer-specific file
-        manifest_row = ManifestRow.build(
-            model_name=model_name, dataset_path=dataset_path, layer=layer
-        )
+        manifest_row = ManifestRow.from_spec(spec)
 
         for path in manifest_row.paths:
             (self.path / path).unlink()
@@ -257,45 +260,37 @@ class ActivationStore:
                 if row.activations != manifest_row.activations
             ]
 
-    def exists(self, model_name: str, dataset_path: Path, layer: int) -> bool:
+    def exists(self, spec: ActivationsSpec) -> bool:
         """Check if activations exist in storage.
 
         Args:
-            model_name: Name of the model that generated the activations
-            dataset_path: Path to the dataset used
-            layer: Layer number to check
+            spec: Specification for the activations to check
 
         Returns:
             True if the activations exist, False otherwise
         """
-        row = ManifestRow.build(
-            model_name=model_name, dataset_path=dataset_path, layer=layer
-        )
+        row = ManifestRow.from_spec(spec)
         with self.get_manifest() as manifest:
             return any(row.activations == other.activations for other in manifest.rows)
 
+    def enrich(
+        self, dataset: LabelledDataset, spec: ActivationsSpec
+    ) -> LabelledDataset:
+        """Enrich a dataset with activations.
 
-def add_activations_to_dataset(
-    dataset: LabelledDataset, dataset_path: Path, model_name: str, layer: int
-):
-    """Add stored activations to a dataset.
+        Args:
+            dataset: The dataset to enrich
+            spec: Specification for the activations to load
 
-    Args:
-        dataset: The dataset to add activations to
-        dataset_path: Path to the dataset
-        model_name: Name of the model that generated the activations
-        layer: Layer number for which to load activations
-
-    Returns:
-        The dataset with activations added as new columns
-    """
-    activations = ActivationStore().load(model_name, dataset_path, layer)
-
-    return dataset.assign(
-        activations=activations.get_activations(per_token=True),
-        attention_mask=activations.get_attention_mask(per_token=True),
-        input_ids=activations.get_input_ids(per_token=True),
-    )
+        Returns:
+            The enriched dataset
+        """
+        activations = self.load(spec)
+        return dataset.assign(
+            activations=activations.get_activations(),
+            attention_mask=activations.get_attention_mask(),
+            input_ids=activations.get_input_ids(),
+        )
 
 
 @contextmanager
@@ -343,4 +338,15 @@ def save_compressed(path: Path, tensor: torch.Tensor):
         # Compress with zstd
         cctx = zstd.ZstdCompressor(level=10)
         with open(tmp_path, "rb") as f_in, open(path, "wb") as f_out:
-            cctx.copy_stream(f_in, f_out)
+            # Get file size for progress bar
+            file_size = os.path.getsize(tmp_path)
+            with tqdm(
+                total=file_size, unit="B", unit_scale=True, desc="Compressing"
+            ) as pbar:
+                while True:
+                    chunk = f_in.read(8192)  # Read in 8KB chunks
+                    if not chunk:
+                        break
+                    compressed = cctx.compress(chunk)
+                    f_out.write(compressed)
+                    pbar.update(len(chunk))

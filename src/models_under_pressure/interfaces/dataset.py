@@ -138,7 +138,7 @@ class BaseDataset(BaseModel, Generic[R]):
                 if isinstance(value, (np.ndarray, torch.Tensor)):
                     indexed_other_fields[key] = value[idx]
                 else:
-                    indexed_other_fields[key] = [v[i] for v in value for i in idx]
+                    indexed_other_fields[key] = [value[i] for i in idx]
             return type(self)(
                 inputs=[self.inputs[i] for i in idx],
                 ids=[self.ids[i] for i in idx],
@@ -299,9 +299,35 @@ class BaseDataset(BaseModel, Generic[R]):
 
     @classmethod
     def concatenate(cls, datasets: Sequence[Self]) -> Self:
-        return cls.from_records(
-            [r for dataset in datasets for r in dataset.to_records()]
-        )
+        if not datasets:
+            raise ValueError("Cannot concatenate empty sequence of datasets")
+
+        # Verify all datasets have the same fields
+        first_fields = set(datasets[0].other_fields.keys())
+        for dataset in datasets[1:]:
+            if set(dataset.other_fields.keys()) != first_fields:
+                raise ValueError(
+                    "All datasets must have the same fields to concatenate"
+                )
+
+        ids = [id_ for dataset in datasets for id_ in dataset.ids]
+        inputs = [input_ for dataset in datasets for input_ in dataset.inputs]
+        other_fields = {}
+
+        for key, value in datasets[0].other_fields.items():
+            if isinstance(value, np.ndarray):
+                other_fields[key] = np.concatenate(
+                    [dataset.other_fields[key] for dataset in datasets]
+                )
+            elif isinstance(value, torch.Tensor):
+                other_fields[key] = torch.cat(
+                    tuple(dataset.other_fields[key] for dataset in datasets)
+                )  # type: ignore
+            else:
+                other_fields[key] = [
+                    item for dataset in datasets for item in dataset.other_fields[key]
+                ]
+        return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
     def to_records(self) -> Sequence[R]:
         return [

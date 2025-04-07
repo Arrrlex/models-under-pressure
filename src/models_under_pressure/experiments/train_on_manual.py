@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -46,6 +47,8 @@ def load_manual_dataset(
 
 
 def load_eval_datasets(
+    model_name: str,
+    layer: int,
     max_samples: int | None = None,
 ) -> dict[str, LabelledDataset]:
     """Load evaluation datasets."""
@@ -54,6 +57,13 @@ def load_eval_datasets(
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
+        activations_spec = ActivationsSpec(
+            model_name=model_name,
+            dataset_path=path,
+            layer=layer,
+        )
+        dataset = ActivationStore().enrich(dataset, activations_spec)
+
         if max_samples and len(dataset) > max_samples:
             dataset = dataset.sample(max_samples)
         eval_datasets[name] = dataset
@@ -70,7 +80,11 @@ def run_manual_evaluation(
     """Train a linear probe on the specified dataset and evaluate on all eval datasets."""
     # Load eval datasets
     print("Loading eval datasets...")
-    eval_datasets = load_eval_datasets(max_samples=max_samples)
+    eval_datasets = load_eval_datasets(
+        max_samples=max_samples,
+        model_name=model_name,
+        layer=layer,
+    )
 
     results_dict = train_probes_and_save_results(
         model_name=model_name,

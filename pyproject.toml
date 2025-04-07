@@ -57,6 +57,7 @@ dev = [
 
 [project.scripts]
 dashboard = "models_under_pressure.cli:dashboard_command"
+acts = "models_under_pressure.cli:activation_store_cli"
 
 [tool.ruff]
 line-length = 88

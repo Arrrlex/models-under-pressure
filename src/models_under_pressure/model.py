@@ -17,7 +17,6 @@ from typing import Any, Callable, Self, Sequence
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
-
 from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -27,6 +26,7 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import batched_range, hf_login
 from models_under_pressure.interfaces.activations import Activation
+from jaxtyping import Float
 
 
 class HookedModel:
@@ -224,7 +224,10 @@ class LLMModel:
         dataset: BaseDataset,
         layers: list[int],
         batch_size: int = -1,
-    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    ) -> tuple[
+        Float[torch.Tensor, "n_layers n_samples seq_len hidden_dim"],
+        dict[str, torch.Tensor],
+    ]:
         """
         Extract activations from multiple layers for a dataset.
 

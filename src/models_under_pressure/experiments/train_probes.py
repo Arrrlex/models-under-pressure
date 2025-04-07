@@ -168,7 +168,6 @@ def evaluate_probe_and_save_results(
             for i, logits in enumerate(per_token_probe_logits):
                 if np.any(np.isnan(logits)):
                     print(f"Found NaN values in probe logits for entry {i}")
-                    breakpoint()
                 assert not np.any(np.isnan(logits)), "Found NaN values in probe logits"
 
             probe_scores_dict = {

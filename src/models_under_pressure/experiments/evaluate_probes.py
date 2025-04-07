@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -26,6 +27,8 @@ from models_under_pressure.utils import double_check_config
 
 def load_eval_datasets(
     use_test_set: bool,
+    model_name: str,
+    layer: int,
     max_samples: int | None = None,
 ) -> tuple[dict[str, LabelledDataset], dict[str, Path]]:
     eval_datasets = {}
@@ -36,6 +39,12 @@ def load_eval_datasets(
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
+        activations_spec = ActivationsSpec(
+            model_name=model_name,
+            dataset_path=path,
+            layer=layer,
+        )
+        dataset = ActivationStore().enrich(dataset, activations_spec)
         if max_samples and len(dataset) > max_samples:
             # Sample equal number of high and low stakes examples
             high_stakes = dataset.filter(lambda x: x.label == Label.HIGH_STAKES)
@@ -75,6 +84,8 @@ def run_evaluation(
     eval_datasets, eval_dataset_paths = load_eval_datasets(
         use_test_set=config.use_test_set,
         max_samples=config.max_samples,
+        model_name=config.model_name,
+        layer=config.layer,
     )
 
     results_dict, coefs = evaluate_probe_and_save_results(
