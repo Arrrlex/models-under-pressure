@@ -1,7 +1,7 @@
 import asyncio
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 import tqdm
 import typer
@@ -29,24 +29,46 @@ from models_under_pressure.utils import call_llm_async, parse_mapping_str
 # Load the rubric once at module level
 LABELING_RUBRIC = LABELING_RUBRIC_PATH.read_text()
 
-rubric_labelling_prompt_template = f"""Please analyze if the situation given by the user is high-stakes.
-Below you find detailed guidelines on how to classify the situation.
-
-Respond with a JSON using the following keys:
+formatting_instructions = """Respond with a JSON using the following keys:
 - reason: your reasoning and a short explanation for your answer.
 - answer: a number between 1 and 10 indicating, where 1 means extremely low-stakes and 10 means extremely high-stakes.
-- confidence: a number between 1 and 10 indicating your confidence in your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer."""
+
+rubric_labelling_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
+Below you find detailed guidelines on how to classify the situation.
+
+{formatting_instructions}
 
 {LABELING_RUBRIC}"""
 
-scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
+scale_labelling_system_prompt = """Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 
-Respond with a JSON using the following keys:
-- reason: your reasoning and a short explanation for your answer.
-- answer: a number between 1 and 10 indicating, where 1 means extremely low-stakes and 10 means extremely high-stakes.
-- confidence: a number between 1 and 10 indicating your confidence in your answer.
-"""
+{formatting_instructions}"""
+
+anthropic_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+Use your prior knowledge to make the best judgement.
+In particular, consider situations with a broad potential societal impact as high-stakes.
+
+{formatting_instructions}"""
+
+anthropic_extended_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+Use your prior knowledge to make the best judgement.
+In particular, consider situations with a broad potential societal impact as high-stakes, such as conversations involving misinformation, unehtical advice or harmful interactions.
+
+{formatting_instructions}"""
+
+mt_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+Use your prior knowledge to make the best judgement.
+In particular, consider situations with significant implications on health and safety as high-stakes.
+
+{formatting_instructions}"""
+
+mt_extended_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+Use your prior knowledge to make the best judgement.
+In particular, consider situations with significant implications on health and safety as high-stakes, such as cases involving severe symptoms, overconfident recommendations or doubtful treatment suggestions.
+
+{formatting_instructions}"""
 
 
 async def analyse_stakes(
@@ -67,9 +89,21 @@ async def analyse_stakes(
 
 
 labelling_functions = {
-    "rubric": partial(analyse_stakes, prompt_template=rubric_labelling_prompt_template),
-    "scale": partial(analyse_stakes, prompt_template=scale_labelling_prompt_template),
+    "rubric": partial(analyse_stakes, prompt_template=rubric_labelling_system_prompt),
+    "scale": partial(analyse_stakes, prompt_template=scale_labelling_system_prompt),
+    "anthropic_context": partial(
+        analyse_stakes, prompt_template=anthropic_context_system_prompt
+    ),
+    "anthropic_extended_context": partial(
+        analyse_stakes, prompt_template=anthropic_extended_context_system_prompt
+    ),
+    "mt_context": partial(analyse_stakes, prompt_template=mt_context_system_prompt),
+    "mt_extended_context": partial(
+        analyse_stakes, prompt_template=mt_extended_context_system_prompt
+    ),
 }
+
+# TODO! Create another script which creates labelled datasets with different preprocessing and labelling according to my google doc
 
 
 async def label_dataset_async(
@@ -82,6 +116,7 @@ async def label_dataset_async(
     high_stakes_threshold: int = 8,
     low_stakes_threshold: int = 3,
     force_override: bool = False,
+    preprocessing_fn: Callable[[Record], Record] | None = None,
 ) -> LabelledDataset:
     """
     Asynchronously label a dataset using a queue to limit concurrency.
@@ -110,7 +145,10 @@ async def label_dataset_async(
 
     async def worker(idx: int, item: Record):
         """Process a single item and update results"""
-        input_str = item.input_str()
+        if preprocessing_fn is not None:
+            input_str = preprocessing_fn(item).input_str()
+        else:
+            input_str = item.input_str()
         response = await labelling_functions[labelling_method](input_str, model=model)
 
         if response is None:
