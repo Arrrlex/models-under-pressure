@@ -140,11 +140,20 @@ class ContinuationBaselineResults(BaselineResults):
     valid_response: list[bool]
 
 
+class ContinuationPrompt(BaseModel):
+    high_stakes_completion: str
+    low_stakes_completion: str
+    system_prompt: str | None = None
+    user_prompt: str = "{conversation}"
+    conversation_input_key: str = "user_prompt"
+
+
 class LikelihoodBaselineResults(BaselineResults):
     high_stakes_scores: list[float]
     low_stakes_scores: list[float]
     high_stakes_log_likelihoods: list[float]
     low_stakes_log_likelihoods: list[float]
+    prompt_config: ContinuationPrompt
 
 
 @deprecated("Use EvaluationResult instead")

@@ -329,8 +329,8 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    print_dataset_length_comparison()
+    main()
+    # print_dataset_length_comparison()
 
     # show_label_distribution_with_field("mmlu_sandbagging", "is_sandbagging")
     # show_label_distribution_with_field("deception", "is_deceptive")

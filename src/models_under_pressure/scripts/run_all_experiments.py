@@ -3,9 +3,9 @@ import gc
 import numpy as np
 import torch
 
-from models_under_pressure import pydra
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
+    likelihood_continuation_prompts,
 )
 from models_under_pressure.config import (
     BASELINE_RESULTS_FILE,
@@ -23,8 +23,8 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
-from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.model import LLMModel
+from models_under_pressure.utils import double_check_config, pydra
 
 
 @pydra.main(
@@ -129,20 +129,22 @@ def run_all_experiments(config: RunAllExperimentsConfig):
             else:
                 datasets = list(EVAL_DATASETS.keys())
             for dataset_name in datasets:
-                results = evaluate_likelihood_continuation_baseline(
-                    model=model,
-                    dataset_name=dataset_name,
-                    max_samples=config.max_samples,
-                    batch_size=config.batch_size,
-                    use_test_set=config.use_test_set,
-                )
+                for prompt_config in config.baseline_prompts:
+                    results = evaluate_likelihood_continuation_baseline(
+                        model=model,
+                        dataset_name=dataset_name,
+                        max_samples=config.max_samples,
+                        batch_size=config.batch_size,
+                        use_test_set=config.use_test_set,
+                        prompt_config=likelihood_continuation_prompts[prompt_config],
+                    )
 
-                if config.use_test_set:
-                    output_path = BASELINE_RESULTS_FILE_TEST
-                else:
-                    output_path = BASELINE_RESULTS_FILE
-                print(f"Saving results to {output_path}")
-                results.save_to(output_path)
+                    if config.use_test_set:
+                        output_path = BASELINE_RESULTS_FILE_TEST
+                    else:
+                        output_path = BASELINE_RESULTS_FILE
+                    print(f"Saving results to {output_path}")
+                    results.save_to(output_path)
 
     if "generalisation_heatmap" in config.experiments_to_run:
         print("Running generalisation heatmap...")

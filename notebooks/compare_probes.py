@@ -1,6 +1,7 @@
 # %%
 
 import json
+import textwrap
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -134,29 +135,34 @@ def plot_best_results(
                     ha="center",
                     va="bottom",
                     rotation=0,
-                    fontsize=12,
+                    fontsize=16,
                 )
 
     # Customize the plot
-    ax.set_ylabel("AUROC", fontsize=14)
-    ax.set_xlabel("Dataset", fontsize=14)  # Added x-axis label
+    ax.set_ylabel("AUROC", fontsize=18)
+    ax.set_xlabel("Dataset", fontsize=18)  # Added x-axis label
     # ax.set_title(
     #    "AUROC Scores by Probe and Dataset", fontsize=14, fontweight="bold", pad=20
     # )
     ax.set_xticks(x)
-    ax.set_xticklabels(
-        display_datasets, rotation=0, ha="center", fontsize=11
-    )  # Increased from 10
+
+    # Wrap long labels into two lines with a maximum width of 12 characters
+    wrapped_labels = [textwrap.fill(label, width=12) for label in display_datasets]
+
+    ax.set_xticklabels(wrapped_labels, rotation=0, ha="center", fontsize=14)
+
+    # Set y-axis tick font size
+    ax.tick_params(axis="y", labelsize=16)
 
     # Customize grid
-    ax.yaxis.grid(True, linestyle="--", alpha=0.7)
+    ax.yaxis.grid(True, linestyle="--", alpha=0.9)
     ax.set_axisbelow(True)
 
     # Customize legend with larger fonts
     ax.legend(
         title="Probe Types",
-        title_fontsize=14,
-        fontsize=12,
+        title_fontsize=18,
+        fontsize=16,
         # bbox_to_anchor=(1.02, 1),
         # loc="upper left",
         loc="lower right",
