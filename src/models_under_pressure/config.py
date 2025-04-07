@@ -25,8 +25,9 @@ else:
     DEVICE: str = "cpu"
     BATCH_SIZE = 4
 
-CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
 
 LOCAL_MODELS = {
@@ -69,24 +70,15 @@ PROBES_DIR = DATA_DIR / "probes"
 BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
 BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
-
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
-
-GENERATED_DATASET = {
-    "file_path": SYNTHETIC_DATASET_PATH,
-    "field_mapping": {
-        # "id": "ids",
-        # "prompt": "inputs",
-        # "high_stakes": "labels",
-    },
-}
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
+
 
 # Training datasets
 
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
 
 # Evals files
-USE_BALANCED_DATASETS = True  # NOTE: Raw datasets are not included in the repo and have to be downloaded from Google Drive
+USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
@@ -147,6 +139,14 @@ AIS_DATASETS = {
     },
 }
 
+OTHER_DATASETS = {
+    "redteaming_en": TEST_EVALS_DIR / "language/english_aya_redteaming.jsonl",
+    "redteaming_fr": TEST_EVALS_DIR / "language/french_aya_redteaming.jsonl",
+    "redteaming_hi": TEST_EVALS_DIR / "language/hindi_aya_redteaming.jsonl",
+    "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
+    "deception_data": DATA_DIR / "evals/deception_data.yaml",
+}
+
 
 class ScalingPlotConfig(BaseModel):
     scaling_models: list[str]
@@ -157,6 +157,7 @@ class ScalingPlotConfig(BaseModel):
 class RunAllExperimentsConfig(BaseModel):
     model_name: str
     baseline_models: list[str]
+    baseline_prompts: list[str]
     train_data: Path
     batch_size: int
     cv_folds: int
