@@ -32,7 +32,7 @@ from models_under_pressure.interfaces.results import (
     CVFinalResults,
     CVIntermediateResults,
 )
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config, print_progress
 
@@ -286,8 +286,6 @@ if __name__ == "__main__":
             },
             max_samples=None,
             cv_folds=4,
-            preprocessor="mean",
-            postprocessor="sigmoid",
             layers=list(range(0, max_layer, 2)),
             batch_size=4,
             output_dir=RESULTS_DIR / "cross_validation",

@@ -9,7 +9,7 @@ from sklearn.metrics import confusion_matrix, roc_auc_score
 from models_under_pressure.config import EVAL_DATASETS, LOCAL_MODELS
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )

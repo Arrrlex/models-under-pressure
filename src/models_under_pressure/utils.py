@@ -1,20 +1,33 @@
 import asyncio
-from contextlib import contextmanager
+import functools
 import json
 import os
 import random
 import string
 import time
+from contextlib import contextmanager
 from datetime import timedelta
 from pprint import pformat
-from typing import Any, Awaitable, Callable, Dict, Generator, List, Optional, Sequence
-
-import numpy as np
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Sequence,
+    TypeVar,
+    get_type_hints,
+)
 
 import huggingface_hub
+import hydra
+import numpy as np
 import openai
 import torch
 from dotenv import load_dotenv
+from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
@@ -22,6 +35,42 @@ from transformers import PreTrainedTokenizer
 load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
+
+
+def batched_range(n_samples: int, batch_size: int) -> list[tuple[int, int]]:
+    """Generate start and end indices for batches of size batch_size.
+    Args:
+        n_samples: Total number of samples to process
+        batch_size: Size of each batch
+    Returns:
+        List of (start_idx, end_idx) tuples for each batch
+    """
+    n_batches = (n_samples + batch_size - 1) // batch_size
+    return [
+        (i * batch_size, min((i + 1) * batch_size, n_samples)) for i in range(n_batches)
+    ]
+
+
+T = TypeVar("T")
+
+
+class pydra:
+    @staticmethod
+    def main(*args: Any, **kwargs: Any) -> Callable:
+        def decorator(func: Callable[..., T]) -> Callable[..., T]:
+            @hydra.main(*args, **kwargs)
+            @functools.wraps(func)
+            def wrapper(config: DictConfig) -> T:
+                config_type = get_type_hints(func)["config"]
+                config_dict = OmegaConf.to_container(
+                    config, resolve=True, enum_to_str=True
+                )
+                config_model = config_type.model_validate(config_dict)
+                return func(config_model)
+
+            return wrapper
+
+        return decorator
 
 
 def _get_async_client() -> AsyncOpenAI:
@@ -242,8 +291,18 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
+def pretty_format_config(config: Any) -> str:
+    if isinstance(config, list):
+        return "\n--\n".join([pretty_format_config(item) for item in config])
+    else:
+        return "\n".join(
+            [f"  {key}: {pformat(value)}" for key, value in config.__dict__.items()]
+        )
+
+
 def double_check_config(config: Any) -> None:
-    print(f"Config: {pformat(config)}")
+    print("Config:")
+    print(pretty_format_config(config))
     is_ok = input("Do you really want to run this config? (y/n) ")
     if is_ok != "y":
         raise ValueError("Config not confirmed")

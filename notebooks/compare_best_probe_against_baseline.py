@@ -246,7 +246,7 @@ def plot_probe_vs_baseline_metric(
     df_pivot = df.pivot(index="Dataset", columns="Method", values="Value")
 
     # Plot setup
-    fig, ax = plt.subplots(figsize=(14, 7))
+    fig, ax = plt.subplots(figsize=(12, 5))
 
     # Sort methods by provider and size, keeping Probe first
     probe_method = next(m for m in df_pivot.columns if m.startswith("Probe"))
@@ -294,7 +294,7 @@ def plot_probe_vs_baseline_metric(
             "font.size": 14,
             "axes.labelsize": 16,
             "axes.titlesize": 18,
-            "xtick.labelsize": 14,
+            "xtick.labelsize": 12,
             "ytick.labelsize": 14,
             "legend.fontsize": 12,
             "legend.title_fontsize": 14,
@@ -333,10 +333,10 @@ def plot_probe_vs_baseline_metric(
         title="Method",
         # bbox_to_anchor=(1.05, 1),
         # loc="upper left",
-        ncol=2,
+        ncol=1,
         loc="lower left" if metric == "auroc" else "upper right",
         borderaxespad=0.4,
-        framealpha=1.0,
+        framealpha=0.6,
     )
 
     # Adjust layout - we can reduce bottom margin since labels are horizontal now
@@ -349,13 +349,15 @@ def plot_probe_vs_baseline_metric(
     plt.show()
 
 
-output_path = "../data/plots/probe_vs_baseline_metric_test.pdf"
+# metric = "auroc"
+metric = "tpr_at_fpr"
+output_path = f"../data/plots/probe_vs_baseline_metric_test_{metric}.pdf"
 _ = plot_probe_vs_baseline_metric(
     probe_results,
     baseline_results,
     output_path,
     use_title=False,
-    metric="tpr_at_fpr",
+    metric=metric,
 )
 
 # %%

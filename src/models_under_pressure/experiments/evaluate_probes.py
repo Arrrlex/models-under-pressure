@@ -22,7 +22,7 @@ from models_under_pressure.experiments.train_probes import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config
 

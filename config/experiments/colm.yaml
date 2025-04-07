@@ -45,6 +45,11 @@ best_probe:
 baseline_models:
   - llama-1b
   - gemma-1b
+baseline_prompts:
+  - default
+  - single_letter
+  - prompt_at_end
+  - single_word
 
 variation_types:
   - prompt_style
