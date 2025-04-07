@@ -95,6 +95,9 @@ class BaseDataset(BaseModel, Generic[R]):
     The base dataset class is used to store the dataset in a way that is agnostic to the label field.
     """
 
+    class Config:
+        arbitrary_types_allowed = True
+
     inputs: Sequence[Input]
     ids: Sequence[str]
     other_fields: Mapping[str, Sequence[Any] | np.ndarray | torch.Tensor]
