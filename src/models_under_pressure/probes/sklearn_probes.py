@@ -58,7 +58,7 @@ class SklearnProbe(Probe):
     def fit(self, dataset: LabelledDataset) -> Self:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layers=[self.layer],
+            layer=self.layer,
         )
 
         print("Training probe...")
@@ -72,7 +72,7 @@ class SklearnProbe(Probe):
     def predict(self, dataset: BaseDataset) -> list[Label]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layers=[self.layer],
+            layer=self.layer,
         )
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
@@ -82,7 +82,7 @@ class SklearnProbe(Probe):
     ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layers=[self.layer],
+            layer=self.layer,
         )
         return activations_obj, self._predict_proba(activations_obj)
 
@@ -91,7 +91,7 @@ class SklearnProbe(Probe):
     ) -> Float[np.ndarray, " batch_size"]:
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layers=[self.layer],
+            layer=self.layer,
         )
         # print(
         #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
@@ -141,7 +141,7 @@ class SklearnProbe(Probe):
 
         activations_obj = self._llm.get_batched_activations(
             dataset=dataset,
-            layers=[self.layer],
+            layer=self.layer,
         )
 
         # TODO This can be done more efficiently -> so can a lot of things

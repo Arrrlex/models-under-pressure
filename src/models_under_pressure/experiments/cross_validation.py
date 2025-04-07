@@ -118,7 +118,7 @@ class CVSplitsWithActivations:
         # Get all activations at once
         combined_dataset = LabelledDataset.concatenate(cv_splits.folds)
         all_activations = llm.get_batched_activations(
-            combined_dataset, layers=[layer], batch_size=batch_size
+            combined_dataset, layer=layer, batch_size=batch_size
         )
 
         # Split activations according to fold lengths

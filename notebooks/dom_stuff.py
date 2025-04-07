@@ -33,7 +33,7 @@ model = LLMModel.load(
 layer = 7
 
 # Get activations for layer 7
-activations = model.get_batched_activations(dataset, layers=[layer])
+activations = model.get_batched_activations(dataset, layer=layer)
 
 print("Activation shape:", activations.get_activations().shape)
 print("Attention mask shape:", activations.get_attention_mask().shape)

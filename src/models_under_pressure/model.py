@@ -168,12 +168,12 @@ class LLMModel:
         return token_dict  # type: ignore
 
     @torch.no_grad()
-    def get_batched_activations(
+    def get_batched_activations_for_layers(
         self,
         dataset: BaseDataset,
         layers: list[int],
         batch_size: int = -1,
-    ) -> Activation:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Get activations for a given model and config.
 
@@ -183,6 +183,7 @@ class LLMModel:
             batch_size = self.batch_size
 
         hidden_dim = self.model.config.hidden_size  # type: ignore
+        assert isinstance(hidden_dim, int)
         n_samples = len(dataset.inputs)
 
         # Tokenize entire dataset at once
@@ -211,10 +212,21 @@ class LLMModel:
                 # Write to the relevant slice of the big tensor
                 all_activations[:, start_idx:end_idx] = activations
 
+        return all_activations, inputs
+
+    def get_batched_activations(
+        self,
+        dataset: BaseDataset,
+        layer: int,
+        batch_size: int = -1,
+    ) -> Activation:
+        all_activations, inputs = self.get_batched_activations_for_layers(
+            dataset, [layer], batch_size
+        )
         return Activation(
-            _activations=all_activations.numpy(),
-            _attention_mask=inputs["attention_mask"].numpy(),
-            _input_ids=inputs["input_ids"].numpy(),
+            _activations=all_activations[0].numpy(),
+            _attention_mask=inputs["attention_mask"].cpu().numpy(),
+            _input_ids=inputs["input_ids"].cpu().numpy(),
         )
 
     @torch.no_grad()
