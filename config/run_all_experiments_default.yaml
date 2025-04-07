@@ -46,6 +46,9 @@ baseline_models:
   - llama-1b
   - gemma-1b
 
+baseline_prompts:
+  - default
+
 variation_types:
   - prompt_style
   - tone

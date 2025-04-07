@@ -1,8 +1,6 @@
 import json
 
-import numpy as np
-from jaxtyping import Float
-from sklearn.metrics import roc_auc_score, roc_curve
+from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -20,17 +18,10 @@ from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config, print_progress
-
-
-def compute_tpr_at_1pct_fpr(
-    pred_scores: Float[np.ndarray, " batch_size"],
-    labels: Float[np.ndarray, " batch_size"],
-) -> float:
-    fpr, tpr, _ = roc_curve(labels, pred_scores)
-    return float(tpr[np.where(fpr <= 0.01)[0][-1]])
+from models_under_pressure.experiments.train_probes import tpr_at_fixed_fpr_score
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
@@ -78,7 +69,9 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                 labels = test_split.labels_numpy()
                 metrics = {
                     "accuracy": (pred_labels == labels).mean(),
-                    "tpr_at_1pct_fpr": compute_tpr_at_1pct_fpr(pred_scores, labels),
+                    "tpr_at_1pct_fpr": tpr_at_fixed_fpr_score(
+                        y_true=labels, y_pred=pred_scores, fpr=0.01
+                    ),
                     "auroc": roc_auc_score(labels, pred_scores),
                 }
 
