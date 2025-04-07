@@ -19,16 +19,12 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import PytorchLinearClassifier
 from models_under_pressure.probes.sklearn_probes import Probe
 
 
 @dataclass
 class PytorchProbe(Probe):
-    _llm: LLMModel
-    layer: int
-
     hyper_params: dict
     _classifier: PytorchLinearClassifier | None = None
 
@@ -98,16 +94,18 @@ class PytorchProbe(Probe):
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(LOCAL_MODELS["llama-1b"])
-
     # Train a probe
-    train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
+    train_dataset, _ = load_train_test(
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        model_name=LOCAL_MODELS["llama-1b"],
+        layer=11,
+    )
     hyper_params = {
         "batch_size": 16,
         "epochs": 3,
         "device": "cpu",
     }
-    probe = PytorchProbe(_llm=model, layer=11, hyper_params=hyper_params)
+    probe = PytorchProbe(hyper_params=hyper_params)
     probe.fit(train_dataset[:10])
 
     # Test the probe

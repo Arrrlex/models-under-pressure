@@ -193,21 +193,23 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(LOCAL_MODELS["llama-1b"])
-
     # Train a probe
     agg = Aggregator(
         preprocessor=Preprocessors.per_token,
         postprocessor=Postprocessors.sigmoid,
     )
-    train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)
-    probe = SklearnProbe(layer=11, aggregator=agg)
+    train_dataset, _ = load_train_test(
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        model_name=LOCAL_MODELS["llama-1b"],
+        layer=11,
+    )
+    probe = SklearnProbe(aggregator=agg)
     probe.fit(train_dataset[:10])
 
-    # Test the probe
-    inputs = [
-        "Hello, how are you?",
-        "What is the capital of France?",
-    ]
-    predictions = probe.per_token_predictions(inputs)
-    print(predictions)
+    # # Test the probe
+    # inputs = [
+    #     "Hello, how are you?",
+    #     "What is the capital of France?",
+    # ]
+    # predictions = probe.per_token_predictions(inputs)
+    # print(predictions)
