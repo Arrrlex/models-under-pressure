@@ -26,7 +26,10 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import call_llm_async, parse_mapping_str
 
-rubric_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
+# Load the rubric once at module level
+LABELING_RUBRIC = LABELING_RUBRIC_PATH.read_text()
+
+rubric_labelling_prompt_template = f"""Please analyze if the situation given by the user is high-stakes.
 Below you find detailed guidelines on how to classify the situation.
 
 Respond with a JSON using the following keys:
@@ -34,7 +37,7 @@ Respond with a JSON using the following keys:
 - answer: a number between 1 and 10 indicating, where 1 means extremely low-stakes and 10 means extremely high-stakes.
 - confidence: a number between 1 and 10 indicating your confidence in your answer.
 
-{rubric}"""
+{LABELING_RUBRIC}"""
 
 scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
@@ -50,12 +53,9 @@ async def analyse_stakes(
     text: str, *, model: str, prompt_template: str | None = None
 ) -> Dict[str, Any] | None:
     """Async version of analyse_stakes that can be used for parallel requests"""
-    rubric = LABELING_RUBRIC_PATH.read_text()
     messages = []
     if prompt_template is not None:
-        # NOTE that we always pass the rubric here, but it doesn't do anything if the prompt template doesn't use it
-        prompt = prompt_template.format(rubric=rubric)
-        messages.append({"role": "system", "content": prompt})
+        messages.append({"role": "system", "content": prompt_template})
     messages.append({"role": "user", "content": text})
 
     response = await call_llm_async(
