@@ -8,8 +8,10 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
 from transformers import (
     AutoModelForCausalLM,
@@ -26,6 +28,80 @@ from models_under_pressure.config import (
     TEST_DATASETS_BALANCED,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
+
+
+class BaselineResults(BaseModel):
+    _logits: Optional[torch.Tensor] = None
+    _labels: Optional[torch.Tensor] = None
+
+    """
+    An interface for working with the logits and labels collected at test time from the
+    model.
+    model_name: The name of the model
+    dataset_name: The name of the dataset on which the results are collected.
+    logits: A tensor of logits across the dataset.
+    labels: A tensor of labels across the dataset.
+    """
+
+    @property
+    def logits(self) -> torch.Tensor | None:
+        return self._logits
+
+    @property
+    def labels(self) -> torch.Tensor | None:
+        return self._labels
+
+    @logits.setter
+    def logits(self, value: torch.Tensor):
+        assert len(value.shape) == 2, f"Logits must be a 2D tensor, not: {value.shape}"
+        assert value.shape[1] == 2, f"Logits 2nd dim must be 2, not: {value.shape[1]}"
+
+        if self._logits is None:
+            self._logits = value
+        else:
+            self._logits = torch.cat((self._logits, value), dim=0)
+
+    @labels.setter
+    def labels(self, value: torch.Tensor):
+        assert len(value.shape) == 1, f"Labels must be a 1D tensor, not: {value.shape}"
+
+        if self._labels is None:
+            self._labels = value
+        else:
+            self._labels = torch.cat((self._labels, value), dim=0)
+
+    def auroc(self) -> float:
+        """Compute the Area Under the Receiver Operating Characteristic Curve."""
+
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing AUROC"
+
+        sigmoid = torch.nn.Sigmoid()
+
+        return float(
+            roc_auc_score(
+                self._labels.cpu().numpy(),
+                sigmoid(self._logits)[:, 1].cpu().numpy(),
+            )
+        )
+
+    def tpr_at_fpr(self, fpr: float) -> Tuple[float, float]:
+        """Compute the True Positive Rate at a given False Positive Rate."""
+
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing TPR at FPR"
+
+        sigmoid = torch.nn.Sigmoid()
+
+        fprs, tprs, _ = roc_curve(
+            self._labels.cpu().numpy(), sigmoid(self._logits)[:, 1].cpu().numpy()
+        )
+
+        # Find the TPR corresponding to the closest FPR
+        idx = np.argmin(np.abs(fprs - fpr))
+        return float(tprs[idx]), float(fprs[idx])
 
 
 class ClassifierModule(pl.LightningModule):
@@ -71,7 +147,7 @@ class ClassifierModule(pl.LightningModule):
         self.num_classes = num_classes
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
-        self.test_results = []
+        self.test_results = BaselineResults()
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -179,13 +255,14 @@ class ClassifierModule(pl.LightningModule):
         acc = (preds == y).float().mean()
         self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
 
-        self.test_results.append([logits, y])
+        self.test_results.logits = logits
+        self.test_results.labels = y
 
         return {"test_loss": loss, "test_acc": acc}
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
 
@@ -217,7 +294,7 @@ class ClassifierModule(pl.LightningModule):
         return {"logits": logits, "probs": probs, "preds": preds}
 
     def reset_test_results(self):
-        self.test_results = []
+        self.test_results = BaselineResults()
 
 
 class LLMModel(nn.Module):
@@ -229,7 +306,8 @@ class LLMModel(nn.Module):
     ):
         super().__init__()
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name_or_path, cache_dir=cache_dir
+            model_name_or_path,
+            cache_dir=cache_dir,  # torch_dtype=torch.bfloat16
         )
 
         last_linear_dim = None
@@ -395,8 +473,8 @@ def train(
     learning_rate: float = 1e-3,
     weight_decay: float = 0.0,
     scheduler_params: Optional[Dict[str, Any]] = None,
-    num_workers: int = 4,
     batch_size: int = 16,
+    gradient_accumulation_steps: int = 1,
     max_epochs: int = 10,
     shuffle: bool = True,
     wandb_entity: str = "models-under-pressure",
@@ -424,10 +502,16 @@ def train(
     collate_fn = create_collate_fn(tokenizer)
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        collate_fn=collate_fn,
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        collate_fn=collate_fn,
     )
 
     # Create checkpoint callback:
@@ -445,10 +529,11 @@ def train(
         max_epochs=max_epochs,
         accelerator="gpu",
         devices=devices,
-        precision=16,
+        precision="bf16-true",
         default_root_dir="/scratch/ucabwjn/models-under-pressure",
         callbacks=[checkpoint_callback],  # type: ignore
         logger=logger,
+        accumulate_grad_batches=gradient_accumulation_steps,
     )
 
     trainer.fit(classifier, train_dataloader, val_dataloaders=val_dataloader)
@@ -497,6 +582,13 @@ def train(
         # Reset the test results:
         classifier.reset_test_results()
 
+    # For each dataset calculate the AUROC and TPR at FPR=0.1:
+    for dataset_name, results in output_results.items():
+        auroc = results.auroc()
+        tpr_at_fpr = results.tpr_at_fpr(0.1)
+        print(f"AUROC for {dataset_name}: {auroc}")
+        print(f"TPR at FPR=0.1 for {dataset_name}: {tpr_at_fpr}")
+
     return output_results
 
 
@@ -542,16 +634,16 @@ if __name__ == "__main__":
         help="Weight decay for optimizer",
     )
     parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=4,
-        help="Number of workers for data loading",
-    )
-    parser.add_argument(
         "--batch_size",
         type=int,
         default=16,
         help="Batch size for training",
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="Number of gradient accumulation steps",
     )
     parser.add_argument(
         "--max_epochs",
@@ -588,7 +680,11 @@ if __name__ == "__main__":
     print("-" * 50 + "\n")
 
     # Create a wandb logger:
-    logger = WandbLogger(project="models-under-pressure", entity=args.wandb_entity)
+    logger = WandbLogger(
+        project="models-under-pressure",
+        entity=args.wandb_entity,
+        save_dir="/scratch/ucabwjn/models-under-pressure",
+    )
 
     results = train(
         model_name_or_path=args.model_name_or_path,
@@ -596,8 +692,8 @@ if __name__ == "__main__":
         cache_dir=args.cache_dir,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
-        num_workers=args.num_workers,
         batch_size=args.batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         max_epochs=args.max_epochs,
         shuffle=args.shuffle,
         devices=args.devices,
