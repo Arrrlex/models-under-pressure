@@ -110,7 +110,7 @@ class PytorchProbe(Probe):
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(LOCAL_MODELS["llama-1b"])
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
 
     # Train a probe
     train_dataset, _ = load_train_test(dataset_path=SYNTHETIC_DATASET_PATH)

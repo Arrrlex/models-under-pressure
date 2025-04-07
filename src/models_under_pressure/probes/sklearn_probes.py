@@ -238,7 +238,7 @@ def compute_accuracy(
 
 
 if __name__ == "__main__":
-    model = LLMModel.load(LOCAL_MODELS["llama-1b"])
+    model = LLMModel.load(model_name=LOCAL_MODELS["llama-1b"])
 
     # Train a probe
     agg = Aggregator(

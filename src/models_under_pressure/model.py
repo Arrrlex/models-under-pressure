@@ -76,7 +76,7 @@ class LLMModel:
     @classmethod
     def load(
         cls,
-        name: str,
+        model_name: str,
         device: str = DEVICE,
         batch_size: int = BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
@@ -88,15 +88,15 @@ class LLMModel:
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 
         model_kwargs = {
-            "pretrained_model_name_or_path": name,
+            "pretrained_model_name_or_path": model_name,
             "device_map": device,
             "torch_dtype": dtype,
             "cache_dir": CACHE_DIR,
-            "max_memory": MODEL_MAX_MEMORY.get(name),
+            "max_memory": MODEL_MAX_MEMORY.get(model_name),
             **(model_kwargs or {}),
         }
         tokenizer_kwargs = {
-            "pretrained_model_name_or_path": name,
+            "pretrained_model_name_or_path": model_name,
             "cache_dir": CACHE_DIR,
             **(tokenizer_kwargs or {}),
         }
@@ -117,7 +117,7 @@ class LLMModel:
         tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
 
         return cls(
-            name=name,
+            name=model_name,
             batch_size=batch_size,
             device=device,
             tokenize_kwargs=tokenize_kwargs,
