@@ -128,8 +128,12 @@ def load_train_test(
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
+    If model_name and layer are provided, the activations are loaded and added to the dataset.
+
     Args:
         dataset_path: Path to the generated dataset
+        model_name: Name of the model to load activations for
+        layer: Layer to load activations for
 
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
