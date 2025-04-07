@@ -8,7 +8,6 @@ and cloud storage (R2), with a manifest system to track available activations.
 import datetime
 import hashlib
 import os
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -293,20 +292,6 @@ class ActivationStore:
         )
 
 
-@contextmanager
-def temp_file():
-    """Create a temporary file that is deleted after use.
-
-    Yields:
-        Path to the temporary file
-    """
-    with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as tmp:
-        try:
-            yield Path(tmp.name)
-        finally:
-            os.unlink(tmp.name)
-
-
 def load_compressed(path: Path) -> torch.Tensor:
     """Load and decompress a tensor from a compressed file.
 
@@ -317,11 +302,12 @@ def load_compressed(path: Path) -> torch.Tensor:
         The decompressed tensor
     """
     dctx = zstd.ZstdDecompressor()
-    with temp_file() as tmp_path:
+    tmp_path = path.with_suffix("")
+    if not tmp_path.exists():
         with open(path, "rb") as f_in, open(tmp_path, "wb") as f_out:
             dctx.copy_stream(f_in, f_out)
 
-        return torch.load(tmp_path).cpu()
+    return torch.load(tmp_path).cpu()
 
 
 def save_compressed(path: Path, tensor: torch.Tensor):
@@ -331,22 +317,25 @@ def save_compressed(path: Path, tensor: torch.Tensor):
         path: Path where to save the compressed tensor
         tensor: The tensor to compress and save
     """
-    with temp_file() as tmp_path:
-        # Save tensor to temporary file
-        torch.save(tensor, tmp_path)
+    # Check that the path has a suffix, then a .zst suffix
+    if not path.name.endswith(".pt.zst"):
+        raise ValueError("Path must have .pt.zst suffix")
+    tmp_path = path.with_suffix("")
 
-        # Compress with zstd
-        cctx = zstd.ZstdCompressor(level=10)
-        with open(tmp_path, "rb") as f_in, open(path, "wb") as f_out:
-            # Get file size for progress bar
-            file_size = os.path.getsize(tmp_path)
-            with tqdm(
-                total=file_size, unit="B", unit_scale=True, desc="Compressing"
-            ) as pbar:
-                while True:
-                    chunk = f_in.read(8192)  # Read in 8KB chunks
-                    if not chunk:
-                        break
-                    compressed = cctx.compress(chunk)
-                    f_out.write(compressed)
-                    pbar.update(len(chunk))
+    torch.save(tensor, tmp_path)
+
+    # Compress with zstd
+    cctx = zstd.ZstdCompressor(level=10)
+    with open(tmp_path, "rb") as f_in, open(path, "wb") as f_out:
+        # Get file size for progress bar
+        file_size = os.path.getsize(tmp_path)
+        with tqdm(
+            total=file_size, unit="B", unit_scale=True, desc="Compressing"
+        ) as pbar:
+            while True:
+                chunk = f_in.read(8192)  # Read in 8KB chunks
+                if not chunk:
+                    break
+                compressed = cctx.compress(chunk)
+                f_out.write(compressed)
+                pbar.update(len(chunk))

@@ -58,6 +58,7 @@ dev = [
 [project.scripts]
 dashboard = "models_under_pressure.cli:dashboard_command"
 acts = "models_under_pressure.cli:activation_store_cli"
+experiments = "models_under_pressure.scripts.run_all_experiments:run_all_experiments"
 
 [tool.ruff]
 line-length = 88

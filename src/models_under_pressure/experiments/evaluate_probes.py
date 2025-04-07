@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
 from models_under_pressure.config import (
@@ -35,7 +36,7 @@ def load_eval_datasets(
     eval_dataset_paths = {}
     # max_samples = 200
     datasets = TEST_DATASETS if use_test_set else EVAL_DATASETS
-    for name, path in datasets.items():
+    for name, path in tqdm(datasets.items(), desc="Loading eval datasets"):
         dataset = LabelledDataset.load_from(path).filter(
             lambda x: x.label != Label.AMBIGUOUS
         )
