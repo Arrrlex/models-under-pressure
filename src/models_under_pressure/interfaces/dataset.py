@@ -87,21 +87,6 @@ class LabelledRecord(Record):
 R = TypeVar("R", bound=Record)
 
 
-class DatasetSpec(BaseModel):
-    """
-    A dataset spec is a specification for a dataset. It contains all information needed to load the dataset from a file.
-    A dataset spec has:
-      - a path (Path), which is the path to the dataset
-      - indices (Sequence[int] or Literal["all"]), which are the indices of the records to load
-      - field_mapping (Mapping[str, str]), which is a mapping of field names to the field names in the original dataset
-      - loader_kwargs (Mapping[str, Any]), which are additional keyword arguments to pass to the loader
-    """
-
-    path: Path
-    field_mapping: Mapping[str, str] = Field(default_factory=dict)
-    loader_kwargs: Mapping[str, Any] = Field(default_factory=dict)
-
-
 class BaseDataset(BaseModel, Generic[R]):
     """
     Interface for a dataset class, the dataset is stored as a list of inputs, ids, and

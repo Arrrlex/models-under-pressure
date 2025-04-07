@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 from models_under_pressure.config import ACTIVATIONS_DIR, PROJECT_ROOT
 from models_under_pressure.interfaces.activations import Activation
-from models_under_pressure.interfaces.dataset import DatasetSpec, LabelledDataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
     download_file,
@@ -143,7 +143,7 @@ class ActivationStore:
     def save(
         self,
         model_name: str,
-        dataset_spec: DatasetSpec,
+        dataset_path: Path,
         layers: list[int],
         activations: torch.Tensor,
         inputs: dict[str, torch.Tensor],
@@ -152,7 +152,7 @@ class ActivationStore:
 
         Args:
             model_name: Name of the model that generated the activations
-            dataset_spec: Specification of the dataset used
+            dataset_path: Path to the dataset used
             layers: List of layer numbers for which activations were generated
             activations: Tensor containing the model activations
             inputs: Dictionary containing input tensors (input_ids and attention_mask)
@@ -167,7 +167,7 @@ class ActivationStore:
         ):
             manifest_row = ManifestRow.build(
                 model_name=model_name,
-                dataset_path=dataset_spec.path,
+                dataset_path=dataset_path,
                 layer=layer,
             )
 
