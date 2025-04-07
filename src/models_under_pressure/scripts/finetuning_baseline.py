@@ -86,7 +86,7 @@ class BaselineResults(BaseModel):
             )
         )
 
-    def tpr_at_fpr(self, fpr: float) -> Tuple[float, float]:
+    def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
         assert (
@@ -100,7 +100,10 @@ class BaselineResults(BaseModel):
         )
 
         # Find the TPR corresponding to the closest FPR
-        idx = np.argmin(np.abs(fprs - fpr))
+        # Find closest non-zero FPR value
+        non_zero_mask = fprs > 0
+        idx = np.argmin(np.abs(fprs[non_zero_mask] - fpr))
+        idx = np.where(non_zero_mask)[0][idx]
         return float(tprs[idx]), float(fprs[idx])
 
 
@@ -585,7 +588,7 @@ def train(
     # For each dataset calculate the AUROC and TPR at FPR=0.1:
     for dataset_name, results in output_results.items():
         auroc = results.auroc()
-        tpr_at_fpr = results.tpr_at_fpr(0.1)
+        tpr_at_fpr = results.tpr_at_fixed_fpr(0.1)
         print(f"AUROC for {dataset_name}: {auroc}")
         print(f"TPR at FPR=0.1 for {dataset_name}: {tpr_at_fpr}")
 
