@@ -1,3 +1,16 @@
+"""
+Core module for working with language models and extracting their activations.
+
+This module provides tools for:
+1. Loading and managing language models
+2. Extracting model activations at specific layers
+3. Computing log likelihoods and generating text
+4. Handling different model architectures (LLaMA-style and GPT-style)
+
+The module handles batching and memory management to efficiently process large datasets
+while working with potentially very large language models.
+"""
+
 from dataclasses import dataclass
 from typing import Any, Callable, Self, Sequence
 
@@ -17,6 +30,14 @@ from models_under_pressure.interfaces.activations import Activation
 
 
 class HookedModel:
+    """
+    Context manager for extracting activations from specific model layers.
+
+    Automatically detects and hooks into layer normalization points in both
+    LLaMA-style and GPT-style architectures. Ensures proper cleanup of hooks
+    to prevent memory leaks.
+    """
+
     def __init__(self, model: torch.nn.Module, layers: list[int]):
         self.model = model
         self.layers = layers
@@ -66,6 +87,19 @@ class HookedModel:
 
 @dataclass
 class LLMModel:
+    """
+    High-level interface for working with language models.
+
+    Provides unified access to:
+    - Model loading and management
+    - Tokenization
+    - Activation extraction
+    - Log likelihood computation
+    - Text generation
+
+    Handles architecture differences, tokenization, and memory management.
+    """
+
     name: str
     device: str
     batch_size: int
@@ -76,27 +110,44 @@ class LLMModel:
     @classmethod
     def load(
         cls,
-        name: str,
+        model_name: str,
         device: str = DEVICE,
         batch_size: int = BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
         tokenizer_kwargs: dict[str, Any] | None = None,
     ) -> Self:
+        """
+        Load a language model and its tokenizer.
+
+        Handles model quantization (bfloat16 on CUDA, float16 otherwise),
+        device placement, and memory management.
+
+        Args:
+            model_name: Name or path of the model
+            device: Device to load on (e.g., 'cuda', 'cpu')
+            batch_size: Default batch size
+            tokenize_kwargs: Additional tokenization args
+            model_kwargs: Additional model init args
+            tokenizer_kwargs: Additional tokenizer args
+
+        Returns:
+            Initialized LLMModel instance
+        """
         hf_login()
 
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 
         model_kwargs = {
-            "pretrained_model_name_or_path": name,
+            "pretrained_model_name_or_path": model_name,
             "device_map": device,
             "torch_dtype": dtype,
             "cache_dir": CACHE_DIR,
-            "max_memory": MODEL_MAX_MEMORY.get(name),
+            "max_memory": MODEL_MAX_MEMORY.get(model_name),
             **(model_kwargs or {}),
         }
         tokenizer_kwargs = {
-            "pretrained_model_name_or_path": name,
+            "pretrained_model_name_or_path": model_name,
             "cache_dir": CACHE_DIR,
             **(tokenizer_kwargs or {}),
         }
@@ -117,7 +168,7 @@ class LLMModel:
         tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
 
         return cls(
-            name=name,
+            name=model_name,
             batch_size=batch_size,
             device=device,
             tokenize_kwargs=tokenize_kwargs,
@@ -168,21 +219,33 @@ class LLMModel:
         return token_dict  # type: ignore
 
     @torch.no_grad()
-    def get_batched_activations(
+    def get_batched_activations_for_layers(
         self,
         dataset: BaseDataset,
         layers: list[int],
         batch_size: int = -1,
-    ) -> Activation:
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
-        Get activations for a given model and config.
+        Extract activations from multiple layers for a dataset.
 
-        Handles batching of activations.
+        Processes inputs in batches, storing activations on CPU in float16
+        to manage memory efficiently.
+
+        Args:
+            dataset: Input dataset
+            layers: Layer indices to extract from
+            batch_size: Processing batch size (-1 uses default)
+
+        Returns:
+            Tuple of:
+            - Activations tensor [n_layers, n_samples, seq_len, hidden_dim]
+            - Tokenized inputs dict
         """
         if batch_size == -1:
             batch_size = self.batch_size
 
         hidden_dim = self.model.config.hidden_size  # type: ignore
+        assert isinstance(hidden_dim, int)
         n_samples = len(dataset.inputs)
 
         # Tokenize entire dataset at once
@@ -211,10 +274,21 @@ class LLMModel:
                 # Write to the relevant slice of the big tensor
                 all_activations[:, start_idx:end_idx] = activations
 
+        return all_activations, inputs
+
+    def get_batched_activations(
+        self,
+        dataset: BaseDataset,
+        layer: int,
+        batch_size: int = -1,
+    ) -> Activation:
+        all_activations, inputs = self.get_batched_activations_for_layers(
+            dataset, [layer], batch_size
+        )
         return Activation(
-            _activations=all_activations.numpy(),
-            _attention_mask=inputs["attention_mask"].numpy(),
-            _input_ids=inputs["input_ids"].numpy(),
+            _activations=all_activations[0].numpy(),
+            _attention_mask=inputs["attention_mask"].cpu().numpy(),
+            _input_ids=inputs["input_ids"].cpu().numpy(),
         )
 
     @torch.no_grad()
@@ -224,14 +298,17 @@ class LLMModel:
         batch_size: int = BATCH_SIZE,
     ) -> torch.Tensor:
         """
-        Compute the log likelihoods for each input sequence with batching.
+        Compute log probabilities for input sequences.
+
+        Useful for evaluating model confidence and computing metrics
+        like perplexity. Handles padding tokens properly.
 
         Args:
-            inputs: Sequence of Input objects
-            batch_size: Size of batches to process at once
+            inputs: Input sequences
+            batch_size: Processing batch size
 
         Returns:
-            torch.Tensor: Log likelihoods for each sequence, shape (n_samples, max_seq_len-1)
+            Log probabilities tensor [n_samples, seq_len-1]
         """
         torch_inputs = self.tokenize(inputs)
 
@@ -285,6 +362,25 @@ class LLMModel:
         return_full_output: bool = False,
         **generation_kwargs: Any,
     ) -> str:
+        """
+        Generate text continuation for a dialogue.
+
+        Handles tokenization, generation prompts, and decoding.
+        Supports temperature, top-p sampling, and custom parameters.
+
+        Args:
+            dialogue: Input dialogue
+            max_new_tokens: Max tokens to generate
+            temperature: Sampling temperature (None for greedy)
+            do_sample: Use sampling instead of greedy
+            top_p: Top-p sampling parameter
+            skip_special_tokens: Skip special tokens in output
+            return_full_output: Return full dialogue or just continuation
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            Generated text
+        """
         inputs = self.tokenize([dialogue], add_generation_prompt=True)
 
         # Generate the answer

@@ -57,7 +57,7 @@ done > ~/.ssh/github_$name
 chmod 400 ~/.ssh/github_$name
 
 # Prompt for .env file
-echo "Please enter your .env file contents:"
+echo "Please paste your .env file content, then hit enter twice:"
 while IFS= read -r line; do
     [[ -z "$line" ]] && break
     echo "$line"
@@ -82,7 +82,7 @@ GITCONFIG
 git clone git@github.com:Arrrlex/models-under-pressure.git
 curl -LsSf https://astral.sh/uv/install.sh | sh
 cd models-under-pressure
-mv ../.env .env
+mv ../../.env .
 uv sync
 uv run pre-commit install
 uv run src/models_under_pressure/scripts/sync_datasets.py
