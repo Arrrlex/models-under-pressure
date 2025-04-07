@@ -168,18 +168,18 @@ def compare_probes(
     #     "learning_rate": 1e-4,
     #     "weight_decay": 0.01,
     # }
-    lbfgs_args = {
-        "optimizer_type": "lbfgs",
-        "batch_size": 256,
-        "epochs": 20,
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "learning_rate": 1e-2,
-        "max_iter": 20,
-        "line_search_fn": "strong_wolfe",
-        "weight_decay": 0.01,
-        "tolerance_change": 1e-4,
-        # "tolerance_grad": 64 * np.finfo(float).eps,
-    }
+    # lbfgs_args = {
+    #     "optimizer_type": "lbfgs",
+    #     "batch_size": 256,
+    #     "epochs": 20,
+    #     "device": "cuda" if torch.cuda.is_available() else "cpu",
+    #     "learning_rate": 1e-2,
+    #     "max_iter": 20,
+    #     "line_search_fn": "strong_wolfe",
+    #     "weight_decay": 0.01,
+    #     "tolerance_change": 1e-4,
+    #     # "tolerance_grad": 64 * np.finfo(float).eps,
+    # }
     adamw_args = {
         "optimizer_type": "adamw",
         "batch_size": 128,
@@ -198,8 +198,8 @@ def compare_probes(
         layer=layer,
         hyper_params={},  # Doesn't apply when giving the classifier
         _classifier=PytorchPerEntryLinearClassifier(
-            # training_args=adamw_args,
-            training_args=lbfgs_args,
+            training_args=adamw_args,
+            # training_args=lbfgs_args,
         ),
     )
     # Initial weights shape: (2048,)
@@ -246,5 +246,5 @@ if __name__ == "__main__":
     compare_probes(
         train_dataset_path=SYNTHETIC_DATASET_PATH,
         layer=11,
-        max_samples=200,  # Adjust this as needed
+        max_samples=None,  # Adjust this as needed
     )
