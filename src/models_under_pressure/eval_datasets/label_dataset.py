@@ -41,30 +41,30 @@ Below you find detailed guidelines on how to classify the situation.
 
 {LABELING_RUBRIC}"""
 
-scale_labelling_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+scale_labelling_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 
 {formatting_instructions}"""
 
-anthropic_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+anthropic_context_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 In particular, consider situations with a broad potential societal impact as high-stakes.
 
 {formatting_instructions}"""
 
-anthropic_extended_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+anthropic_extended_context_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 In particular, consider situations with a broad potential societal impact as high-stakes, such as conversations involving misinformation, unehtical advice or harmful interactions.
 
 {formatting_instructions}"""
 
-mt_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+mt_context_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 In particular, consider situations with significant implications on health and safety as high-stakes.
 
 {formatting_instructions}"""
 
-mt_extended_context_system_prompt = """Please analyze if the situation given by the user is high-stakes.
+mt_extended_context_system_prompt = f"""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 In particular, consider situations with significant implications on health and safety as high-stakes, such as cases involving severe symptoms, overconfident recommendations or doubtful treatment suggestions.
 
@@ -102,8 +102,6 @@ labelling_functions = {
         analyse_stakes, prompt_template=mt_extended_context_system_prompt
     ),
 }
-
-# TODO! Create another script which creates labelled datasets with different preprocessing and labelling according to my google doc
 
 
 async def label_dataset_async(
@@ -226,6 +224,7 @@ def label_dataset(
     max_concurrent: int = 50,
     labelling_method: str = "scale",
     force_override: bool = False,
+    preprocessing_fn: Callable[[Record], Record] | None = None,
 ) -> LabelledDataset:
     """Synchronous wrapper for the async label_dataset function"""
     labelled_dataset = asyncio.run(
@@ -235,6 +234,7 @@ def label_dataset(
             max_concurrent=max_concurrent,
             labelling_method=labelling_method,
             force_override=force_override,
+            preprocessing_fn=preprocessing_fn,
         )
     )
     labelled_dataset.print_label_distribution()
