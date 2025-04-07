@@ -26,7 +26,9 @@ dataset = LabelledDataset.load_from(dataset_path)
 # %%
 
 # Load model
-model = LLMModel.load(LOCAL_MODELS["llama-1b"])
+model = LLMModel.load(
+    LOCAL_MODELS["llama-1b"],
+)
 layer = 7
 
 # Get activations for layer 7
