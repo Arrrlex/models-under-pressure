@@ -70,7 +70,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                 metrics = {
                     "accuracy": (pred_labels == labels).mean(),
                     "tpr_at_1pct_fpr": tpr_at_fixed_fpr_score(
-                        pred_scores, labels, 0.01
+                        y_true=labels, y_pred=pred_scores, fpr=0.01
                     ),
                     "auroc": roc_auc_score(labels, pred_scores),
                 }
