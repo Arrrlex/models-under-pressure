@@ -291,8 +291,18 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
+def pretty_format_config(config: Any) -> str:
+    if isinstance(config, list):
+        return "\n--\n".join([pretty_format_config(item) for item in config])
+    else:
+        return "\n".join(
+            [f"  {key}: {pformat(value)}" for key, value in config.__dict__.items()]
+        )
+
+
 def double_check_config(config: Any) -> None:
-    print(f"Config: {pformat(config)}")
+    print("Config:")
+    print(pretty_format_config(config))
     is_ok = input("Do you really want to run this config? (y/n) ")
     if is_ok != "y":
         raise ValueError("Config not confirmed")
