@@ -49,6 +49,7 @@ class PytorchLinearClassifier:
         #     weight_decay=self.training_args.get("weight_decay", 0.01),
         # )
 
+        # TODO We probably want to switch back to AdamW here, or allow for both optimizers
         optimizer = torch.optim.LBFGS(self.model.parameters(), max_iter=100)
 
         criterion = nn.BCEWithLogitsLoss()
@@ -299,8 +300,6 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
     training_args: dict
     model: nn.Module | None = None
-    feature_mean: torch.Tensor | None = None
-    feature_std: torch.Tensor | None = None
 
     def train(
         self,
