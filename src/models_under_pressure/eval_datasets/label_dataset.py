@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
@@ -65,12 +66,18 @@ async def analyse_stakes(
     return response
 
 
+labelling_functions = {
+    "rubric": partial(analyse_stakes, prompt_template=rubric_labelling_prompt_template),
+    "scale": partial(analyse_stakes, prompt_template=scale_labelling_prompt_template),
+}
+
+
 async def label_dataset_async(
     dataset: Dataset,
     *,
     model: str,
     max_concurrent: int,
-    use_rubric: bool = False,
+    labelling_method: str = "scale",
     confidence_threshold: int = 7,
     high_stakes_threshold: int = 8,
     low_stakes_threshold: int = 3,
@@ -83,8 +90,13 @@ async def label_dataset_async(
         dataset: The dataset to label
         model: The model to use for labeling
         max_concurrent: Maximum number of concurrent API calls
-        use_rubric: Whether to use the rubric for labeling
+        labelling_method: The method to use for labeling, must be a key in labelling_functions
     """
+    if labelling_method not in labelling_functions:
+        raise ValueError(
+            f"labelling_method must be one of {list(labelling_functions.keys())}"
+        )
+
     all_items = dataset.to_records()
     labels = [None] * len(all_items)
     explanations = [None] * len(all_items)
@@ -99,13 +111,7 @@ async def label_dataset_async(
     async def worker(idx: int, item: Record):
         """Process a single item and update results"""
         input_str = item.input_str()
-        response = await analyse_stakes(
-            input_str,
-            model=model,
-            prompt_template=rubric_labelling_prompt_template
-            if use_rubric
-            else scale_labelling_prompt_template,
-        )
+        response = await labelling_functions[labelling_method](input_str, model=model)
 
         if response is None:
             raise ValueError(
@@ -180,7 +186,7 @@ def label_dataset(
     *,
     model: str = DEFAULT_MODEL,
     max_concurrent: int = 50,
-    use_rubric: bool = False,
+    labelling_method: str = "scale",
     force_override: bool = False,
 ) -> LabelledDataset:
     """Synchronous wrapper for the async label_dataset function"""
@@ -189,7 +195,7 @@ def label_dataset(
             dataset,
             model=model,
             max_concurrent=max_concurrent,
-            use_rubric=use_rubric,
+            labelling_method=labelling_method,
             force_override=force_override,
         )
     )
@@ -220,7 +226,7 @@ def create_training_scale_labels(
         dataset,  # type: ignore
         model=model,
         max_concurrent=max_concurrent,
-        use_rubric=False,
+        labelling_method="scale",
     )
     new_dataset.save_to(EVALS_DIR / "training_dataset_scale.jsonl")
 
