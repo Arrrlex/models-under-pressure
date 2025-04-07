@@ -4,11 +4,9 @@ from typing import Any, Dict
 
 import tqdm
 import typer
-from typing_extensions import deprecated
 
 from models_under_pressure.config import (
     DEFAULT_MODEL,
-    EVAL_DATASETS,
     EVAL_DATASETS_RAW,
     EVALS_DIR,
     LABELING_RUBRIC_PATH,
@@ -32,7 +30,7 @@ Below you find detailed guidelines on how to classify the situation.
 
 Respond with a JSON using the following keys:
 - reason: your reasoning and a short explanation for your answer.
-- answer: only 'high-stakes', 'low-stakes', or 'ambiguous'.
+- answer: a number between 1 and 10 indicating, where 1 means extremely low-stakes and 10 means extremely high-stakes.
 - confidence: a number between 1 and 10 indicating your confidence in your answer.
 
 {rubric}"""
@@ -54,6 +52,7 @@ async def analyse_stakes(
     rubric = LABELING_RUBRIC_PATH.read_text()
     messages = []
     if prompt_template is not None:
+        # NOTE that we always pass the rubric here, but it doesn't do anything if the prompt template doesn't use it
         prompt = prompt_template.format(rubric=rubric)
         messages.append({"role": "system", "content": prompt})
     messages.append({"role": "user", "content": text})
@@ -131,7 +130,7 @@ async def label_dataset_async(
     pbar.close()
 
     other_fields = dict(dataset.other_fields)
-    prefix = "label" if use_rubric else "scale_label"
+    prefix = "scale_label"
     other_fields.update(
         {
             f"{prefix}_explanation": explanations,
@@ -140,7 +139,7 @@ async def label_dataset_async(
             f"{prefix}_model": [model for _ in range(len(labels))],
         }
     )
-    if not use_rubric and ("labels" not in other_fields or force_override):
+    if "labels" not in other_fields or force_override:
         # In this case the labels field is not populated yet
         other_fields["labels"] = []
         other_fields["label_explanation"] = []
@@ -196,33 +195,6 @@ def label_dataset(
     )
     labelled_dataset.print_label_distribution()
     return labelled_dataset
-
-
-@deprecated(
-    "This function was used for comparing rubric and scale labelling, but we decided to only use scale labelling."
-)
-def relabel_eval_datasets(
-    *,
-    dataset_names: list[str] | None = None,
-    model: str = DEFAULT_MODEL,
-    max_concurrent: int = 50,
-    use_rubric: bool = False,
-) -> None:
-    """Create scale labels for all eval datasets"""
-    if dataset_names is None:
-        dataset_names = list(EVAL_DATASETS.keys())
-
-    for dataset_name in dataset_names:
-        print(f"Labeling dataset {dataset_name}...")
-        eval_dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
-
-        dataset = label_dataset(
-            eval_dataset,  # type: ignore
-            model=model,
-            max_concurrent=max_concurrent,
-            use_rubric=use_rubric,
-        )
-        dataset.save_to(EVALS_DIR / f"{dataset_name}_relabelled.jsonl")
 
 
 def create_training_scale_labels(
