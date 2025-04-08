@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Self, Sequence
 
 import numpy as np
@@ -26,11 +26,12 @@ from models_under_pressure.probes.sklearn_probes import Probe
 @dataclass
 class PytorchProbe(Probe):
     hyper_params: dict
-    _classifier: PytorchLinearClassifier | None = None
+    _classifier: PytorchLinearClassifier = field(
+        default_factory=lambda: PytorchLinearClassifier(training_args={})
+    )
 
     def __post_init__(self):
-        if self._classifier is None:
-            self._classifier = PytorchLinearClassifier(training_args=self.hyper_params)
+        self._classifier.training_args = self.hyper_params
 
     def fit(self, dataset: LabelledDataset) -> Self:
         """
@@ -39,23 +40,16 @@ class PytorchProbe(Probe):
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
-        self._classifier = self._fit(
-            activations=activations_obj,
-            y=dataset.labels_numpy(),
-        )
-
+        self._classifier.train(activations_obj, dataset.labels_numpy())
         return self
-
-    def _fit(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
-        # Pass the activations and labels to the pytorch classifier class:
-        return self._classifier.train(activations, y)  # type: ignore
 
     def predict(self, dataset: BaseDataset) -> list:
         """
         Predict and return the labels of the dataset.
         """
+
         activations_obj = Activation.from_dataset(dataset)
-        labels = self._classifier.predict(activations_obj)  # type: ignore
+        labels = self._classifier.predict(activations_obj)
         return [Label.from_int(label) for label in labels]
 
     def predict_proba(
@@ -69,7 +63,7 @@ class PytorchProbe(Probe):
         activations_obj = Activation.from_dataset(dataset)
 
         # Get the batch_size, seq_len probabilities:
-        probs = self._classifier.predict_proba(activations_obj)  # type: ignore
+        probs = self._classifier.predict_proba(activations_obj)
 
         # Take the mean over the sequence length:
         return activations_obj, probs
@@ -88,7 +82,7 @@ class PytorchProbe(Probe):
         # TODO: Change such that it uses the aggregation framework
         activations_obj = Activation.from_dataset(dataset)
 
-        probs = self._classifier.predict_token_proba(activations_obj)  # type: ignore
+        probs = self._classifier.predict_token_proba(activations_obj)
 
         return probs
 

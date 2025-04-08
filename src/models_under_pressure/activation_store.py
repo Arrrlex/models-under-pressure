@@ -19,7 +19,6 @@ from pydantic import BaseModel
 from tqdm import tqdm
 
 from models_under_pressure.config import ACTIVATIONS_DIR, PROJECT_ROOT
-from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
@@ -206,7 +205,9 @@ class ActivationStore:
             with self.get_manifest() as manifest:
                 manifest.rows.append(manifest_row)
 
-    def load(self, spec: ActivationsSpec) -> Activation:
+    def load(
+        self, spec: ActivationsSpec
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Load stored activations from storage.
 
         Args:
@@ -234,11 +235,7 @@ class ActivationStore:
         input_ids = load_compressed(self.path / manifest_row.input_ids)
         attn_mask = load_compressed(self.path / manifest_row.attention_mask)
 
-        return Activation(
-            _activations=activations.numpy(),
-            _attention_mask=attn_mask.numpy(),
-            _input_ids=input_ids.numpy(),
-        )
+        return activations, input_ids, attn_mask
 
     def delete(self, spec: ActivationsSpec):
         """Delete stored activations from storage.
@@ -284,11 +281,11 @@ class ActivationStore:
         Returns:
             The enriched dataset
         """
-        activations = self.load(spec)
+        activations, input_ids, attn_mask = self.load(spec)
         return dataset.assign(
-            activations=activations.get_activations(),
-            attention_mask=activations.get_attention_mask(),
-            input_ids=activations.get_input_ids(),
+            activations=activations,
+            attention_mask=attn_mask,
+            input_ids=input_ids,
         )
 
 
@@ -304,10 +301,16 @@ def load_compressed(path: Path) -> torch.Tensor:
     dctx = zstd.ZstdDecompressor()
     tmp_path = path.with_suffix("")
     if not tmp_path.exists():
+        file_size = os.path.getsize(path)
         with open(path, "rb") as f_in, open(tmp_path, "wb") as f_out:
-            dctx.copy_stream(f_in, f_out)
+            with tqdm(
+                total=file_size, unit="B", unit_scale=True, desc="Decompressing"
+            ) as pbar:
+                for chunk in dctx.read_to_iter(f_in):
+                    f_out.write(chunk)
+                    pbar.update(f_in.tell() - pbar.n)
 
-    return torch.load(tmp_path).cpu()
+    return torch.load(tmp_path, map_location="cpu")
 
 
 def save_compressed(path: Path, tensor: torch.Tensor):
@@ -317,7 +320,6 @@ def save_compressed(path: Path, tensor: torch.Tensor):
         path: Path where to save the compressed tensor
         tensor: The tensor to compress and save
     """
-    # Check that the path has a suffix, then a .zst suffix
     if not path.name.endswith(".pt.zst"):
         raise ValueError("Path must have .pt.zst suffix")
     tmp_path = path.with_suffix("")
@@ -326,16 +328,11 @@ def save_compressed(path: Path, tensor: torch.Tensor):
 
     # Compress with zstd
     cctx = zstd.ZstdCompressor(level=10)
+    file_size = os.path.getsize(tmp_path)
     with open(tmp_path, "rb") as f_in, open(path, "wb") as f_out:
-        # Get file size for progress bar
-        file_size = os.path.getsize(tmp_path)
         with tqdm(
             total=file_size, unit="B", unit_scale=True, desc="Compressing"
         ) as pbar:
-            while True:
-                chunk = f_in.read(8192)  # Read in 8KB chunks
-                if not chunk:
-                    break
-                compressed = cctx.compress(chunk)
-                f_out.write(compressed)
-                pbar.update(len(chunk))
+            for chunk in cctx.read_to_iter(f_in):
+                f_out.write(chunk)
+                pbar.update(f_in.tell() - pbar.n)

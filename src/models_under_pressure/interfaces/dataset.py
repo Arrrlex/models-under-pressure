@@ -162,7 +162,10 @@ class BaseDataset(BaseModel, Generic[R]):
         return self[idxs]
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
-        idxs = [i for i, r in enumerate(self.to_records()) if filter_fn(r)]
+        records = self.drop_cols(
+            "activations", "input_ids", "attention_mask"
+        ).to_records()
+        idxs = [i for i, r in enumerate(records) if filter_fn(r)]
         return self[idxs]
 
     def assign(self, **kwargs: Sequence[Any] | np.ndarray | torch.Tensor) -> Self:
@@ -178,6 +181,13 @@ class BaseDataset(BaseModel, Generic[R]):
             inputs=self.inputs,
             ids=self.ids,
             other_fields=dict(self.other_fields) | kwargs,
+        )
+
+    def drop_cols(self, *cols: Sequence[str]) -> Self:
+        return type(self)(
+            inputs=self.inputs,
+            ids=self.ids,
+            other_fields={k: v for k, v in self.other_fields.items() if k not in cols},
         )
 
     @classmethod
@@ -330,6 +340,8 @@ class BaseDataset(BaseModel, Generic[R]):
         return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
     def to_records(self) -> Sequence[R]:
+        self._check_tensor_shapes()
+
         return [
             self._record_class(
                 input=input,
@@ -340,6 +352,8 @@ class BaseDataset(BaseModel, Generic[R]):
         ]
 
     def to_pandas(self) -> pd.DataFrame:
+        self._check_tensor_shapes()
+
         # Convert Dialogue inputs to dictionaries for pandas compatibility
         processed_inputs = []
         for input_item in self.inputs:
@@ -386,6 +400,8 @@ class BaseDataset(BaseModel, Generic[R]):
         return df
 
     def save_to(self, file_path: Path, overwrite: bool = False) -> None:
+        self._check_tensor_shapes()
+
         if not overwrite and file_path.exists():
             raise FileExistsError(
                 f"File {file_path} already exists. Use overwrite=True to overwrite."
@@ -398,6 +414,14 @@ class BaseDataset(BaseModel, Generic[R]):
             self.to_pandas().to_json(file_path, orient="records")
         else:
             raise ValueError(f"Unsupported file type: {file_path.suffix}")
+
+    def _check_tensor_shapes(self) -> None:
+        for field_name, col in self.other_fields.items():
+            if isinstance(col, (torch.Tensor, np.ndarray)) and len(col.shape) > 1:
+                raise ValueError(
+                    f"Field {field_name} has shape {col.shape} - "
+                    "cannot perform this action on multi-dimensional tensors/arrays"
+                )
 
 
 class Dataset(BaseDataset[Record]):
@@ -426,6 +450,9 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
 
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
+
+    def labels_torch(self) -> Float[torch.Tensor, " batch_size"]:
+        return torch.tensor([label.to_int() for label in self.labels])
 
     def print_label_distribution(self) -> Dict[str, float]:
         """

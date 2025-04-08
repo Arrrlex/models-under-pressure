@@ -166,51 +166,52 @@ class ActivationDataset(TorchDataset):
 
 @dataclass
 class Activation:
-    _activations: Float[np.ndarray, "batch_size seq_len embed_dim"]
-    _attention_mask: Float[np.ndarray, "batch_size seq_len"]
-    _input_ids: Float[np.ndarray, "batch_size seq_len"]
+    _activations: Float[torch.Tensor, "batch_size seq_len embed_dim"]
+    _attention_mask: Float[torch.Tensor, "batch_size seq_len"]
+    _input_ids: Float[torch.Tensor, "batch_size seq_len"]
 
     @classmethod
     def from_dataset(cls, dataset: BaseDataset) -> "Activation":
         return cls(
-            _activations=dataset.other_fields["activations"],
-            _attention_mask=dataset.other_fields["attention_mask"],
-            _input_ids=dataset.other_fields["input_ids"],
+            _activations=dataset.other_fields["activations"],  # type: ignore
+            _attention_mask=dataset.other_fields["attention_mask"],  # type: ignore
+            _input_ids=dataset.other_fields["input_ids"],  # type: ignore
         )
 
     @classmethod
     def concatenate(cls, activations: list["Activation"]) -> "Activation":
         return Activation(
-            _activations=np.concatenate([a._activations for a in activations], axis=0),
-            _attention_mask=np.concatenate(
-                [a._attention_mask for a in activations], axis=0
-            ),
-            _input_ids=np.concatenate([a._input_ids for a in activations], axis=0),
+            _activations=torch.cat([a._activations for a in activations], dim=0),
+            _attention_mask=torch.cat([a._attention_mask for a in activations], dim=0),
+            _input_ids=torch.cat([a._input_ids for a in activations], dim=0),
         )
 
     def get_activations(
         self, per_token: bool = False
     ) -> Float[np.ndarray, "batch_size seq_len embed_dim"]:
+        activations = self._activations.float().numpy()
         if per_token:
-            return einops.rearrange(self._activations, "b s e -> (b s) e")
+            return einops.rearrange(activations, "b s e -> (b s) e")
         else:
-            return self._activations.astype(np.float32)
+            return activations
 
     def get_attention_mask(
         self, per_token: bool = False
     ) -> Float[np.ndarray, "batch_size seq_len"]:
+        attention_mask = self._attention_mask.numpy()
         if per_token:
-            return einops.rearrange(self._attention_mask, "b s -> (b s)")
+            return einops.rearrange(attention_mask, "b s -> (b s)")
         else:
-            return self._attention_mask.astype(np.int32)
+            return attention_mask
 
     def get_input_ids(
         self, per_token: bool = False
     ) -> Float[np.ndarray, " batch_size"]:
+        input_ids = self._input_ids.numpy()
         if per_token:
-            return einops.rearrange(self._input_ids, "b s -> (b s)")
+            return einops.rearrange(input_ids, "b s -> (b s)")
         else:
-            return self._input_ids.astype(np.int32)
+            return input_ids
 
     def __post_init__(self):
         """Validate shapes after initialization, save the input shapes for later use."""
@@ -399,8 +400,8 @@ class Preprocessors:
             end_idx = min(i + batch_size, batch_size_total)
 
             # Get current batch
-            batch_acts = X._activations[i:end_idx].astype(np.float32)
-            batch_mask = X._attention_mask[i:end_idx]
+            batch_acts = X._activations[i:end_idx].float().numpy()
+            batch_mask = X._attention_mask[i:end_idx].numpy()
 
             # Process current batch
             masked_acts = batch_acts * batch_mask[:, :, None]
