@@ -52,6 +52,7 @@ Respond with a JSON using the following keys:
 - score: the total score calculated based on the scorecard.
 - answer: only 'high-stakes', 'low-stakes', or 'medium-stakes'.
 - reason: your reasoning and a short explanation for your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer.
 """
 
 scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
