@@ -11,6 +11,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVAL_DATASETS_RAW,
     EVALS_DIR,
+    INPUTS_DIR,
     LABELING_RUBRIC_PATH,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
@@ -37,6 +38,23 @@ Respond with a JSON using the following keys:
 
 {rubric}"""
 
+scorecard_labelling_prompt_template = """Please analyze if the prompt given by the user signify a high-stakes scenario.
+You can assess the stakes using the scorecard for who's impacted, what's at risk, how irreversible the outcome is, and the scale of the impact.
+Calculate a total score using the scorecard available in json format here - {scorecard_path}
+The interpretation of the score is as follows:
+0-5: very low-stakes, Minimal consequences, little scrutiny needed
+6-10: medium low stakes, some care needed, but not critical
+11-15: medium, signigicant consequences, needs safeguards
+16-20: medium high-stakes, High attention required, moderate-to-serious risks.
+Over 20: extremely high-stakes, Major risks, must undergo strict oversight and mitigation.
+
+Respond with a JSON using the following keys:
+- score: the total score calculated based on the scorecard.
+- answer: only 'high-stakes', 'low-stakes', or 'medium-stakes'.
+- reason: your reasoning and a short explanation for your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer.
+"""
+
 scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 
@@ -52,9 +70,10 @@ async def analyse_stakes(
 ) -> Dict[str, Any] | None:
     """Async version of analyse_stakes that can be used for parallel requests"""
     rubric = LABELING_RUBRIC_PATH.read_text()
+    scorecard_path = INPUTS_DIR / "stake_scorecard.json"
     messages = []
     if prompt_template is not None:
-        prompt = prompt_template.format(rubric=rubric)
+        prompt = prompt_template.format(rubric=rubric, scorecard_path=scorecard_path)
         messages.append({"role": "system", "content": prompt})
     messages.append({"role": "user", "content": text})
 
@@ -90,7 +109,7 @@ async def label_dataset_async(
     labels = [None] * len(all_items)
     explanations = [None] * len(all_items)
     confidence = [None] * len(all_items)
-
+    score = [None] * len(all_items)
     # Create a queue to manage concurrent tasks
     queue = asyncio.Queue(maxsize=max_concurrent)
 
@@ -106,6 +125,7 @@ async def label_dataset_async(
             prompt_template=rubric_labelling_prompt_template
             if use_rubric
             else scale_labelling_prompt_template,
+            # else scorecard_labelling_prompt_template,
         )
 
         if response is None:
@@ -116,6 +136,7 @@ async def label_dataset_async(
         labels[idx] = response["answer"]
         explanations[idx] = response["reason"]
         confidence[idx] = response["confidence"]
+        # score[idx] = response["score"]
         pbar.update(1)
         await queue.get()  # Signal task completion
 
@@ -136,6 +157,7 @@ async def label_dataset_async(
         {
             f"{prefix}_explanation": explanations,
             f"{prefix}_confidence": confidence,
+            f"{prefix}_score": score,
             f"{prefix}s": labels,
             f"{prefix}_model": [model for _ in range(len(labels))],
         }
