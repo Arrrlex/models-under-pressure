@@ -163,15 +163,77 @@ def combine_labelling_variations(
     return combined_dataset
 
 
+def find_label_disagreements(
+    *,
+    combined_dataset: Dataset,
+    dataset_name: str,
+) -> Dataset:
+    """
+    Filter the combined dataset to find cases with disagreements between different labelling methods.
+
+    Args:
+        combined_dataset: The combined dataset with all labelling variations
+        dataset_name: Name of the dataset (e.g., "anthropic" or "mt")
+
+    Returns:
+        A filtered dataset containing only records with disagreements
+    """
+    # Get all label fields from the dataset
+    label_fields = [
+        field
+        for field in combined_dataset.other_fields.keys()
+        if field.endswith("labels") and "scale_label" not in field
+    ]
+
+    # If there are no label fields, return an empty dataset
+    if not label_fields:
+        return Dataset(inputs=[], ids=[], other_fields={})
+
+    # Create a list to store indices of records with disagreements
+    disagreement_indices = []
+
+    # Check each record for disagreements
+    for i in range(len(combined_dataset)):
+        # Get all labels for this record
+        record_labels = {}
+        for field in label_fields:
+            if field in combined_dataset.other_fields:
+                label_value = combined_dataset.other_fields[field][i]
+                # Convert to Label enum if it's an integer
+                if isinstance(label_value, int):
+                    from models_under_pressure.interfaces.dataset import Label
+
+                    label_value = Label.from_int(label_value)
+                record_labels[field] = label_value
+
+        # Check if there are any disagreements
+        if len(set(record_labels.values())) > 1:
+            disagreement_indices.append(i)
+
+    # Create a filtered dataset with only the records with disagreements
+    if disagreement_indices:
+        # Use the filter method instead of direct indexing
+        filtered_dataset = combined_dataset.filter(
+            lambda r: combined_dataset.ids.index(r.id) in disagreement_indices
+        )
+        print(
+            f"Found {len(disagreement_indices)} records with disagreements in {dataset_name} dataset"
+        )
+        return filtered_dataset
+    else:
+        print(f"No disagreements found in {dataset_name} dataset")
+        return Dataset(inputs=[], ids=[], other_fields={})
+
+
 if __name__ == "__main__":
-    max_samples = 10
+    max_samples = 100
     out_dir = DATA_DIR / "results" / "labelling_comparison"
 
-    create_labelling_variations(
-        out_dir=out_dir,
-        labelling_model="gpt-4o-mini",
-        max_samples=max_samples,
-    )
+    # create_labelling_variations(
+    #     out_dir=out_dir,
+    #     labelling_model="gpt-4o",
+    #     max_samples=max_samples,
+    # )
 
     for dataset_name in ["anthropic", "mt"]:
         combined_dataset = combine_labelling_variations(
@@ -183,5 +245,16 @@ if __name__ == "__main__":
             out_dir / f"{dataset_name}_combined_labelled.jsonl",
             overwrite=True,
         )
+
+        # Find and save disagreements
+        disagreements = find_label_disagreements(
+            combined_dataset=combined_dataset,
+            dataset_name=dataset_name,
+        )
+        if len(disagreements) > 0:
+            disagreements.save_to(
+                out_dir / f"{dataset_name}_disagreements.jsonl",
+                overwrite=True,
+            )
 
     # The combined dataset can then be viewed with the dashboard
