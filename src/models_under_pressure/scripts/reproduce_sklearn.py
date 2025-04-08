@@ -21,9 +21,9 @@ from models_under_pressure.interfaces.activations import (
     Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.probes.model import LLMModel
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
-    PytorchPerEntryLinearClassifier,
+    PytorchAttentionClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import SklearnProbe
@@ -45,8 +45,8 @@ def load_activation(path: Path) -> Activation:
     """Load activation object from numpy arrays"""
     data = np.load(path)
     return Activation(
-        _activations=data["activations"].astype(np.float32),
-        _attention_mask=data["attention_mask"].astype(np.float32),
+        _activations=data["activations"].astype(np.float16),
+        _attention_mask=data["attention_mask"].astype(np.float16),
         _input_ids=data["input_ids"].astype(np.int32),
     )
 
@@ -181,12 +181,10 @@ def compare_probes(
     #     # "tolerance_grad": 64 * np.finfo(float).eps,
     # }
     adamw_args = {
-        "optimizer_type": "adamw",
         "batch_size": 128,
-        "epochs": 20,
+        "epochs": 1,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "learning_rate": 1e-3,
-        "weight_decay": 0.001,
+        "optimizer_args": {"lr": 1e-3, "weight_decay": 0.001},
         # "betas": (0.9, 0.999),  # -> Made things worse to change
         # "differentiable": True,
         # "learning_rate": 1e-3,
@@ -197,7 +195,7 @@ def compare_probes(
         _llm=model,
         layer=layer,
         hyper_params={},  # Doesn't apply when giving the classifier
-        _classifier=PytorchPerEntryLinearClassifier(
+        _classifier=PytorchAttentionClassifier(
             training_args=adamw_args,
             # training_args=lbfgs_args,
         ),
