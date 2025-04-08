@@ -482,11 +482,11 @@ class AttentionProbe(nn.Module):
 
         batch_size, seq_len, _ = activations.shape
         # Flatten activations:
-        activations = einops.rearrange(activations, "b s e -> (b s) e")
-        activations = self.batch_norm(activations)
-        activations = einops.rearrange(
-            activations, "(b s) e -> b s e", b=batch_size, s=seq_len
-        )
+        # activations = einops.rearrange(activations, "b s e -> (b s) e")
+        # activations = self.batch_norm(activations)
+        # activations = einops.rearrange(
+        #    activations, "(b s) e -> b s e", b=batch_size, s=seq_len
+        # )
 
         attn_output = self.attention_layer(activations)
 
@@ -561,6 +561,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             for batch_idx, batch in enumerate(pbar):
                 acts, mask_batch, _, y = batch
 
+                # acts = self.average_activations(acts, mask_batch)
+
                 y_tensor = torch.tensor(y, dtype=torch.float32).to(device)
 
                 # Standard training step for AdamW
@@ -568,7 +570,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 outputs = self.model(
                     acts.to(device).to(torch.bfloat16)
                 )  # batch_size, seq_len
-                outputs = outputs.mean(dim=1)  # aggregate the attention weighted logits
+                outputs = outputs.mean(
+                    dim=-1
+                )  # aggregate the attention weighted logits
                 loss = criterion(outputs.squeeze(), y_tensor)
                 loss.backward()
                 optimizer.step()
