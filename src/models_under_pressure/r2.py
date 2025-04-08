@@ -122,3 +122,37 @@ def file_exists_in_bucket(bucket_name: str, key: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def list_bucket_files(bucket_name: str) -> list[str]:
+    """List all files in a bucket.
+
+    Args:
+        bucket_name: Name of the R2 bucket
+
+    Returns:
+        list[str]: List of all files in the bucket
+    """
+    r2_client = get_r2_client()
+    return [
+        obj["Key"] for obj in r2_client.list_objects_v2(Bucket=bucket_name)["Contents"]
+    ]
+
+
+def delete_file(bucket_name: str, key: str) -> bool:
+    """Delete a file from R2 storage.
+
+    Args:
+        bucket_name: Name of the R2 bucket
+        key: Key of the file to delete
+
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    r2_client = get_r2_client()
+    try:
+        r2_client.delete_object(Bucket=bucket_name, Key=key)
+        return True
+    except Exception as e:
+        print(f"Failed to delete {key}: {e}")
+        return False

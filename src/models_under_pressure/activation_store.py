@@ -22,8 +22,10 @@ from models_under_pressure.config import ACTIVATIONS_DIR, PROJECT_ROOT
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
+    delete_file,
     download_file,
     file_exists_in_bucket,
+    list_bucket_files,
     upload_file,
 )
 
@@ -150,6 +152,36 @@ class ActivationStore:
                 if not file_exists_in_bucket(self.bucket, str(path)):
                     upload_file(self.bucket, str(path), self.path / path)
 
+    def push_manifest(self):
+        """Push the current local manifest to the remote bucket."""
+        upload_file(self.bucket, "manifest.json", self.path / "manifest.json")
+
+    def clean(self):
+        """Clean up local and remote activations."""
+        with self.get_manifest() as manifest:
+            to_keep = {path.name for row in manifest.rows for path in row.paths}
+
+        for path in self.path.glob("**/*.pt.zst"):
+            if path.name not in to_keep:
+                print(f"Deleting {path} from local")
+                path.unlink()
+                path.with_suffix("").unlink()
+
+        # List all .pt.zst files in bucket
+        bucket_files = list_bucket_files(self.bucket)
+        pt_files = [file for file in bucket_files if file.endswith(".pt.zst")]
+
+        # Delete files that aren't in manifest
+        for file in pt_files:
+            if file.split("/")[-1] not in to_keep:
+                print(f"Deleting {file} from bucket")
+                delete_file(self.bucket, file)
+                # Also delete the uncompressed version if it exists
+                if file.endswith(".pt.zst"):
+                    base = file[:-4]
+                    if base in bucket_files:
+                        delete_file(self.bucket, base)
+
     def save(
         self,
         model_name: str,
@@ -247,7 +279,8 @@ class ActivationStore:
         manifest_row = ManifestRow.from_spec(spec)
 
         for path in manifest_row.paths:
-            (self.path / path).unlink()
+            if (self.path / path).exists():
+                (self.path / path).unlink()
 
         with self.get_manifest() as manifest:
             manifest.rows = [

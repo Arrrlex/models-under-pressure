@@ -21,7 +21,7 @@ def dashboard_command():
     subprocess.run(["streamlit", "run", str(dashboard_path), "--"] + args)
 
 
-activation_store_cli = typer.Typer()
+activation_store_cli = typer.Typer(pretty_exceptions_show_locals=False)
 
 
 @activation_store_cli.command()
@@ -29,7 +29,7 @@ def store(
     model_name: str = typer.Option(..., "--model", help="Name of the model to use"),
     dataset_path: Path = typer.Option(..., "--dataset", help="Path to the dataset"),
     layers: str = typer.Option(
-        ..., "--layers", help="Comma-separated list of layer numbers"
+        ..., "--layers", "--layer", help="Comma-separated list of layer numbers"
     ),
     batch_size: int = typer.Option(32, "--batch", help="Batch size for processing"),
 ):
@@ -67,25 +67,14 @@ def store(
 
 
 @activation_store_cli.command()
-def delete(
-    model_name: str = typer.Option(..., "--model", help="Name of the model"),
-    dataset_path: Path = typer.Option(..., "--dataset", help="Path to the dataset"),
-    layer: int = typer.Option(..., "--layer", help="Layer number to delete"),
-):
-    """Delete stored activations for a specific model, dataset, and layer."""
+def push_manifest():
+    """Push the current local manifest to the remote bucket."""
     store = ActivationStore()
-    spec = ActivationsSpec(
-        model_name=model_name,
-        dataset_path=dataset_path,
-        layer=layer,
-    )
-    if store.exists(spec):
-        store.delete(spec)
-        typer.echo(
-            f"Deleted activations for {model_name} on {dataset_path} layer {layer}"
-        )
-    else:
-        typer.echo(
-            f"No activations found for {model_name} on {dataset_path} layer {layer}",
-            err=True,
-        )
+    store.push_manifest()
+
+
+@activation_store_cli.command()
+def clean():
+    """Clean up local and remote activations."""
+    store = ActivationStore()
+    store.clean()

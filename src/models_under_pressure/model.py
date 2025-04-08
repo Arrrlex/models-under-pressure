@@ -275,7 +275,7 @@ class LLMModel:
                 activations = hooked_model.get_acts(batch_inputs)
 
                 # Write to the relevant slice of the big tensor
-                all_activations[:, start_idx:end_idx] = activations
+                all_activations[:, start_idx:end_idx] = activations.cpu()
 
         return all_activations, inputs
 
