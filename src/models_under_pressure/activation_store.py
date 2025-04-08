@@ -339,7 +339,7 @@ def load_compressed(path: Path) -> torch.Tensor:
             with tqdm(
                 total=file_size, unit="B", unit_scale=True, desc="Decompressing"
             ) as pbar:
-                for chunk in dctx.read_to_iter(f_in):
+                for chunk in dctx.read_to_iter(f_in, write_size=8 * 1024 * 1024):
                     f_out.write(chunk)
                     pbar.update(f_in.tell() - pbar.n)
 
@@ -360,7 +360,7 @@ def save_compressed(path: Path, tensor: torch.Tensor):
     torch.save(tensor, tmp_path)
 
     # Compress with zstd
-    cctx = zstd.ZstdCompressor(level=10)
+    cctx = zstd.ZstdCompressor(level=5)
     file_size = os.path.getsize(tmp_path)
     with open(tmp_path, "rb") as f_in, open(path, "wb") as f_out:
         with tqdm(
