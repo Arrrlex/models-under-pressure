@@ -24,44 +24,45 @@ def add_system_prompt(x: Record, system_prompt: str) -> Record:
     return x
 
 
-settings = [
-    {
-        "name": "anthropic_system_context",
-        "dataset": "anthropic",
-        "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
-        "labelling_method": "scale",
-    },
-    {
-        "name": "anthropic_system_and_labelling_context",
-        "dataset": "anthropic",
-        "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
-        "labelling_method": "anthropic_context",
-    },
-    {
-        "name": "anthropic_system_and_complex_labelling_context",
-        "dataset": "anthropic",
-        "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
-        "labelling_method": "anthropic_extended_context",
-    },
-    {
-        "name": "mt_system_context",
-        "dataset": "mt",
-        "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
-        "labelling_method": "scale",
-    },
-    {
-        "name": "mt_system_and_labelling_context",
-        "dataset": "mt",
-        "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
-        "labelling_method": "mt_context",
-    },
-    {
-        "name": "mt_system_and_complex_labelling_context",
-        "dataset": "mt",
-        "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
-        "labelling_method": "mt_extended_context",
-    },
-]
+settings = {
+    "anthropic": [
+        {
+            "name": "anthropic_system_context",
+            "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
+            "labelling_method": "scale",
+        },
+        {
+            "name": "anthropic_system_and_labelling_context",
+            "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
+            "labelling_method": "anthropic_context",
+        },
+        {
+            "name": "anthropic_system_and_complex_labelling_context",
+            "preprocessing_fn": lambda x: add_system_prompt(x, anthropic_system_prompt),
+            "labelling_method": "anthropic_extended_context",
+        },
+    ],
+    "mt": [
+        {
+            "name": "mt_system_context",
+            "dataset": "mt",
+            "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
+            "labelling_method": "scale",
+        },
+        {
+            "name": "mt_system_and_labelling_context",
+            "dataset": "mt",
+            "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
+            "labelling_method": "mt_context",
+        },
+        {
+            "name": "mt_system_and_complex_labelling_context",
+            "dataset": "mt",
+            "preprocessing_fn": lambda x: add_system_prompt(x, mt_system_prompt),
+            "labelling_method": "mt_extended_context",
+        },
+    ],
+}
 
 
 def create_labelling_variations(
@@ -70,23 +71,27 @@ def create_labelling_variations(
     labelling_model: str,
     max_samples: int | None = None,
 ):
-    for setting in settings:
-        print(f"Labelling {setting['dataset']} with {setting['name']}")
-        dataset = LabelledDataset.load_from(EVAL_DATASETS[setting["dataset"]])
-        labelled_dataset = label_dataset(
-            dataset=dataset.sample(max_samples),  # type: ignore
-            model=labelling_model,
-            preprocessing_fn=setting["preprocessing_fn"],
-            labelling_method=setting["labelling_method"],
-        )
-        filename = f"{setting['name']}_labelled"
+    for dataset_name, dataset_settings in settings.items():
+        dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
         if max_samples is not None:
-            filename += f"_{max_samples}"
-        filename += ".jsonl"
-        labelled_dataset.save_to(
-            out_dir / filename,
-            overwrite=True,
-        )
+            dataset = dataset.sample(max_samples)
+
+        for setting in dataset_settings:
+            print(f"Labelling {dataset_name} with {setting['name']}")
+            labelled_dataset = label_dataset(
+                dataset=dataset,  # type: ignore
+                model=labelling_model,
+                preprocessing_fn=setting["preprocessing_fn"],
+                labelling_method=setting["labelling_method"],
+            )
+            filename = f"{setting['name']}_labelled"
+            if max_samples is not None:
+                filename += f"_{max_samples}"
+            filename += ".jsonl"
+            labelled_dataset.save_to(
+                out_dir / filename,
+                overwrite=True,
+            )
 
 
 def combine_labelling_variations(
@@ -108,29 +113,62 @@ def combine_labelling_variations(
     """
     # Find all relevant files for this dataset
     dataset_files = []
-    for setting in settings:
-        if setting["dataset"] == dataset_name:
-            filename = f"{setting['name']}_labelled"
-            if max_samples is not None:
-                filename += f"_{max_samples}"
-            filename += ".jsonl"
-            file_path = variations_dir / filename
-            if file_path.exists():
-                dataset_files.append((setting["name"], file_path))
+    for setting in settings[dataset_name]:
+        filename = f"{setting['name']}_labelled"
+        if max_samples is not None:
+            filename += f"_{max_samples}"
+        filename += ".jsonl"
+        file_path = variations_dir / filename
+        if file_path.exists():
+            dataset_files.append((setting["name"], file_path))
 
     if not dataset_files:
         raise ValueError(f"No labelled variations found for dataset {dataset_name}")
 
-    # Load the first dataset to get the base structure
-    first_name, first_file = dataset_files[0]
-    base_dataset = LabelledDataset.load_from(first_file)
+    # Load the first variation dataset to get the sample IDs
+    first_variation_path = dataset_files[0][1]
+    first_variation = LabelledDataset.load_from(first_variation_path)
+    sample_ids = set(first_variation.ids)
+
+    # Load the base dataset and filter it to match the labelled datasets
+    base_dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
+
+    # Filter the base dataset to only include samples with IDs in sample_ids
+    filtered_indices = [i for i, id in enumerate(base_dataset.ids) if id in sample_ids]
+    if len(filtered_indices) != len(sample_ids):
+        raise ValueError(
+            f"Not all sample IDs from the labelled dataset were found in the base dataset. "
+            f"Expected {len(sample_ids)} samples, found {len(filtered_indices)}."
+        )
+
+    # Create filtered base dataset
+    filtered_base_dataset = Dataset(
+        inputs=[base_dataset.inputs[i] for i in filtered_indices],
+        ids=[base_dataset.ids[i] for i in filtered_indices],
+        other_fields={
+            field: [values[i] for i in filtered_indices]
+            for field, values in base_dataset.other_fields.items()
+        },
+    )
 
     # Create a new dictionary for other_fields
     combined_other_fields = {}
 
+    # Include the original labels from the filtered base dataset without a prefix
+    for field in filtered_base_dataset.other_fields:
+        combined_other_fields[field] = filtered_base_dataset.other_fields[field]
+
     # Process each variation
     for name, file_path in dataset_files:
         variation_dataset = LabelledDataset.load_from(file_path)
+
+        # Assert that all variation datasets have the same sample IDs
+        variation_ids = set(variation_dataset.ids)
+        if variation_ids != sample_ids:
+            raise ValueError(
+                f"Sample IDs mismatch in {name}. Expected {len(sample_ids)} samples, got {len(variation_ids)}. "
+                f"First variation has {len(sample_ids)} samples."
+            )
 
         # Determine the prefix based on the variation name
         if "system_context" in name:
@@ -144,19 +182,13 @@ def combine_labelling_variations(
 
         # Add all fields from the variation with the appropriate prefix
         for field_name, field_values in variation_dataset.other_fields.items():
-            if field_name != "labels":  # Skip the main labels field
+            if "label" in field_name:  # Skip the main labels field
                 combined_other_fields[f"{prefix}{field_name}"] = field_values
-
-        # Add the labels field with the appropriate prefix
-        if "labels" in variation_dataset.other_fields:
-            combined_other_fields[f"{prefix}labels"] = variation_dataset.other_fields[
-                "labels"
-            ]
 
     # Create the combined dataset with the new other_fields dictionary
     combined_dataset = Dataset(
-        inputs=base_dataset.inputs,
-        ids=base_dataset.ids,
+        inputs=filtered_base_dataset.inputs,
+        ids=filtered_base_dataset.ids,
         other_fields=combined_other_fields,
     )
 
@@ -229,11 +261,11 @@ if __name__ == "__main__":
     max_samples = 100
     out_dir = DATA_DIR / "results" / "labelling_comparison"
 
-    # create_labelling_variations(
-    #     out_dir=out_dir,
-    #     labelling_model="gpt-4o",
-    #     max_samples=max_samples,
-    # )
+    create_labelling_variations(
+        out_dir=out_dir,
+        labelling_model="gpt-4o",
+        max_samples=max_samples,
+    )
 
     for dataset_name in ["anthropic", "mt"]:
         combined_dataset = combine_labelling_variations(
