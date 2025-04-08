@@ -155,7 +155,7 @@ async def label_dataset_async(
     other_fields.update(
         {
             f"{prefix}_explanation": explanations,
-            # f"{prefix}_confidence": confidence,
+            f"{prefix}_confidence": confidence,
             f"{prefix}_score": score,
             f"{prefix}s": labels,
             f"{prefix}_model": [model for _ in range(len(labels))],
