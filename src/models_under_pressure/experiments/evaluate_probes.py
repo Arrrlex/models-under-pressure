@@ -81,6 +81,8 @@ def run_evaluation(
         layer=config.layer,
     )
 
+    del train_dataset
+
     coefs = get_coefs(probe)
 
     eval_dataset_paths = TEST_DATASETS if config.use_test_set else EVAL_DATASETS
@@ -90,13 +92,14 @@ def run_evaluation(
     for eval_dataset_name, eval_dataset_path in tqdm(
         eval_dataset_paths.items(), desc="Evaluating on eval datasets"
     ):
+        print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
         eval_dataset = load_enriched_dataset(
             path=eval_dataset_path,
             model_name=config.model_name,
             layer=config.layer,
             max_samples=config.max_samples,
         )
-
+        print(f"Evaluating probe on {eval_dataset_name} ...")
         probe_scores, dataset_results = evaluate_probe_and_save_results(
             probe=probe,
             train_dataset_path=config.dataset_path,
@@ -131,6 +134,8 @@ def run_evaluation(
         )
 
         results_list.append(dataset_results)
+
+        del eval_dataset
 
     return results_list, coefs
 

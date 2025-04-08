@@ -219,5 +219,6 @@ def get_coefs(probe: Probe) -> list[float]:
     if isinstance(probe, SklearnProbe):
         coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
     elif isinstance(probe, PytorchProbe):
-        coefs = list(probe._classifier.model.weight.data.cpu().numpy())  # type: ignore
+        # Access the Linear layer's weights (it's the second layer in the Sequential model)
+        coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
     return coefs
