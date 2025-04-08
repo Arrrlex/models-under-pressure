@@ -147,7 +147,12 @@ class BaseDataset(BaseModel, Generic[R]):
             )
 
     def sample(self, num_samples: int) -> Self:
-        return type(self).from_records(random.sample(self.to_records(), num_samples))
+        if num_samples < len(self):
+            return type(self).from_records(
+                random.sample(self.to_records(), num_samples)
+            )
+        else:
+            return self
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
