@@ -362,3 +362,90 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
             print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
 
         return self
+
+
+class AttentionLayer(nn.Module):
+    """
+    Attention Layer for the attention probe.
+
+    embed_dim: The embedding dimension of the model residual stream
+
+    The module takes the activations from the model residual stream maps it to a single
+    dimensional attention embedding dimension to create queries and keys with dims:
+    - query: (batch_size, seq_len, 1)
+    - key: (batch_size, seq_len, 1)
+    - value: (batch_size, seq_len, 1)
+
+    It then passes these through a multi-head attention layer with a single head.
+
+    The output is then squeezed to remove the singleton dimension.
+
+    These design decisions were made to minimize the number of parameters in the
+    attention component of the probe.
+    """
+
+    def __init__(self, embed_dim: int):
+        super().__init__()
+
+        self.query_linear = nn.Linear(embed_dim, 1)
+        self.key_linear = nn.Linear(embed_dim, 1)
+        self.value_linear = nn.Linear(embed_dim, 1)
+        self.attn = nn.MultiheadAttention(embed_dim=1, num_heads=1)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        query, key, value = (
+            self.query_linear(activations),
+            self.key_linear(activations),
+            self.value_linear(activations),
+        )
+
+        attn_output, _ = self.attn(query, key, value, need_weights=False)
+        return attn_output
+
+
+class AttentionProbe(nn.Module):
+    def __init__(self, embed_dim: int):
+        super().__init__()
+
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
+        self.attention_layer = AttentionLayer(embed_dim)
+        self.linear = nn.Linear(embed_dim, 1, bias=False)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        """
+        The forward pass of the attention probe.
+
+        TODO: swap activation weighting before the attention layer and after the attention layer
+        """
+        activations = self.batch_norm(activations)
+        attn_output = self.attention_layer(activations)
+
+        # Normalize the attention output:
+        attn_output = attn_output / attn_output.sum(dim=1, keepdim=True)
+
+        linear_output = self.linear(attn_output)
+
+        return linear_output * attn_output
+
+
+class PytorchAttentionClassifier(PytorchLinearClassifier):
+    """
+    A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
+    """
+
+    training_args: dict
+    model: nn.Module | None = None
+
+    # Setup the model creation:
+    def create_model(self, embedding_dim: int) -> nn.Module:
+        """
+        Create a linear model over the embedding dimension dynamically.
+        """
+
+        return AttentionProbe(embedding_dim)
