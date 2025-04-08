@@ -21,8 +21,8 @@ Keep them factual, realistic, and concise."""
 
 
 SITUATION_GENERATION_PROMPT_TEMPLATE_2 = """Generate two situations in the domain of {topic}.
-Ensure that {role} are present in the situations.
 Make the situation realistic, specific and detailed and describe it in no more than 300 words.
+The situations should be high or low stakes on the basis of some or all of the following factors: who's affected, what's at risk, the scale of impact and reversibility of the impact.
 Write the first situation, then write this specific separator: "{separator}" and then write the second situation.
 Don't write any titles or headers.
 """
