@@ -242,9 +242,9 @@ class Activation:
         Returns:
             List of Activation objects, each containing a portion of the original data.
         """
-        activations_split = np.split(self._activations, indices)
-        attention_mask_split = np.split(self._attention_mask, indices)
-        input_ids_split = np.split(self._input_ids, indices)
+        activations_split = torch.split(self._activations, indices)
+        attention_mask_split = torch.split(self._attention_mask, indices)
+        input_ids_split = torch.split(self._input_ids, indices)
 
         return [
             Activation(act, mask, ids)
@@ -258,7 +258,7 @@ class Activation:
         return self._activations.shape
 
     def to_dataset(
-        self, y: Float[np.ndarray, " batch_size"], per_token: bool = False
+        self, y: Float[torch.Tensor, " batch_size"], per_token: bool = False
     ) -> "ActivationDataset | ActivationPerTokenDataset":
         if per_token:
             # Repeat y to match flattened sequence length
@@ -266,41 +266,6 @@ class Activation:
             return ActivationPerTokenDataset(activations=self, y=y)
         else:
             return ActivationDataset(activations=self, y=y)
-
-    def to_per_token(self) -> "Activation":
-        _, seq_len, _ = self._activations.shape
-        assert self.per_token is False, "Already per-token"
-        self.per_token = True
-        return Activation(
-            _activations=einops.rearrange(self._activations, "b s e -> (b s) e"),
-            _attention_mask=einops.rearrange(self._attention_mask, "b s -> (b s)"),
-            _input_ids=einops.rearrange(self._input_ids, "b s -> (b s)"),
-        )
-
-    def to_per_entry(self) -> "Activation":
-        """
-        Convert the activation from a per-token dataset to a per-entry dataset.
-        """
-        _, seq_len, _ = self._activations.shape
-        assert self.per_token is True, "Already per-entry"
-        self.per_token = False
-
-        # Shape: (batch_size * seq_len, embed_dim)
-        activations = einops.rearrange(
-            self._activations, "(b s) e -> b s e", b=self.batch_size, s=self.seq_len
-        )
-        attention_mask = einops.rearrange(
-            self._attention_mask, "(b s) -> b s", b=self.batch_size, s=self.seq_len
-        )
-        input_ids = einops.rearrange(
-            self._input_ids, "(b s) -> b s", b=self.batch_size, s=self.seq_len
-        )
-
-        return Activation(
-            _activations=activations,
-            _attention_mask=attention_mask,
-            _input_ids=input_ids,
-        )
 
 
 class Preprocessor(Protocol):

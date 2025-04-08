@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 from models_under_pressure.interfaces.activations import Activation, Preprocessors
 
@@ -32,11 +33,11 @@ def test_per_token_preprocessor():
 
 def test_mean_preprocessor():
     activations = Activation(
-        _activations=np.array(
-            [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=np.float32
+        _activations=torch.tensor(
+            [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], dtype=torch.float32
         ),  # (2, 2, 2)
-        _attention_mask=np.ones((2, 2)),
-        _input_ids=np.ones((2, 2), dtype=np.int64),
+        _attention_mask=torch.ones((2, 2)),
+        _input_ids=torch.ones((2, 2), dtype=torch.int64),
     )
 
     processed, y = Preprocessors.mean(activations)
