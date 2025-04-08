@@ -83,6 +83,7 @@ def create_labelling_variations(
                 model=labelling_model,
                 preprocessing_fn=setting["preprocessing_fn"],
                 labelling_method=setting["labelling_method"],
+                force_override=True,
             )
             filename = f"{setting['name']}_labelled"
             if max_samples is not None:
