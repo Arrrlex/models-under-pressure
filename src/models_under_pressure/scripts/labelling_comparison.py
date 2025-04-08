@@ -128,14 +128,15 @@ def combine_labelling_variations(
     # Load the first variation dataset to get the sample IDs
     first_variation_path = dataset_files[0][1]
     first_variation = LabelledDataset.load_from(first_variation_path)
-    sample_ids = set(first_variation.ids)
+    sample_ids = first_variation.ids
 
     # Load the base dataset and filter it to match the labelled datasets
     base_dataset = LabelledDataset.load_from(EVAL_DATASETS[dataset_name])
 
     # Filter the base dataset to only include samples with IDs in sample_ids
-    filtered_indices = [i for i, id in enumerate(base_dataset.ids) if id in sample_ids]
-    if len(filtered_indices) != len(sample_ids):
+    base_id_lookup = {id: i for i, id in enumerate(base_dataset.ids)}
+    filtered_indices = [base_id_lookup[id] for id in sample_ids]
+    if len(filtered_indices) != len(set(sample_ids)):
         raise ValueError(
             f"Not all sample IDs from the labelled dataset were found in the base dataset. "
             f"Expected {len(sample_ids)} samples, found {len(filtered_indices)}."
@@ -163,7 +164,7 @@ def combine_labelling_variations(
         variation_dataset = LabelledDataset.load_from(file_path)
 
         # Assert that all variation datasets have the same sample IDs
-        variation_ids = set(variation_dataset.ids)
+        variation_ids = variation_dataset.ids
         if variation_ids != sample_ids:
             raise ValueError(
                 f"Sample IDs mismatch in {name}. Expected {len(sample_ids)} samples, got {len(variation_ids)}. "
@@ -261,11 +262,11 @@ if __name__ == "__main__":
     max_samples = 100
     out_dir = DATA_DIR / "results" / "labelling_comparison"
 
-    create_labelling_variations(
-        out_dir=out_dir,
-        labelling_model="gpt-4o",
-        max_samples=max_samples,
-    )
+    # create_labelling_variations(
+    #     out_dir=out_dir,
+    #     labelling_model="gpt-4o",
+    #     max_samples=max_samples,
+    # )
 
     for dataset_name in ["anthropic", "mt"]:
         combined_dataset = combine_labelling_variations(
