@@ -78,7 +78,6 @@ def run_evaluation(
     probe = ProbeFactory.build(
         probe=config.probe_spec,
         train_dataset=train_dataset,
-        layer=config.layer,
     )
 
     del train_dataset

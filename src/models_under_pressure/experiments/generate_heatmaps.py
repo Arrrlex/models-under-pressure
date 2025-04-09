@@ -54,7 +54,6 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             probe = ProbeFactory.build(
                 probe=config.probe_spec,
                 train_dataset=train_split,
-                layer=config.layer,
             )
 
             for test_variation_value in variations.variation_values:

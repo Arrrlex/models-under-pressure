@@ -18,7 +18,6 @@ class ProbeFactory:
         cls,
         probe: str | ProbeSpec,
         train_dataset: LabelledDataset,
-        layer: int,
     ) -> Probe:
         if not {"activations", "attention_mask", "input_ids"}.issubset(
             train_dataset.other_fields

@@ -50,6 +50,10 @@ def store(
         else:
             filtered_layers.append(layer)
 
+    if not filtered_layers:
+        print("No layers to store")
+        return
+
     model = LLMModel.load(model_name, batch_size=batch_size)
     dataset = LabelledDataset.load_from(dataset_path)
 

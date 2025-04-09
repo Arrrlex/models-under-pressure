@@ -313,12 +313,14 @@ class HeatmapRunConfig(BaseModel):
 
 class ChooseLayerConfig(BaseModel):
     model_name: str
-    dataset_spec: dict[str, Any]
+    dataset_path: Path
     cv_folds: int
     batch_size: int
+    probe_spec: ProbeSpec
     max_samples: int | None = None
     layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
+    layer_batch_size: int = 4
 
     @property
     def output_path(self) -> Path:

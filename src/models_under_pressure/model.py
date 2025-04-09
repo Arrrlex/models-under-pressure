@@ -12,11 +12,12 @@ while working with potentially very large language models.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, Self, Sequence
+from typing import Any, Callable, Self, Sequence, Type
+from abc import ABC, abstractmethod
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase  # type: ignore
 from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -30,20 +31,92 @@ from jaxtyping import Float
 import random
 
 
-class HookedModel:
-    """
-    Context manager for extracting activations from specific model layers.
+# type: ignore
+class ModelArchitecture(ABC):
+    """Base class for handling different model architectures."""
 
-    Automatically detects and hooks into layer normalization points in both
-    LLaMA-style and GPT-style architectures. Ensures proper cleanup of hooks
-    to prevent memory leaks.
-    """
+    @abstractmethod
+    def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
+        """Get the layer normalization module for a specific layer."""
+        pass
+
+    @abstractmethod
+    def get_layers(self, model: torch.nn.Module) -> list[torch.nn.Module]:
+        """Get all layers of the model."""
+        pass
+
+    @abstractmethod
+    def set_layers(self, model: torch.nn.Module, layers: list[torch.nn.Module]) -> None:
+        """Set the model's layers."""
+        pass
+
+
+class Gemma3Arch(ModelArchitecture):
+    def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
+        return model.language_model.model.layers[layer_idx].input_layernorm  # type: ignore
+
+    def get_layers(self, model: torch.nn.Module) -> list[torch.nn.Module]:
+        return model.language_model.model.layers  # type: ignore
+
+    def set_layers(self, model: torch.nn.Module, layers: list[torch.nn.Module]) -> None:
+        model.language_model.model.layers = layers  # type: ignore
+
+
+class LlamaArch(ModelArchitecture):
+    def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
+        return model.model.layers[layer_idx].input_layernorm  # type: ignore
+
+    def get_layers(self, model: torch.nn.Module) -> list[torch.nn.Module]:
+        return model.model.layers  # type: ignore
+
+    def set_layers(self, model: torch.nn.Module, layers: list[torch.nn.Module]) -> None:
+        model.model.layers = layers  # type: ignore
+
+
+class GPTArch(ModelArchitecture):
+    def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
+        return model.transformer.h[layer_idx].ln_1  # type: ignore
+
+    def get_layers(self, model: torch.nn.Module) -> list[torch.nn.Module]:
+        return model.transformer.h  # type: ignore
+
+    def set_layers(self, model: torch.nn.Module, layers: list[torch.nn.Module]) -> None:
+        model.transformer.h = layers  # type: ignore
+
+
+class ArchitectureRegistry:
+    """Registry for mapping model types to their architecture handlers."""
+
+    _architectures: dict[str, Type[ModelArchitecture]] = {
+        "gemma3": Gemma3Arch,
+        "llama": LlamaArch,
+        "gpt": GPTArch,
+    }
+
+    @classmethod
+    def get_architecture(cls, model: torch.nn.Module) -> ModelArchitecture:
+        """Detect and return the appropriate architecture handler."""
+        for _, arch_class in cls._architectures.items():
+            try:
+                arch = arch_class()
+                # Test if this architecture matches by trying to access a layer
+                arch.get_layer_norm(model, 0)
+                return arch
+            except (AttributeError, IndexError):
+                continue
+        raise ValueError(f"Unsupported model architecture: {type(model)}")
+
+
+class HookedModel:
+    """Context manager for extracting activations from specific model layers."""
 
     def __init__(self, model: torch.nn.Module, layers: list[int]):
         self.model = model
         self.layers = layers
         self.cache = {}
         self.hooks = []
+        self.architecture = ArchitectureRegistry.get_architecture(model)
+        self.original_layers = None
 
     def make_hook(self, layer: int) -> Callable:
         def hook_fn(module, input, output):  # type: ignore
@@ -53,34 +126,18 @@ class HookedModel:
 
     def __enter__(self) -> Self:
         max_layer = max(self.layers)
-
         hook_fns = [self.make_hook(layer) for layer in self.layers]
 
-        # Different model architectures have different structures
-        if hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
-            # LLaMA-style architecture
-            for layer, hook_fn in zip(self.layers, hook_fns):
-                resid = self.model.model.layers[layer].input_layernorm
-                self.hooks.append(resid.register_forward_hook(hook_fn))
+        # Store original layers
+        self.original_layers = self.architecture.get_layers(self.model)
 
-            self.original_layers = self.model.model.layers
-            self.model.model.layers = self.model.model.layers[: max_layer + 1]
+        # Register hooks
+        for layer, hook_fn in zip(self.layers, hook_fns):
+            resid = self.architecture.get_layer_norm(self.model, layer)
+            self.hooks.append(resid.register_forward_hook(hook_fn))
 
-        elif hasattr(self.model, "transformer") and hasattr(
-            self.model.transformer, "h"
-        ):
-            # GPT-style architecture (like Qwen)
-            for layer, hook_fn in zip(self.layers, hook_fns):
-                resid = self.model.transformer.h[layer].ln_1
-                self.hooks.append(resid.register_forward_hook(hook_fn))
-
-            self.original_h = self.model.transformer.h
-            self.model.transformer.h = self.model.transformer.h[: max_layer + 1]
-        else:
-            raise ValueError(
-                f"Unsupported model architecture: {type(self.model)}. "
-                "Cannot locate transformer layers."
-            )
+        # Truncate layers
+        self.architecture.set_layers(self.model, self.original_layers[: max_layer + 1])
 
         return self
 
@@ -98,11 +155,10 @@ class HookedModel:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any):
         # Restore original layers
-        if hasattr(self, "original_layers"):
-            self.model.model.layers = self.original_layers
-        elif hasattr(self, "original_h"):
-            self.model.transformer.h = self.original_h
+        if self.original_layers is not None:
+            self.architecture.set_layers(self.model, self.original_layers)
 
+        # Remove hooks
         for hook in self.hooks:
             hook.remove()
 
@@ -205,9 +261,30 @@ class LLMModel:
             return self.model.config.num_hidden_layers  # type: ignore
         elif hasattr(self.model.config, "n_layers"):
             return self.model.config.n_layers  # type: ignore
+        elif hasattr(self.model.config, "num_layers"):
+            return self.model.config.num_layers  # type: ignore
+        elif hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
+            return len(self.model.model.layers)  # type: ignore
+        elif hasattr(self.model.config, "text_config") and hasattr(
+            self.model.config.text_config, "num_hidden_layers"
+        ):
+            return self.model.config.text_config.num_hidden_layers  # type: ignore
         else:
             raise ValueError(
-                f"Model {self.model.name_or_path} has no num_hidden_layers or n_layers attribute"
+                f"Don't know how to get the number of layers for model {self.model.name_or_path}."
+            )
+
+    @property
+    def hidden_dim(self) -> int:
+        if hasattr(self.model.config, "hidden_size"):
+            return self.model.config.hidden_size  # type: ignore
+        elif hasattr(self.model.config, "text_config") and hasattr(
+            self.model.config.text_config, "hidden_size"
+        ):
+            return self.model.config.text_config.hidden_size  # type: ignore
+        else:
+            raise ValueError(
+                f"Don't know how to get the hidden dimension for model {self.model.name_or_path}."
             )
 
     def to(self, device: str) -> Self:
@@ -271,11 +348,9 @@ class LLMModel:
 
         inputs = self.tokenize(dataset.inputs)
         n_samples, max_seq_len = inputs["input_ids"].shape
-        hidden_dim = self.model.config.hidden_size  # type: ignore
-        assert isinstance(hidden_dim, int)
 
         all_activations = torch.zeros(
-            (len(layers), n_samples, max_seq_len, hidden_dim),
+            (len(layers), n_samples, max_seq_len, self.hidden_dim),
             device="cpu",
             dtype=torch.float16,
         )
@@ -313,7 +388,7 @@ class LLMModel:
         # Restore original order of activations using inverse permutation
         inverse_indices = torch.argsort(sorted_indices).cpu()  # Move to CPU
         all_activations = all_activations[:, inverse_indices]
-        return all_activations, inputs
+        return all_activations, {k: v.cpu() for k, v in inputs.items()}
 
     def get_batched_activations(
         self,
