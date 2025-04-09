@@ -200,8 +200,8 @@ if __name__ == "__main__":
             probe_spec=ProbeSpec(name="sklearn_mean_agg_probe"),
         )
         for model_name, max_layer in [
-            # ("gemma-27b", 61),
-            # ("gemma-1b", 25),
+            ("gemma-27b", 61),
+            ("gemma-1b", 25),
             ("gemma-12b", 47),
             ("llama-1b", 16),
         ]

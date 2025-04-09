@@ -1,7 +1,7 @@
 # Code to generate Figure 2
 import json
 from pathlib import Path
-from random import random
+import random
 
 import numpy as np
 from tqdm import tqdm

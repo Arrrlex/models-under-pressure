@@ -5,17 +5,10 @@ import dotenv
 import numpy as np
 from jaxtyping import Float
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
-from tqdm import tqdm
 
 from models_under_pressure.config import EVALUATE_PROBES_DIR
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
-from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
@@ -31,38 +24,6 @@ np.random.seed(RANDOM_SEED)
 random.seed(RANDOM_SEED)
 
 dotenv.load_dotenv()
-
-
-def train_probes(
-    model: LLMModel, dataset: LabelledDataset, layers: list[int] | None = None
-) -> dict[int, Probe]:
-    """Train a probe for each layer in the model.
-
-    Args:
-        model: The model to train the probe on.
-        dataset: The dataset to train the probe on.
-        layers: The layers to train the probe on.
-
-    Returns:
-        A dictionary of the trained probes.
-
-    Used in the generate_heatmaps script...
-    """
-
-    layers = layers or list(range(model.n_layers))
-    aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
-    )
-
-    if any(label == Label.AMBIGUOUS for label in dataset.labels):
-        raise ValueError("Training dataset contains ambiguous labels")
-
-    # Iterate over layers. For each layer, create a config, then train a probe and store it
-    return {
-        layer: SklearnProbe(aggregator=aggregator).fit(dataset)
-        for layer in tqdm(layers, desc="Training probes")
-    }
 
 
 def tpr_at_fixed_fpr_score(
