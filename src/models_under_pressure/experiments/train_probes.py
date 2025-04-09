@@ -16,6 +16,9 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.model import LLMModel
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchDifferenceOfMeansClassifier,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
@@ -219,6 +222,10 @@ def get_coefs(probe: Probe) -> list[float]:
     if isinstance(probe, SklearnProbe):
         coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
     elif isinstance(probe, PytorchProbe):
-        # Access the Linear layer's weights (it's the second layer in the Sequential model)
-        coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
+        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
+            # For difference of means classifier, weights are directly in the linear layer
+            coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+        else:
+            # For regular PyTorch probe, weights are in the second layer of Sequential
+            coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
     return coefs
