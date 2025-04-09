@@ -284,14 +284,8 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         # Just this bit here is different from the PytorchLinearClassifier
         per_entry_dataset = activations.to_dataset(y=y, per_token=False)
 
-        # Process the dataset to be the mean across the seq_len:
-        acts = per_entry_dataset._activations
-        mask = per_entry_dataset._attention_mask
-
-        averaged_acts = self.average_activations(acts, mask)
-
         # Get the embedding dimension from the averaged activations
-        embedding_dim = averaged_acts.shape[-1]
+        embedding_dim = activations._activations.shape[-1]
         # Create a linear model with the correct embedding dimension
 
         if self.model is None:
@@ -480,23 +474,32 @@ class AttentionProbe(nn.Module):
         TODO: swap activation weighting before the attention layer and after the attention layer
         """
 
-        batch_size, seq_len, _ = activations.shape
+        # batch_size, seq_len, _ = activations.shape
         # Flatten activations:
         # activations = einops.rearrange(activations, "b s e -> (b s) e")
-        # activations = self.batch_norm(activations)
+        # Based on https://discuss.pytorch.org/t/how-does-the-batch-normalization-work-for-sequence-data/30839/2
+        activations = activations.permute(0, 2, 1)
+        activations = self.batch_norm(activations)
+        activations = activations.permute(0, 2, 1)
         # activations = einops.rearrange(
         #    activations, "(b s) e -> b s e", b=batch_size, s=seq_len
         # )
 
         attn_output = self.attention_layer(activations)
 
-        # Normalize the attention output:
-        # attn_output = attn_output / attn_output.sum(dim=1, keepdim=True)
+        # Normalize the attention output using min-max normalization
+        # This ensures values are in [0,1] range without the exponential scaling of softmax
+        attn_min = attn_output.min(dim=1, keepdim=True)[0]
+        attn_max = attn_output.max(dim=1, keepdim=True)[0]
+        attn_range = (
+            attn_max - attn_min + 1e-6
+        )  # Add small epsilon to avoid division by zero
+        attn_output = (attn_output - attn_min) / attn_range
 
         linear_output = self.linear(activations)
 
         # For debugging:
-        attn_output = torch.ones_like(linear_output)
+        # attn_output = torch.ones_like(linear_output)
 
         return (linear_output * attn_output).squeeze()
 
