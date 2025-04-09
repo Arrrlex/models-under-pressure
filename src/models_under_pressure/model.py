@@ -27,6 +27,7 @@ from models_under_pressure.interfaces.dataset import (
 from models_under_pressure.utils import batched_range, hf_login
 from models_under_pressure.interfaces.activations import Activation
 from jaxtyping import Float
+import random
 
 
 class HookedModel:
@@ -51,6 +52,8 @@ class HookedModel:
         return hook_fn
 
     def __enter__(self) -> Self:
+        max_layer = max(self.layers)
+
         hook_fns = [self.make_hook(layer) for layer in self.layers]
 
         # Different model architectures have different structures
@@ -60,6 +63,9 @@ class HookedModel:
                 resid = self.model.model.layers[layer].input_layernorm
                 self.hooks.append(resid.register_forward_hook(hook_fn))
 
+            self.original_layers = self.model.model.layers
+            self.model.model.layers = self.model.model.layers[: max_layer + 1]
+
         elif hasattr(self.model, "transformer") and hasattr(
             self.model.transformer, "h"
         ):
@@ -67,6 +73,9 @@ class HookedModel:
             for layer, hook_fn in zip(self.layers, hook_fns):
                 resid = self.model.transformer.h[layer].ln_1
                 self.hooks.append(resid.register_forward_hook(hook_fn))
+
+            self.original_h = self.model.transformer.h
+            self.model.transformer.h = self.model.transformer.h[: max_layer + 1]
         else:
             raise ValueError(
                 f"Unsupported model architecture: {type(self.model)}. "
@@ -75,12 +84,25 @@ class HookedModel:
 
         return self
 
-    def get_acts(self, batch_inputs: dict[str, torch.Tensor]) -> torch.Tensor:
+    def get_acts(
+        self,
+        batch_inputs: dict[str, torch.Tensor],
+        output_buffer: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         _ = self.model(**batch_inputs)
-        activations = [self.cache[layer] for layer in self.layers]
-        return torch.stack(activations, dim=0)
+        activations = torch.stack([self.cache[layer] for layer in self.layers], dim=0)
+        if output_buffer is not None:
+            output_buffer[:] = activations
+            return output_buffer
+        return activations
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any):
+        # Restore original layers
+        if hasattr(self, "original_layers"):
+            self.model.model.layers = self.original_layers
+        elif hasattr(self, "original_h"):
+            self.model.transformer.h = self.original_h
+
         for hook in self.hooks:
             hook.remove()
 
@@ -247,36 +269,50 @@ class LLMModel:
         if batch_size == -1:
             batch_size = self.batch_size
 
-        hidden_dim = self.model.config.hidden_size  # type: ignore
-        assert isinstance(hidden_dim, int)
-        n_samples = len(dataset.inputs)
-
-        # Tokenize entire dataset at once
         inputs = self.tokenize(dataset.inputs)
         n_samples, max_seq_len = inputs["input_ids"].shape
+        hidden_dim = self.model.config.hidden_size  # type: ignore
+        assert isinstance(hidden_dim, int)
 
-        # Create empty tensor for all activations
-        all_activations = torch.empty(
+        all_activations = torch.zeros(
             (len(layers), n_samples, max_seq_len, hidden_dim),
             device="cpu",
             dtype=torch.float16,
         )
 
+        # Sort inputs by length and keep track of original indices
+        seq_lengths = (inputs["input_ids"] != self.tokenizer.pad_token_id).sum(dim=1)  # type: ignore
+        sorted_lengths, sorted_indices = torch.sort(seq_lengths)
+        sorted_inputs = {k: v[sorted_indices] for k, v in inputs.items()}
+
+        batched_ranges = batched_range(n_samples, batch_size)
+        # Shuffle batch ranges to improve progress bar accuracy
+        random.shuffle(batched_ranges)
+
         with HookedModel(self.model, layers) as hooked_model:
-            # Process each batch
-            for start_idx, end_idx in tqdm(
-                batched_range(n_samples, batch_size),
-                desc="Generating activations...",
+            # Process in batches
+            for batch_start, batch_end in tqdm(
+                batched_ranges, desc="Processing batches"
             ):
-                # Get batch of tokenized inputs
-                batch_inputs = {k: v[start_idx:end_idx] for k, v in inputs.items()}
+                batch_length = sorted_lengths[batch_end - 1]
+
+                # Remove padding tokens for this batch
+                batch_inputs = {
+                    k: v[batch_start:batch_end, :batch_length]
+                    for k, v in sorted_inputs.items()
+                }
 
                 # Get activations for this batch
-                activations = hooked_model.get_acts(batch_inputs)
+                batch_acts = hooked_model.get_acts(batch_inputs)
 
-                # Write to the relevant slice of the big tensor
-                all_activations[:, start_idx:end_idx] = activations.cpu()
+                # Store activations in their original positions
+                all_activations[:, batch_start:batch_end, :batch_length] = (
+                    batch_acts.to(torch.float16).cpu()
+                )
 
+        # Restore original order of activations using inverse permutation
+        inverse_indices = torch.argsort(sorted_indices).cpu()  # Move to CPU
+        all_activations = all_activations[:, inverse_indices]
         return all_activations, inputs
 
     def get_batched_activations(
@@ -289,9 +325,9 @@ class LLMModel:
             dataset, [layer], batch_size
         )
         return Activation(
-            _activations=all_activations[0].numpy(),
-            _attention_mask=inputs["attention_mask"].cpu().numpy(),
-            _input_ids=inputs["input_ids"].cpu().numpy(),
+            _activations=all_activations[0],
+            _attention_mask=inputs["attention_mask"],
+            _input_ids=inputs["input_ids"],
         )
 
     @torch.no_grad()
@@ -405,3 +441,9 @@ class LLMModel:
         return self.tokenizer.decode(
             out_tokens, skip_special_tokens=skip_special_tokens
         )
+
+    def get_optimal_batch_size(self, seq_len: int) -> int:
+        base_batch_size = self.batch_size
+        max_seq_len = self.tokenize_kwargs["max_length"]
+        # Scale batch size inversely with sequence length
+        return max(1, int(base_batch_size * (max_seq_len / seq_len)))

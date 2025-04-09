@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
+import time
 
 import torch
 import zstandard as zstd
@@ -357,7 +358,10 @@ def save_compressed(path: Path, tensor: torch.Tensor):
         raise ValueError("Path must have .pt.zst suffix")
     tmp_path = path.with_suffix("")
 
+    start = time.time()
     torch.save(tensor, tmp_path)
+    end = time.time()
+    print(f"Saved tensor in {end - start:.2f} seconds")
 
     # Compress with zstd
     cctx = zstd.ZstdCompressor(level=4)
