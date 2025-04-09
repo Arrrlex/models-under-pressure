@@ -184,7 +184,7 @@ def compare_probes(
         "batch_size": 128,
         "epochs": 5,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "optimizer_args": {"lr": 1e-2, "weight_decay": 0.1},
+        "optimizer_args": {"lr": 1e-2, "weight_decay": 0.001},
         # "betas": (0.9, 0.999),  # -> Made things worse to change
         # "differentiable": True,
         # "learning_rate": 1e-3,
