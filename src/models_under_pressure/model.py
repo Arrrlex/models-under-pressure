@@ -356,7 +356,7 @@ class LLMModel:
         )
 
         with HookedModel(self.model, layers) as hooked_model:
-            batches = get_batches(inputs, batch_size, self.tokenizer.pad_token_id)  # type: ignore
+            batches = get_batches(inputs, batch_size, self.tokenizer)
             # Process in batches
             for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
                 batch_length = batch_inputs["input_ids"].shape[1]
@@ -415,7 +415,7 @@ class LLMModel:
         )
 
         # Process in batches
-        batches = get_batches(torch_inputs, batch_size, self.tokenizer.pad_token_id)  # type: ignore
+        batches = get_batches(torch_inputs, batch_size, self.tokenizer)
         for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
             batch_length = batch_inputs["input_ids"].shape[1]
 
@@ -501,13 +501,13 @@ class LLMModel:
 def get_batches(
     inputs: dict[str, torch.Tensor],
     batch_size: int,
-    pad_token_id: int,
+    tokenizer: PreTrainedTokenizerBase,
 ) -> Iterator[tuple[dict[str, torch.Tensor], list[int]]]:
     """
     Yields batches of inputs with minimal padding, along with their original indices.
     """
     # Get lengths and sort indices
-    seq_lengths = (inputs["input_ids"] != pad_token_id).sum(dim=1)
+    seq_lengths = (inputs["input_ids"] != tokenizer.pad_token_id).sum(dim=1)  # type: ignore
     sorted_indices = torch.sort(seq_lengths)[1].tolist()
 
     # Get batch ranges
@@ -517,5 +517,14 @@ def get_batches(
     for start, end in batch_ranges:
         batch_indices = sorted_indices[start:end]
         batch_length = max(seq_lengths[idx] for idx in batch_indices)  # type: ignore
-        batch_inputs = {k: v[batch_indices, :batch_length] for k, v in inputs.items()}
+        if tokenizer.padding_side == "right":
+            batch_inputs = {
+                k: v[batch_indices, :batch_length] for k, v in inputs.items()
+            }
+        elif tokenizer.padding_side == "left":
+            batch_inputs = {
+                k: v[batch_indices, -batch_length:] for k, v in inputs.items()
+            }
+        else:
+            raise ValueError(f"Unknown padding side: {tokenizer.padding_side}")
         yield batch_inputs, batch_indices
