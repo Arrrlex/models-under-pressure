@@ -29,6 +29,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
 CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
+ACTIVATIONS_DIR = DATA_DIR / "activations"
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
@@ -312,12 +313,14 @@ class HeatmapRunConfig(BaseModel):
 
 class ChooseLayerConfig(BaseModel):
     model_name: str
-    dataset_spec: dict[str, Any]
+    dataset_path: Path
     cv_folds: int
     batch_size: int
+    probe_spec: ProbeSpec
     max_samples: int | None = None
     layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
+    layer_batch_size: int = 4
 
     @property
     def output_path(self) -> Path:

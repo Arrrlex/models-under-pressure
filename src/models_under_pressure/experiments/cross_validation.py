@@ -9,7 +9,6 @@ It then repeats this process for each layer and reports the best layer.
 
 import os
 from dataclasses import dataclass
-from functools import partial
 from typing import Iterator, Tuple
 
 import numpy as np
@@ -18,23 +17,18 @@ from tqdm import tqdm
 from models_under_pressure.config import (
     LOCAL_MODELS,
     RESULTS_DIR,
-    TRAIN_DIR,
+    SYNTHETIC_DATASET_PATH,
     ChooseLayerConfig,
 )
-from models_under_pressure.interfaces.activations import (
-    Activation,
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
     CVFinalResults,
     CVIntermediateResults,
 )
 from models_under_pressure.model import LLMModel
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
-from models_under_pressure.utils import double_check_config, print_progress
+from models_under_pressure.probes.probes import ProbeFactory
+from models_under_pressure.utils import batched_range, double_check_config
 
 
 @dataclass
@@ -47,7 +41,7 @@ class CVSplits:
     """
 
     num_folds: int
-    folds: list[LabelledDataset]
+    folds: list[list[int]]
 
     @classmethod
     def create(cls, dataset: LabelledDataset, num_folds: int) -> "CVSplits":
@@ -74,198 +68,115 @@ class CVSplits:
             pair_ids[i * fold_size : (i + 1) * fold_size] for i in range(num_folds)
         ]
 
-        # Create dataset for each fold by filtering for its pair IDs
+        # Create indices for each fold by finding indices matching pair IDs
         folds = []
         for fold_pair_ids in pair_id_folds:
-            fold_dataset = dataset.filter(
-                lambda x: x.other_fields["pair_id"] in fold_pair_ids
-            )
-            folds.append(fold_dataset)
+            fold_indices = [
+                i
+                for i, x in enumerate(dataset.other_fields["pair_id"])
+                if x in fold_pair_ids
+            ]
+            folds.append(fold_indices)
 
         return cls(num_folds=num_folds, folds=folds)
 
-
-@dataclass
-class DatasetWithActivations:
-    """Simple wrapper class containing a dataset and its activations."""
-
-    dataset: LabelledDataset
-    activations: Activation
-
-
-@dataclass
-class CVSplitsWithActivations:
-    """
-    Wrapper class containing the cross validation splits and their activations.
-    """
-
-    cv_splits: CVSplits
-    activation_folds: list[DatasetWithActivations]
-
-    @classmethod
-    def create(
-        cls, cv_splits: CVSplits, llm: LLMModel, layer: int, batch_size: int
-    ) -> "CVSplitsWithActivations":
-        """Create the CV splits with activations.
-
-        Doing it this way is faster than getting the activations for each fold separately.
-
-        Args:
-            cv_splits: CVSplits
-            llm: LLMModel
-            layer: Layer to get activations for
-        """
-        # Get all activations at once
-        combined_dataset = LabelledDataset.concatenate(cv_splits.folds)
-        all_activations = llm.get_batched_activations(
-            combined_dataset, layer=layer, batch_size=batch_size
-        )
-
-        # Split activations according to fold lengths
-        fold_lengths = [len(fold) for fold in cv_splits.folds]
-        split_indices = [sum(fold_lengths[:i]) for i in range(1, len(fold_lengths))]
-        activation_splits = all_activations.split(split_indices)
-
-        # Create DatasetWithActivations for each fold
-        activation_folds = [
-            DatasetWithActivations(fold, act)
-            for fold, act in zip(cv_splits.folds, activation_splits)
-        ]
-        return cls(cv_splits, activation_folds)
-
-    def splits(self) -> Iterator[Tuple[DatasetWithActivations, DatasetWithActivations]]:
+    def splits(
+        self, dataset: LabelledDataset
+    ) -> Iterator[Tuple[LabelledDataset, LabelledDataset]]:
         """Get train/test splits for cross validation.
 
         Returns:
             Sequence of (train, test) pairs where train is all folds except one
             and test is the held-out fold
         """
-        for i in range(self.cv_splits.num_folds):
+        for i in range(self.num_folds):
+            # Train indices are all indices except the current fold
+            train_indices = [
+                idx for fold in self.folds[:i] + self.folds[i + 1 :] for idx in fold
+            ]
             # Test set is the current fold
-            test = self.activation_folds[i]
+            test_indices = self.folds[i]
 
-            # Train set is all other folds combined
-            train_folds = self.activation_folds[:i] + self.activation_folds[i + 1 :]
-            train = DatasetWithActivations(
-                LabelledDataset.concatenate([fold.dataset for fold in train_folds]),
-                Activation.concatenate([fold.activations for fold in train_folds]),
-            )
-
-            yield train, test
-
-
-def _train_and_evaluate_fold(
-    train_test_pair: Tuple[DatasetWithActivations, DatasetWithActivations],
-    layer: int,
-) -> float:
-    """Worker function to train and evaluate a probe on a single fold.
-
-    Args:
-        train_test_pair: Tuple of (train, test) DatasetWithActivations
-        llm: LLMModel
-        layer: Layer being evaluated
-        aggregator: Aggregator for the probe
-
-    Returns:
-        Accuracy score for this fold
-    """
-    train, test = train_test_pair
-    aggregator = Aggregator(
-        Preprocessors.mean,
-        Postprocessors.sigmoid,
-    )
-    probe = SklearnProbe(
-        _llm=None,  # type: ignore
-        layer=layer,
-        aggregator=aggregator,
-    )
-    probe._fit(train.activations, train.dataset.labels_numpy())
-
-    test_scores = probe._predict(test.activations)
-    return (np.array(test_scores) == test.dataset.labels_numpy()).mean()
+            yield dataset[train_indices], dataset[test_indices]
 
 
 def get_cross_validation_accuracies(
-    llm: LLMModel,
-    layer: int,
+    dataset: LabelledDataset,
     cv_splits: CVSplits,
-    batch_size: int,
+    probe_spec: ProbeSpec,
 ) -> list[float]:
     """Get the cross validation accuracies for a given layer.
 
     Args:
-        llm: LLMModel
-        layer: Layer to evaluate
-        aggregator: Aggregator
+        dataset: Dataset to evaluate
         cv_splits: CVSplits
-        batch_size: Batch size for processing
+        probe_spec: ProbeSpec
 
     Returns:
         List of accuracies, one for each fold
     """
-    cv_splits_with_activations = CVSplitsWithActivations.create(
-        cv_splits, llm, layer, batch_size
-    )
+    results = []
 
-    # Create list of train/test pairs
-    fold_pairs = list(cv_splits_with_activations.splits())
-
-    # Create partial function with fixed arguments
-    worker_fn = partial(_train_and_evaluate_fold, layer=layer)
-
-    # Use multiprocessing to evaluate folds in parallel
-    results = [
-        worker_fn(fold_pair)
-        for fold_pair in tqdm(
-            fold_pairs, total=cv_splits.num_folds, desc="Cross-validating"
-        )
-    ]
+    for train, test in cv_splits.splits(dataset):
+        probe = ProbeFactory.build(probe=probe_spec, train_dataset=train)
+        test_scores = probe.predict(test)
+        results.append((np.array(test_scores) == test.labels_numpy()).mean())
 
     return results
 
 
 def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
-    """Main function to choose the best layer via cross validation.
-
-    Args:
-        config: ChooseLayerConfig
-    """
+    """Main function to choose the best layer via cross validation."""
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-    dataset = LabelledDataset.load_from(**config.dataset_spec)
-
-    train_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "train") == "train"
-    )
+    dataset = LabelledDataset.load_from(config.dataset_path)
+    dataset = dataset.filter(lambda x: x.other_fields.get("split", "train") == "train")
 
     if config.max_samples is not None:
-        train_dataset = train_dataset.sample(config.max_samples)
+        dataset = dataset.sample(config.max_samples)
 
     llm = LLMModel.load(config.model_name)
 
     if config.layers is None:
-        config.layers = list(range(llm.n_layers))
+        layers = list(range(llm.n_layers))
     else:
         assert all(0 <= layer < llm.n_layers for layer in config.layers)
+        layers = config.layers
 
     results = CVIntermediateResults(config=config)
 
-    cv_splits = CVSplits.create(train_dataset, config.cv_folds)
+    cv_splits = CVSplits.create(dataset, config.cv_folds)
 
-    print(f"Running cross-validation for {len(config.layers)} layers")
-    for layer in print_progress(config.layers):
-        print(f"Cross-validating layer {layer}...")
-        layer_results = get_cross_validation_accuracies(
-            llm=llm,
-            layer=layer,
-            cv_splits=cv_splits,
+    pbar = tqdm(total=len(layers), desc="Cross-validating layers")
+
+    for batch_start, batch_end in batched_range(len(layers), config.layer_batch_size):
+        batch_layers = layers[batch_start:batch_end]
+        activations, inputs = llm.get_batched_activations_for_layers(
+            dataset,
+            layers=batch_layers,
             batch_size=config.batch_size,
         )
 
-        results.add_layer_results(layer, layer_results)
-        results.save()
+        for layer_idx, layer in enumerate(batch_layers):
+            dataset = dataset.assign(
+                activations=activations[layer_idx],
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+            )
 
+            layer_results = get_cross_validation_accuracies(
+                dataset=dataset,
+                cv_splits=cv_splits,
+                probe_spec=config.probe_spec,
+            )
+
+            results.add_layer_results(layer, layer_results)
+            results.save()
+
+            pbar.update(1)
+
+    pbar.close()
     print(f"Results: {results}")
 
     # Compute final results
@@ -280,20 +191,19 @@ if __name__ == "__main__":
     configs = [
         ChooseLayerConfig(
             model_name=LOCAL_MODELS[model_name],
-            dataset_spec={
-                "file_path_or_name": TRAIN_DIR
-                / "prompts_13_03_25_gpt-4o_filtered.jsonl",
-            },
+            dataset_path=SYNTHETIC_DATASET_PATH,
             max_samples=None,
             cv_folds=4,
             layers=list(range(0, max_layer, 2)),
             batch_size=4,
             output_dir=RESULTS_DIR / "cross_validation",
+            probe_spec=ProbeSpec(name="sklearn_mean_agg_probe"),
         )
         for model_name, max_layer in [
             ("gemma-27b", 61),
             ("gemma-1b", 25),
             ("gemma-12b", 47),
+            ("llama-1b", 16),
         ]
     ]
 

@@ -5,7 +5,6 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
@@ -18,10 +17,15 @@ class ProbeFactory:
     def build(
         cls,
         probe: str | ProbeSpec,
-        model: LLMModel,
         train_dataset: LabelledDataset,
-        layer: int,
     ) -> Probe:
+        if not {"activations", "attention_mask", "input_ids"}.issubset(
+            train_dataset.other_fields
+        ):
+            raise ValueError(
+                "Dataset must contain activations, attention_mask, and input_ids"
+            )
+
         if isinstance(probe, str):
             probe = ProbeSpec(name=probe)
 
@@ -32,20 +36,14 @@ class ProbeFactory:
             )
             if probe.hyperparams is not None:
                 return SklearnProbe(
-                    _llm=model,
-                    layer=layer,
                     aggregator=aggregator,
                     hyper_params=probe.hyperparams,
                 ).fit(train_dataset)
             else:
-                return SklearnProbe(_llm=model, layer=layer, aggregator=aggregator).fit(
-                    train_dataset
-                )
+                return SklearnProbe(aggregator=aggregator).fit(train_dataset)
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
-                layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=False, training_args=probe.hyperparams
@@ -54,8 +52,6 @@ class ProbeFactory:
         elif probe.name == "lda":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
-                layer=layer,
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
                     use_lda=True, training_args=probe.hyperparams
@@ -64,8 +60,6 @@ class ProbeFactory:
         elif probe.name == "pytorch_per_token_probe":
             assert probe.hyperparams is not None
             return PytorchProbe(
-                _llm=model,
-                layer=layer,
                 hyper_params=probe.hyperparams,
             ).fit(train_dataset)
         else:

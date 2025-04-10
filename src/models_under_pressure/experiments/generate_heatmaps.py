@@ -18,7 +18,6 @@ from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config, print_progress
 from models_under_pressure.experiments.train_probes import tpr_at_fixed_fpr_score
@@ -33,9 +32,9 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
     """
     train_dataset, test_dataset = load_train_test(
         dataset_path=config.dataset_path,
+        model_name=config.model_name,
+        layer=config.layer,
     )
-
-    model = LLMModel.load(config.model_name)
 
     results_list = []
 
@@ -54,9 +53,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             train_split = variations.train_splits[train_variation_value]
             probe = ProbeFactory.build(
                 probe=config.probe_spec,
-                model=model,
                 train_dataset=train_split,
-                layer=config.layer,
             )
 
             for test_variation_value in variations.variation_values:

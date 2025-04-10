@@ -2,7 +2,7 @@
 Run the dashboard with:
 
 ```
-uv run dash <path_to_dataset>
+dashboard <path_to_dataset>
 ```
 """
 
