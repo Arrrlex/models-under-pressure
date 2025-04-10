@@ -359,15 +359,16 @@ class LLMModel:
             batches = get_batches(inputs, batch_size, self.tokenizer)
             # Process in batches
             for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
-                batch_length = batch_inputs["input_ids"].shape[1]
+                seq_len = batch_inputs["input_ids"].shape[1]
 
                 # Get activations for this batch
-                batch_acts = hooked_model.get_acts(batch_inputs)
+                batch_acts = hooked_model.get_acts(batch_inputs).half().cpu()
 
                 # Store activations in their original positions
-                all_activations[:, batch_indices, :batch_length] = batch_acts.to(
-                    torch.float16
-                ).cpu()
+                if self.tokenizer.padding_side == "right":
+                    all_activations[:, batch_indices, :seq_len] = batch_acts
+                else:
+                    all_activations[:, batch_indices, -seq_len:] = batch_acts
 
         return all_activations, {k: v.cpu() for k, v in inputs.items()}
 
@@ -406,26 +407,29 @@ class LLMModel:
             Log probabilities tensor [n_samples, seq_len-1]
         """
         torch_inputs = self.tokenize(inputs)
-        n_samples, seq_len = torch_inputs["input_ids"].shape
+        n_samples, max_seq_len = torch_inputs["input_ids"].shape
 
         # Create empty tensor for all log probabilities
         # We use seq_len-1 because we'll be shifting the targets by 1
         all_log_probs = torch.zeros(
-            (n_samples, seq_len - 1), device="cpu", dtype=torch.float32
+            (n_samples, max_seq_len - 1), device="cpu", dtype=torch.float32
         )
 
         # Process in batches
         batches = get_batches(torch_inputs, batch_size, self.tokenizer)
         for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
-            batch_length = batch_inputs["input_ids"].shape[1]
+            seq_len = batch_inputs["input_ids"].shape[1]
+            out_seq_len = seq_len - 1
 
             # Forward pass through the model
             outputs = self.model(**batch_inputs)
 
             # Get logits and shift them to align predictions with targets
-            logits = outputs.logits[:, :-1, :]  # (batch, seq_len-1, vocab_size)
-            targets = batch_inputs["input_ids"][:, 1:]  # (batch, seq_len-1)
-            attention_mask = batch_inputs["attention_mask"][:, 1:]  # (batch, seq_len-1)
+            logits = outputs.logits[:, :-1, :]  # (batch, out_seq_len, vocab_size)
+            targets = batch_inputs["input_ids"][:, 1:]  # (batch, out_seq_len)
+            attention_mask = batch_inputs["attention_mask"][
+                :, 1:
+            ]  # (batch, out_seq_len)
 
             # Compute log probabilities
             log_probs = torch.log_softmax(logits, dim=-1)
@@ -436,12 +440,13 @@ class LLMModel:
             ).squeeze(-1)
 
             # Mask out padding tokens
-            token_log_probs = token_log_probs * attention_mask
+            token_log_probs = (token_log_probs * attention_mask).float().cpu()
 
             # Store batch results in their original positions
-            all_log_probs[batch_indices, : batch_length - 1] = (
-                token_log_probs.float().cpu()
-            )
+            if self.tokenizer.padding_side == "right":
+                all_log_probs[batch_indices, :out_seq_len] = token_log_probs
+            else:
+                all_log_probs[batch_indices, -out_seq_len:] = token_log_probs
 
         return all_log_probs
 
