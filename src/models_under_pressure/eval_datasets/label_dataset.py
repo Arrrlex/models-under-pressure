@@ -7,7 +7,6 @@ import typer
 from typing_extensions import deprecated
 
 from models_under_pressure.config import (
-    DEFAULT_MODEL,
     EVAL_DATASETS,
     EVAL_DATASETS_RAW,
     EVALS_DIR,
@@ -16,6 +15,7 @@ from models_under_pressure.config import (
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
     TEST_DATASETS_RAW,
+    global_settings,
 )
 from models_under_pressure.experiments.dataset_splitting import (
     load_filtered_train_dataset,
@@ -88,7 +88,7 @@ async def analyse_stakes(
 async def label_dataset_async(
     dataset: Dataset,
     *,
-    model: str,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int,
     use_rubric: bool = False,
     confidence_threshold: int = 7,
@@ -201,7 +201,7 @@ async def label_dataset_async(
 def label_dataset(
     dataset: Dataset,
     *,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     use_rubric: bool = False,
     force_override: bool = False,
@@ -226,7 +226,7 @@ def label_dataset(
 def relabel_eval_datasets(
     *,
     dataset_names: list[str] | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     use_rubric: bool = False,
 ) -> None:
@@ -251,7 +251,7 @@ def create_training_scale_labels(
     *,
     variation_type: str | None = None,
     variation_value: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     max_samples: int | None = None,
 ) -> None:
@@ -384,7 +384,9 @@ def main(
         "",
         help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
     ),
-    model: str = typer.Option(DEFAULT_MODEL, help="Model to use for labelling"),
+    model: str = typer.Option(
+        global_settings.DEFAULT_MODEL, help="Model to use for labelling"
+    ),
     max_concurrent: int = typer.Option(
         10, help="Maximum number of concurrent API calls"
     ),

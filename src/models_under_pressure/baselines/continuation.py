@@ -3,7 +3,7 @@ import torch
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    BATCH_SIZE,
+    global_settings,
     EVAL_DATASETS,
     LOCAL_MODELS,
     TEST_DATASETS,
@@ -225,7 +225,9 @@ class LikelihoodContinuationBaseline:
 
     def predict(self, dataset: Dataset) -> list[Label]:
         return list(
-            self.likelihood_classify_dataset(dataset, batch_size=BATCH_SIZE).labels
+            self.likelihood_classify_dataset(
+                dataset, batch_size=global_settings.BATCH_SIZE
+            ).labels
         )
 
     def likelihood_classify_dataset(
@@ -352,7 +354,7 @@ def evaluate_likelihood_continuation_baseline(
     prompt_config: ContinuationPrompt,
     dataset_name: str,
     max_samples: int | None = None,
-    batch_size: int = BATCH_SIZE,
+    batch_size: int = global_settings.BATCH_SIZE,
     use_test_set: bool = False,
 ) -> BaselineResults:
     if use_test_set:

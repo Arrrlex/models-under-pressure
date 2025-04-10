@@ -11,11 +11,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from models_under_pressure.config import (
     DEFAULT_GPU_MODEL,
-    DEFAULT_MODEL,
     DEFAULT_OTHER_MODEL,
-    DEVICE,
     EVALS_DIR,
     OUTPUT_DIR,
+    global_settings,
 )
 from models_under_pressure.eval_datasets.label_dataset import label_dataset
 from models_under_pressure.interfaces.dataset import (
@@ -110,7 +109,7 @@ def process_examples(
                 },
                 {"role": "user", "content": model_response},
             ],
-            model=DEFAULT_MODEL,
+            model=global_settings.DEFAULT_MODEL,
         )
 
         input_ = """{{"role":"system", "content":"{scenario}"}},
@@ -225,7 +224,9 @@ def label_deception_dataset() -> LabelledDataset:
 
 
 def main():
-    model_name = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    model_name = (
+        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name, token=os.getenv("HUGGINGFACE_TOKEN")
