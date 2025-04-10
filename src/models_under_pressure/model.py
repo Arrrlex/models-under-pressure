@@ -12,7 +12,8 @@ while working with potentially very large language models.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, Self, Sequence, Type
+import random
+from typing import Any, Callable, Iterator, Self, Sequence, Type
 from abc import ABC, abstractmethod
 
 import torch
@@ -25,10 +26,9 @@ from models_under_pressure.interfaces.dataset import (
     Input,
     to_dialogue,
 )
-from models_under_pressure.utils import batched_range, hf_login
+from models_under_pressure.utils import hf_login, batched_range
 from models_under_pressure.interfaces.activations import Activation
 from jaxtyping import Float
-import random
 
 
 # type: ignore
@@ -355,39 +355,20 @@ class LLMModel:
             dtype=torch.float16,
         )
 
-        # Sort inputs by length and keep track of original indices
-        seq_lengths = (inputs["input_ids"] != self.tokenizer.pad_token_id).sum(dim=1)  # type: ignore
-        sorted_lengths, sorted_indices = torch.sort(seq_lengths)
-        sorted_inputs = {k: v[sorted_indices] for k, v in inputs.items()}
-
-        batched_ranges = batched_range(n_samples, batch_size)
-        # Shuffle batch ranges to improve progress bar accuracy
-        random.shuffle(batched_ranges)
-
         with HookedModel(self.model, layers) as hooked_model:
+            batches = get_batches(inputs, batch_size, self.tokenizer.pad_token_id)  # type: ignore
             # Process in batches
-            for batch_start, batch_end in tqdm(
-                batched_ranges, desc="Processing batches"
-            ):
-                batch_length = sorted_lengths[batch_end - 1]
-
-                # Remove padding tokens for this batch
-                batch_inputs = {
-                    k: v[batch_start:batch_end, :batch_length]
-                    for k, v in sorted_inputs.items()
-                }
+            for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
+                batch_length = batch_inputs["input_ids"].shape[1]
 
                 # Get activations for this batch
                 batch_acts = hooked_model.get_acts(batch_inputs)
 
                 # Store activations in their original positions
-                all_activations[:, batch_start:batch_end, :batch_length] = (
-                    batch_acts.to(torch.float16).cpu()
-                )
+                all_activations[:, batch_indices, :batch_length] = batch_acts.to(
+                    torch.float16
+                ).cpu()
 
-        # Restore original order of activations using inverse permutation
-        inverse_indices = torch.argsort(sorted_indices).cpu()  # Move to CPU
-        all_activations = all_activations[:, inverse_indices]
         return all_activations, {k: v.cpu() for k, v in inputs.items()}
 
     def get_batched_activations(
@@ -425,7 +406,6 @@ class LLMModel:
             Log probabilities tensor [n_samples, seq_len-1]
         """
         torch_inputs = self.tokenize(inputs)
-
         n_samples, seq_len = torch_inputs["input_ids"].shape
 
         # Create empty tensor for all log probabilities
@@ -435,11 +415,9 @@ class LLMModel:
         )
 
         # Process in batches
-        for start_idx, end_idx in tqdm(
-            batched_range(n_samples, batch_size), desc="Computing log likelihoods..."
-        ):
-            # Get batch of tokenized inputs
-            batch_inputs = {k: v[start_idx:end_idx] for k, v in torch_inputs.items()}
+        batches = get_batches(torch_inputs, batch_size, self.tokenizer.pad_token_id)  # type: ignore
+        for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
+            batch_length = batch_inputs["input_ids"].shape[1]
 
             # Forward pass through the model
             outputs = self.model(**batch_inputs)
@@ -460,8 +438,10 @@ class LLMModel:
             # Mask out padding tokens
             token_log_probs = token_log_probs * attention_mask
 
-            # Store batch results in the pre-allocated tensor
-            all_log_probs[start_idx:end_idx] = token_log_probs.cpu()
+            # Store batch results in their original positions
+            all_log_probs[batch_indices, : batch_length - 1] = (
+                token_log_probs.float().cpu()
+            )
 
         return all_log_probs
 
@@ -517,8 +497,25 @@ class LLMModel:
             out_tokens, skip_special_tokens=skip_special_tokens
         )
 
-    def get_optimal_batch_size(self, seq_len: int) -> int:
-        base_batch_size = self.batch_size
-        max_seq_len = self.tokenize_kwargs["max_length"]
-        # Scale batch size inversely with sequence length
-        return max(1, int(base_batch_size * (max_seq_len / seq_len)))
+
+def get_batches(
+    inputs: dict[str, torch.Tensor],
+    batch_size: int,
+    pad_token_id: int,
+) -> Iterator[tuple[dict[str, torch.Tensor], list[int]]]:
+    """
+    Yields batches of inputs with minimal padding, along with their original indices.
+    """
+    # Get lengths and sort indices
+    seq_lengths = (inputs["input_ids"] != pad_token_id).sum(dim=1)
+    sorted_indices = torch.sort(seq_lengths)[1].tolist()
+
+    # Get batch ranges
+    batch_ranges = batched_range(len(sorted_indices), batch_size)
+    random.shuffle(batch_ranges)
+
+    for start, end in batch_ranges:
+        batch_indices = sorted_indices[start:end]
+        batch_length = max(seq_lengths[idx] for idx in batch_indices)  # type: ignore
+        batch_inputs = {k: v[batch_indices, :batch_length] for k, v in inputs.items()}
+        yield batch_inputs, batch_indices
