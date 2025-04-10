@@ -6,7 +6,7 @@ import random
 import numpy as np
 from tqdm import tqdm
 
-from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -34,14 +34,11 @@ def load_enriched_dataset(
     layer: int,
     max_samples: int | None = None,
 ) -> LabelledDataset:
-    dataset = LabelledDataset.load_from(path)
-
-    activations_spec = ActivationsSpec(
-        model_name=model_name,
+    dataset = ActivationStore().load_enriched_dataset(
         dataset_path=path,
+        model_name=model_name,
         layer=layer,
     )
-    dataset = ActivationStore().enrich(dataset, activations_spec)
 
     if max_samples and len(dataset) > max_samples:
         high_stakes = [

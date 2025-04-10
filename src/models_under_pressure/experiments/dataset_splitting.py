@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
@@ -138,15 +138,14 @@ def load_train_test(
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
-    dataset = LabelledDataset.load_from(dataset_path)
-
     if model_name is not None and layer is not None:
-        spec = ActivationsSpec(
-            model_name=model_name,
+        dataset = ActivationStore().load_enriched_dataset(
             dataset_path=dataset_path,
+            model_name=model_name,
             layer=layer,
         )
-        dataset = ActivationStore().enrich(dataset, spec)
+    else:
+        dataset = LabelledDataset.load_from(dataset_path)
 
     train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
     test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")

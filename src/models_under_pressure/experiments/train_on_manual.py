@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.activation_store import ActivationStore, ActivationsSpec
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -54,16 +54,12 @@ def load_eval_datasets(
     """Load evaluation datasets."""
     eval_datasets = {}
     for name, path in EVAL_DATASETS.items():
-        dataset = LabelledDataset.load_from(path).filter(
-            lambda x: x.label != Label.AMBIGUOUS
-        )
-        activations_spec = ActivationsSpec(
-            model_name=model_name,
+        dataset = ActivationStore().load_enriched_dataset(
             dataset_path=path,
+            model_name=model_name,
             layer=layer,
         )
-        dataset = ActivationStore().enrich(dataset, activations_spec)
-
+        dataset = dataset.filter(lambda x: x.label != Label.AMBIGUOUS)
         if max_samples and len(dataset) > max_samples:
             dataset = dataset.sample(max_samples)
         eval_datasets[name] = dataset

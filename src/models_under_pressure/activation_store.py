@@ -11,7 +11,7 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 import time
 
 import torch
@@ -303,18 +303,16 @@ class ActivationStore:
         with self.get_manifest() as manifest:
             return any(row.activations == other.activations for other in manifest.rows)
 
-    def enrich(
-        self, dataset: LabelledDataset, spec: ActivationsSpec
+    def load_enriched_dataset(
+        self, dataset_path: Path, model_name: str, layer: int, **loader_kwargs: Any
     ) -> LabelledDataset:
-        """Enrich a dataset with activations.
-
-        Args:
-            dataset: The dataset to enrich
-            spec: Specification for the activations to load
-
-        Returns:
-            The enriched dataset
         """
+        Loads a dataset and enriches it with activations.
+        """
+        dataset = LabelledDataset.load_from(dataset_path, **loader_kwargs)
+        spec = ActivationsSpec(
+            model_name=model_name, dataset_path=dataset_path, layer=layer
+        )
         activations, input_ids, attn_mask = self.load(spec)
         return dataset.assign(
             activations=activations,
