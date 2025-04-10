@@ -182,7 +182,7 @@ def compare_probes(
     # }
     adamw_args = {
         "batch_size": 128,
-        "epochs": 5,
+        "epochs": 40,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "optimizer_args": {"lr": 1e-2, "weight_decay": 0.001},
         # "betas": (0.9, 0.999),  # -> Made things worse to change
@@ -244,5 +244,5 @@ if __name__ == "__main__":
     compare_probes(
         train_dataset_path=SYNTHETIC_DATASET_PATH,
         layer=11,
-        max_samples=200,  # Adjust this as needed
+        max_samples=None,  # Adjust this as needed
     )
