@@ -5,7 +5,7 @@ from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.baselines.continuation import likelihood_continuation_prompts
 from models_under_pressure.config import DATA_DIR
-from models_under_pressure.experiments.train_probes import tpr_at_fixed_fpr_score
+from models_under_pressure.utils import tpr_at_fixed_fpr
 from models_under_pressure.interfaces.results import (
     ContinuationPrompt,
     LikelihoodBaselineResults,
@@ -43,7 +43,7 @@ def print_baseline_results(results_file: Path, fpr: float = 0.2, metric: str = "
         # print(y_true, scores)
 
         if metric == "tpr":
-            score = tpr_at_fixed_fpr_score(y_true, scores, fpr=fpr)
+            score = tpr_at_fixed_fpr(y_true, scores, fpr=fpr)
         elif metric == "auroc":
             score = roc_auc_score(y_true, scores)
         else:

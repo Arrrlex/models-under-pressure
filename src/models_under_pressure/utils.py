@@ -25,6 +25,7 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
+from sklearn.metrics import roc_curve
 import torch
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
@@ -339,3 +340,21 @@ def hf_login():
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")
     huggingface_hub.login(token=HF_TOKEN)
+
+
+def tpr_at_fixed_fpr(y_true: np.ndarray, y_pred: np.ndarray, fpr: float) -> float:
+    """Calculate TPR at a fixed FPR threshold.
+
+    Args:
+        y_true: Ground truth labels
+        y_pred: Predicted probabilities
+        fpr: Target false positive rate threshold
+
+    Returns:
+        TPR value at the specified FPR threshold
+    """
+    fpr_vals, tpr_vals, thresholds = roc_curve(y_true, y_pred)
+
+    # Find the TPR value at the closest FPR to our target
+    idx = np.argmin(np.abs(fpr_vals - fpr))
+    return float(tpr_vals[idx])

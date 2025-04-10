@@ -19,8 +19,11 @@ from models_under_pressure.interfaces.results import (
     HeatmapRunResults,
 )
 from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config, print_progress
-from models_under_pressure.experiments.train_probes import tpr_at_fixed_fpr_score
+from models_under_pressure.utils import (
+    double_check_config,
+    print_progress,
+    tpr_at_fixed_fpr,
+)
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
@@ -66,7 +69,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                 labels = test_split.labels_numpy()
                 metrics = {
                     "accuracy": (pred_labels == labels).mean(),
-                    "tpr_at_1pct_fpr": tpr_at_fixed_fpr_score(
+                    "tpr_at_1pct_fpr": tpr_at_fixed_fpr(
                         y_true=labels, y_pred=pred_scores, fpr=0.01
                     ),
                     "auroc": roc_auc_score(labels, pred_scores),

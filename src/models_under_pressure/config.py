@@ -341,23 +341,3 @@ class EvalRunConfig(BaseModel):
     def coefs_filename(self) -> str:
         stem = Path(self.output_filename).stem
         return f"{stem}_coefs.json"
-
-    @property
-    def random_seed(self) -> int:
-        return 32
-
-
-@dataclass(frozen=True)
-class SafetyRunConfig:
-    layer: int
-    max_samples: int | None = None
-    variation_type: str | None = None
-    variation_value: str | None = None
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = (
-        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
-    )
-
-    @property
-    def output_filename(self) -> str:
-        return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
