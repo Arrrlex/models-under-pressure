@@ -1,7 +1,5 @@
 # Code to generate Figure 2
 import json
-from pathlib import Path
-import random
 
 import numpy as np
 from tqdm import tqdm
@@ -21,40 +19,11 @@ from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
     get_coefs,
 )
-from models_under_pressure.interfaces.dataset import Label, LabelledDataset
+from models_under_pressure.interfaces.dataset import subsample_balanced_subset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config
-
-
-def load_enriched_dataset(
-    path: Path,
-    model_name: str,
-    layer: int,
-    max_samples: int | None = None,
-) -> LabelledDataset:
-    dataset = ActivationStore().load_enriched_dataset(
-        dataset_path=path,
-        model_name=model_name,
-        layer=layer,
-    )
-
-    if max_samples and len(dataset) > max_samples:
-        high_stakes = [
-            i for i, label in enumerate(dataset.labels) if label == Label.HIGH_STAKES
-        ]
-        low_stakes = [
-            i for i, label in enumerate(dataset.labels) if label == Label.LOW_STAKES
-        ]
-
-        n_per_class = min(len(high_stakes), len(low_stakes), max_samples // 2)
-        indices = random.sample(high_stakes, n_per_class) + random.sample(
-            low_stakes, n_per_class
-        )
-        dataset = dataset[indices]
-
-    return dataset
 
 
 def run_evaluation(
@@ -89,12 +58,17 @@ def run_evaluation(
         eval_dataset_paths.items(), desc="Evaluating on eval datasets"
     ):
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
-        eval_dataset = load_enriched_dataset(
-            path=eval_dataset_path,
+        eval_dataset = ActivationStore().load_enriched_dataset(
+            dataset_path=eval_dataset_path,
             model_name=config.model_name,
             layer=config.layer,
-            max_samples=config.max_samples,
         )
+
+        if config.max_samples and len(eval_dataset) > config.max_samples:
+            eval_dataset = subsample_balanced_subset(
+                eval_dataset, n_per_class=config.max_samples // 2
+            )
+
         print(f"Evaluating probe on {eval_dataset_name} ...")
         probe_scores, dataset_results = evaluate_probe_and_save_results(
             probe=probe,

@@ -486,22 +486,25 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
         return label_percentages
 
 
-def subsample_balanced_subset(dataset: LabelledDataset) -> LabelledDataset:
+def subsample_balanced_subset(
+    dataset: LabelledDataset, n_per_class: Optional[int] = None
+) -> LabelledDataset:
     """Subsample a balanced subset of the dataset"""
-    high_stakes = dataset.filter(lambda r: r.label == Label.HIGH_STAKES)
-    low_stakes = dataset.filter(lambda r: r.label == Label.LOW_STAKES)
+    high_stakes_indices = [
+        i for i, label in enumerate(dataset.labels) if label == Label.HIGH_STAKES
+    ]
+    low_stakes_indices = [
+        i for i, label in enumerate(dataset.labels) if label == Label.LOW_STAKES
+    ]
 
-    if len(high_stakes) > len(low_stakes):
-        high_stakes_sample = list(high_stakes.sample(len(low_stakes)).to_records())
-        low_stakes_sample = list(low_stakes.to_records())
-    else:
-        high_stakes_sample = list(high_stakes.to_records())
-        low_stakes_sample = list(low_stakes.sample(len(high_stakes)).to_records())
+    n_per_class = n_per_class or min(len(high_stakes_indices), len(low_stakes_indices))
 
-    balanced_records = high_stakes_sample + low_stakes_sample
-    random.shuffle(balanced_records)
+    indices = random.sample(high_stakes_indices, n_per_class) + random.sample(
+        low_stakes_indices, n_per_class
+    )
+    random.shuffle(indices)
 
-    return LabelledDataset.from_records(balanced_records)
+    return dataset[indices]
 
 
 if __name__ == "__main__":
