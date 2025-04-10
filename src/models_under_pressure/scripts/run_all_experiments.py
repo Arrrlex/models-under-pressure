@@ -105,9 +105,7 @@ def compare_probe_to_baselines(config: CompareProbeToBaselinesConfig):
 
     # Clean up memory
     del eval_results
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    clean_up_memory()
 
     # Calculate & save the baselines
     for baseline_model in config.baseline_models:
