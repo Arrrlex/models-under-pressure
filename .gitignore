@@ -13,7 +13,7 @@ outputs/*
 images/*
 multirun/*
 
-config/*local*.yaml
+config/**/*local*.yaml
 
 data/training/*.jsonl
 data/training/*.csv
