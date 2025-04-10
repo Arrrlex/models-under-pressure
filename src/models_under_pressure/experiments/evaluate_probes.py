@@ -2,8 +2,7 @@
 from pathlib import Path
 
 import numpy as np
-from sklearn.base import accuracy_score
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 
 from models_under_pressure.activation_store import ActivationStore
@@ -190,7 +189,7 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
+        probe=config.probe,
         train_dataset=train_dataset,
     )
 

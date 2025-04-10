@@ -1,58 +1,80 @@
 # @package _global_
-model_name: llama-70b
-train_data: "prompts_25_03_25_gpt-4o.jsonl"
-batch_size: 4
-cv_folds: 4
-best_layer: 31
-layers: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78]
-use_test_set: false
-max_samples: null
-experiments_to_run:
-  - cv
-  - compare_probes
-  - compare_best_probe_against_baseline
-  - generalisation_heatmap
-  - scaling_plot
+random_seed: 42
 
-default_hyperparams:
-  C: 1e-3
-  random_state: 42
-  fit_intercept: false
-
-probes:
-  - name: sklearn_mean_agg_probe
-  - name: pytorch_per_token_probe
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-      learning_rate: 1e-2
-      weight_decay: 0.1
-  - name: lda
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-  - name: difference_of_means
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-
-best_probe:
+# Common probe specifications
+default_probe: &default_probe
   name: sklearn_mean_agg_probe
+  hyperparams:
+    C: 1e-3
+    random_state: 42
+    fit_intercept: false
 
-baseline_models:
-  - llama-1b
-  - gemma-1b
-baseline_prompts:
-  - default
-  - single_letter
-  - prompt_at_end
-  - single_word
+# Common model configuration
+default_model_config: &default_model_config
+  model_name: llama-70b
+  train_data: "prompts_25_03_25_gpt-4o.jsonl"
+  best_layer: 31
+  max_samples: null
+  use_test_set: false
 
-variation_types:
-  - prompt_style
-  - tone
-  - language
-  - length
+# Common layers configuration
+layers: &layers [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78]
+
+cross_validation:
+  <<: *default_model_config
+  batch_size: 4
+  cv_folds: 4
+  layers: *layers
+  probe_spec: *default_probe
+
+compare_probes:
+  <<: *default_model_config
+  probes:
+    - *default_probe
+    - name: pytorch_per_token_probe
+      hyperparams:
+        batch_size: 16
+        epochs: 3
+        device: "cpu"
+        learning_rate: 1e-2
+        weight_decay: 0.1
+    - name: lda
+      hyperparams:
+        batch_size: 16
+        epochs: 3
+        device: "cpu"
+    - name: difference_of_means
+      hyperparams:
+        batch_size: 16
+        epochs: 3
+        device: "cpu"
+
+compare_probe_to_baselines:
+  <<: *default_model_config
+  best_probe: *default_probe
+  baseline_models:
+    - llama-1b
+    - gemma-1b
+  baseline_prompts:
+    - default
+    - single_letter
+    - prompt_at_end
+    - single_word
+
+generate_generalisation_heatmap:
+  <<: *default_model_config
+  probe_spec: *default_probe
+  variation_types:
+    - prompt_style
+    - tone
+    - language
+    - length
+
+scaling_plot:
+  scaling_models:
+    - llama-1b
+    - gemma-1b
+  scaling_layers:
+    - 6
+    - 6
+  probe_spec: *default_probe

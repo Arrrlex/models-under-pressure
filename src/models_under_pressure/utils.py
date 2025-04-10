@@ -7,7 +7,6 @@ import string
 import time
 from contextlib import contextmanager
 from datetime import timedelta
-from pprint import pformat
 from typing import (
     Any,
     Awaitable,
@@ -25,6 +24,7 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
+from pydantic import BaseModel
 from sklearn.metrics import roc_curve
 import torch
 from dotenv import load_dotenv
@@ -32,6 +32,7 @@ from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+from pprint import pformat
 
 load_dotenv()
 
@@ -293,12 +294,12 @@ def generate_short_id(length: int = 8) -> str:
 
 
 def pretty_format_config(config: Any) -> str:
-    if isinstance(config, list):
+    if isinstance(config, BaseModel):
+        return config.model_dump_json(indent=2)
+    elif isinstance(config, list):
         return "\n--\n".join([pretty_format_config(item) for item in config])
     else:
-        return "\n".join(
-            [f"  {key}: {pformat(value)}" for key, value in config.__dict__.items()]
-        )
+        return pformat(config)
 
 
 def double_check_config(config: Any) -> None:

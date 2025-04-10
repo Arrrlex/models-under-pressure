@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
@@ -134,74 +134,6 @@ OTHER_DATASETS = {
 }
 
 
-class ScalingPlotConfig(BaseModel):
-    scaling_models: list[str]
-    scaling_layers: list[int]
-    probe_spec: ProbeSpec
-
-
-class RunAllExperimentsConfig(BaseModel):
-    model_name: str
-    baseline_models: list[str]
-    baseline_prompts: list[str]
-    train_data: Path
-    batch_size: int
-    cv_folds: int
-    best_layer: int
-    layers: list[int]
-    max_samples: int | None
-    experiments_to_run: list[str]
-    default_hyperparams: dict[str, Any] | None = None
-    probes: list[ProbeSpec]
-    best_probe: ProbeSpec
-    variation_types: list[str]
-    use_test_set: bool
-    scaling_plot: ScalingPlotConfig
-    default_hyperparams: dict[str, Any] | None = None
-    random_seed: int = 42
-
-    @field_validator("train_data", mode="after")
-    @classmethod
-    def validate_train_data(cls, v: Path, info: ValidationInfo) -> Path:
-        return TRAIN_DIR / v
-
-    @field_validator("model_name", mode="after")
-    @classmethod
-    def validate_model_name(cls, v: str, info: ValidationInfo) -> str:
-        return LOCAL_MODELS.get(v, v)
-
-    @field_validator("baseline_models", mode="after")
-    @classmethod
-    def validate_baseline_models(cls, v: list[str], info: ValidationInfo) -> list[str]:
-        return [LOCAL_MODELS.get(model, model) for model in v]
-
-    @field_validator("probes", mode="after")
-    @classmethod
-    def validate_probes(
-        cls, v: list[ProbeSpec], info: ValidationInfo
-    ) -> list[ProbeSpec]:
-        default_hyperparams = info.data.get("default_hyperparams", {})
-        if default_hyperparams is None:
-            return v
-
-        return [
-            ProbeSpec(
-                name=probe.name,
-                hyperparams=probe.hyperparams or default_hyperparams,
-            )
-            for probe in v
-        ]
-
-    @field_validator("best_probe", mode="after")
-    @classmethod
-    def validate_best_probe(cls, v: ProbeSpec, info: ValidationInfo) -> ProbeSpec:
-        default_hyperparams = info.data.get("default_hyperparams", {})
-        if default_hyperparams is None:
-            return v
-
-        return ProbeSpec(name=v.name, hyperparams=v.hyperparams or default_hyperparams)
-
-
 @dataclass(frozen=True)
 class RunConfig:
     """
@@ -277,15 +209,30 @@ DEFAULT_GPU_MODEL = "meta-llama/Llama-3.1-70B-Instruct"
 DEFAULT_OTHER_MODEL = "meta-llama/Llama-3.2-1B-Instruct"
 
 
+def val_train_data(cls, v: Path, info: ValidationInfo) -> Path:
+    return TRAIN_DIR / v
+
+
+def val_model(cls, v: str, info: ValidationInfo) -> str:
+    return LOCAL_MODELS.get(v, v)
+
+
+def val_models(cls, v: list[str], info: ValidationInfo) -> list[str]:
+    return [LOCAL_MODELS.get(model, model) for model in v]
+
+
 class HeatmapRunConfig(BaseModel):
     layer: int
     model_name: str
     dataset_path: Path
     max_samples: int | None
     variation_types: list[str]
-    probe_spec: ProbeSpec
+    probe: ProbeSpec
     id: str = Field(default_factory=generate_short_id)
     timestamp: datetime = Field(default_factory=datetime.now)
+
+    _val_model = field_validator("model_name", mode="after")(val_model)
+    _val_train_data = field_validator("dataset_path", mode="after")(val_train_data)
 
     @property
     def output_path(self) -> Path:
@@ -301,11 +248,14 @@ class ChooseLayerConfig(BaseModel):
     dataset_path: Path
     cv_folds: int
     batch_size: int
-    probe_spec: ProbeSpec
+    probe: ProbeSpec
     max_samples: int | None = None
     layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
     layer_batch_size: int = 4
+
+    _val_model = field_validator("model_name", mode="after")(val_model)
+    _val_train_data = field_validator("dataset_path", mode="after")(val_train_data)
 
     @property
     def output_path(self) -> Path:
@@ -319,7 +269,7 @@ class ChooseLayerConfig(BaseModel):
 class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
-    probe_spec: ProbeSpec
+    probe: ProbeSpec
     use_test_set: bool = False
     hyper_params: dict[str, Any] | None = None
     max_samples: int | None = None
@@ -329,6 +279,9 @@ class EvalRunConfig(BaseModel):
     model_name: str = (
         DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
     )
+
+    _val_model = field_validator("model_name", mode="after")(val_model)
+    _val_train_data = field_validator("dataset_path", mode="after")(val_train_data)
 
     @property
     def output_filename(self) -> str:
@@ -341,3 +294,51 @@ class EvalRunConfig(BaseModel):
     def coefs_filename(self) -> str:
         stem = Path(self.output_filename).stem
         return f"{stem}_coefs.json"
+
+
+class CompareProbesConfig(BaseModel):
+    model_name: str
+    dataset_path: Path
+    layer: int
+    max_samples: int | None
+    use_test_set: bool
+    probes: list[ProbeSpec]
+
+    _val_model = field_validator("model_name", mode="after")(val_model)
+    _val_dataset_path = field_validator("dataset_path", mode="after")(val_train_data)
+
+
+class CompareProbeToBaselinesConfig(BaseModel):
+    model_name: str
+    dataset_path: Path
+    layer: int
+    max_samples: int | None
+    use_test_set: bool
+    probe: ProbeSpec
+    baseline_models: list[str]
+    baseline_prompts: list[str]
+    batch_size: int = 4
+
+    _val_model = field_validator("model_name", mode="after")(val_model)
+    _val_dataset_path = field_validator("dataset_path", mode="after")(val_train_data)
+
+
+class ScalingPlotConfig(BaseModel):
+    models: list[str]
+    layers: list[int]
+    probe: ProbeSpec
+    dataset_path: Path
+    use_test_set: bool
+
+    _val_models = field_validator("models", mode="after")(val_models)
+    _val_dataset_path = field_validator("dataset_path", mode="after")(val_train_data)
+
+
+class RunAllExperimentsConfig(BaseModel):
+    random_seed: int = 42
+
+    cross_validation: Optional[ChooseLayerConfig] = None
+    compare_probes: Optional[CompareProbesConfig] = None
+    compare_probe_to_baselines: Optional[CompareProbeToBaselinesConfig] = None
+    generate_generalisation_heatmap: Optional[HeatmapRunConfig] = None
+    scaling_plot: Optional[ScalingPlotConfig] = None

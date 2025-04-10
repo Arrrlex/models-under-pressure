@@ -1,68 +1,91 @@
 # @package _global_
-model_name: "llama-1b"
-train_data: "prompts_25_03_25_gpt-4o.jsonl"
-batch_size: 4
-cv_folds: 5
-best_layer: 5
-layers: [5, 6]
-max_samples: 50
-use_test_set: false
-experiments_to_run:
-  - cv
-  - compare_probes
-  - compare_best_probe_against_baseline
-  - generalisation_heatmap
-  - scaling_plot
+random_seed: 42
 
-default_hyperparams:
-  C: 1e-3
-  random_state: 42
-  fit_intercept: false
-
-probes:
-  - name: sklearn_mean_agg_probe
-  - name: pytorch_per_token_probe
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-      learning_rate: 1e-2
-      weight_decay: 0.1
-  - name: lda
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-  - name: difference_of_means
-    hyperparams:
-      batch_size: 16
-      epochs: 3
-      device: "cpu"
-
-best_probe:
+# Common probe specifications
+default_probe: &default_probe
   name: sklearn_mean_agg_probe
+  hyperparams:
+    C: 1e-3
+    random_state: 42
+    fit_intercept: false
 
-baseline_models:
-  - llama-1b
-  - gemma-1b
 
-baseline_prompts:
-  - default
+# Common model configuration
+default_model_config: &default_model_config
+  model_name: "llama-1b"
+  train_data: "prompts_25_03_25_gpt-4o.jsonl"
+  dataset_path: "prompts_25_03_25_gpt-4o.jsonl"
+  layer: 5
+  max_samples: 50
+  use_test_set: false
 
-variation_types:
-  - prompt_style
-  - tone
-  - language
-  - length
+# Common probe configurations
+pytorch_probe: &pytorch_probe
+  name: pytorch_per_token_probe
+  hyperparams:
+    batch_size: 16
+    epochs: 3
+    device: "cpu"
+    learning_rate: 1e-2
+    weight_decay: 0.1
 
-scaling_plot:
-  scaling_models:
+lda_probe: &lda_probe
+  name: lda
+  hyperparams:
+    batch_size: 16
+    epochs: 3
+    device: "cpu"
+    learning_rate: 1e-2
+    weight_decay: 0.1
+
+difference_of_means_probe: &difference_of_means_probe
+  name: difference_of_means
+  hyperparams:
+    batch_size: 16
+    epochs: 3
+    device: "cpu"
+    learning_rate: 1e-2
+    weight_decay: 0.1
+
+cross_validation:
+  <<: *default_model_config
+  batch_size: 4
+  cv_folds: 5
+  layers: [5, 6]
+  probe: *default_probe
+
+compare_probes:
+  <<: *default_model_config
+  probes:
+    - *default_probe
+    - *pytorch_probe
+    - *lda_probe
+    - *difference_of_means_probe
+
+compare_probe_to_baselines:
+  <<: *default_model_config
+  probe: *default_probe
+  baseline_models:
     - llama-1b
     - gemma-1b
+  baseline_prompts:
+    - default
 
-  scaling_layers:
+generate_generalisation_heatmap:
+  <<: *default_model_config
+  probe: *default_probe
+  variation_types:
+    - prompt_style
+    - tone
+    - language
+    - length
+
+scaling_plot:
+  dataset_path: "prompts_25_03_25_gpt-4o.jsonl"
+  use_test_set: false
+  models:
+    - llama-1b
+    - gemma-1b
+  layers:
     - 6
-    - 16
-
-  probe_spec:
-    name: "sklearn_mean_agg_probe"
+  probe: *default_probe

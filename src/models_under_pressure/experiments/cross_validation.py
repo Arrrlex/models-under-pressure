@@ -168,7 +168,7 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
             layer_results = get_cross_validation_accuracies(
                 dataset=dataset,
                 cv_splits=cv_splits,
-                probe_spec=config.probe_spec,
+                probe_spec=config.probe,
             )
 
             results.add_layer_results(layer, layer_results)
