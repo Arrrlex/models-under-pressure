@@ -74,6 +74,7 @@ EVAL_DATASETS_RAW = {
     "toolace": EVALS_DIR / "toolace_samples.csv",
     "mt": EVALS_DIR / "mt_samples.csv",
     "mts": EVALS_DIR / "mts_samples.csv",
+    "mask": EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
 EVAL_DATASETS_BALANCED = {
@@ -82,6 +83,7 @@ EVAL_DATASETS_BALANCED = {
     "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
     "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
+    "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 
 TEST_DATASETS_RAW = {
@@ -92,6 +94,7 @@ TEST_DATASETS_RAW = {
     "mts": TEST_EVALS_DIR / "mts_samples.csv",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
+    "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
 TEST_DATASETS_BALANCED = {
@@ -102,6 +105,7 @@ TEST_DATASETS_BALANCED = {
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
+    "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
@@ -131,6 +135,8 @@ OTHER_DATASETS = {
     "redteaming_hi": TEST_EVALS_DIR / "language/hindi_aya_redteaming.jsonl",
     "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
     "deception_data": DATA_DIR / "evals/deception_data.yaml",
+    "mask_dev": EVALS_DIR / "mask_samples.jsonl",
+    "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
 }
 
 
