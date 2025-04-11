@@ -2,9 +2,14 @@ import random
 from datasets import load_dataset
 import numpy as np
 from models_under_pressure.eval_datasets.label_dataset import label_dataset
-from models_under_pressure.interfaces.dataset import Dataset, Record, Message
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    Record,
+    Message,
+    subsample_balanced_subset,
+)
 from models_under_pressure.utils import hf_login
-from models_under_pressure.config import DATA_DIR
+from models_under_pressure.config import EVALS_DIR, TEST_EVALS_DIR
 
 hf_login()
 
@@ -66,13 +71,17 @@ def main(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     dataset = load_mask_dataset()
-    labelled_dataset = label_dataset(dataset, model="gpt-4o")
-    labelled_dataset.filter(lambda x: x.split == "dev").save_to(
-        DATA_DIR / "evals" / "dev" / "mask_samples.jsonl"
-    )
-    labelled_dataset.filter(lambda x: x.split == "test").save_to(
-        DATA_DIR / "evals" / "test" / "mask_samples.jsonl"
-    )
+    raw = label_dataset(dataset, max_concurrent=200)
+    raw_dev = raw.filter(lambda x: x.split == "dev")
+    raw_test = raw.filter(lambda x: x.split == "test")
+    raw_dev.save_to(EVALS_DIR / "mask_samples_raw.jsonl")
+    raw_test.save_to(TEST_EVALS_DIR / "mask_samples_raw.jsonl")
+
+    balanced_dev = subsample_balanced_subset(raw_dev)
+    balanced_test = subsample_balanced_subset(raw_test)
+
+    balanced_dev.save_to(EVALS_DIR / "mask_samples_balanced.jsonl")
+    balanced_test.save_to(TEST_EVALS_DIR / "mask_samples_balanced.jsonl")
 
 
 if __name__ == "__main__":
