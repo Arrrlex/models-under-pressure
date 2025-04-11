@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase  # type: ignore
-from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
+from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dialogue,
@@ -189,8 +189,8 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
-        device: str = DEVICE,
-        batch_size: int = BATCH_SIZE,
+        device: str = global_settings.DEVICE,
+        batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
         tokenizer_kwargs: dict[str, Any] | None = None,
@@ -220,13 +220,15 @@ class LLMModel:
             "pretrained_model_name_or_path": model_name,
             "device_map": device,
             "torch_dtype": dtype,
-            "cache_dir": CACHE_DIR,
-            "max_memory": MODEL_MAX_MEMORY.get(model_name),
+            "cache_dir": global_settings.CACHE_DIR,
+            "max_memory": global_settings.MODEL_MAX_MEMORY.get(
+                global_settings.DEFAULT_MODEL
+            ),
             **(model_kwargs or {}),
         }
         tokenizer_kwargs = {
             "pretrained_model_name_or_path": model_name,
-            "cache_dir": CACHE_DIR,
+            "cache_dir": global_settings.CACHE_DIR,
             **(tokenizer_kwargs or {}),
         }
         model = AutoModelForCausalLM.from_pretrained(**model_kwargs)
@@ -391,7 +393,7 @@ class LLMModel:
     def compute_log_likelihood(
         self,
         inputs: Sequence[Input],
-        batch_size: int = BATCH_SIZE,
+        batch_size: int = global_settings.BATCH_SIZE,
     ) -> torch.Tensor:
         """
         Compute log probabilities for input sequences.

@@ -41,6 +41,7 @@ dependencies = [
     "pytorch-lightning>=2.5.1",
     "boto3>=1.37.27",
     "zstandard>=0.23.0",
+    "pydantic-settings>=2.8.1",
 ]
 
 [build-system]

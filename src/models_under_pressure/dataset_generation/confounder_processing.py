@@ -4,8 +4,8 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import (
-    DEFAULT_MODEL,
     SYNTHETIC_DATASET_PATH,
+    global_settings,
 )
 from models_under_pressure.utils import call_llm_async
 
@@ -123,7 +123,7 @@ async def neutralize_prompt_async(prompt: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model=DEFAULT_MODEL,
+            model=global_settings.DEFAULT_MODEL,
             json_schema=json_schema,
         )
 
@@ -204,7 +204,7 @@ async def manipulate_stakes_async(prompt: str, is_high_stakes: bool) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model=DEFAULT_MODEL,
+            model=global_settings.DEFAULT_MODEL,
             json_schema=json_schema,
         )
 

@@ -4,31 +4,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import torch
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
-DEFAULT_MODEL = "gpt-4o"
 
-if torch.cuda.is_available():
-    if torch.cuda.device_count() > 1:
-        DEVICE: str = "auto"
-    else:
-        DEVICE: str = "cuda"
-    BATCH_SIZE = 4
-elif torch.backends.mps.is_available():
-    DEVICE: str = "mps"
-    BATCH_SIZE = 4
-else:
-    DEVICE: str = "cpu"
-    BATCH_SIZE = 4
+class GlobalSettings(BaseSettings):
+    DEVICE: str = "auto"
+    BATCH_SIZE: int = 4
+    MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
+    CACHE_DIR: str | None = None
+    DEFAULT_MODEL: str = "gpt-4o"
+
+
+global_settings = GlobalSettings()
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
-CACHE_DIR = None  # "/scratch/ucabwjn/.cache"  # If None uses huggingface default cache
 ACTIVATIONS_DIR = DATA_DIR / "activations"
 
 LOCAL_MODELS = {
@@ -39,16 +34,6 @@ LOCAL_MODELS = {
     "gemma-1b": "google/gemma-3-1b-it",
     "gemma-12b": "google/gemma-3-12b-it",
     "gemma-27b": "google/gemma-3-27b-it",
-}
-
-MODEL_MAX_MEMORY = {
-    "meta-llama/Llama-3.2-1B-Instruct": None,
-    "meta-llama/Llama-3.2-3B-Instruct": None,
-    "meta-llama/Llama-3.1-8B-Instruct": None,
-    "meta-llama/Llama-3.3-70B-Instruct": None,
-    "google/gemma-3-1b-it": None,
-    "google/gemma-3-12b-it": None,
-    "google/gemma-3-27b-it": None,
 }
 
 # Paths to input files
@@ -245,7 +230,7 @@ class RunConfig:
     combination_variation: bool = False  # If None, all factors are used
 
     sample_seperately: bool = False
-    model: str = DEFAULT_MODEL
+    model: str = global_settings.DEFAULT_MODEL
     run_id: str = "test"
     train_frac: float = 0.8
     write_mode: str = "overwrite"
@@ -265,7 +250,7 @@ class RunConfig:
     @property
     def prompts_file(self) -> Path:
         date_str = datetime.now().strftime("%d_%m_%y")
-        return self.run_dir / f"prompts_{date_str}_{DEFAULT_MODEL}.jsonl"
+        return self.run_dir / f"prompts_{date_str}_{self.model}.jsonl"
 
     @property
     def metadata_file(self) -> Path:
@@ -341,7 +326,9 @@ class EvalRunConfig(BaseModel):
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    model_name: str = (
+        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
+    )
 
     @property
     def output_filename(self) -> str:
@@ -367,7 +354,9 @@ class SafetyRunConfig:
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = DEFAULT_GPU_MODEL if "cuda" in DEVICE else DEFAULT_OTHER_MODEL
+    model_name: str = (
+        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
+    )
 
     @property
     def output_filename(self) -> str:
