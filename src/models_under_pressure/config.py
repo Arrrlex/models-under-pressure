@@ -131,6 +131,8 @@ OTHER_DATASETS = {
     "redteaming_hi": TEST_EVALS_DIR / "language/hindi_aya_redteaming.jsonl",
     "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
     "deception_data": DATA_DIR / "evals/deception_data.yaml",
+    "mask_dev": EVALS_DIR / "mask_samples.jsonl",
+    "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
 }
 
 
