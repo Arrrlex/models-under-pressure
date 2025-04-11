@@ -64,7 +64,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
         for i in tqdm(range(len(impact_factors_combinations))):
             impact_factors_train = impact_factors_combinations[i]
             train_dataset_impact_factor = train_dataset.filter(
-                lambda x: x.other_fields["impact_factor"] in impact_factors_train
+                lambda x: x.impact_factor in impact_factors_train
             )
             train_dataset_impact_factor = train_dataset_impact_factor.sample(
                 min(config.max_samples, len(train_dataset_impact_factor))
@@ -85,7 +85,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             for j in tqdm(range(len(impact_factors_combinations))):
                 test_impact_factors = impact_factors_combinations[j]
                 test_dataset_impact_factor = train_dataset.filter(
-                    lambda x: x.other_fields["impact_factor"] in test_impact_factors
+                    lambda x: x.impact_factor in test_impact_factors
                 )
                 test_dataset_impact_factor = test_dataset_impact_factor.sample(
                     min(config.max_samples, len(test_dataset_impact_factor))

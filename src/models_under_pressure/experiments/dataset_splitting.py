@@ -82,10 +82,10 @@ def split_by_variation(
     test_splits = {}
     for variation_value in variation_values:
         train_dataset_filtered = train_dataset.filter(
-            lambda x: x.other_fields[variation_type] == variation_value
+            lambda x: x.variation_type == variation_value
         )
         test_dataset_filtered = test_dataset.filter(
-            lambda x: x.other_fields[variation_type] == variation_value
+            lambda x: x.variation_type == variation_value
         )
 
         if max_samples is not None:
@@ -147,8 +147,8 @@ def load_train_test(
     else:
         dataset = LabelledDataset.load_from(dataset_path)
 
-    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
+    train_dataset = dataset.filter(lambda x: x.split == "train")
+    test_dataset = dataset.filter(lambda x: x.split == "test")
 
     return train_dataset, test_dataset
 
@@ -166,9 +166,7 @@ def load_filtered_train_dataset(
 
     # Filter for one variation type with specific value
     train_dataset = train_dataset.filter(
-        lambda x: (
-            variation_type is None or x.other_fields[variation_type] == variation_value
-        )
+        lambda x: (variation_type is None or x.variation_type == variation_value)
     )
 
     # Subsample so this runs on the laptop
