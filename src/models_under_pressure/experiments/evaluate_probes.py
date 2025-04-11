@@ -19,7 +19,7 @@ from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
     get_coefs,
 )
-from models_under_pressure.interfaces.dataset import subsample_balanced_subset
+from models_under_pressure.interfaces.dataset import Label, subsample_balanced_subset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.probes.probes import ProbeFactory
@@ -63,6 +63,12 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
         )
+
+        # Hack: use "pressure" as labels
+        eval_dataset.other_fields["labels"] = [  # type: ignore
+            Label.HIGH_STAKES if label == "high" else Label.LOW_STAKES
+            for label in eval_dataset.other_fields["pressure"]
+        ]
 
         if config.max_samples and len(eval_dataset) > config.max_samples:
             eval_dataset = subsample_balanced_subset(

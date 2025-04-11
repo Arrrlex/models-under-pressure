@@ -6,7 +6,7 @@ import pandas as pd
 from pydantic import ValidationError
 
 from models_under_pressure.config import (
-    BASELINE_RESULTS_FILE_TEST,
+    BASELINE_RESULTS_FILE,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
 )
@@ -18,8 +18,8 @@ from models_under_pressure.interfaces.results import (
     LikelihoodBaselineResults,
 )
 
-probe_results_file = "results_best_probe_test.jsonl"
-baseline_results_file = BASELINE_RESULTS_FILE_TEST
+probe_results_file = "results_best_probe.jsonl"
+baseline_results_file = BASELINE_RESULTS_FILE
 probe_results_path = EVALUATE_PROBES_DIR / probe_results_file
 
 probe_results = []
@@ -132,10 +132,10 @@ def plot_probe_vs_baseline_metric(
         if metric == "auroc":
             metric_value = result.metrics.metrics["auroc"]
         elif metric == "tpr_at_fpr":
-            # Get the target FPR from the metrics
-            assert fpr_target == result.metrics.metrics["fpr"]
-
-            metric_value = result.metrics.metrics["tpr_at_fpr"]
+            fpr, tpr, _ = roc_curve(result.ground_truth_labels, result.output_scores)  # type: ignore
+            # Get target FPR from probe results for this dataset
+            idx = np.searchsorted(fpr, fpr_target)
+            metric_value = tpr[idx]
         else:
             raise ValueError(f"Unsupported metric: {metric}")
 
@@ -152,8 +152,6 @@ def plot_probe_vs_baseline_metric(
         elif metric == "tpr_at_fpr":
             fpr, tpr, _ = roc_curve(result.ground_truth, result.high_stakes_scores)
             # Get target FPR from probe results for this dataset
-            fpr_target = 0.01
-            # Find TPR at target FPR
             idx = np.searchsorted(fpr, fpr_target)
             metric_value = tpr[idx]
 
@@ -277,6 +275,7 @@ def plot_probe_vs_baseline_metric(
     # Create bars manually with precise control over hatches and colors
     for i, method in enumerate(methods):
         positions = x - 0.4 + (i + 0.5) * bar_width
+        print(df_pivot[method])
         _ = ax.bar(
             positions,
             df_pivot[method],
@@ -308,7 +307,7 @@ def plot_probe_vs_baseline_metric(
     )
 
     if metric == "auroc":
-        ax.set_ylim(0.5, 1.0)
+        ax.set_ylim(0.25, 1.0)
     else:
         ax.set_ylim(0.0, 1.0)
     ax.set_xlabel("Dataset")
@@ -349,16 +348,16 @@ def plot_probe_vs_baseline_metric(
     plt.show()
 
 
-# metric = "auroc"
-metric = "tpr_at_fpr"
-output_path = f"../data/plots/probe_vs_baseline_metric_test_{metric}.pdf"
-_ = plot_probe_vs_baseline_metric(
-    probe_results,
-    baseline_results,
-    output_path,
-    use_title=False,
-    metric=metric,
-)
+for metric in ["auroc", "tpr_at_fpr"]:
+    output_path = f"../data/results/plots/probe_vs_baseline_metric_{metric}.pdf"
+    _ = plot_probe_vs_baseline_metric(
+        probe_results,
+        baseline_results,
+        output_path,
+        use_title=False,
+        metric=metric,
+        fpr_target=0.1,
+    )
 
 # %%
 
