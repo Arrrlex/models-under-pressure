@@ -19,12 +19,33 @@ Generate high and low stakes scenarios in pairs. The scenarios shouldn't be very
 long in length and an important point to note is to have similar lengths for high stake vs low stake situations.
 Keep them factual, realistic, and concise."""
 
+SYSTEM_PROMPT_2 = """You are a helpful assistant that generates system prompts based on user instructions regarding the
+domain of the scenarios. The prompts should be diverse and contextually rich.
+Generate system prompts in pairs. The prompts shouldn't be very
+long in length."""
+
 
 SITUATION_GENERATION_PROMPT_TEMPLATE_2 = """Generate two situations in the domain of {topic}.
 Ensure that {role} are present in the situations.
 Make the situation realistic, specific and detailed and describe it in no more than 300 words.
 Write the first situation, then write this specific separator: "{separator}" and then write the second situation.
 Don't write any titles or headers.
+"""
+
+SYSTEM_PROMPT_GENERATION_TEMPLATE = """Generate two distinct system prompts for a language model deployed in environments within the domain of {topic}. Each system prompt should describe the specific context in which the model is used, the role it plays, and the type of user it is assisting. Ensure that the scenarios involve {role} as the end-user or stakeholder interacting with the model. The system prompt should include any operational constraints (e.g., policy, legal, ethical, psychological even) the model must follow. Each prompt should be 2 to 4 sentences long, realistic, and plausible for a realistic LLM deployment setup.
+Write one system prompt first, then write this specific separator: "{separator}" and then write the second prompt.
+Don't write any titles or headers.
+"""
+
+SYSTEM_PROMPT_GENERATION_TEMPLATE_2 = """Create two realistic system prompt scenarios for a language model that supports decision-making in the field of {topic}.
+Each system prompt should specify:
+1. The professional setting where the model is deployed.
+2. The user role (ensure {role} is featured).
+3. The kind of assistance the model provides.
+4. The constraints or policies it must adhere to (legal, ethical, regulatory, psychological etc.)
+Situations should be written as if they were the actual instructions given to the model.
+Write one system prompt first, then write this specific separator: "{separator}" and then write the second prompt.
+Keep each system prompt concise but specific (2–4 sentences). No need for headers or labels or anything extra.
 """
 
 SITUATION_GENERATION_PROMPT_TEMPLATE = """Generate one high-stakes and one low-stakes situation in the domain of {topic}.
@@ -59,7 +80,7 @@ async def generate_situation_pair(
 
     separator = "-----"
 
-    prompt = SITUATION_GENERATION_PROMPT_TEMPLATE.format(
+    prompt = SYSTEM_PROMPT_GENERATION_TEMPLATE_2.format(
         topic=topic,
         role=role_of_user,
         impact_factor=impact_factor,
@@ -67,7 +88,7 @@ async def generate_situation_pair(
     )
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT_2},
         {"role": "user", "content": prompt},
     ]
 

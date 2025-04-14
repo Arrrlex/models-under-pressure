@@ -1,15 +1,15 @@
 import asyncio
 
 import pandas as pd
+from datasets import Dataset
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import (
     SYNTHETIC_DATASET_PATH,
     global_settings,
 )
+from models_under_pressure.eval_datasets.label_dataset import label_dataset
 from models_under_pressure.utils import call_llm_async
-
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
 
 High_stakes_words_list = [
     "Urgent",
@@ -142,12 +142,19 @@ def neutralize_prompt(prompt: str) -> str:
 
 # Apply transformation
 # tqdm.pandas()
-df["neutral_prompt"] = df["prompt"].apply(neutralize_prompt)
-
-# Save to new CSV
-df.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
+df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
+dataset = Dataset.from_pandas(df)
+labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
+labelled_dataset.save_to(
+    SYNTHETIC_DATASET_PATH.with_suffix("_labelled.jsonl"), overwrite=True
 )
+
+# df["neutral_prompt"] = df["prompt"].apply(neutralize_prompt)
+
+# # Save to new CSV
+# df.to_csv(
+#     str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
+# )
 
 
 async def manipulate_stakes_async(prompt: str, is_high_stakes: bool) -> str:
@@ -223,10 +230,10 @@ df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
 df["boolean_label"] = df["scale_labels"].apply(lambda x: x == "high-stakes")
 # Example usage:
 tqdm.pandas()
-df["manipulated_prompt"] = [
-    manipulate_stakes(row["prompt"], row["boolean_label"])
-    for _, row in tqdm(df.iterrows(), total=len(df))
-]
-df.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
-)
+# df["manipulated_prompt"] = [
+#     manipulate_stakes(row["prompt"], row["boolean_label"])
+#     for _, row in tqdm(df.iterrows(), total=len(df))
+# ]
+# df.to_csv(
+#     str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
+# )

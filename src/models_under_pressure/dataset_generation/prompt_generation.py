@@ -12,23 +12,31 @@ from models_under_pressure.interfaces.variation import Variation
 from models_under_pressure.utils import async_map, call_llm_async
 
 PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style}.
+{high_stakes_description}
+Prompt 2 will be for the following situation:
+{low_stakes_description}
+{tone}
+{language}
+If you find this request to be confusing, incoherent or otherwise difficult to follow, respond with "refuse".
+These two prompts should be as similar as possible while staying true to their respective situations.
+Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
+"""
 
-Prompt 1 will be for the following situation:
+PROMPT_TEMPLATE_FROM_SYSTEM_PROMPT = """
+Below are two system instructions describing different deployment contexts of a language model. For each system prompt, generate a realistic {prompt_style} that a user might submit in that setting.
 
+For this first system prompt, generate Prompt 1 that represents a high stakes situation:
 {high_stakes_description}
 
-Prompt 2 will be for the following situation:
-
+For this second system prompt, generate Prompt 2 that represents a low stakes situation:
 {low_stakes_description}
 
 {tone}
 {language}
 
-If you find this request to be confusing, incoherent or otherwise difficult to follow, respond with "refuse".
+The two prompts you generate should be as structurally similar as possible, while being appropriate and consistent with their respective system prompts. The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the types of words used (example, "urgent" or "caution" for high stakes and "minor" or "routing for low stakes). A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
 
-These two prompts should be as similar as possible while staying true to their respective situations.
-
-Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
+Make sure that each prompt is roughly {length} words. Do not include headers or titles. If the request is incoherent or confusing, reply with "refuse".
 """
 
 extra_part = """
@@ -55,7 +63,7 @@ async def generate_prompt_pair(
         Pair of prompts or None if generation fails
     """
 
-    prompt = PROMPT_TEMPLATE.format(
+    prompt = PROMPT_TEMPLATE_FROM_SYSTEM_PROMPT.format(
         tone=variations["tone"].value,
         language=variations["language"].value,
         prompt_style=variations["prompt_style"].value,
