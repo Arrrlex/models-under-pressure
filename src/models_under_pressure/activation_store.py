@@ -19,7 +19,7 @@ import zstandard as zstd
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from models_under_pressure.config import GlobalSettings, PROJECT_ROOT
+from models_under_pressure.config import global_settings, PROJECT_ROOT
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
@@ -29,8 +29,6 @@ from models_under_pressure.r2 import (
     list_bucket_files,
     upload_file,
 )
-
-global_settings = GlobalSettings()
 
 
 class ActivationsSpec(BaseModel):
