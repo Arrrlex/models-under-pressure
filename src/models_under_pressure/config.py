@@ -10,6 +10,10 @@ from pydantic_settings import BaseSettings
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
 
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+DATA_DIR = PROJECT_ROOT / "data"
+
 
 class GlobalSettings(BaseSettings):
     DEVICE: str = "auto"
@@ -17,14 +21,11 @@ class GlobalSettings(BaseSettings):
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
     DEFAULT_MODEL: str = "gpt-4o"
+    ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
 
 
 global_settings = GlobalSettings()
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_DIR = PROJECT_ROOT / "config"
-DATA_DIR = PROJECT_ROOT / "data"
-ACTIVATIONS_DIR = DATA_DIR / "activations"
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
@@ -74,6 +75,7 @@ EVAL_DATASETS_RAW = {
     "toolace": EVALS_DIR / "toolace_samples.csv",
     "mt": EVALS_DIR / "mt_samples.csv",
     "mts": EVALS_DIR / "mts_samples.csv",
+    "mask": EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
 EVAL_DATASETS_BALANCED = {
@@ -82,6 +84,7 @@ EVAL_DATASETS_BALANCED = {
     "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
     "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
+    "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 
 TEST_DATASETS_RAW = {
@@ -92,6 +95,7 @@ TEST_DATASETS_RAW = {
     "mts": TEST_EVALS_DIR / "mts_samples.csv",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
+    "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
 TEST_DATASETS_BALANCED = {
@@ -102,6 +106,7 @@ TEST_DATASETS_BALANCED = {
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
+    "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
@@ -137,7 +142,7 @@ OTHER_DATASETS = {
     "training_08_04_25_neutralised": TRAIN_DIR / "prompt_08_04_25_neutralised.csv",
     "training_08_04_25_manipulated": TRAIN_DIR / "prompt_08_04_25_manipulated.csv",
     "training_08_04_25_mixed_labeled": TRAIN_DIR
-    / "prompt_08_04_25_mixed_labeled.jsonl",
+    / "prompt_08_04_25_mixed_labeled.jsonl"
 }
 
 
