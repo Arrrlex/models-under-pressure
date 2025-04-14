@@ -68,6 +68,8 @@ done > .env
 # Rest of setup
 mkdir -p $name
 cd $name
+# Make `git push` do the right thing
+git config --global push.default current
 # Set git config for this specific directory before cloning
 git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig"
 cat << GITCONFIG > .gitconfig
@@ -76,8 +78,6 @@ cat << GITCONFIG > .gitconfig
 [user]
     email = $git_email
     name = $git_name
-[push]
-    autoSetupRemote = true
 GITCONFIG
 
 git clone git@github.com:Arrrlex/models-under-pressure.git
