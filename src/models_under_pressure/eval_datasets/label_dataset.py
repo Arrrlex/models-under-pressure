@@ -125,7 +125,6 @@ async def label_dataset_async(
         max_concurrent: Maximum number of concurrent API calls
         labelling_method: The method to use for labeling, must be a key in labelling_functions
     """
-    breakpoint()
     # print(hasattr(dataset, "to_records"))
     if labelling_method not in labelling_functions:
         raise ValueError(

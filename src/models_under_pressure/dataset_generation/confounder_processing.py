@@ -1,14 +1,14 @@
 import asyncio
+from pathlib import Path
 
 import pandas as pd
-from datasets import Dataset
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import (
     SYNTHETIC_DATASET_PATH,
     global_settings,
 )
-from models_under_pressure.eval_datasets.label_dataset import label_dataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.utils import call_llm_async
 
 High_stakes_words_list = [
@@ -140,23 +140,6 @@ def neutralize_prompt(prompt: str) -> str:
     return asyncio.run(neutralize_prompt_async(prompt))
 
 
-# Apply transformation
-# tqdm.pandas()
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
-dataset = Dataset.from_pandas(df)
-labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
-labelled_dataset.save_to(
-    SYNTHETIC_DATASET_PATH.with_suffix("_labelled.jsonl"), overwrite=True
-)
-
-# df["neutral_prompt"] = df["prompt"].apply(neutralize_prompt)
-
-# # Save to new CSV
-# df.to_csv(
-#     str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
-# )
-
-
 async def manipulate_stakes_async(prompt: str, is_high_stakes: bool) -> str:
     """
     Manipulates the prompt by adding words that contradict its stakes level.
@@ -226,14 +209,50 @@ def manipulate_stakes(prompt: str, is_high_stakes: bool) -> str:
     return asyncio.run(manipulate_stakes_async(prompt, is_high_stakes))
 
 
+def filter_dataset(dataset: LabelledDataset) -> LabelledDataset:
+    """Filter the dataset to only include prompts that have scale labels more than 7 or less than 3 and scale label confidence is more than 7"""
+    return dataset.filter(
+        lambda x: x.other_fields["scale_labels"] is not None
+        and x.other_fields["scale_label_confidence"] > 7
+        and x.other_fields["scale_labels"] not in [4, 5, 6]
+    )
+
+
+# Apply labeling
+# tqdm.pandas()
 df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
-df["boolean_label"] = df["scale_labels"].apply(lambda x: x == "high-stakes")
-# Example usage:
-tqdm.pandas()
-# df["manipulated_prompt"] = [
-#     manipulate_stakes(row["prompt"], row["boolean_label"])
-#     for _, row in tqdm(df.iterrows(), total=len(df))
-# ]
-# df.to_csv(
-#     str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
+
+# dataset = Dataset.from_pandas(df)
+# labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
+# labelled_dataset.save_to(
+#     Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl")),
+#     overwrite=True,
 # )
+
+# apply filtering
+labelled_dataset = LabelledDataset.load_from(
+    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl"))
+)
+labelled_dataset = filter_dataset(labelled_dataset)
+labelled_dataset.save_to(
+    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_filtered.jsonl")),
+    overwrite=True,
+)
+tqdm.pandas()
+# apply neutralization
+df_labelled = labelled_dataset.to_pandas()
+df_labelled["neutral_prompt"] = df_labelled["inputs"].progress_apply(neutralize_prompt)
+df_labelled.to_csv(
+    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
+)
+
+# apply manipulation
+df["boolean_label"] = df["scale_labels"].apply(lambda x: x in [8, 9, 10])
+
+df["manipulated_prompt"] = [
+    manipulate_stakes(row["prompt"], row["boolean_label"])
+    for _, row in tqdm(df.iterrows(), total=len(df))
+]
+df.to_csv(
+    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
+)
