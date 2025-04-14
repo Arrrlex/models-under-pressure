@@ -10,6 +10,8 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.utils import call_llm_async
+from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.eval_datasets.label_dataset import label_dataset
 
 High_stakes_words_list = [
     "Urgent",
@@ -220,36 +222,35 @@ def filter_dataset(dataset: LabelledDataset) -> LabelledDataset:
 
 # Apply labeling
 # tqdm.pandas()
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
+df = pd.read_csv(SYNTHETIC_DATASET_PATH)
 
-# dataset = Dataset.from_pandas(df)
-# labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
-# labelled_dataset.save_to(
-#     Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl")),
-#     overwrite=True,
-# )
-
-# apply filtering
-labelled_dataset = LabelledDataset.load_from(
-    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl"))
-)
-labelled_dataset = filter_dataset(labelled_dataset)
+dataset = Dataset.from_pandas(df)
+labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
 labelled_dataset.save_to(
-    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_filtered.jsonl")),
+    Path(str(SYNTHETIC_DATASET_PATH).replace(".csv", "_labeled.jsonl")),
     overwrite=True,
 )
+
+# apply filtering
+# labelled_dataset = LabelledDataset.load_from(
+#     Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl"))
+# )
+# labelled_dataset = filter_dataset(labelled_dataset)
+# labelled_dataset.save_to(
+#     Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_filtered.jsonl")),
+#     overwrite=True,
+# )
 tqdm.pandas()
 # apply neutralization
 df_labelled = labelled_dataset.to_pandas()
-df_labelled["neutral_prompt"] = df_labelled["inputs"].progress_apply(neutralize_prompt)
+df_labelled["inputs"] = df_labelled["inputs"].progress_apply(neutralize_prompt)
 df_labelled.to_csv(
     str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
 )
 
 # apply manipulation
-df["boolean_label"] = df["scale_labels"].apply(lambda x: x in [8, 9, 10])
 
-df["manipulated_prompt"] = [
+df["inputs"] = [
     manipulate_stakes(row["prompt"], row["boolean_label"])
     for _, row in tqdm(df.iterrows(), total=len(df))
 ]
