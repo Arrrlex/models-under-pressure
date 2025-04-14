@@ -9,7 +9,10 @@ from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
-import os
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+DATA_DIR = PROJECT_ROOT / "data"
 
 
 class GlobalSettings(BaseSettings):
@@ -18,14 +21,11 @@ class GlobalSettings(BaseSettings):
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
     DEFAULT_MODEL: str = "gpt-4o"
+    ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
 
 
 global_settings = GlobalSettings()
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-CONFIG_DIR = PROJECT_ROOT / "config"
-DATA_DIR = PROJECT_ROOT / "data"
-ACTIVATIONS_DIR = Path(os.environ["ACTIVATIONS_DIR"])
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
