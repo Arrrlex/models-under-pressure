@@ -62,7 +62,7 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 # Training datasets
 
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
 
 # Evals files
 USE_BALANCED_DATASETS = True
