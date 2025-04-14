@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
+import os
 
 
 class GlobalSettings(BaseSettings):
@@ -24,7 +25,7 @@ global_settings = GlobalSettings()
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
-ACTIVATIONS_DIR = DATA_DIR / "activations"
+ACTIVATIONS_DIR = Path(os.environ["ACTIVATIONS_DIR"])
 
 LOCAL_MODELS = {
     "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
@@ -61,7 +62,7 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 # Training datasets
 
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl"
 
 # Evals files
 USE_BALANCED_DATASETS = True
