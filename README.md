@@ -34,3 +34,4 @@ Apr 15 versions:
 
 - ToolACE dev datasets: Based on previous dev dataset (raw version), used `modify_dataset.py` to modify the system prompt and relabel after adding system prompt
 - Anthropic dev and test datasets: Adding system prompt to each sample, otherwise no changes.
+- MT dev and test datasets: Adding system prompt to each sample, removing cases where transcription length is less than description length, and adding more info to input.

@@ -265,10 +265,100 @@ def add_system_prompt_to_dataset(
     return modified_dataset
 
 
+def modify_mt_dataset(
+    dataset: LabelledDataset,
+    system_prompt: str,
+) -> LabelledDataset:
+    """
+    Modify the MT dataset by:
+    1. Renaming the "inputs" column to "transcription"
+    2. Removing samples where length of transcription is less than length of description
+    3. Rewriting the inputs field in a specific format
+    4. Adding a system prompt to each sample
+
+    Args:
+        dataset: The input MT dataset with labels
+        system_prompt: The system prompt to add to each sample
+
+    Returns:
+        The modified dataset with preserved labels and added system prompts
+    """
+    # Convert dataset to records for processing
+    records = dataset.to_records()
+
+    # Create new inputs and other fields
+    new_inputs = []
+    new_other_fields = {}
+
+    # Initialize other fields with empty lists
+    for field_name in dataset.other_fields.keys():
+        new_other_fields[field_name] = []
+
+    # Add transcription field
+    new_other_fields["transcription"] = []
+
+    # Process each record
+    for record in records:
+        # Get the transcription and description
+        transcription = record.input
+        description = record.other_fields.get("description", "")
+
+        # Skip if transcription is shorter than description
+        if len(transcription) < len(description):
+            continue
+
+        # Format the new input
+        medical_specialty = record.other_fields.get("medical_specialty", "").strip()
+        sample_name = record.other_fields.get("sample_name", "").strip()
+
+        new_input = [
+            Message(role="system", content=system_prompt),
+            Message(
+                role="user",
+                content=f"""Medical Specialty: {medical_specialty}
+Sample Name: {sample_name}
+
+{transcription}
+---
+DESCRIPTION: {description}""",
+            ),
+        ]
+
+        new_inputs.append(new_input)
+        new_other_fields["transcription"].append(transcription)
+
+        # Copy other fields including labels
+        for field_name, field_values in record.other_fields.items():
+            new_other_fields[field_name].append(field_values)
+
+    # Create new dataset
+    modified_dataset = LabelledDataset(
+        inputs=new_inputs,
+        ids=dataset.ids[: len(new_inputs)],  # Trim IDs to match new length
+        other_fields=new_other_fields,
+    )
+
+    return modified_dataset
+
+
 if __name__ == "__main__":
     import asyncio
 
-    dataset_name = "anthropic"
+    dataset_name = "mt"
+
+    if dataset_name == "mt":
+        system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
+
+        dataset_output_paths = {
+            EVAL_DATASETS_RAW["mt"]: DATA_DIR / "temp/mt_raw.jsonl",
+            EVAL_DATASETS_BALANCED["mt"]: DATA_DIR / "temp/mt_balanced.jsonl",
+            TEST_DATASETS_RAW["mt"]: DATA_DIR / "temp/mt_test_raw.jsonl",
+            TEST_DATASETS_BALANCED["mt"]: DATA_DIR / "temp/mt_test_balanced.jsonl",
+        }
+        for dataset_path, output_path in dataset_output_paths.items():
+            dataset = LabelledDataset.load_from(dataset_path)
+            modified_dataset = modify_mt_dataset(dataset, system_prompt)
+            modified_dataset.save_to(output_path, overwrite=True)
 
     if dataset_name == "anthropic":
         system_prompt = """You are an LLM as part of a general purpose chatbot."""
@@ -309,6 +399,7 @@ if __name__ == "__main__":
         # combine_datasets(dataset, samples_path, output_path)
         # print(Dataset.load_from(samples_path).ids)
 
+    # TODO Also rewrite test dataset
     if dataset_name == "toolace":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
 
