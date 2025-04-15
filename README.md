@@ -30,8 +30,8 @@ After that, run the script `eval_dataset_split_check.py` to ensure that there is
 
 ### Notes on Dataset Versions
 
-Apr 15 versions:
+Apr 15 versions (all based on calling parts of `modify_dataset.py`):
 
-- ToolACE dev datasets: Based on previous dev dataset (raw version), used `modify_dataset.py` to modify the system prompt and relabel after adding system prompt
+- ToolACE dev and test datasets: Based on previous dev dataset (raw version), modify the system prompt and relabel after adding system prompt.
 - Anthropic dev and test datasets: Adding system prompt to each sample, otherwise no changes.
 - MT dev and test datasets: Adding system prompt to each sample, removing cases where transcription length is less than description length, and adding more info to input.
