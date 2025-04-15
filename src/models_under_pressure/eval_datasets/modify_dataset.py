@@ -70,8 +70,15 @@ def combine_datasets(
 
 
 if __name__ == "__main__":
+    # dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["mts"])
+    # samples_path = DATA_DIR / "temp/mts_test_updated.jsonl"
+    # output_path = DATA_DIR / "temp/mts_test_combined.jsonl"
     dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])
     samples_path = DATA_DIR / "temp/mts_updated.jsonl"
     output_path = DATA_DIR / "temp/mts_combined.jsonl"
 
-    combine_datasets(dataset, samples_path, output_path)
+    # combine_datasets(dataset, samples_path, output_path)
+    # print(Dataset.load_from(samples_path).ids)
+
+    # dataset = LabelledDataset.load_from(output_path)
+    # print(dataset.other_fields["labels"])

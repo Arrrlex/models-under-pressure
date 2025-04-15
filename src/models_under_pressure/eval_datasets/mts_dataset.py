@@ -22,7 +22,7 @@ Below you find additional context about the current conversation.
 {context}"""
 
 
-def parse_conversation(row: pd.Series) -> list[Message] | None:
+def parse_conversation(row: pd.Series, strict: bool = True) -> list[Message] | None:
     """Parse a conversation from a section text and dialogue text.
     Returns None if parsing fails."""
 
@@ -42,6 +42,11 @@ def parse_conversation(row: pd.Series) -> list[Message] | None:
         for match in matches:
             role = match.group(1)
             content = match.group(2).strip()
+
+            if strict and role not in ["Doctor", "Patient"]:
+                raise ValueError(
+                    "Only roles 'Doctor' and 'Patient' are supported in strict mode!"
+                )
 
             if role.startswith("Doctor"):
                 new_role = "assistant"
@@ -104,6 +109,8 @@ def load_mts_raw_test_dataset() -> Dataset:
 
     df = pd.concat([df1, df2])
 
+    # TODO They use the same IDs for the two files but the files have different items,
+    # so create the IDs differently
     df = df.rename(columns={"ID": "original_id"})
     df["ids"] = "test_" + df["original_id"].astype(str)
 
