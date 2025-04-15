@@ -235,43 +235,33 @@ class BERTClassifier:
         return float(np.mean(scores))
 
 
+class CounfounderAnalysisResults(BaseModel):
+    """Results from analysing confounders in a dataset."""
+
+    cv_accuracy: float
+    high_stakes_words: Sequence[str]
+    low_stakes_words: Sequence[str]
+
+
 def analyse_confounders(
-    dataset: LabelledDataset,
-    eval_datasets: Dict[str, LabelledDataset],
-    classifier_type: str = "bow",  # or "bert"
-) -> ClassificationResults:
+    dataset: LabelledDataset, classifier_type: type = BagOfWordsClassifier
+) -> CounfounderAnalysisResults:
     """
     Analyse the confounders in the dataset using either a bag-of-words or BERT classifier.
-    Returns classification results including cross-validation accuracy and eval dataset accuracies.
+    Returns classification results including cross-validation accuracy for training and eval datasets.
     """
-    # Initialize classifier
-    if classifier_type == "bow":
-        classifier: TextClassifier = BagOfWordsClassifier()
-    elif classifier_type == "bert":
-        classifier = BERTClassifier()
-    else:
-        raise ValueError(f"Unknown classifier type: {classifier_type}")
+    confounder_score = classifier_type().get_cv_score(dataset)
 
-    # Get cross-validation score
-    cv_accuracy = classifier.get_cv_score(dataset)
+    classifier = classifier_type()
 
-    # Fit on full dataset to get most predictive words
     classifier.fit(dataset)
 
-    # Get most predictive words
     high_stakes_words, low_stakes_words = classifier.get_most_predictive_words()
 
-    # Evaluate on additional datasets
-    eval_accuracies = {
-        name: classifier.score(eval_dataset)
-        for name, eval_dataset in eval_datasets.items()
-    }
-
-    return ClassificationResults(
-        cv_accuracy=cv_accuracy,
+    return CounfounderAnalysisResults(
+        cv_accuracy=confounder_score,
         high_stakes_words=high_stakes_words,
         low_stakes_words=low_stakes_words,
-        eval_accuracies=eval_accuracies,
     )
 
 
@@ -319,27 +309,31 @@ def filter_dataset(
 
 if __name__ == "__main__":
     # Load datasets
-    dataset = LabelledDataset.load_from(SYNTHETIC_DATASET_PATH)
-    eval_datasets = {
-        name: LabelledDataset.load_from(path) for name, path in EVAL_DATASETS.items()
+    datasets = {
+        "training": LabelledDataset.load_from(SYNTHETIC_DATASET_PATH),
+        **{
+            path.stem: LabelledDataset.load_from(path)
+            for path in EVAL_DATASETS.values()
+        },
     }
 
-    # Run analysis on original dataset
-    print("Original Dataset Results:")
-    bow_results = analyse_confounders(dataset, eval_datasets, classifier_type="bow")
-    print(f"Cross-validation accuracy: {bow_results.cv_accuracy:.3f}")
-    print("\nEvaluation accuracies:")
-    for name, acc in bow_results.eval_accuracies.items():
-        print(f"  {name}: {acc:.3f}")
-    print("\nMost predictive words for high stakes:")
-    print(bow_results.high_stakes_words)
-    print("\nMost predictive words for low stakes:")
-    print(bow_results.low_stakes_words)
+    for name, dataset in datasets.items():
+        results = analyse_confounders(dataset, classifier_type=BagOfWordsClassifier)
+        lines = [
+            f"Analyzing {name} dataset",
+            f"Cross-validation accuracy: {results.cv_accuracy:.3f}",
+            "Most predictive words for high stakes:",
+            f"{results.high_stakes_words}",
+            "Most predictive words for low stakes:",
+            f"{results.low_stakes_words}",
+        ]
+        print("\n  ".join(lines))
+        print()
 
-    # Filter dataset and run analysis again
-    print("\nFiltered Dataset Results:")
-    filtered_dataset = filter_dataset(dataset, filter_percentile=0.7)
-    filtered_results = analyse_confounders(
-        filtered_dataset, eval_datasets, classifier_type="bow"
-    )
-    print(f"Cross-validation accuracy: {filtered_results.cv_accuracy:.3f}")
+    # # Filter dataset and run analysis again
+    # print("\nFiltered Dataset Results:")
+    # filtered_dataset = filter_dataset(dataset, filter_percentile=0.7)
+    # filtered_results = analyse_confounders(
+    #     filtered_dataset, eval_datasets, classifier_type=BagOfWordsClassifier
+    # )
+    # print(f"Cross-validation accuracy: {filtered_results.cv_accuracy:.3f}")
