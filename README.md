@@ -26,3 +26,8 @@ That will create the corresponding dataset files (raw and balanced) in the test 
 
 After that, run the script `eval_dataset_split_check.py` to ensure that there is no overlap between dev and test datasets.
 (Note that MT does have duplicates, so for that dataset you can expect some overlap by default.)
+
+
+### Notes on Dataset Versions
+
+- ToolACE Apr 15 dev datasets: Based on previous dev dataset (raw version), used `modify_dataset.py` to modify the system prompt and relabel after adding system prompt
