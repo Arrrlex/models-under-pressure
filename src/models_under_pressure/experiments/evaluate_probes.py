@@ -19,9 +19,13 @@ from models_under_pressure.experiments.train_probes import (
     evaluate_probe_and_save_results,
     get_coefs,
 )
-from models_under_pressure.interfaces.dataset import subsample_balanced_subset
+from models_under_pressure.interfaces.dataset import (
+    LabelledDataset,
+    subsample_balanced_subset,
+)
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.utils import double_check_config
 
@@ -54,20 +58,39 @@ def run_evaluation(
 
     results_list = []
 
+    if config.compute_activations:
+        model = LLMModel.load(config.model_name)
+
     for eval_dataset_name, eval_dataset_path in tqdm(
         eval_dataset_paths.items(), desc="Evaluating on eval datasets"
     ):
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
-        eval_dataset = ActivationStore().load_enriched_dataset(
-            dataset_path=eval_dataset_path,
-            model_name=config.model_name,
-            layer=config.layer,
-        )
-
-        if config.max_samples and len(eval_dataset) > config.max_samples:
-            eval_dataset = subsample_balanced_subset(
-                eval_dataset, n_per_class=config.max_samples // 2
+        if config.compute_activations:
+            eval_dataset = LabelledDataset.load_from(eval_dataset_path)
+            if config.max_samples and len(eval_dataset) > config.max_samples:
+                eval_dataset = subsample_balanced_subset(
+                    eval_dataset, n_per_class=config.max_samples // 2
+                )
+            print(f"Computing activations for {eval_dataset_name} ...")
+            activations = model.get_batched_activations(
+                eval_dataset, layer=config.layer
             )
+            eval_dataset = eval_dataset.assign(
+                activations=activations._activations,
+                attention_mask=activations._attention_mask,
+                input_ids=activations._input_ids,
+            )
+        else:
+            eval_dataset = ActivationStore().load_enriched_dataset(
+                dataset_path=eval_dataset_path,
+                model_name=config.model_name,
+                layer=config.layer,
+            )
+
+            if config.max_samples and len(eval_dataset) > config.max_samples:
+                eval_dataset = subsample_balanced_subset(
+                    eval_dataset, n_per_class=config.max_samples // 2
+                )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
         probe_scores, dataset_results = evaluate_probe_and_save_results(
@@ -117,12 +140,13 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         layer=11,
-        max_samples=None,
+        max_samples=20,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_per_token_probe",
             hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
         ),
+        compute_activations=True,
     )
 
     double_check_config(config)
