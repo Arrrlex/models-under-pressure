@@ -1,7 +1,13 @@
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional
 
-from models_under_pressure.config import DATA_DIR, EVAL_DATASETS_RAW, TEST_DATASETS_RAW
+from models_under_pressure.config import (
+    DATA_DIR,
+    EVAL_DATASETS_BALANCED,
+    EVAL_DATASETS_RAW,
+    TEST_DATASETS_BALANCED,
+    TEST_DATASETS_RAW,
+)
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
     create_eval_dataset,
@@ -262,24 +268,26 @@ def add_system_prompt_to_dataset(
 if __name__ == "__main__":
     import asyncio
 
-    dataset_name = "toolace"
+    dataset_name = "anthropic"
 
     if dataset_name == "anthropic":
         system_prompt = """You are an LLM as part of a general purpose chatbot."""
 
-        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["anthropic"])
-        output_path = DATA_DIR / "temp/anthropic_modified.jsonl"
-        modified_dataset = add_system_prompt_to_dataset(
-            dataset, system_prompt, output_path
-        )
-        modified_dataset.save_to(output_path, overwrite=True)
-
-        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["anthropic"])
-        output_path = DATA_DIR / "temp/anthropic_test_modified.jsonl"
-        modified_dataset = add_system_prompt_to_dataset(
-            dataset, system_prompt, output_path
-        )
-        modified_dataset.save_to(output_path, overwrite=True)
+        dataset_output_paths = {
+            EVAL_DATASETS_RAW["anthropic"]: DATA_DIR / "temp/anthropic_modified.jsonl",
+            EVAL_DATASETS_BALANCED["anthropic"]: DATA_DIR
+            / "temp/anthropic_balanced_modified.jsonl",
+            TEST_DATASETS_RAW["anthropic"]: DATA_DIR
+            / "temp/anthropic_test_modified.jsonl",
+            TEST_DATASETS_BALANCED["anthropic"]: DATA_DIR
+            / "temp/anthropic_test_balanced_modified.jsonl",
+        }
+        for dataset_path, output_path in dataset_output_paths.items():
+            dataset = LabelledDataset.load_from(dataset_path)
+            modified_dataset = add_system_prompt_to_dataset(
+                dataset, system_prompt, output_path
+            )
+            modified_dataset.save_to(output_path, overwrite=True)
 
     if dataset_name == "mts":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])

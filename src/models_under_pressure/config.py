@@ -70,7 +70,7 @@ TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
 EVAL_DATASETS_RAW = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples.csv",
+    "anthropic": EVALS_DIR / "anthropic_raw_apr_15.jsonl",
     "toolace": EVALS_DIR / "toolace_raw_apr_15.jsonl",
     "mt": EVALS_DIR / "mt_samples.csv",
     "mts": EVALS_DIR / "mts_samples.csv",
@@ -79,7 +79,7 @@ EVAL_DATASETS_RAW = {
 
 EVAL_DATASETS_BALANCED = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_balanced_apr_15.jsonl",
     "toolace": EVALS_DIR / "toolace_balanced_apr_15.jsonl",
     "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
     "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
@@ -88,7 +88,7 @@ EVAL_DATASETS_BALANCED = {
 
 TEST_DATASETS_RAW = {
     "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_samples.csv",
+    "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_15.jsonl",
     "toolace": TEST_EVALS_DIR / "toolace_samples.csv",
     "mt": TEST_EVALS_DIR / "mt_samples_clean.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples.csv",
@@ -99,7 +99,7 @@ TEST_DATASETS_RAW = {
 
 TEST_DATASETS_BALANCED = {
     "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_samples_balanced.jsonl",
+    "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_15.jsonl",
     "toolace": TEST_EVALS_DIR / "toolace_samples_balanced.jsonl",
     "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
     "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
