@@ -45,7 +45,7 @@ async def modify_single_system_prompt(
     modification_messages = [
         {
             "role": "system",
-            "content": "You are an expert in writing system prompts for AI assistants. Your task is to modify the given system prompt to include deployment context while maintaining all tool information and functionality. Keep the system prompt as concise as possible. Consider the full conversation context when adding deployment context.",
+            "content": "You are an expert in writing system prompts for AI assistants. Your task is to modify the given system prompt to include deployment context while maintaining all tool information and functionality. Keep the system prompt as concise as possible. Consider the full conversation context when adding deployment context and return the modified system prompt in JSON format using the keys 'role' and 'content'.",
         },
         {
             "role": "user",
@@ -73,8 +73,8 @@ async def modify_system_prompts(
     dataset: LabelledDataset,
     output_path: Path,
     model: str = "gpt-4o",
-    max_concurrent: int = 5,
-) -> LabelledDataset:
+    max_concurrent: int = 100,
+) -> Dataset:
     """
     Modify system prompts in the dataset to include deployment context while maintaining tool information.
 
@@ -100,14 +100,16 @@ async def modify_system_prompts(
 
     # Process results
     modified_inputs = []
-    modified_other_fields = {k: [] for k in dataset.other_fields.keys()}
+    modified_other_fields = {
+        k: [] for k in dataset.other_fields.keys() if "label" not in k
+    }
     original_prompts = []
     modified_prompts = []
 
     for record, prompt_mod in zip(records, prompt_mods):
         messages = record.input
         original_prompts.append(prompt_mod.original)
-        modified_prompts.append(prompt_mod.modified)
+        modified_prompts.append(prompt_mod.modified["content"])
 
         if prompt_mod.modified is None:
             print(f"Warning: Failed to modify prompt for record {record.id}")
@@ -119,11 +121,16 @@ async def modify_system_prompts(
                 for msg in messages
                 if not isinstance(msg, str) and msg.role != "system"
             ]
-            new_messages.insert(0, Message(role="system", content=prompt_mod.modified))
+            new_messages.insert(
+                0, Message(role="system", content=prompt_mod.modified["content"])
+            )
             modified_inputs.append(new_messages)
 
         # Copy other fields
         for k, v in record.other_fields.items():
+            # Remove labels as we will have to relabel
+            if "label" in k:
+                continue
             modified_other_fields[k].append(v)
 
     # Add the prompt fields
@@ -131,7 +138,7 @@ async def modify_system_prompts(
     modified_other_fields["modified_system_prompts"] = modified_prompts
 
     # Create new dataset with modified prompts
-    modified_dataset = LabelledDataset(
+    modified_dataset = Dataset(
         inputs=modified_inputs, ids=dataset.ids, other_fields=modified_other_fields
     )
 
@@ -228,7 +235,7 @@ if __name__ == "__main__":
         # print(Dataset.load_from(samples_path).ids)
 
     if dataset_name == "toolace":
-        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])[:20]
+        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])[:10]
 
         # Test with a single sample first
         sample = dataset.sample(1)
