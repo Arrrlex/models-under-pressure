@@ -78,7 +78,7 @@ Current system prompt:
     try:
         modified_prompt = await call_llm_async(modification_messages, model)
         return PromptModification(
-            original=system_message.content, modified=modified_prompt
+            original=system_message.content, modified=modified_prompt["content"]
         )
     except Exception as e:
         print(f"Error modifying prompt: {e}")
