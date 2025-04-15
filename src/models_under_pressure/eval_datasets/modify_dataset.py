@@ -2,7 +2,10 @@ from pathlib import Path
 from typing import Any, List, NamedTuple, Optional
 
 from models_under_pressure.config import DATA_DIR, EVAL_DATASETS_RAW, TEST_DATASETS_RAW
-from models_under_pressure.eval_datasets.label_dataset import LabelledDataset
+from models_under_pressure.eval_datasets.label_dataset import (
+    LabelledDataset,
+    create_eval_dataset,
+)
 from models_under_pressure.eval_datasets.mts_dataset import get_mts_samples_by_ids
 from models_under_pressure.interfaces.dataset import Dataset, Message
 from models_under_pressure.utils import async_map, call_llm_async
@@ -11,6 +14,12 @@ from models_under_pressure.utils import async_map, call_llm_async
 class PromptModification(NamedTuple):
     original: str
     modified: Optional[str]
+
+
+toolace_rewriting_system_prompt = """You are an expert in writing system prompts for AI assistants.
+Your task is to modify the given system prompt to include deployment context and remove any unncessary information while maintaining all tool information and functionality.
+Describe the deployment context on a very high-level in a single sentence and overall keep the system prompt as concise as possible.
+Consider the full conversation context when adding deployment context and return the modified system prompt in JSON format using the keys 'role' and 'content'."""
 
 
 async def modify_single_system_prompt(
@@ -45,7 +54,7 @@ async def modify_single_system_prompt(
     modification_messages = [
         {
             "role": "system",
-            "content": "You are an expert in writing system prompts for AI assistants. Your task is to modify the given system prompt to include deployment context while maintaining all tool information and functionality. Keep the system prompt as concise as possible. Consider the full conversation context when adding deployment context and return the modified system prompt in JSON format using the keys 'role' and 'content'.",
+            "content": toolace_rewriting_system_prompt,
         },
         {
             "role": "user",
@@ -235,7 +244,7 @@ if __name__ == "__main__":
         # print(Dataset.load_from(samples_path).ids)
 
     if dataset_name == "toolace":
-        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])[:10]
+        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
 
         # Test with a single sample first
         sample = dataset.sample(1)
@@ -256,3 +265,13 @@ if __name__ == "__main__":
         random_item = modified_dataset.sample(1)
         print("\nSample from modified dataset:")
         print(random_item.to_records()[0])
+
+        # Now relabel the dataset and create a balanced subset
+        print("\nRelabeling dataset...")
+        labelled_output_path = DATA_DIR / "temp/toolace_modified_labelled.jsonl"
+        balanced_output_path = DATA_DIR / "temp/toolace_modified_balanced.jsonl"
+        create_eval_dataset(
+            modified_dataset,
+            raw_output_path=labelled_output_path,
+            balanced_output_path=balanced_output_path,
+        )
