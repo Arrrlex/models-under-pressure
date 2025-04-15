@@ -10,7 +10,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    TEST_DATASETS,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.dataset_utils import (
@@ -183,8 +183,6 @@ def run_evaluation(
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     train_dataset, _ = load_train_test(
         dataset_path=config.dataset_path,
-        variation_type=config.variation_type,
-        variation_value=config.variation_value,
         n_per_class=config.max_samples,
         model_name=config.model_name,
         layer=config.layer,
@@ -202,13 +200,12 @@ def run_evaluation(
 
     coefs = get_coefs(probe)
 
-    eval_dataset_paths = TEST_DATASETS if config.use_test_set else EVAL_DATASETS
-
     results_list = []
 
-    for eval_dataset_name, eval_dataset_path in tqdm(
-        eval_dataset_paths.items(), desc="Evaluating on eval datasets"
+    for eval_dataset_path in tqdm(
+        config.eval_datasets, desc="Evaluating on eval datasets"
     ):
+        eval_dataset_name = eval_dataset_path.stem
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
         eval_dataset, _ = load_train_test(
             dataset_path=eval_dataset_path,
@@ -216,8 +213,6 @@ def run_evaluation(
             layer=config.layer,
             compute_activations=config.compute_activations,
             n_per_class=config.max_samples,
-            variation_type=config.variation_type,
-            variation_value=config.variation_value,
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
@@ -258,6 +253,14 @@ def run_evaluation(
 
         del eval_dataset
 
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results_list:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+    print(f"Saving coefs to {EVALUATE_PROBES_DIR / config.coefs_filename}")
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump({"id": config.id, "coefs": coefs}, f)
+
     return results_list, coefs
 
 
@@ -274,22 +277,13 @@ if __name__ == "__main__":
             name="pytorch_per_token_probe",
             hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
         ),
+<<<<<<< HEAD
         compute_activations=True,
+=======
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        eval_datasets=list(EVAL_DATASETS.values()),
+>>>>>>> 47ac0a9 (Continue unfucking config)
     )
 
     double_check_config(config)
-
-    print(f"Running probe evaluation with ID {config.id}")
-    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
-    results, coefs = run_evaluation(config=config)
-
-    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
-    for result in results:
-        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
-    coefs_dict = {
-        "id": config.id,
-        "coefs": coefs[0].tolist(),  # type: ignore
-    }
-    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-        json.dump(coefs_dict, f)
+    run_evaluation(config=config)

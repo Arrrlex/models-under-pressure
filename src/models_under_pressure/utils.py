@@ -334,7 +334,6 @@ def print_progress(
 
 
 def hf_login():
-    load_dotenv()
     HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")

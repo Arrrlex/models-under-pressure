@@ -26,28 +26,14 @@ activation_store_cli = typer.Typer(pretty_exceptions_show_locals=False)
 
 @activation_store_cli.command()
 def store(
-    model_name: str = typer.Option(
-        ...,
-        "--model",
-        help="Name of the model to use",
-    ),
+    model_name: str = typer.Option(..., "--model", help="Name of the model to use"),
     dataset_path: Path = typer.Option(
-        ...,
-        "--dataset",
-        "--datasets",
-        help="Path to the dataset or datasets (can include wildcards)",
+        ..., "--dataset", "--datasets", help="Path to the dataset or datasets"
     ),
     layers_str: str = typer.Option(
-        ...,
-        "--layers",
-        "--layer",
-        help="Comma-separated list of layer numbers",
+        ..., "--layers", "--layer", help="Comma-separated list of layer numbers"
     ),
-    batch_size: int = typer.Option(
-        4,
-        "--batch",
-        help="Batch size for processing",
-    ),
+    batch_size: int = typer.Option(4, "--batch", help="Batch size for processing"),
 ):
     """Calculate and store activations for a model and dataset."""
     layers = _parse_layers(layers_str)
@@ -138,9 +124,9 @@ def sync():
     store.sync()
 
 
-def _parse_layers(layers: str) -> list[int]:
+def _parse_layers(layers_str: str) -> list[int]:
     """Parse a comma-separated list of layer numbers."""
-    return [int(layer) for layer in layers.split(",")]
+    return [int(layer) for layer in layers_str.split(",")]
 
 
 def _parse_dataset_path(dataset_path: Path) -> list[Path]:

@@ -1,8 +1,0 @@
-defaults:
-  - dataset: synthetic_19_03_25
-
-
-
-output_dir: results/synthetic_19_03_25/llama-1b/layer_11
-
-output_filename: probe_results.json

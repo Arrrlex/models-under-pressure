@@ -1,0 +1,41 @@
+probe:
+  name: sklearn_mean_acts_probe
+  hyperparams:
+    C: 0.001
+    random_state: 42
+    fit_intercept: false
+eval_datasets:
+  manual: data/evals/dev/manual_upsampled.csv
+  anthropic: data/evals/dev/anthropic_samples_balanced.jsonl
+  toolace: data/evals/dev/toolace_samples_balanced.jsonl
+  mt: data/evals/dev/mt_samples_balanced.jsonl
+  mts: data/evals/dev/mts_samples_balanced.jsonl
+  mask: data/evals/dev/mask_samples_balanced.jsonl
+model: llama-1b
+experiment: evaluate_probe
+layer: 11
+batch_size: 4
+max_samples: null
+random_seed: 42
+train_data: prompts_25_03_25_gpt-4o.jsonl
+baselines:
+  models:
+  - llama-1b
+  - gemma-1b
+  prompts:
+  - default
+  - single_letter
+  - prompt_at_end
+  - single_word
+cv:
+  layers:
+  - 5
+  - 10
+  - 15
+  folds: 4
+generalisation_heatmap:
+  variation_types:
+  - prompt_style
+  - tone
+  - language
+  - length
