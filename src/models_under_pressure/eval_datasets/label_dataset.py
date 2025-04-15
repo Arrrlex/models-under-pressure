@@ -118,27 +118,43 @@ async def label_dataset_async(
 
     async def worker(idx: int, item: Record):
         """Process a single item and update results"""
-        input_str = item.input_str()
-        response = await analyse_stakes(
-            input_str,
-            model=model,
-            prompt_template=rubric_labelling_prompt_template
-            if use_rubric
-            else scale_labelling_prompt_template,
-            # else scorecard_labelling_prompt_template,
-        )
-
-        if response is None:
-            raise ValueError(
-                f"analyse_stakes returned None for input: {input_str[:100]}..."
+        try:
+            input_str = item.input_str()
+            response = await analyse_stakes(
+                input_str,
+                model=model,
+                prompt_template=rubric_labelling_prompt_template
+                if use_rubric
+                else scale_labelling_prompt_template,
+                # else scorecard_labelling_prompt_template,
             )
 
-        labels[idx] = response["answer"]
-        explanations[idx] = response["reason"]
-        confidence[idx] = response["confidence"]
-        # score[idx] = response["score"]
-        pbar.update(1)
-        await queue.get()  # Signal task completion
+            if response is None:
+                print(
+                    f"Warning: analyse_stakes returned None for input: {input_str[:100]}..."
+                )
+                return
+
+            # Check for required keys
+            required_keys = ["answer", "reason", "confidence"]
+            if not all(key in response for key in required_keys):
+                print(
+                    f"Warning: Missing required keys in response for input: {input_str[:100]}..."
+                )
+                return
+
+            labels[idx] = response["answer"]
+            explanations[idx] = response["reason"]
+            confidence[idx] = response["confidence"]
+            # score[idx] = response["score"]
+        except Exception as e:
+            print(f"Error processing item {idx}: {str(e)}")
+        finally:
+            pbar.update(1)
+            try:
+                await queue.get()
+            except Exception as e:
+                print(f"Error getting from queue: {str(e)}")
 
     # Start processing all items
     tasks = []
@@ -151,15 +167,31 @@ async def label_dataset_async(
     await asyncio.gather(*tasks)
     pbar.close()
 
-    other_fields = dict(dataset.other_fields)
+    # Filter out items that weren't successfully labeled
+    valid_indices = [i for i, label in enumerate(labels) if label is not None]
+    filtered_inputs = [dataset.inputs[i] for i in valid_indices]
+    filtered_ids = [dataset.ids[i] for i in valid_indices]
+    filtered_labels = [labels[i] for i in valid_indices]
+    filtered_explanations = [explanations[i] for i in valid_indices]
+    filtered_confidence = [confidence[i] for i in valid_indices]
+    filtered_score = [score[i] for i in valid_indices]
+
+    # Filter other fields to match the valid indices
+    other_fields = {}
+    for field_name, field_values in dataset.other_fields.items():
+        if isinstance(field_values, list) and len(field_values) == len(dataset.inputs):
+            other_fields[field_name] = [field_values[i] for i in valid_indices]
+        else:
+            other_fields[field_name] = field_values
+
     prefix = "label" if use_rubric else "scale_label"
     other_fields.update(
         {
-            f"{prefix}_explanation": explanations,
-            f"{prefix}_confidence": confidence,
-            f"{prefix}_score": score,
-            f"{prefix}s": labels,
-            f"{prefix}_model": [model for _ in range(len(labels))],
+            f"{prefix}_explanation": filtered_explanations,
+            f"{prefix}_confidence": filtered_confidence,
+            f"{prefix}_score": filtered_score,
+            f"{prefix}s": filtered_labels,
+            f"{prefix}_model": [model for _ in range(len(filtered_labels))],
         }
     )
     if not use_rubric and ("labels" not in other_fields or force_override):
@@ -192,8 +224,8 @@ async def label_dataset_async(
             other_fields["label_explanation"].append(explanation)
 
     return LabelledDataset(
-        inputs=dataset.inputs,
-        ids=dataset.ids,
+        inputs=filtered_inputs,
+        ids=filtered_ids,
         other_fields=other_fields,
     )
 
