@@ -218,10 +218,68 @@ def combine_datasets(
     return combined_dataset
 
 
+def add_system_prompt_to_dataset(
+    dataset: LabelledDataset,
+    system_prompt: str,
+    output_path: Path,
+) -> LabelledDataset:
+    """
+    Add a system prompt to each sample in a dataset, creating a new version of the dataset.
+
+    Args:
+        dataset: The input dataset
+        system_prompt: The system prompt to add to each sample
+        output_path: Path where to save the modified dataset
+
+    Returns:
+        The modified dataset with system prompts added
+    """
+    # Create new inputs with system prompts
+    new_inputs = []
+    for input_ in dataset.inputs:
+        if isinstance(input_, str):
+            # For string inputs, create a dialogue with system and user messages
+            new_inputs.append(
+                [
+                    Message(role="system", content=system_prompt),
+                    Message(role="user", content=input_),
+                ]
+            )
+        else:
+            # For dialogue inputs, add system message at the beginning
+            new_inputs.append([Message(role="system", content=system_prompt), *input_])
+
+    # Create new dataset with modified inputs
+    modified_dataset = LabelledDataset(
+        inputs=new_inputs, ids=dataset.ids, other_fields=dataset.other_fields
+    )
+
+    # Save the modified dataset
+    modified_dataset.save_to(output_path, overwrite=True)
+    return modified_dataset
+
+
 if __name__ == "__main__":
     import asyncio
 
     dataset_name = "toolace"
+
+    if dataset_name == "anthropic":
+        system_prompt = """You are an LLM as part of a general purpose chatbot."""
+
+        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["anthropic"])
+        output_path = DATA_DIR / "temp/anthropic_modified.jsonl"
+        modified_dataset = add_system_prompt_to_dataset(
+            dataset, system_prompt, output_path
+        )
+        modified_dataset.save_to(output_path, overwrite=True)
+
+        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["anthropic"])
+        output_path = DATA_DIR / "temp/anthropic_test_modified.jsonl"
+        modified_dataset = add_system_prompt_to_dataset(
+            dataset, system_prompt, output_path
+        )
+        modified_dataset.save_to(output_path, overwrite=True)
 
     if dataset_name == "mts":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])
@@ -259,7 +317,8 @@ if __name__ == "__main__":
 
         # If the single sample looks good, process the whole dataset
         output_path = DATA_DIR / "temp/toolace_modified.jsonl"
-        modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
+        # modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
+        modified_dataset = Dataset.load_from(output_path)
 
         # Print a sample from the modified dataset
         random_item = modified_dataset.sample(1)
