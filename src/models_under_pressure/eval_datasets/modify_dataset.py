@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional
 
@@ -124,7 +125,9 @@ async def modify_system_prompts(
     for record, prompt_mod in zip(records, prompt_mods):
         messages = record.input
         original_prompts.append(prompt_mod.original)
-        modified_prompts.append(prompt_mod.modified["content"])
+        modified_prompts.append(
+            prompt_mod.modified["content"] if prompt_mod.modified else None
+        )
 
         if prompt_mod.modified is None:
             print(f"Warning: Failed to modify prompt for record {record.id}")
@@ -342,9 +345,7 @@ DESCRIPTION: {description}""",
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    dataset_name = "mt"
+    dataset_name = "toolace_test"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -399,25 +400,24 @@ if __name__ == "__main__":
         # combine_datasets(dataset, samples_path, output_path)
         # print(Dataset.load_from(samples_path).ids)
 
-    # TODO Also rewrite test dataset
     if dataset_name == "toolace":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
 
         # Test with a single sample first
-        sample = dataset.sample(1)
-        record = sample.to_records()[0]
-        prompt_mod = asyncio.run(modify_single_system_prompt(record.input))
+        # sample = dataset.sample(1)
+        # record = sample.to_records()[0]
+        # prompt_mod = asyncio.run(modify_single_system_prompt(record.input))
 
-        print("\nOriginal system prompt:")
-        print(prompt_mod.original)
+        # print("\nOriginal system prompt:")
+        # print(prompt_mod.original)
 
-        print("\nModified system prompt:")
-        print(prompt_mod.modified)
+        # print("\nModified system prompt:")
+        # print(prompt_mod.modified)
 
         # If the single sample looks good, process the whole dataset
         output_path = DATA_DIR / "temp/toolace_modified.jsonl"
-        # modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
-        modified_dataset = Dataset.load_from(output_path)
+        modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
+        # modified_dataset = Dataset.load_from(output_path)
 
         # Print a sample from the modified dataset
         random_item = modified_dataset.sample(1)
@@ -426,8 +426,30 @@ if __name__ == "__main__":
 
         # Now relabel the dataset and create a balanced subset
         print("\nRelabeling dataset...")
-        labelled_output_path = DATA_DIR / "temp/toolace_modified_labelled.jsonl"
-        balanced_output_path = DATA_DIR / "temp/toolace_modified_balanced.jsonl"
+        labelled_output_path = DATA_DIR / "temp/toolace_raw.jsonl"
+        balanced_output_path = DATA_DIR / "temp/toolace_balanced.jsonl"
+        create_eval_dataset(
+            modified_dataset,
+            raw_output_path=labelled_output_path,
+            balanced_output_path=balanced_output_path,
+        )
+
+    if dataset_name == "toolace_test":
+        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["toolace"])
+
+        output_path = DATA_DIR / "temp/toolace_test_modified.jsonl"
+        modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
+        # modified_dataset = Dataset.load_from(output_path)
+
+        # Print a sample from the modified dataset
+        random_item = modified_dataset.sample(1)
+        print("\nSample from modified dataset:")
+        print(random_item.to_records()[0])
+
+        # Now relabel the dataset and create a balanced subset
+        print("\nRelabeling dataset...")
+        labelled_output_path = DATA_DIR / "temp/toolace_test_raw.jsonl"
+        balanced_output_path = DATA_DIR / "temp/toolace_test_balanced.jsonl"
         create_eval_dataset(
             modified_dataset,
             raw_output_path=labelled_output_path,
