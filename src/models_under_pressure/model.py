@@ -26,7 +26,7 @@ from models_under_pressure.interfaces.dataset import (
     Input,
     to_dialogue,
 )
-from models_under_pressure.utils import hf_login, batched_range
+from models_under_pressure.utils import batched_range
 from models_under_pressure.interfaces.activations import Activation
 from jaxtyping import Float
 
@@ -212,7 +212,6 @@ class LLMModel:
         Returns:
             Initialized LLMModel instance
         """
-        hf_login()
 
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 

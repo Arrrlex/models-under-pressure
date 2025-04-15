@@ -1,3 +1,4 @@
+import itertools
 import subprocess
 import sys
 from pathlib import Path
@@ -26,14 +27,25 @@ activation_store_cli = typer.Typer(pretty_exceptions_show_locals=False)
 
 @activation_store_cli.command()
 def store(
-    model_name: str = typer.Option(..., "--model", help="Name of the model to use"),
+    model_name: str = typer.Option(
+        ...,
+        "--model",
+        help="Name of the model to use",
+    ),
     dataset_path: Path = typer.Option(
-        ..., "--dataset", "--datasets", help="Path to the dataset or datasets"
+        ...,
+        "--dataset",
+        "--datasets",
+        help="Path to the dataset or datasets",
     ),
     layers_str: str = typer.Option(
         ..., "--layers", "--layer", help="Comma-separated list of layer numbers"
     ),
-    batch_size: int = typer.Option(4, "--batch", help="Batch size for processing"),
+    batch_size: int = typer.Option(
+        4,
+        "--batch",
+        help="Batch size for processing",
+    ),
 ):
     """Calculate and store activations for a model and dataset."""
     layers = _parse_layers(layers_str)
@@ -43,7 +55,7 @@ def store(
 
     store = ActivationStore()
 
-    model = LLMModel.load(model_name, batch_size=batch_size)
+    model = LLMModel.load(model_name)
 
     for dataset_path in dataset_paths:
         print(f"Storing activations for {dataset_path}")
@@ -67,6 +79,7 @@ def store(
         activations, inputs = model.get_batched_activations_for_layers(
             dataset=dataset,
             layers=filtered_layers,
+            batch_size=batch_size,
         )
 
         approx_size = activations.numel() * activations.element_size()
