@@ -14,7 +14,7 @@ from models_under_pressure.config import (
     PROBES_DIR,
     SYNTHETIC_DATASET_PATH,
 )
-from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.dataset_utils import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
     Aggregator,

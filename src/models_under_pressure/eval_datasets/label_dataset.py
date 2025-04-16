@@ -17,8 +17,8 @@ from models_under_pressure.config import (
     TEST_DATASETS_RAW,
     global_settings,
 )
-from models_under_pressure.experiments.dataset_splitting import (
-    load_filtered_train_dataset,
+from models_under_pressure.dataset_utils import (
+    load_train_test,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -289,11 +289,11 @@ def create_training_scale_labels(
 ) -> None:
     """Create scale labels for the training dataset"""
     # Load filtered training dataset
-    dataset = load_filtered_train_dataset(
+    dataset, _ = load_train_test(
         dataset_path=SYNTHETIC_DATASET_PATH,
         variation_type=variation_type,
         variation_value=variation_value,
-        max_samples=max_samples,
+        n_per_class=max_samples,
     )
 
     print(f"Labeling {len(dataset)} samples from training dataset...")

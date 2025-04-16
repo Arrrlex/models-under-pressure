@@ -286,15 +286,9 @@ class ActivationStore:
         row = ManifestRow.from_spec(spec)
         return any(row.activations == other.activations for other in self.manifest.rows)
 
-    def load_enriched_dataset(
-        self, dataset_path: Path, model_name: str, layer: int, **loader_kwargs: Any
-    ) -> LabelledDataset:
-        """
-        Loads a dataset and enriches it with activations.
-        """
-        dataset = LabelledDataset.load_from(dataset_path, **loader_kwargs)
+    def enrich(self, dataset: LabelledDataset, model_name: str, layer: int) -> LabelledDataset:
         spec = ActivationsSpec(
-            model_name=model_name, dataset_path=dataset_path, layer=layer
+            model_name=model_name, dataset_path=dataset.path, layer=layer
         )
         activations, input_ids, attn_mask = self.load(spec)
         return dataset.assign(

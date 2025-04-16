@@ -13,7 +13,7 @@ from models_under_pressure.config import (
     HeatmapRunConfig,
     ProbeSpec,
 )
-from models_under_pressure.experiments.dataset_splitting import (
+from models_under_pressure.dataset_utils import (
     load_train_test,
 )
 from models_under_pressure.interfaces.results import (
