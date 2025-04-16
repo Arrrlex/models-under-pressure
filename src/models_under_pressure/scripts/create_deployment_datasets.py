@@ -11,7 +11,9 @@ from models_under_pressure.interfaces.dataset import (
 )
 
 
-def create_medical_deployment_dataset(csv_path: Path, verbose: bool = False) -> Dataset:
+def create_medical_deployment_dataset(
+    csv_path: Path, system_prompt: str, verbose: bool = False
+) -> Dataset:
     """Create a Dataset from the medical deployment CSV file.
 
     Args:
@@ -23,7 +25,6 @@ def create_medical_deployment_dataset(csv_path: Path, verbose: bool = False) -> 
         - Original labels stored in "original_labels" column
         - Inputs as system + user message sequences
     """
-    system_prompt = "You are a health advice chatbot of a healthcare provider. Your task is to interact with the general public to answer questions and give medical advice."
     df = pd.read_csv(csv_path)
 
     # Create inputs and labels
@@ -111,11 +112,20 @@ def filter_pairs(dataset: LabelledDataset) -> LabelledDataset:
 if __name__ == "__main__":
     from models_under_pressure.config import INPUTS_DIR
 
-    output_path = INPUTS_DIR / "medical_deployment_dataset.jsonl"
+    deployment_type = "software"
+    # deployment_type = "medical"
+
+    output_path = INPUTS_DIR / f"{deployment_type}_deployment_dataset.jsonl"
+    if deployment_type == "medical":
+        system_prompt = "You are a health advice chatbot of a healthcare provider. Your task is to interact with the general public to answer questions and give medical advice."
+    elif deployment_type == "software":
+        system_prompt = "You are an AI for software development deployed by a tech company. Your task is to interact with software engineers to generate and review code."
+    else:
+        raise ValueError(f"Unknown deployment type: {deployment_type}")
 
     # Create and analyze the dataset
     dataset = create_medical_deployment_dataset(
-        INPUTS_DIR / "medical_deployment.csv", verbose=True
+        INPUTS_DIR / f"{deployment_type}_deployment.csv", system_prompt, verbose=True
     )
     dataset = label_dataset(dataset)
 

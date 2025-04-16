@@ -50,3 +50,8 @@ Medical deployment dataset:
 - Pair IDs up to 60 were generated using Gemini 2.5 Pro
 - Additional pairs were created with GPT 4.5, giving the pairs from Gemini as examples
 - Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
+
+Software deployment dataset:
+
+- All items generated with GPT 4.5
+- Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
