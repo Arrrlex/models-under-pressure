@@ -15,30 +15,11 @@ from models_under_pressure.dataset_utils import (
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
 )
-from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
-from models_under_pressure.probes.pytorch_probes import PytorchProbe
-from models_under_pressure.probes.pytorch_classifiers import (
-    PytorchDifferenceOfMeansClassifier,
-)
-
-def get_coefs(probe: Probe) -> list[float]:
-    if isinstance(probe, SklearnProbe):
-        coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
-    elif isinstance(probe, PytorchProbe):
-        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
-            # For difference of means classifier, weights are directly in the linear layer
-            coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
-        else:
-            # For regular PyTorch probe, weights are in the second layer of Sequential
-            coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
-    return coefs
 
 
 def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
@@ -229,30 +210,3 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
         result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
 
     return results_list
-
-
-if __name__ == "__main__":
-    from models_under_pressure.config import (
-        LOCAL_MODELS,
-        SYNTHETIC_DATASET_PATH,
-        EVAL_DATASETS,
-    )
-    # Set random seed for reproducibility
-    RANDOM_SEED = 0
-    np.random.seed(RANDOM_SEED)
-
-    config = EvalRunConfig(
-        layer=11,
-        max_samples=20,
-        model_name=LOCAL_MODELS["llama-1b"],
-        probe_spec=ProbeSpec(
-            name="pytorch_per_token_probe",
-            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
-        ),
-        compute_activations=True,
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        eval_datasets=list(EVAL_DATASETS.values()),
-    )
-
-    double_check_config(config)
-    run_evaluation(config=config)

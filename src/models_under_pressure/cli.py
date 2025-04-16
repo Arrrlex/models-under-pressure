@@ -1,4 +1,3 @@
-import itertools
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +38,10 @@ def store(
         help="Path to the dataset or datasets",
     ),
     layers_str: str = typer.Option(
-        ..., "--layers", "--layer", help="Comma-separated list of layer numbers"
+        ...,
+        "--layers",
+        "--layer",
+        help="Comma-separated list of layer numbers",
     ),
     batch_size: int = typer.Option(
         4,
@@ -55,7 +57,7 @@ def store(
 
     store = ActivationStore()
 
-    model = LLMModel.load(model_name)
+    model = LLMModel.load(model_name, batch_size=batch_size)
 
     for dataset_path in dataset_paths:
         print(f"Storing activations for {dataset_path}")
@@ -79,7 +81,6 @@ def store(
         activations, inputs = model.get_batched_activations_for_layers(
             dataset=dataset,
             layers=filtered_layers,
-            batch_size=batch_size,
         )
 
         approx_size = activations.numel() * activations.element_size()
