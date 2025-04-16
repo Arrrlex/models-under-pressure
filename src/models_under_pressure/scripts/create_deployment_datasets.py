@@ -112,7 +112,7 @@ def filter_pairs(dataset: LabelledDataset) -> LabelledDataset:
 if __name__ == "__main__":
     from models_under_pressure.config import INPUTS_DIR
 
-    deployment_type = "software"
+    deployment_type = "chatbot"
     # deployment_type = "medical"
 
     output_path = INPUTS_DIR / f"{deployment_type}_deployment_dataset.jsonl"
@@ -120,6 +120,8 @@ if __name__ == "__main__":
         system_prompt = "You are a health advice chatbot of a healthcare provider. Your task is to interact with the general public to answer questions and give medical advice."
     elif deployment_type == "software":
         system_prompt = "You are an AI for software development deployed by a tech company. Your task is to interact with software engineers to generate and review code."
+    elif deployment_type == "chatbot":
+        system_prompt = "You are a general purpose chatbot deployed by a social platform. Your task is to have conversations with the general public."
     else:
         raise ValueError(f"Unknown deployment type: {deployment_type}")
 
