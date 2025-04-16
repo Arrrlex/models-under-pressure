@@ -138,9 +138,9 @@ def sync():
     store.sync()
 
 
-def _parse_layers(layers_str: str) -> list[int]:
+def _parse_layers(layers: str) -> list[int]:
     """Parse a comma-separated list of layer numbers."""
-    return [int(layer) for layer in layers_str.split(",")]
+    return [int(layer) for layer in layers.split(",")]
 
 
 def _parse_dataset_path(dataset_path: Path) -> list[Path]:
