@@ -6,7 +6,6 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 
-from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -19,17 +18,10 @@ from models_under_pressure.dataset_utils import (
 )
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
-    subsample_balanced_subset,
-)
-from models_under_pressure.interfaces.dataset import (
-    LabelledDataset,
-    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.model import LLMModel
-from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
+from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probes import ProbeFactory

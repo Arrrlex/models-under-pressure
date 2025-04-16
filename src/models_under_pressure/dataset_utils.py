@@ -4,7 +4,11 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.activation_store import ActivationStore
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset, subsample_balanced_subset
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    LabelledDataset,
+    subsample_balanced_subset,
+)
 from models_under_pressure.model import LLMModel
 
 
@@ -122,7 +126,6 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
     raise NotImplementedError("Not implemented")
 
 
-
 def load_train_test(
     dataset_path: Path,
     model_name: str | None = None,
@@ -150,7 +153,9 @@ def load_train_test(
         dataset = ActivationStore().enrich(dataset, model_name, layer)
 
     if variation_type is not None and variation_value is not None:
-        dataset = dataset.filter(lambda x: x.other_fields[variation_type] == variation_value)
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
 
     if n_per_class is not None:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)

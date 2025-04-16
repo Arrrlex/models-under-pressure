@@ -10,7 +10,7 @@ import hashlib
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 import time
 
 import torch
@@ -286,7 +286,9 @@ class ActivationStore:
         row = ManifestRow.from_spec(spec)
         return any(row.activations == other.activations for other in self.manifest.rows)
 
-    def enrich(self, dataset: LabelledDataset, model_name: str, layer: int) -> LabelledDataset:
+    def enrich(
+        self, dataset: LabelledDataset, model_name: str, layer: int
+    ) -> LabelledDataset:
         spec = ActivationsSpec(
             model_name=model_name, dataset_path=dataset.path, layer=layer
         )
