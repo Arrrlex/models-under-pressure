@@ -39,9 +39,23 @@ def run_evaluation(
         variation_type=config.variation_type,
         variation_value=config.variation_value,
         max_samples=config.max_samples,
-        model_name=config.model_name,
+        model_name=config.model_name if not config.compute_activations else None,
         layer=config.layer,
     )
+
+    if config.compute_activations:
+        model = LLMModel.load(config.model_name)
+        if config.max_samples and len(train_dataset) > config.max_samples:
+            train_dataset = subsample_balanced_subset(
+                train_dataset, n_per_class=config.max_samples // 2
+            )
+        print("Computing activations for train dataset ...")
+        activations = model.get_batched_activations(train_dataset, layer=config.layer)
+        train_dataset = train_dataset.assign(
+            activations=activations._activations,
+            attention_mask=activations._attention_mask,
+            input_ids=activations._input_ids,
+        )
 
     # Create the probe:
     print("Creating probe ...")
@@ -57,9 +71,6 @@ def run_evaluation(
     eval_dataset_paths = TEST_DATASETS if config.use_test_set else EVAL_DATASETS
 
     results_list = []
-
-    if config.compute_activations:
-        model = LLMModel.load(config.model_name)
 
     for eval_dataset_name, eval_dataset_path in tqdm(
         eval_dataset_paths.items(), desc="Evaluating on eval datasets"
