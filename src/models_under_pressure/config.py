@@ -139,6 +139,17 @@ OTHER_DATASETS = {
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
     "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
+    "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
+    "original_manipulated": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_manipulated.jsonl",
+    "original_neutralised": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_neutralised.jsonl",
+    "original_manipulated_new": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_manipulated_new.jsonl",
+    "original_neutralised_new": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_neutralised_new.jsonl",
+    "original_unconfounded": TRAIN_DIR / "prompts_25_03_25_gpt-4o_unconfounded.jsonl",
+    "original_plus_new": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
 }
 
 
