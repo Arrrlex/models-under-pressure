@@ -174,7 +174,11 @@ def load_train_test(
             input_ids=activations._input_ids,
         )
 
-    train_dataset = dataset.filter(lambda x: x.split == "train")
-    test_dataset = dataset.filter(lambda x: x.split == "test")
+    train_dataset = dataset.filter(
+        lambda x: x.other_fields.get("split", "train") == "train"
+    )
+    test_dataset = dataset.filter(
+        lambda x: x.other_fields.get("split", "test") == "test"
+    )
 
     return train_dataset, test_dataset
