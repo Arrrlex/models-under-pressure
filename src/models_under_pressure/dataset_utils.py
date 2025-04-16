@@ -126,7 +126,7 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
     raise NotImplementedError("Not implemented")
 
 
-def load_train_test(
+def load_dataset(
     dataset_path: Path,
     model_name: str | None = None,
     layer: int | None = None,
@@ -134,19 +134,23 @@ def load_train_test(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
-) -> tuple[LabelledDataset, LabelledDataset]:
-    """Load the train-test split for the generated dataset.
+) -> LabelledDataset:
+    """Load the dataset."""
+    dataset = LabelledDataset.load_from(dataset_path)
 
-    If model_name and layer are provided, the activations are loaded and added to the dataset.
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
+        )
 
-    Args:
-        dataset_path: Path to the generated dataset
-        model_name: Name of the model to load activations for
-        layer: Layer to load activations for
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
 
-    Returns:
-        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
-    """
     dataset = LabelledDataset.load_from(dataset_path)
 
     if model_name is not None and layer is not None and not compute_activations:
@@ -174,7 +178,65 @@ def load_train_test(
             input_ids=activations._input_ids,
         )
 
-    train_dataset = dataset.filter(lambda x: x.split == "train")
-    test_dataset = dataset.filter(lambda x: x.split == "test")
+    return dataset
 
-    return train_dataset, test_dataset
+
+def split_dataset(
+    dataset: LabelledDataset,
+    split_col: str,
+    default_split: str = "train",
+) -> dict[str, LabelledDataset]:
+    """Split the dataset into different subsets based on the values of a column.
+
+    Args:
+        dataset: The dataset to split
+        split_col: The column to split the dataset on
+        default_split: The default split to use if the split column is not present
+    """
+    if split_col not in dataset.other_fields:
+        return {default_split: dataset}
+
+    split_indices = {}
+
+    for i, split in enumerate(dataset.other_fields[split_col]):
+        split_indices[split] = split_indices.get(split, []) + [i]
+
+    return {split: dataset[idxs] for split, idxs in split_indices.items()}
+
+
+def load_train_test(
+    dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> tuple[LabelledDataset, LabelledDataset]:
+    """Load the train-test split for the generated dataset.
+
+    If model_name and layer are provided, the activations are loaded and added to the dataset.
+
+    Args:
+        dataset_path: Path to the generated dataset
+        model_name: Name of the model to load activations for
+        layer: Layer to load activations for
+
+    Returns:
+        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
+    """
+    dataset = load_dataset(
+        dataset_path,
+        model_name,
+        layer,
+        compute_activations,
+        variation_type,
+        variation_value,
+        n_per_class,
+    )
+
+    splits = split_dataset(dataset, split_col="split", default_split="train")
+
+    assert set(splits.keys()) <= {"train", "test"}
+
+    return splits["train"], splits.get("test", LabelledDataset.empty())

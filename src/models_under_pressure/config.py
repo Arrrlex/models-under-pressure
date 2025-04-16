@@ -135,7 +135,6 @@ OTHER_DATASETS = {
     "redteaming_fr": TEST_EVALS_DIR / "language/french_aya_redteaming.jsonl",
     "redteaming_hi": TEST_EVALS_DIR / "language/hindi_aya_redteaming.jsonl",
     "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
-    "deception_data": DATA_DIR / "evals/deception_data.yaml",
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
     "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
@@ -379,6 +378,7 @@ class DataEfficiencyConfig(BaseModel):
     dataset_path: Path
     probes: list[ProbeSpec]
     dataset_sizes: list[int]
+    eval_dataset_paths: list[Path]
     compute_activations: bool = False
 
     @property

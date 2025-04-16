@@ -133,7 +133,7 @@ class PytorchLinearClassifier:
         mean_logits = logits.mean(axis=1)
 
         # Convert the logits to probabilities
-        return torch.sigmoid(mean_logits).numpy()
+        return torch.sigmoid(mean_logits).cpu().numpy()
 
     @torch.no_grad()
     def predict_token_logits(

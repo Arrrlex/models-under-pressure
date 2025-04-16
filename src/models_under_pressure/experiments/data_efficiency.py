@@ -1,14 +1,41 @@
-from models_under_pressure.config import DataEfficiencyConfig
-from models_under_pressure.interfaces.dataset import subsample_balanced_subset
+import json
+
+import numpy as np
+from models_under_pressure.config import RESULTS_DIR, DataEfficiencyConfig
+from models_under_pressure.interfaces.dataset import (
+    LabelledDataset,
+    subsample_balanced_subset,
+)
 from models_under_pressure.interfaces.results import (
     DataEfficiencyResults,
     ProbeDataEfficiencyResults,
 )
-from models_under_pressure.dataset_utils import load_train_test
+from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
+
+
+def evaluate_probe(
+    probe: Probe, eval_datasets: list[LabelledDataset]
+) -> dict[str, float]:
+    """Evaluate a probe on a list of datasets.
+
+    Args:
+        probe: The probe to evaluate
+        eval_datasets: A list of datasets to evaluate the probe on
+    """
+    probe_scores = np.concatenate(
+        [probe.predict_proba(ds)[1] for ds in eval_datasets], axis=0
+    )
+    labels = np.concatenate([ds.labels_numpy() for ds in eval_datasets], axis=0)
+    return {
+        "auroc": float(roc_auc_score(labels, probe_scores)),
+        "accuracy": float(accuracy_score(labels, probe_scores > 0.5)),
+        "tpr_at_fpr": float(tpr_at_fixed_fpr_score(labels, probe_scores, fpr=0.01)),
+    }
 
 
 def run_data_efficiency_experiment(
@@ -22,41 +49,34 @@ def run_data_efficiency_experiment(
     Returns:
         DataEfficiencyResults containing probe performance metrics for each dataset size
     """
-    # Load the full dataset
+    print("Loading train dataset")
     train_dataset, _ = load_train_test(
         dataset_path=config.dataset_path,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
+    print("Loading eval datasets")
+    eval_datasets = []
+    for eval_dataset_path in config.eval_dataset_paths:
+        eval_datasets.append(
+            load_dataset(
+                dataset_path=eval_dataset_path,
+                model_name=config.model_name,
+                layer=config.layer,
+                compute_activations=config.compute_activations,
+            )
+        )
 
     probe_results = []
 
-    # For each dataset size
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
-        # Create a subset of the dataset
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
 
-        # For each probe type
         for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
-            # Train the probe on the subset
             probe = ProbeFactory.build(probe=probe_spec, train_dataset=subset)
+            metrics = evaluate_probe(probe, eval_datasets)
 
-            # Evaluate the probe on the full dataset
-            _, pred_scores = probe.predict_proba(train_dataset)
-            pred_labels = pred_scores > 0.5
-            labels = train_dataset.labels_numpy()
-
-            # Calculate metrics
-            metrics = {
-                "accuracy": float(accuracy_score(labels, pred_labels)),
-                "auroc": float(roc_auc_score(labels, pred_scores)),
-                "tpr_at_fpr": float(
-                    tpr_at_fixed_fpr_score(labels, pred_scores, fpr=0.01)
-                ),
-            }
-
-            # Store results
             probe_results.append(
                 ProbeDataEfficiencyResults(
                     probe=probe_spec,
@@ -65,13 +85,11 @@ def run_data_efficiency_experiment(
                 )
             )
 
-    # Create and return results
     results = DataEfficiencyResults(
         config=config,
         probe_results=probe_results,
     )
 
-    # Save results
     results.save_to(config.output_path)
 
     return results
@@ -89,8 +107,7 @@ def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "
     from pathlib import Path
 
     # Set style
-    plt.style.use("seaborn")
-    sns.set_palette("husl")
+    sns.set_theme(style="whitegrid")
 
     # Create figure
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -148,7 +165,11 @@ def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "
 
 
 if __name__ == "__main__":
-    from models_under_pressure.config import SYNTHETIC_DATASET_PATH, LOCAL_MODELS
+    from models_under_pressure.config import (
+        SYNTHETIC_DATASET_PATH,
+        LOCAL_MODELS,
+        EVAL_DATASETS_BALANCED,
+    )
     from models_under_pressure.interfaces.probes import ProbeSpec
 
     config = DataEfficiencyConfig(
@@ -166,7 +187,7 @@ if __name__ == "__main__":
                 hyperparams={
                     "batch_size": 16,
                     "epochs": 3,
-                    "device": "cpu",
+                    "device": "cuda",
                     "learning_rate": 1e-2,
                     "weight_decay": 0.1,
                 },
@@ -177,6 +198,13 @@ if __name__ == "__main__":
             ),
         ],
         compute_activations=True,
+        eval_dataset_paths=list(EVAL_DATASETS_BALANCED.values()),
+        # id="g6AooBhS",
     )
     results = run_data_efficiency_experiment(config)
+
+    with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
+        results_dict = json.loads(f.readlines()[-1])
+
+    results = DataEfficiencyResults.model_validate(results_dict)
     plot_data_efficiency_results(results)
