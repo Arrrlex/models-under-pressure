@@ -130,6 +130,13 @@ def delete(
     store.sync()
 
 
+@activation_store_cli.command()
+def sync():
+    """Sync the activation store."""
+    store = ActivationStore()
+    store.sync()
+
+
 def _parse_layers(layers: str) -> list[int]:
     """Parse a comma-separated list of layer numbers."""
     return [int(layer) for layer in layers.split(",")]
