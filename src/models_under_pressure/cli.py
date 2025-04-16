@@ -53,6 +53,7 @@ def store(
     layers = _parse_layers(layers_str)
     model_name = _parse_model_name(model_name)
     dataset_paths = _parse_dataset_path(dataset_path)
+    print(f"Storing activations for {model_name} on {dataset_paths}")
 
     store = ActivationStore()
 
