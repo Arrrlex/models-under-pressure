@@ -5,7 +5,7 @@ from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.baselines.continuation import likelihood_continuation_prompts
 from models_under_pressure.config import DATA_DIR
-from models_under_pressure.experiments.train_probes import tpr_at_fixed_fpr_score
+from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.interfaces.results import (
     ContinuationPrompt,
     LikelihoodBaselineResults,

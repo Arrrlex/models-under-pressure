@@ -4,7 +4,12 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.activation_store import ActivationStore
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    LabelledDataset,
+    subsample_balanced_subset,
+)
+from models_under_pressure.model import LLMModel
 
 
 def create_train_test_split(
@@ -125,6 +130,10 @@ def load_train_test(
     dataset_path: Path,
     model_name: str | None = None,
     layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
@@ -138,48 +147,29 @@ def load_train_test(
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
-    if model_name is not None and layer is not None:
-        dataset = ActivationStore().load_enriched_dataset(
-            dataset_path=dataset_path,
-            model_name=model_name,
-            layer=layer,
-        )
-    else:
-        dataset = LabelledDataset.load_from(dataset_path)
+    dataset = LabelledDataset.load_from(dataset_path)
 
-    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(dataset, model_name, layer)
+
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
+
+    if n_per_class is not None:
+        dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
+
+    if model_name is not None and layer is not None and compute_activations:
+        model = LLMModel.load(model_name)
+        activations = model.get_batched_activations(dataset, layer=layer)
+        dataset = dataset.assign(
+            activations=activations._activations,
+            attention_mask=activations._attention_mask,
+            input_ids=activations._input_ids,
+        )
+
+    train_dataset = dataset.filter(lambda x: x.split == "train")
+    test_dataset = dataset.filter(lambda x: x.split == "test")
 
     return train_dataset, test_dataset
-
-
-def load_filtered_train_dataset(
-    dataset_path: Path,
-    variation_type: str | None = None,
-    variation_value: str | None = None,
-    max_samples: int | None = None,
-    model_name: str | None = None,
-    layer: int | None = None,
-) -> LabelledDataset:
-    # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(dataset_path, model_name, layer)
-
-    # Filter for one variation type with specific value
-    train_dataset = train_dataset.filter(
-        lambda x: (
-            variation_type is None or x.other_fields[variation_type] == variation_value
-        )
-    )
-
-    # Subsample so this runs on the laptop
-    if max_samples is not None:
-        print("Subsampling the dataset ...")
-        indices = np.random.choice(
-            range(len(train_dataset.ids)),
-            size=max_samples,
-            replace=False,
-        )
-        train_dataset = train_dataset[list(indices)]  # type: ignore
-
-    print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
-    return train_dataset
