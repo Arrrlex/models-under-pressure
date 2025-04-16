@@ -102,16 +102,18 @@ def load_mts_raw_test_dataset() -> Dataset:
     response1 = requests.get(URL1)
     response1.raise_for_status()
     df1 = pd.read_csv(io.BytesIO(response1.content))
+    df1 = df1.rename(columns={"ID": "original_id"})
+    df1["original_id"] = "chat_" + df1["original_id"].astype(str)
 
     response2 = requests.get(URL2)
     response2.raise_for_status()
     df2 = pd.read_csv(io.BytesIO(response2.content))
+    df2 = df2.rename(columns={"ID": "original_id"})
+    df2["original_id"] = "sum_" + df2["original_id"].astype(str)
 
     df = pd.concat([df1, df2])
 
-    # TODO They use the same IDs for the two files but the files have different items,
-    # so create the IDs differently
-    df = df.rename(columns={"ID": "original_id"})
+    # Create unique IDs for each sample
     df["ids"] = "test_" + df["original_id"].astype(str)
 
     # Parse conversations and filter out failed parses

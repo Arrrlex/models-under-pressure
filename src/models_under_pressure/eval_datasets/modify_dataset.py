@@ -12,8 +12,12 @@ from models_under_pressure.config import (
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
     create_eval_dataset,
+    create_test_dataset,
 )
-from models_under_pressure.eval_datasets.mts_dataset import get_mts_samples_by_ids
+from models_under_pressure.eval_datasets.mts_dataset import (
+    get_mts_samples_by_ids,
+    load_mts_raw_test_dataset,
+)
 from models_under_pressure.interfaces.dataset import Dataset, Message
 from models_under_pressure.utils import async_map, call_llm_async
 
@@ -345,7 +349,7 @@ DESCRIPTION: {description}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "toolace_test"
+    dataset_name = "mts_test"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -381,6 +385,7 @@ if __name__ == "__main__":
             modified_dataset.save_to(output_path, overwrite=True)
 
     if dataset_name == "mts":
+        # TODO: Actually relabel this, use system prompt
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])
         samples_path = DATA_DIR / "temp/mts_updated.jsonl"
         output_path = DATA_DIR / "temp/mts_combined.jsonl"
@@ -393,12 +398,8 @@ if __name__ == "__main__":
         print(len(dataset.ids))
 
     if dataset_name == "mts_test":
-        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["mts"])
-        samples_path = DATA_DIR / "temp/mts_test_updated.jsonl"
-        output_path = DATA_DIR / "temp/mts_test_combined.jsonl"
-
-        # combine_datasets(dataset, samples_path, output_path)
-        # print(Dataset.load_from(samples_path).ids)
+        dataset = load_mts_raw_test_dataset()
+        create_test_dataset(dataset, "mts", recompute=True, remove_dev_samples=False)
 
     if dataset_name == "toolace":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
