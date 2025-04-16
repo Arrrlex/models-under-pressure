@@ -35,6 +35,9 @@ Apr 15 versions (all based on calling parts of `modify_dataset.py`):
 - ToolACE dev and test datasets: Based on previous dev dataset (raw version), modify the system prompt and relabel after adding system prompt.
 - Anthropic dev and test datasets: Adding system prompt to each sample, otherwise no changes.
 - MT dev and test datasets: Adding system prompt to each sample, removing cases where transcription length is less than description length, and adding more info to input.
-- MTS test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling
 
-TODO Relabel if system prompt changes (MT and anthropic)! And add MTS (remove strange cases and see if test set is still enough)
+Apr 16 versions (all based on caling parts of `modify_dataset.py`)
+
+- MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling
+
+TODO Relabel if system prompt changes (MT and anthropic)!

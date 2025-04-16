@@ -349,7 +349,7 @@ DESCRIPTION: {description}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "mts_test"
+    dataset_name = "mts"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -385,17 +385,15 @@ if __name__ == "__main__":
             modified_dataset.save_to(output_path, overwrite=True)
 
     if dataset_name == "mts":
-        # TODO: Actually relabel this, use system prompt
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])
-        samples_path = DATA_DIR / "temp/mts_updated.jsonl"
-        output_path = DATA_DIR / "temp/mts_combined.jsonl"
 
-        # combine_datasets(dataset, samples_path, output_path)
-        # print(Dataset.load_from(samples_path).ids)
-
-        # dataset = LabelledDataset.load_from(output_path)
-        # print(dataset.other_fields["labels"])
-        print(len(dataset.ids))
+        samples = get_mts_samples_by_ids(dataset.ids)  # type: ignore
+        # Relabel and create balanced dataset
+        create_eval_dataset(
+            samples,
+            raw_output_path=DATA_DIR / "temp/mts_raw_apr_16.jsonl",
+            balanced_output_path=DATA_DIR / "temp/mts_balanced_apr_16.jsonl",
+        )
 
     if dataset_name == "mts_test":
         dataset = load_mts_raw_test_dataset()
