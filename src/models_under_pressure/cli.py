@@ -1,4 +1,3 @@
-import itertools
 import subprocess
 import sys
 from pathlib import Path
@@ -36,7 +35,7 @@ def store(
         ...,
         "--dataset",
         "--datasets",
-        help="Path to the dataset or datasets",
+        help="Path to the dataset or datasets (can include wildcards)",
     ),
     layers_str: str = typer.Option(
         ...,
@@ -104,7 +103,7 @@ def delete(
         ...,
         "--dataset",
         "--datasets",
-        help="Path to the dataset or datasets",
+        help="Path to the dataset or datasets (can include wildcards)",
     ),
     layers_str: str = typer.Option(
         ...,
@@ -137,16 +136,15 @@ def _parse_layers(layers: str) -> list[int]:
 
 
 def _parse_dataset_path(dataset_path: Path) -> list[Path]:
-    """Parse a path to a dataset or datasets."""
-    if dataset_path.is_dir():
-        return list(
-            itertools.chain(
-                dataset_path.glob("**/*.csv"),
-                dataset_path.glob("**/*.json"),
-                dataset_path.glob("**/*.jsonl"),
-            )
-        )
+    """Parse a path to a dataset or datasets.
+
+    Supports both direct paths and wildcard patterns (e.g. data/**/*.csv).
+    Can handle both absolute and relative paths.
+    """
+    if "*" in str(dataset_path):
+        return list(Path.cwd().glob(str(dataset_path)))
     else:
+        # Handle direct path
         return [dataset_path]
 
 
