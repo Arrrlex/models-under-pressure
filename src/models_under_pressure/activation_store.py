@@ -146,18 +146,30 @@ class ActivationStore:
             path for path in list_bucket_files(self.bucket) if path.endswith(".pt.zst")
         }
 
+        # Delete local files that are not in the manifest
         for path in local_paths - manifest_paths:
             print(f"Deleting {path} from local")
             (self.path / path).unlink()
             (self.path / path).with_suffix("").unlink()
 
+        # Delete remote files that are not in the manifest
         for path in remote_paths - manifest_paths:
             print(f"Deleting {path} from remote")
             delete_file(self.bucket, path)
 
-        for path in manifest_paths - remote_paths:
+        # Any remaining local files that aren't in remote are new activations, upload them
+        for path in local_paths - remote_paths:
             print(f"Uploading {path} to remote")
-            upload_file(self.bucket, str(path), self.path / path)
+            upload_file(self.bucket, path, self.path / path)
+
+        # Delete from the manifest any activations that are not present locally or remotely
+        for path in manifest_paths - local_paths - remote_paths:
+            print(f"Removing {path} from manifest")
+            self.manifest.rows = [
+                row for row in self.manifest.rows if row.activations != path
+            ]
+
+        self.save_manifest()
 
     def save(
         self,
