@@ -287,11 +287,9 @@ class ActivationStore:
         return any(row.activations == other.activations for other in self.manifest.rows)
 
     def enrich(
-        self, dataset: LabelledDataset, model_name: str, layer: int
+        self, dataset: LabelledDataset, path: Path, model_name: str, layer: int
     ) -> LabelledDataset:
-        spec = ActivationsSpec(
-            model_name=model_name, dataset_path=dataset.path, layer=layer
-        )
+        spec = ActivationsSpec(model_name=model_name, dataset_path=path, layer=layer)
         activations, input_ids, attn_mask = self.load(spec)
         return dataset.assign(
             activations=activations,

@@ -150,7 +150,12 @@ def load_train_test(
     dataset = LabelledDataset.load_from(dataset_path)
 
     if model_name is not None and layer is not None and not compute_activations:
-        dataset = ActivationStore().enrich(dataset, model_name, layer)
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
+        )
 
     if variation_type is not None and variation_value is not None:
         dataset = dataset.filter(
