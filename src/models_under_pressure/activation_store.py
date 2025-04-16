@@ -8,8 +8,7 @@ and cloud storage (R2), with a manifest system to track available activations.
 import datetime
 import hashlib
 import os
-from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
 import time
@@ -25,7 +24,6 @@ from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
     delete_file,
     download_file,
-    file_exists_in_bucket,
     list_bucket_files,
     upload_file,
 )
@@ -122,66 +120,56 @@ class ActivationStore:
 
     path: Path = global_settings.ACTIVATIONS_DIR
     bucket: str = ACTIVATIONS_BUCKET  # type: ignore
+    manifest: Manifest = field(init=False)
 
-    @contextmanager
-    def get_manifest(self):
-        """Context manager for accessing and updating the manifest.
+    def __post_init__(self):
+        download_file(self.bucket, "manifest.json", self.manifest_path)
+        with open(self.manifest_path, "r") as f:
+            self.manifest = Manifest.model_validate_json(f.read())
 
-        Downloads the manifest from cloud storage, yields it for modification,
-        and then uploads the modified manifest back to cloud storage.
+    @property
+    def manifest_path(self) -> Path:
+        return self.path / "manifest.json"
 
-        Yields:
-            The current manifest object
-        """
-        # Download manifest from R2 and load it
-        manifest_path = self.path / "manifest.json"
-        download_file(self.bucket, "manifest.json", manifest_path)
-        with open(manifest_path, "r") as f:
-            manifest = Manifest.model_validate_json(f.read())
+    def save_manifest(self):
+        with open(self.manifest_path, "w") as f:
+            f.write(self.manifest.model_dump_json(indent=2))
 
-        yield manifest
+        upload_file(self.bucket, "manifest.json", self.manifest_path)
 
-        # Upload modified manifest to R2
-        with open(manifest_path, "w") as f:
-            f.write(manifest.model_dump_json(indent=2))
+    def sync(self):
+        manifest_paths = {str(path) for row in self.manifest.rows for path in row.paths}
+        local_paths = {
+            str(path.relative_to(self.path)) for path in self.path.glob("**/*.pt.zst")
+        }
+        remote_paths = {
+            path for path in list_bucket_files(self.bucket) if path.endswith(".pt.zst")
+        }
 
-        upload_file(self.bucket, "manifest.json", manifest_path)
+        # Delete local files that are not in the manifest
+        for path in local_paths - manifest_paths:
+            print(f"Deleting {path} from local")
+            (self.path / path).unlink()
+            (self.path / path).with_suffix("").unlink()
 
-        # Upload any new files mentioned in manifest to R2
-        for row in manifest.rows:
-            for path in row.paths:
-                if not file_exists_in_bucket(self.bucket, str(path)):
-                    upload_file(self.bucket, str(path), self.path / path)
+        # Delete remote files that are not in the manifest
+        for path in remote_paths - manifest_paths:
+            print(f"Deleting {path} from remote")
+            delete_file(self.bucket, path)
 
-    def push_manifest(self):
-        """Push the current local manifest to the remote bucket."""
-        upload_file(self.bucket, "manifest.json", self.path / "manifest.json")
+        # Any remaining local files that aren't in remote are new activations, upload them
+        for path in local_paths - remote_paths:
+            print(f"Uploading {path} to remote")
+            upload_file(self.bucket, path, self.path / path)
 
-    def clean(self):
-        """Clean up local and remote activations."""
-        with self.get_manifest() as manifest:
-            to_keep = {path.name for row in manifest.rows for path in row.paths}
+        # Delete from the manifest any activations that are not present locally or remotely
+        for path in manifest_paths - local_paths - remote_paths:
+            print(f"Removing {path} from manifest")
+            self.manifest.rows = [
+                row for row in self.manifest.rows if row.activations != path
+            ]
 
-        for path in self.path.glob("**/*.pt.zst"):
-            if path.name not in to_keep:
-                print(f"Deleting {path} from local")
-                path.unlink()
-                path.with_suffix("").unlink()
-
-        # List all .pt.zst files in bucket
-        bucket_files = list_bucket_files(self.bucket)
-        pt_files = [file for file in bucket_files if file.endswith(".pt.zst")]
-
-        # Delete files that aren't in manifest
-        for file in pt_files:
-            if file.split("/")[-1] not in to_keep:
-                print(f"Deleting {file} from bucket")
-                delete_file(self.bucket, file)
-                # Also delete the uncompressed version if it exists
-                if file.endswith(".pt.zst"):
-                    base = file[:-4]
-                    if base in bucket_files:
-                        delete_file(self.bucket, base)
+        self.save_manifest()
 
     def save(
         self,
@@ -234,9 +222,9 @@ class ActivationStore:
             print(
                 f"Attention mask size: {(self.path / manifest_row.attention_mask).stat().st_size / 1e9:.2f}GB"
             )
+            self.manifest.rows.append(manifest_row)
 
-            with self.get_manifest() as manifest:
-                manifest.rows.append(manifest_row)
+        self.save_manifest()
 
     def load(
         self, spec: ActivationsSpec
@@ -278,17 +266,13 @@ class ActivationStore:
         """
         # Delete layer-specific file
         manifest_row = ManifestRow.from_spec(spec)
+        self.manifest.rows = [
+            row
+            for row in self.manifest.rows
+            if row.activations != manifest_row.activations
+        ]
 
-        for path in manifest_row.paths:
-            if (self.path / path).exists():
-                (self.path / path).unlink()
-
-        with self.get_manifest() as manifest:
-            manifest.rows = [
-                row
-                for row in manifest.rows
-                if row.activations != manifest_row.activations
-            ]
+        self.save_manifest()
 
     def exists(self, spec: ActivationsSpec) -> bool:
         """Check if activations exist in storage.
@@ -300,8 +284,7 @@ class ActivationStore:
             True if the activations exist, False otherwise
         """
         row = ManifestRow.from_spec(spec)
-        with self.get_manifest() as manifest:
-            return any(row.activations == other.activations for other in manifest.rows)
+        return any(row.activations == other.activations for other in self.manifest.rows)
 
     def load_enriched_dataset(
         self, dataset_path: Path, model_name: str, layer: int, **loader_kwargs: Any
