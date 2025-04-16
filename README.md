@@ -38,6 +38,7 @@ Apr 15 versions (all based on calling parts of `modify_dataset.py`):
 
 Apr 16 versions (all based on caling parts of `modify_dataset.py`)
 
-- MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling
+- MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling.
+- MT dev and test datasets: Adding system prompt to each sample, adding more info to input and relabelling.
 
-TODO Relabel if system prompt changes (MT and anthropic)!
+TODO Relabel if system prompt changes (anthropic)!
