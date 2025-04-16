@@ -87,10 +87,10 @@ def split_by_variation(
     test_splits = {}
     for variation_value in variation_values:
         train_dataset_filtered = train_dataset.filter(
-            lambda x: x.variation_type == variation_value
+            lambda x: x.other_fields[variation_type] == variation_value
         )
         test_dataset_filtered = test_dataset.filter(
-            lambda x: x.variation_type == variation_value
+            lambda x: x.other_fields[variation_type] == variation_value
         )
 
         if max_samples is not None:
