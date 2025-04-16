@@ -370,3 +370,17 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+
+
+class DataEfficiencyConfig(BaseModel):
+    id: str = Field(default_factory=generate_short_id)
+    model_name: str
+    layer: int
+    dataset_path: Path
+    probes: list[ProbeSpec]
+    dataset_sizes: list[int]
+    compute_activations: bool = False
+
+    @property
+    def output_path(self) -> Path:
+        return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"

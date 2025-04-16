@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
     ChooseLayerConfig,
+    DataEfficiencyConfig,
     EvalRunConfig,
     HeatmapRunConfig,
 )
+from models_under_pressure.interfaces.probes import ProbeSpec
 
 
 class CVIntermediateResults(BaseModel):
@@ -228,3 +230,19 @@ class HeatmapRunResults(BaseModel):
             variation_type: df[df["variation_type"] == variation_type]
             for variation_type in variation_types
         }
+
+
+class ProbeDataEfficiencyResults(BaseModel):
+    probe: ProbeSpec
+    dataset_size: int
+    metrics: dict[str, float]
+
+
+class DataEfficiencyResults(BaseModel):
+    config: DataEfficiencyConfig
+    probe_results: list[ProbeDataEfficiencyResults]
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
