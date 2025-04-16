@@ -360,7 +360,7 @@ class LLMModel:
         with HookedModel(self.model, layers) as hooked_model:
             batches = get_batches(inputs, batch_size, self.tokenizer)
             # Process in batches
-            for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
+            for batch_inputs, batch_indices in batches:
                 seq_len = batch_inputs["input_ids"].shape[1]
 
                 # Get activations for this batch
@@ -419,7 +419,7 @@ class LLMModel:
 
         # Process in batches
         batches = get_batches(torch_inputs, batch_size, self.tokenizer)
-        for batch_inputs, batch_indices in tqdm(batches, desc="Processing batches"):
+        for batch_inputs, batch_indices in batches:
             seq_len = batch_inputs["input_ids"].shape[1]
             out_seq_len = seq_len - 1
 
@@ -518,10 +518,10 @@ def get_batches(
     sorted_indices = torch.sort(seq_lengths)[1].tolist()
 
     # Get batch ranges
-    batch_ranges = batched_range(len(sorted_indices), batch_size)
+    batch_ranges = list(batched_range(len(sorted_indices), batch_size))
     random.shuffle(batch_ranges)
 
-    for start, end in batch_ranges:
+    for start, end in tqdm(batch_ranges, desc="Processing batches"):
         batch_indices = sorted_indices[start:end]
         batch_length = max(seq_lengths[idx] for idx in batch_indices)  # type: ignore
         if tokenizer.padding_side == "right":
