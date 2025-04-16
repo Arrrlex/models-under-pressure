@@ -71,28 +71,28 @@ TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
 EVAL_DATASETS_RAW = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples.csv",
-    "toolace": EVALS_DIR / "toolace_samples.csv",
-    "mt": EVALS_DIR / "mt_samples.csv",
-    "mts": EVALS_DIR / "mts_samples.csv",
+    "anthropic": EVALS_DIR / "anthropic_raw_apr_16.jsonl",
+    "toolace": EVALS_DIR / "toolace_raw_apr_15.jsonl",
+    "mt": EVALS_DIR / "mt_raw_apr_16.jsonl",
+    "mts": EVALS_DIR / "mts_raw_apr_16.jsonl",
     "mask": EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
 EVAL_DATASETS_BALANCED = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_samples_balanced.jsonl",
-    "toolace": EVALS_DIR / "toolace_samples_balanced.jsonl",
-    "mt": EVALS_DIR / "mt_samples_balanced.jsonl",
-    "mts": EVALS_DIR / "mts_samples_balanced.jsonl",
+    "anthropic": EVALS_DIR / "anthropic_balanced_apr_16.jsonl",
+    "toolace": EVALS_DIR / "toolace_balanced_apr_15.jsonl",
+    "mt": EVALS_DIR / "mt_balanced_apr_16.jsonl",
+    "mts": EVALS_DIR / "mts_balanced_apr_16.jsonl",
     "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 
 TEST_DATASETS_RAW = {
     "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_samples.csv",
-    "toolace": TEST_EVALS_DIR / "toolace_samples.csv",
-    "mt": TEST_EVALS_DIR / "mt_samples_clean.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_samples.csv",
+    "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_raw_apr_15.jsonl",
+    "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
+    "mts": TEST_EVALS_DIR / "mts_test_raw_apr_16.csv",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
     "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
@@ -100,10 +100,10 @@ TEST_DATASETS_RAW = {
 
 TEST_DATASETS_BALANCED = {
     "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_samples_balanced.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_samples_balanced.jsonl",
-    "mt": TEST_EVALS_DIR / "mt_samples_clean_balanced.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_samples_balanced.jsonl",
+    "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_balanced_apr_15.jsonl",
+    "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
+    "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_16.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
     "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
     "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
@@ -333,6 +333,7 @@ class EvalRunConfig(BaseModel):
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
+    compute_activations: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     model_name: str = (
         DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
