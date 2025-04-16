@@ -36,9 +36,8 @@ Apr 15 versions (all based on calling parts of `modify_dataset.py`):
 - Anthropic dev and test datasets: Adding system prompt to each sample, otherwise no changes.
 - MT dev and test datasets: Adding system prompt to each sample, removing cases where transcription length is less than description length, and adding more info to input.
 
-Apr 16 versions (all based on caling parts of `modify_dataset.py`)
+Apr 16 versions (all based on calling parts of `modify_dataset.py`)
 
 - MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling.
 - MT dev and test datasets: Adding system prompt to each sample, adding more info to input and relabelling.
-
-TODO Relabel if system prompt changes (anthropic)!
+- Anthropic dev and test datasets: Adding system prompt to each sample and relabelling.
