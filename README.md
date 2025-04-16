@@ -26,3 +26,18 @@ That will create the corresponding dataset files (raw and balanced) in the test 
 
 After that, run the script `eval_dataset_split_check.py` to ensure that there is no overlap between dev and test datasets.
 (Note that MT does have duplicates, so for that dataset you can expect some overlap by default.)
+
+
+### Notes on Dataset Versions
+
+Apr 15 versions (all based on calling parts of `modify_dataset.py`):
+
+- ToolACE dev and test datasets: Based on previous dev dataset (raw version), modify the system prompt and relabel after adding system prompt.
+- Anthropic dev and test datasets: Adding system prompt to each sample, otherwise no changes.
+- MT dev and test datasets: Adding system prompt to each sample, removing cases where transcription length is less than description length, and adding more info to input.
+
+Apr 16 versions (all based on calling parts of `modify_dataset.py`)
+
+- MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling.
+- MT dev and test datasets: Adding system prompt to each sample, adding more info to input and relabelling.
+- Anthropic dev and test datasets: Adding system prompt to each sample and relabelling.

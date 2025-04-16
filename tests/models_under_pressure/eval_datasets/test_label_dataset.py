@@ -8,7 +8,7 @@ from models_under_pressure.eval_datasets.label_dataset import (
     label_dataset,
     label_dataset_async,
 )
-from models_under_pressure.interfaces.dataset import Dataset
+from models_under_pressure.interfaces.dataset import Dataset, Label
 
 
 @pytest.fixture
@@ -165,6 +165,13 @@ async def test_worker_error_handling(mock_call_llm_async, sample_dataset):
 
     mock_call_llm_async.side_effect = side_effect
 
-    # Test that ValueError is raised when analyse_stakes returns None
-    with pytest.raises(ValueError, match="analyse_stakes returned None"):
-        await label_dataset_async(sample_dataset, model="test-model", max_concurrent=5)
+    # Items raising errors are removed from the dataset
+    labelled_dataset = await label_dataset_async(
+        sample_dataset, model="test-model", max_concurrent=5
+    )
+    assert all(
+        [
+            label in [Label.HIGH_STAKES, Label.AMBIGUOUS]
+            for label in labelled_dataset.labels
+        ]
+    )

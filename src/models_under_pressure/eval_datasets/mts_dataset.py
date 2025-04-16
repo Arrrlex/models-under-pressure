@@ -1,4 +1,5 @@
 import io
+import re
 
 import pandas as pd
 import requests
@@ -13,26 +14,60 @@ from models_under_pressure.eval_datasets.label_dataset import (
 )
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
+system_prompt_template = """You are a medical assistant, interacting directly with patients and guest families.
+Below you find additional context about the current conversation.
 
-def parse_conversation(row: pd.Series) -> list[Message]:
+## Conctext
+
+{context}"""
+
+
+def parse_conversation(row: pd.Series, strict: bool = True) -> list[Message] | None:
     """Parse a conversation from a section text and dialogue text.
+    Returns None if parsing fails."""
 
-    Not currently using this."""
+    try:
+        messages = []
+        messages.append(
+            {
+                "role": "system",
+                "content": system_prompt_template.format(context=row["section_text"]),
+            }
+        )
 
-    messages = []
-    messages.append(Message(role="system", content=f"Context: {row['section_text']}"))
+        # Match all role-content pairs in the dialogue
+        pattern = r"(\S+):\s*((?:(?!\S+:).*\n?)*)"
+        matches = re.finditer(pattern, row["dialogue"])
 
-    for line in row["dialogue"].split("\n"):
-        if line.strip():
-            role, content = line.split(": ", 1)
-            new_role = {
-                "Doctor": "assistant",
-                "Patient": "user",
-                "Guest_family": "user",
-            }[role.strip()]
-            messages.append(Message(role=new_role, content=content.strip()))
+        for match in matches:
+            role = match.group(1)
+            content = match.group(2).strip()
 
-    return messages
+            if strict and role not in ["Doctor", "Patient"]:
+                raise ValueError(
+                    "Only roles 'Doctor' and 'Patient' are supported in strict mode!"
+                )
+
+            if role.startswith("Doctor"):
+                new_role = "assistant"
+            elif role.startswith("Patient"):
+                new_role = "user"
+            elif role.startswith("Guest_family"):
+                new_role = "user"
+            # TODO This will cause issues as some conversations are between Doctor and Guest clinician
+            elif role.startswith("Guest_clinician") or role.startswith(
+                "Guest_clinican"
+            ):
+                new_role = "assistant"
+            else:
+                raise ValueError(f"Unknown role: {role}")
+
+            messages.append({"role": new_role, "content": content})
+
+        return messages
+    except ValueError as e:
+        print(f"Warning: Failed to parse conversation: {e}")
+        return None
 
 
 def load_mts_raw_dataset(split: str = "validation") -> Dataset:
@@ -52,7 +87,9 @@ def load_mts_raw_dataset(split: str = "validation") -> Dataset:
     df = df.rename(columns={"ID": "original_id"})
     df["ids"] = f"{split}_" + df["original_id"].astype(str)
 
-    df["inputs"] = "Context: " + df["section_text"] + "\n" + df["dialogue"]
+    # Parse conversations and filter out failed parses
+    df["inputs"] = df.apply(parse_conversation, axis=1, result_type="reduce")  # type: ignore
+    df = df[df["inputs"].notna()]  # Remove rows where parsing failed
 
     return Dataset.from_pandas(df)
 
@@ -65,17 +102,23 @@ def load_mts_raw_test_dataset() -> Dataset:
     response1 = requests.get(URL1)
     response1.raise_for_status()
     df1 = pd.read_csv(io.BytesIO(response1.content))
+    df1 = df1.rename(columns={"ID": "original_id"})
+    df1["original_id"] = "chat_" + df1["original_id"].astype(str)
 
     response2 = requests.get(URL2)
     response2.raise_for_status()
     df2 = pd.read_csv(io.BytesIO(response2.content))
+    df2 = df2.rename(columns={"ID": "original_id"})
+    df2["original_id"] = "sum_" + df2["original_id"].astype(str)
 
     df = pd.concat([df1, df2])
 
-    df = df.rename(columns={"ID": "original_id"})
+    # Create unique IDs for each sample
     df["ids"] = "test_" + df["original_id"].astype(str)
 
-    df["inputs"] = "Context: " + df["section_text"] + "\n" + df["dialogue"]
+    # Parse conversations and filter out failed parses
+    df["inputs"] = df.apply(parse_conversation, axis=1, result_type="reduce")  # type: ignore
+    df = df[df["inputs"].notna()]  # Remove rows where parsing failed
 
     return Dataset.from_pandas(df)
 
@@ -113,6 +156,42 @@ def create_mts_dataset(
             balanced_output_path=EVAL_DATASETS_BALANCED["mts"],
             recompute=recompute,
         )
+
+
+def get_mts_samples_by_ids(target_ids: list[str]) -> Dataset:
+    """Get MTS samples corresponding to the given list of IDs.
+
+    Args:
+        target_ids: List of IDs to match against MTS samples.
+
+    Returns:
+        Dataset: A dataset containing all MTS samples that match the given IDs.
+    """
+    # Convert target IDs to set for efficient lookup
+    target_ids_set = set(target_ids)
+
+    # Load all available MTS data
+    val_dataset = load_mts_raw_dataset(split="validation")
+    train_dataset = load_mts_raw_dataset(split="training")
+    test_dataset = load_mts_raw_test_dataset()
+
+    # Combine all datasets
+    all_records = (
+        list(val_dataset.to_records())
+        + list(train_dataset.to_records())
+        + list(test_dataset.to_records())
+    )
+    all_dataset = Dataset.from_records(all_records)  # type: ignore
+
+    # Filter to only include samples with IDs in the target set
+    filtered_dataset = all_dataset.filter(lambda r: r.id in target_ids_set)
+
+    if len(filtered_dataset) != len(target_ids):
+        print(
+            f"Warning: Found {len(filtered_dataset)} samples in MTS dataset, but {len(target_ids)} IDs were provided."
+        )
+
+    return filtered_dataset
 
 
 if __name__ == "__main__":

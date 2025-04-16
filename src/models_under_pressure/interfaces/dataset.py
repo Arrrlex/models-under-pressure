@@ -77,14 +77,8 @@ class Record(BaseModel):
             )
 
     def __getattr__(self, name: str) -> Any:
-        """Allow record.{field} to resolve to record.input, record.id, or record.other_fields[{field}]"""
-        if name == "input" or name == "id":
-            return getattr(self, name)
-        elif name in self.other_fields:
-            return self.other_fields[name]
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'"
-        )
+        """Allow accessing other_fields values as attributes."""
+        return self.other_fields[name]
 
 
 class LabelledRecord(Record):

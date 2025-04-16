@@ -46,6 +46,7 @@ case $name in
         ;;
 esac
 
+rm -f ~/.ssh/github_$name
 echo "Please paste your private SSH key (including BEGIN and END lines):"
 mkdir -p ~/.ssh
 while IFS= read -r line; do

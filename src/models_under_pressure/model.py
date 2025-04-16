@@ -359,6 +359,7 @@ class LLMModel:
 
         with HookedModel(self.model, layers) as hooked_model:
             batches = get_batches(inputs, batch_size, self.tokenizer)
+            # Process in batches
             for batch_inputs, batch_indices in batches:
                 seq_len = batch_inputs["input_ids"].shape[1]
 
