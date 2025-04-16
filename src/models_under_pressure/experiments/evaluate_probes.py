@@ -33,6 +33,10 @@ from models_under_pressure.probes.pytorch_classifiers import (
 )
 
 
+def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
+    return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
+
+
 def evaluate_probe_and_save_results(
     probe: Probe,
     train_dataset_path: Path,
@@ -67,34 +71,20 @@ def evaluate_probe_and_save_results(
     print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
     if save_results:
-        # We don't seem to use these fields for the main evaluation
-        per_token_probe_scores = probe.per_token_predictions(
-            inputs=eval_dataset.inputs,
-        )
-
         # Get rid of the padding in the per token probe scores
         per_token_probe_scores = [
-            probe_score[probe_score != -1] for probe_score in per_token_probe_scores
+            probe_score[probe_score != -1]
+            for probe_score in probe.per_token_predictions(eval_dataset.inputs)
         ]
 
         # calculate logits for the per token probe scores
-        per_token_probe_logits = [
-            (np.log(probe_score) / (1 - probe_score + 1e-7)).tolist()
-            for probe_score in per_token_probe_scores
-        ]
-
-        per_entry_probe_logits = [
-            (
-                np.log(per_entry_probe_score) / (1 - per_entry_probe_score + 1e-7)
-            ).tolist()
-            for per_entry_probe_score in per_entry_probe_scores
-        ]
+        per_token_probe_logits = inv_softmax(per_token_probe_scores)
+        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)
 
         # Assert no NaN values in the per token probe logits
         for i, logits in enumerate(per_token_probe_logits):
             if np.any(np.isnan(logits)):
-                print(f"Found NaN values in probe logits for entry {i}")
-            assert not np.any(np.isnan(logits)), "Found NaN values in probe logits"
+                raise ValueError(f"Found NaN values in probe logits for entry {i}")
 
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
@@ -105,10 +95,10 @@ def evaluate_probe_and_save_results(
 
         for score, values in probe_scores_dict.items():
             if len(values) != len(eval_dataset.inputs):
-                breakpoint()
-            assert (
-                len(values) == len(eval_dataset.inputs)
-            ), f"{score} has length {len(values)} but eval_dataset has length {len(eval_dataset.inputs)}"
+                raise ValueError(
+                    f"{score} has length {len(values)} "
+                    f"but {eval_dataset_name} has length {len(eval_dataset.inputs)}"
+                )
 
         try:
             dataset_with_probe_scores = LabelledDataset.load_from(
@@ -138,26 +128,14 @@ def evaluate_probe_and_save_results(
             overwrite=True,
         )
 
+    y_true = eval_dataset.labels_numpy()
+    y_pred = np.array(per_entry_probe_scores)
+
     # Calculate the metrics for the dataset:
-    auroc = roc_auc_score(
-        eval_dataset.labels_numpy(),
-        per_entry_probe_scores,
-    )
-    accuracy = accuracy_score(
-        eval_dataset.labels_numpy(),
-        np.array(per_entry_probe_scores) > 0.5,
-    )
-
-    tpr_at_fpr = tpr_at_fixed_fpr_score(
-        eval_dataset.labels_numpy(),
-        per_entry_probe_scores,
-        fpr=fpr,
-    )
-
     metrics = {
-        "auroc": float(auroc),
-        "accuracy": float(accuracy),
-        "tpr_at_fpr": float(tpr_at_fpr),
+        "auroc": float(roc_auc_score(y_true, y_pred)),
+        "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
+        "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
         "fpr": float(fpr),
     }
 
