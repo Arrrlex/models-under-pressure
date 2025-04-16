@@ -1,4 +1,5 @@
 from models_under_pressure.config import DataEfficiencyConfig
+from models_under_pressure.interfaces.dataset import subsample_balanced_subset
 from models_under_pressure.interfaces.results import (
     DataEfficiencyResults,
     ProbeDataEfficiencyResults,
@@ -34,7 +35,7 @@ def run_data_efficiency_experiment(
     # For each dataset size
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
         # Create a subset of the dataset
-        subset = train_dataset.sample(dataset_size)
+        subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
 
         # For each probe type
         for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
@@ -76,15 +77,85 @@ def run_data_efficiency_experiment(
     return results
 
 
+def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "auroc"):
+    """Plot probe performance vs dataset size.
+
+    Args:
+        results: DataEfficiencyResults containing probe performance data
+        metric: Which metric to plot. One of "auroc", "accuracy", or "tpr_at_fpr"
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+
+    # Set style
+    plt.style.use("seaborn")
+    sns.set_palette("husl")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Group results by probe type
+    probe_types = {probe.name for probe in results.config.probes}
+
+    # Plot line for each probe type
+    for probe_type in probe_types:
+        # Get results for this probe type
+        probe_results = [r for r in results.probe_results if r.probe.name == probe_type]
+
+        # Sort by dataset size
+        probe_results.sort(key=lambda x: x.dataset_size)
+
+        # Extract x and y values
+        x = [r.dataset_size for r in probe_results]
+        y = [r.metrics[metric] for r in probe_results]
+
+        # Plot line
+        ax.plot(x, y, marker="o", label=probe_type)
+
+    # Set labels and title
+    ax.set_xlabel("Dataset Size (samples)")
+    metric_labels = {
+        "auroc": "AUROC",
+        "accuracy": "Accuracy",
+        "tpr_at_fpr": "TPR at 1% FPR",
+    }
+    ax.set_ylabel(metric_labels.get(metric, metric))
+    ax.set_title(f"Probe Performance vs Dataset Size\n{results.config.model_name}")
+
+    # Use log scale for x-axis since dataset sizes often vary by orders of magnitude
+    ax.set_xscale("log")
+
+    # Add grid
+    ax.grid(True, which="both", ls="-", alpha=0.2)
+
+    # Add legend
+    ax.legend(title="Probe Type", bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+
+    # Create output directory if it doesn't exist
+    output_dir = Path(results.config.output_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save plots
+    base_path = output_dir / f"data_efficiency_{results.config.id}_{metric}"
+    plt.savefig(f"{base_path}.pdf", bbox_inches="tight", dpi=300)
+    plt.savefig(f"{base_path}.png", bbox_inches="tight", dpi=300)
+
+    return fig
+
+
 if __name__ == "__main__":
-    from models_under_pressure.config import SYNTHETIC_DATASET_PATH
+    from models_under_pressure.config import SYNTHETIC_DATASET_PATH, LOCAL_MODELS
     from models_under_pressure.interfaces.probes import ProbeSpec
 
     config = DataEfficiencyConfig(
-        model_name="llama-1b",
+        model_name=LOCAL_MODELS["llama-1b"],
         layer=11,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1319],
+        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 836],
         probes=[
             ProbeSpec(
                 name="sklearn_mean_agg_probe",
@@ -105,5 +176,7 @@ if __name__ == "__main__":
                 hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
             ),
         ],
+        compute_activations=True,
     )
-    run_data_efficiency_experiment(config)
+    results = run_data_efficiency_experiment(config)
+    plot_data_efficiency_results(results)
