@@ -183,7 +183,7 @@ def load_filtered_train_dataset(
     )
 
     # Subsample so this runs on the laptop
-    if max_samples is not None:
+    if max_samples is not None and len(train_dataset) > max_samples:
         print("Subsampling the dataset ...")
         train_dataset = subsample_balanced_subset(
             train_dataset, n_per_class=max_samples // 2
