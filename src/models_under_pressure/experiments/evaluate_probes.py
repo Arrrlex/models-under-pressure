@@ -6,9 +6,11 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
+    INPUTS_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS,
@@ -23,6 +25,7 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
@@ -180,6 +183,23 @@ def run_evaluation(
             validation_dataset = subsample_balanced_subset(
                 validation_dataset, n_per_class=config.max_samples // 2
             )
+        if not config.compute_activations:
+            validation_dataset = ActivationStore().enrich(
+                validation_dataset,
+                path=config.validation_dataset,
+                model_name=config.model_name,
+                layer=config.layer,
+            )
+        else:
+            model = LLMModel.load(config.model_name)
+            activations = model.get_batched_activations(
+                validation_dataset, layer=config.layer
+            )
+            validation_dataset = validation_dataset.assign(
+                activations=activations._activations,
+                attention_mask=activations._attention_mask,
+                input_ids=activations._input_ids,
+            )
 
     # Create the probe:
     print("Creating probe ...")
@@ -259,13 +279,13 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         layer=11,
-        max_samples=20,
+        max_samples=200,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_per_entry_probe_mean",
             hyperparams={
                 "batch_size": 16,
-                "epochs": 10,
+                "epochs": 40,
                 "device": "cpu",
                 "optimizer_args": {
                     "lr": 1e-2,
@@ -274,9 +294,10 @@ if __name__ == "__main__":
             },
         ),
         compute_activations=True,
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        # validation_dataset=SYNTHETIC_DATASET_PATH,
-        validation_dataset=True,
+        # dataset_path=SYNTHETIC_DATASET_PATH,
+        dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
+        validation_dataset=SYNTHETIC_DATASET_PATH,
+        # validation_dataset=True,
     )
 
     double_check_config(config)
