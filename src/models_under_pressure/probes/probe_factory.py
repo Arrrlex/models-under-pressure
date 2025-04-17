@@ -9,7 +9,11 @@ from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
-from models_under_pressure.probes.sklearn_probes import Probe, SklearnProbe
+from models_under_pressure.probes.sklearn_probes import (
+    Probe,
+    SklearnProbe,
+    compute_accuracy,
+)
 
 
 class ProbeFactory:
@@ -81,3 +85,40 @@ class ProbeFactory:
             ).fit(train_dataset, validation_dataset=validation_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
+
+
+if __name__ == "__main__":
+    from models_under_pressure.config import LOCAL_MODELS, SYNTHETIC_DATASET_PATH
+    from models_under_pressure.dataset_utils import load_train_test
+    from models_under_pressure.interfaces.probes import ProbeSpec
+
+    # Load the synthetic dataset
+    train_dataset, test_dataset = load_train_test(
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        model_name=LOCAL_MODELS["llama-1b"],
+        layer=11,
+        compute_activations=True,
+        n_per_class=100,
+    )
+
+    # Define probe hyperparameters
+    probe_spec = ProbeSpec(
+        name="pytorch_per_token_probe",
+        hyperparams={
+            "batch_size": 32,
+            "epochs": 20,
+            "device": "cpu",
+            "learning_rate": 1e-2,
+            "weight_decay": 0.1,
+        },
+    )
+
+    # Train the probe
+    probe = ProbeFactory.build(
+        probe=probe_spec, train_dataset=train_dataset, validation_dataset=test_dataset
+    )
+
+    # Print probe performance
+    print("Probe training completed!")
+    print(f"Train accuracy: {compute_accuracy(probe, train_dataset)}")
+    print(f"Test accuracy: {compute_accuracy(probe, test_dataset)}")
