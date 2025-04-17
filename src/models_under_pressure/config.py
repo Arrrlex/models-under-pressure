@@ -60,7 +60,6 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 
 # Training datasets
-
 SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
 
 # Evals files
@@ -89,7 +88,7 @@ EVAL_DATASETS_BALANCED = {
 TEST_DATASETS_RAW = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_raw_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_15.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_raw_apr_16.csv",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
@@ -100,7 +99,7 @@ TEST_DATASETS_RAW = {
 TEST_DATASETS_BALANCED = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_balanced_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_15.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_16.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
@@ -119,14 +118,6 @@ AIS_DATASETS = {
             "is_sandbagging": "labels",
         },
     },
-    "deception": {
-        "file_path_or_name": EVALS_DIR / "deception_labelled_.csv",
-        "field_mapping": {
-            "labels": "high_stakes",
-            "is_deceptive": "labels",
-            "id": "ids",
-        },
-    },
 }
 
 OTHER_DATASETS = {
@@ -138,6 +129,17 @@ OTHER_DATASETS = {
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
     "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
+    "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
+    "original_manipulated": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_manipulated.jsonl",
+    "original_neutralised": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_neutralised.jsonl",
+    "original_manipulated_new": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_manipulated_new.jsonl",
+    "original_neutralised_new": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_neutralised_new.jsonl",
+    "original_unconfounded": TRAIN_DIR / "prompts_25_03_25_gpt-4o_unconfounded.jsonl",
+    "original_plus_new": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
 }
 
 
@@ -332,6 +334,10 @@ class EvalRunConfig(BaseModel):
     eval_datasets: list[Path]
     model_name: str
     compute_activations: bool = False
+    validation_dataset: Path | bool = False
+    model_name: str = (
+        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
+    )
 
     @property
     def output_filename(self) -> str:

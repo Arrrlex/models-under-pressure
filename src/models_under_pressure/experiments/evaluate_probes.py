@@ -2,24 +2,28 @@
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
+    LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
-from models_under_pressure.dataset_utils import (
-    load_train_test,
-)
+from models_under_pressure.dataset_utils import load_splits_lazy, load_dataset
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
+    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from models_under_pressure.probes.probes import ProbeFactory
+from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.utils import double_check_config
 
 
 def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
@@ -135,7 +139,7 @@ def evaluate_probe_and_save_results(
 
 def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    train_dataset, _ = load_train_test(
+    splits = load_splits_lazy(
         dataset_path=config.dataset_path,
         n_per_class=config.max_samples,
         model_name=config.model_name,
@@ -143,14 +147,27 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
         compute_activations=config.compute_activations,
     )
 
+    if isinstance(config.validation_dataset, Path):
+        validation_dataset = LabelledDataset.load_from(config.validation_dataset)
+        if (
+            config.max_samples is not None
+            and len(validation_dataset) > config.max_samples
+        ):
+            validation_dataset = subsample_balanced_subset(
+                validation_dataset, n_per_class=config.max_samples // 2
+            )
+    elif config.validation_dataset:
+        validation_dataset = splits["test"]
+    else:
+        validation_dataset = None
+
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
-        train_dataset=train_dataset,
+        train_dataset=splits["train"],
+        validation_dataset=validation_dataset,
     )
-
-    del train_dataset
 
     results_list = []
 
@@ -159,12 +176,12 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
     ):
         eval_dataset_name = eval_dataset_path.stem
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
-        eval_dataset, _ = load_train_test(
+        eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
-            n_per_class=config.max_samples,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
@@ -205,8 +222,32 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
 
         del eval_dataset
 
-    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
-    for result in results_list:
-        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
     return results_list
+
+
+if __name__ == "__main__":
+    # Set random seed for reproducibility
+    RANDOM_SEED = 0
+    np.random.seed(RANDOM_SEED)
+
+    config = EvalRunConfig(
+        layer=31,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
+        probe_spec=ProbeSpec(
+            name="sklearn_mean_agg_probe",
+            hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
+        ),
+        compute_activations=False,
+        # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        # validation_dataset=SYNTHETIC_DATASET_PATH,
+        validation_dataset=True,
+        eval_datasets=list(EVAL_DATASETS.values()),
+    )
+
+    double_check_config(config)
+
+    print(f"Running probe evaluation with ID {config.id}")
+    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
+    run_evaluation(config=config)

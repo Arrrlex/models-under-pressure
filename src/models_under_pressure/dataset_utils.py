@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -126,7 +127,7 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
     raise NotImplementedError("Not implemented")
 
 
-def load_train_test(
+def load_dataset(
     dataset_path: Path,
     model_name: str | None = None,
     layer: int | None = None,
@@ -134,7 +135,7 @@ def load_train_test(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
-) -> tuple[LabelledDataset, LabelledDataset]:
+) -> LabelledDataset:
     """Load the train-test split for the generated dataset.
 
     If model_name and layer are provided, the activations are loaded and added to the dataset.
@@ -150,14 +151,19 @@ def load_train_test(
     dataset = LabelledDataset.load_from(dataset_path)
 
     if model_name is not None and layer is not None and not compute_activations:
-        dataset = ActivationStore().enrich(dataset, model_name, layer)
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
+        )
 
     if variation_type is not None and variation_value is not None:
         dataset = dataset.filter(
             lambda x: x.other_fields[variation_type] == variation_value
         )
 
-    if n_per_class is not None:
+    if n_per_class is not None and len(dataset) > n_per_class * 2:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
 
     if model_name is not None and layer is not None and compute_activations:
@@ -169,7 +175,83 @@ def load_train_test(
             input_ids=activations._input_ids,
         )
 
-    train_dataset = dataset.filter(lambda x: x.split == "train")
-    test_dataset = dataset.filter(lambda x: x.split == "test")
+    return dataset
+
+
+class LazyDatasetDict:
+    def __init__(self, path: Path, kwargs: dict[str, Any]):
+        self.path = path
+        self.kwargs = kwargs
+
+    def __getitem__(self, key: str) -> LabelledDataset:
+        return load_dataset(self.path / f"{key}.jsonl", **self.kwargs)
+
+
+def load_splits_lazy(
+    dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> LazyDatasetDict:
+    return LazyDatasetDict(
+        path=dataset_path,
+        kwargs={
+            "model_name": model_name,
+            "layer": layer,
+            "compute_activations": compute_activations,
+            "variation_type": variation_type,
+            "variation_value": variation_value,
+            "n_per_class": n_per_class,
+        },
+    )
+
+
+def load_train_test(
+    dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> tuple[LabelledDataset, LabelledDataset]:
+    if dataset_path.is_dir():
+        train_dataset = load_dataset(
+            dataset_path / "train.jsonl",
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+            variation_type=variation_type,
+            variation_value=variation_value,
+            n_per_class=n_per_class,
+        )
+        test_dataset = load_dataset(
+            dataset_path / "test.jsonl",
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+        )
+        return train_dataset, test_dataset
+    else:
+        dataset = load_dataset(
+            dataset_path,
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+            variation_type=variation_type,
+            variation_value=variation_value,
+            n_per_class=n_per_class,
+        )
+
+        train_dataset = dataset.filter(
+            lambda x: x.other_fields.get("split", "train") in ["train", "dev"]
+            # Note that mask uses split=="dev"
+        )
+        test_dataset = dataset.filter(
+            lambda x: x.other_fields.get("split", "train") == "test"
+        )
 
     return train_dataset, test_dataset

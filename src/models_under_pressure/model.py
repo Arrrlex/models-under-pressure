@@ -11,15 +11,18 @@ The module handles batching and memory management to efficiently process large d
 while working with potentially very large language models.
 """
 
-from dataclasses import dataclass
 import random
-from typing import Any, Callable, Iterator, Self, Sequence, Type
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Callable, Iterator, Self, Sequence, Type
 
 import torch
+from jaxtyping import Float
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase  # type: ignore
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
+
 from models_under_pressure.config import global_settings
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dialogue,
@@ -27,8 +30,6 @@ from models_under_pressure.interfaces.dataset import (
     to_dialogue,
 )
 from models_under_pressure.utils import batched_range
-from models_under_pressure.interfaces.activations import Activation
-from jaxtyping import Float
 
 
 # type: ignore
@@ -267,7 +268,8 @@ class LLMModel:
         elif hasattr(self.model, "model") and hasattr(self.model.model, "layers"):
             return len(self.model.model.layers)  # type: ignore
         elif hasattr(self.model.config, "text_config") and hasattr(
-            self.model.config.text_config, "num_hidden_layers"
+            self.model.config.text_config,  # type: ignore
+            "num_hidden_layers",
         ):
             return self.model.config.text_config.num_hidden_layers  # type: ignore
         else:
@@ -280,7 +282,8 @@ class LLMModel:
         if hasattr(self.model.config, "hidden_size"):
             return self.model.config.hidden_size  # type: ignore
         elif hasattr(self.model.config, "text_config") and hasattr(
-            self.model.config.text_config, "hidden_size"
+            self.model.config.text_config,  # type: ignore
+            "hidden_size",
         ):
             return self.model.config.text_config.hidden_size  # type: ignore
         else:
@@ -373,6 +376,7 @@ class LLMModel:
 
         return all_activations, {k: v.cpu() for k, v in inputs.items()}
 
+    @torch.no_grad()
     def get_batched_activations(
         self,
         dataset: BaseDataset,
