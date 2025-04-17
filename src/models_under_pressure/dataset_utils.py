@@ -175,11 +175,10 @@ def load_train_test(
         )
 
     train_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "train") in ["train", "dev"]
-        # Note that mask uses split=="dev"
+        lambda x: x.other_fields.get("split", "train") == "train"
     )
     test_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "train") == "test"
+        lambda x: x.other_fields.get("split", "test") == "test"
     )
 
     return train_dataset, test_dataset
