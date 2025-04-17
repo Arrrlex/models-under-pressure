@@ -49,7 +49,9 @@ class ProbeFactory:
             probe.name
             not in ["pytorch_per_entry_probe_mean", "pytorch_per_token_probe"]
         ):
-            print("Warning: Validation dataset is not used for LDA probe.")
+            print(
+                f"Warning: Validation dataset is not used for probe of type {probe.name}."
+            )
 
         if probe.name == "sklearn_mean_agg_probe":
             aggregator = Aggregator(
