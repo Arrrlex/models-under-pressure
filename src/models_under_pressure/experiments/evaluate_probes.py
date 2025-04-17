@@ -10,6 +10,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
     TEST_DATASETS,
     EvalRunConfig,
 )
@@ -271,6 +272,7 @@ if __name__ == "__main__":
             },
         ),
         compute_activations=True,
+        dataset_path=SYNTHETIC_DATASET_PATH,
         # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
     )
