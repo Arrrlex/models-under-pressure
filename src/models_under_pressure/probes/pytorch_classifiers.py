@@ -479,7 +479,7 @@ class AttentionLayer(nn.Module):
         return attn_output.mean(dim=-1, keepdim=True)
 
 
-class AttentionProbe(nn.Module):
+class AttentionProbeAttnWeightLogits(nn.Module):
     def __init__(self, embed_dim: int, attn_hidden_dim: int):
         super().__init__()
 
@@ -526,6 +526,47 @@ class AttentionProbe(nn.Module):
         return (linear_output * attn_output).squeeze()
 
 
+class AttentionProbeAttnThenLinear(nn.Module):
+    """
+    Attention probe that uses a single head attention layer to aggregate the sequence.
+    The output is passed through a single linear layer.
+    """
+
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
+        super().__init__()
+
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
+
+        self.query_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.key_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.value_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=attn_hidden_dim, num_heads=1, batch_first=True
+        )
+
+        self.linear = nn.Linear(attn_hidden_dim, 1, bias=False)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        activations = activations.permute(0, 2, 1)
+        activations = self.batch_norm(activations)
+        activations = activations.permute(0, 2, 1)
+
+        keys, queries, values = (
+            self.key_linear(activations),
+            self.query_linear(activations),
+            self.value_linear(activations),
+        )
+
+        attn_output, _ = self.attn(queries, keys, values, need_weights=False)
+
+        linear_output = self.linear(attn_output).squeeze(dim=-1)
+
+        return linear_output
+
+
 class PytorchAttentionClassifier(PytorchLinearClassifier):
     """
     A linear classifier that uses PyTorch. The sequence is aggregated using a learnt attention mechanism.
@@ -562,7 +603,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         # Create a linear model with the correct embedding dimension
         if self.model is None:
             self.model = self.create_model(
-                embedding_dim, attn_hidden_dim=self.training_args["attn_hidden_dim"]
+                embedding_dim,
+                attn_hidden_dim=self.training_args["attn_hidden_dim"],
+                probe_architecture=self.training_args["probe_architecture"],
             ).to(device)
 
         optimizer = torch.optim.AdamW(
@@ -607,6 +650,12 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     outputs = self.model(
                         acts.to(device).to(torch.bfloat16)
                     )  # batch_size, seq_len
+
+                    # Multiply by the attention mask here:
+                    # We multiply the acts by the atteniont mask but the model is currently still learning from padded inputs
+                    # So we need to multiply the outputs by the attention mask to remove the padded tokens
+                    outputs = outputs * mask_batch.to(device).to(torch.bfloat16)
+
                     outputs = outputs.mean(
                         dim=-1
                     )  # aggregate the attention weighted logits
@@ -681,18 +730,50 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
         return masked_logits
 
-    def create_model(self, embedding_dim: int, attn_hidden_dim: int) -> nn.Module:
+    def create_model(
+        self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
+    ) -> nn.Module:
         """
         Create a linear model over the embedding dimension dynamically.
+
+        Args:
+            embedding_dim: The embedding dimension of the model residual stream
+            attn_hidden_dim: The hidden dimension of the attention layer
+            probe_architecture: The architecture of the probe
+
+        Probe Architectures:
+        "attention_weighted_agg_logits":
+            The sequence is aggregated using a weighted sum where the weights are the
+            outputs of a learnt attention mechanism.
+
+        "attention_then_linear":
+            The sequence is passed through a learnt attention mechanism and then through a
+            linear layer.
+
+        Returns:
+            A PyTorch module
         """
 
         # Create an attention probe layer:
-        model = AttentionProbe(embedding_dim, attn_hidden_dim).to(torch.bfloat16)
+        if probe_architecture == "attention_weighted_agg_logits":
+            model = AttentionProbeAttnWeightLogits(embedding_dim, attn_hidden_dim).to(
+                torch.bfloat16
+            )
+        elif probe_architecture == "attention_then_linear":
+            model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim).to(
+                torch.bfloat16
+            )
+        else:
+            raise NotImplementedError(
+                f"Probe architecture {probe_architecture} not implemented"
+            )
 
-        # Initialize weights using xavier uniform
-        torch.nn.init.xavier_uniform_(model.linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.query_linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.key_linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.value_linear.weight)
+        for layer in model.modules():
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.xavier_uniform_(layer.weight)
+            elif isinstance(layer, AttentionLayer):
+                torch.nn.init.xavier_uniform_(layer.query_linear.weight)
+                torch.nn.init.xavier_uniform_(layer.key_linear.weight)
+                torch.nn.init.xavier_uniform_(layer.value_linear.weight)
 
         return model
