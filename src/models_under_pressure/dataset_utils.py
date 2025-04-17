@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -178,14 +178,16 @@ def load_dataset(
     return dataset
 
 
-class LazyDatasetDict:
-    def __init__(self, path: Path, kwargs: dict[str, Any]):
-        self.path = path
+class LazyLoader:
+    def __init__(
+        self, loaders: dict[str, Callable[..., LabelledDataset]], **kwargs: Any
+    ):
+        self.loaders = loaders
         self.kwargs = kwargs
-        self.dataset = None
 
     def __getitem__(self, key: str) -> LabelledDataset:
-        return load_dataset(self.path / f"{key}.jsonl", **self.kwargs)
+        loader = self.loaders[key]
+        return loader(**self.kwargs)
 
 
 def load_splits_lazy(
@@ -196,18 +198,44 @@ def load_splits_lazy(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
-) -> LazyDatasetDict:
-    return LazyDatasetDict(
-        path=dataset_path,
-        kwargs={
-            "model_name": model_name,
-            "layer": layer,
-            "compute_activations": compute_activations,
-            "variation_type": variation_type,
-            "variation_value": variation_value,
-            "n_per_class": n_per_class,
-        },
-    )
+) -> LazyLoader:
+    if dataset_path.is_dir():
+        split_names = [p.stem for p in dataset_path.glob("*.jsonl")]
+        loaders = {
+            split_name: lambda: load_dataset(
+                dataset_path / f"{split_name}.jsonl",
+                model_name=model_name,
+                layer=layer,
+                compute_activations=compute_activations,
+                variation_type=variation_type,
+                variation_value=variation_value,
+                n_per_class=n_per_class,
+            )
+            for split_name in split_names
+        }
+        return LazyLoader(loaders=loaders)
+    else:
+        dataset = load_dataset(
+            dataset_path,
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+            variation_type=variation_type,
+            variation_value=variation_value,
+            n_per_class=n_per_class,
+        )
+        if "split" in dataset.other_fields:
+            split_names = {str(s) for s in dataset.other_fields["split"]}
+            loaders = {
+                split_name: lambda dataset: dataset.filter(
+                    lambda x: x.split == split_name
+                )
+                for split_name in split_names
+            }
+        else:
+            loaders = {"train": lambda dataset: dataset}
+
+        return LazyLoader(loaders=loaders, dataset=dataset)
 
 
 def load_train_test(
