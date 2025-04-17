@@ -345,6 +345,7 @@ class EvalRunConfig(BaseModel):
     variation_type: str | None = None
     variation_value: str | None = None
     compute_activations: bool = False
+    use_validation_set: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     model_name: str = (
         DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL

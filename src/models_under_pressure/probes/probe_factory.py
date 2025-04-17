@@ -98,7 +98,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-1b"],
         layer=11,
         compute_activations=True,
-        n_per_class=100,
+        n_per_class=200,
     )
 
     # Define probe hyperparameters

@@ -158,7 +158,7 @@ def run_evaluation(
     config: EvalRunConfig,
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    train_dataset, _ = load_train_test(
+    train_dataset, validation_dataset = load_train_test(
         dataset_path=config.dataset_path,
         variation_type=config.variation_type,
         variation_value=config.variation_value,
@@ -173,6 +173,7 @@ def run_evaluation(
     probe = ProbeFactory.build(
         probe=config.probe_spec,
         train_dataset=train_dataset,
+        validation_dataset=validation_dataset if config.use_validation_set else None,
     )
 
     del train_dataset
@@ -249,9 +250,15 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_per_token_probe",
-            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+            hyperparams={
+                "batch_size": 16,
+                "epochs": 5,
+                "device": "cpu",
+                "learning_rate": 1e-2,
+            },
         ),
         compute_activations=True,
+        use_validation_set=True,
     )
 
     double_check_config(config)
