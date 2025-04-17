@@ -776,7 +776,11 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                         dim=-1
                     )  # aggregate the attention weighted logits
 
-                    loss = criterion(outputs.squeeze(), y_tensor)
+                    # Ensure outputs and y_tensor have compatible shapes
+                    outputs = outputs.view(-1)  # Flatten to (batch_size,)
+                    y_tensor = y_tensor.view(-1)  # Flatten to (batch_size,)
+
+                    loss = criterion(outputs, y_tensor)
                     print("loss", loss)
 
                     assert not loss.isnan().any(), "Loss is NaN"
