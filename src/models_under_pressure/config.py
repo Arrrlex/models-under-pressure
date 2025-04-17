@@ -140,6 +140,8 @@ OTHER_DATASETS = {
     / "prompts_25_03_25_gpt-4o_original_neutralised_new.jsonl",
     "original_unconfounded": TRAIN_DIR / "prompts_25_03_25_gpt-4o_unconfounded.jsonl",
     "original_plus_new": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
+    "original_plus_new_half": TRAIN_DIR
+    / "prompts_25_03_25_gpt-4o_original_plus_new_half.jsonl",
 }
 
 

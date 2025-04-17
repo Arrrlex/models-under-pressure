@@ -182,6 +182,7 @@ class LazyDatasetDict:
     def __init__(self, path: Path, kwargs: dict[str, Any]):
         self.path = path
         self.kwargs = kwargs
+        self.dataset = None
 
     def __getitem__(self, key: str) -> LabelledDataset:
         return load_dataset(self.path / f"{key}.jsonl", **self.kwargs)
