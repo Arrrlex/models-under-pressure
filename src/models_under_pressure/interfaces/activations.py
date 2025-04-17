@@ -373,27 +373,27 @@ class Preprocessors:
     ]:
         # Initialize accumulators for sum and token counts
         batch_size_total, seq_len, embed_dim = X._activations.shape
-        sum_acts = np.zeros((batch_size_total, embed_dim))
-        token_counts = np.zeros((batch_size_total, 1))
+        sum_acts = torch.zeros((batch_size_total, embed_dim))
+        token_counts = torch.zeros((batch_size_total, 1))
 
         # Process in batches
         for i in range(0, batch_size_total, batch_size):
             end_idx = min(i + batch_size, batch_size_total)
 
             # Get current batch
-            batch_acts = X._activations[i:end_idx].float().numpy()
-            batch_mask = X._attention_mask[i:end_idx].numpy()
+            batch_acts = X._activations[i:end_idx].float()
+            batch_mask = X._attention_mask[i:end_idx]
 
-            # Process current batch
-            masked_acts = batch_acts * batch_mask[:, :, None]
-            sum_acts[i:end_idx] = masked_acts.sum(axis=1)
-            token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
+            # Process current batch in-place
+            batch_acts *= batch_mask[:, :, None]  # In-place multiplication
+            sum_acts[i:end_idx] = batch_acts.sum(dim=1)
+            token_counts[i:end_idx] = batch_mask.sum(dim=1, keepdim=True)
 
         # Add small epsilon to avoid division by zero
         token_counts = token_counts + 1e-10
 
         # Calculate final mean
-        return sum_acts / token_counts, y
+        return (sum_acts / token_counts).numpy(), y
 
     @staticmethod
     def per_token(
