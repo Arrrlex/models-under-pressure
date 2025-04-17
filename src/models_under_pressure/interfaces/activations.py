@@ -21,6 +21,7 @@ class ActivationPerTokenDataset(TorchDataset):
         activations: "Activation",
         y: Float[np.ndarray, " batch_size"],
     ):
+        # Convert to activations here:
         self._activations = torch.Tensor(activations.get_activations(per_token=True))
         self._attention_mask = torch.Tensor(
             activations.get_attention_mask(per_token=True)
@@ -84,8 +85,15 @@ class ActivationPerTokenDataset(TorchDataset):
     def __getitem__(
         self, index: int
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns the masked activations, attention mask, input ids and labels.
+        """
+
+        # Multiply the attention mask to the activations:
+        acts = self.activations[index] * self.attention_mask[index]
+
         return (
-            self.activations[index],
+            acts,  # masked activations
             self.attention_mask[index],
             self.input_ids[index],
             self.y[index],
@@ -133,8 +141,16 @@ class ActivationDataset(TorchDataset):
         Float[torch.Tensor, "batch_size seq_len"],
         Float[torch.Tensor, " batch_size"],
     ]:
+        """
+        Return the masked activations, attention mask, and input ids.
+
+        TODO: write this to take a slice?
+        """
+
+        acts = self.activations[index] * self.attention_mask[index][:, None]
+
         return (
-            self._activations[index],
+            acts,  # masked activations
             self._attention_mask[index],
             self._input_ids[index],
             self.y[index],

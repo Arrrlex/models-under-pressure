@@ -7,6 +7,7 @@ from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
+    PytorchPerEntryLinearClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
@@ -41,6 +42,12 @@ class ProbeFactory:
 
         if isinstance(probe, str):
             probe = ProbeSpec(name=probe)
+
+        # Warn that validation dataset is not used for any probe except pytorch_per_entry_probe_mean
+        if (validation_dataset is not None) and (
+            probe.name != "pytorch_per_entry_probe_mean"
+        ):
+            print("Warning: Validation dataset is not used for LDA probe.")
 
         if probe.name == "sklearn_mean_agg_probe":
             aggregator = Aggregator(
@@ -82,7 +89,17 @@ class ProbeFactory:
             assert probe.hyperparams is not None
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
-            ).fit(train_dataset, validation_dataset=validation_dataset)
+            ).fit(train_dataset)
+        elif probe.name == "pytorch_per_entry_probe_mean":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchPerEntryLinearClassifier(
+                    training_args=probe.hyperparams
+                ),
+            ).fit(
+                train_dataset, validation_dataset=validation_dataset
+            )  # Only functionality for this probe atm
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 

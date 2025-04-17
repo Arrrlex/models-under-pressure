@@ -80,6 +80,22 @@ class PytorchProbe(Probe):
         # Take the mean over the sequence length:
         return activations_obj, probs
 
+    def predict_proba_without_activations(
+        self, dataset: BaseDataset
+    ) -> Float[np.ndarray, " batch_size"]:
+        """
+        Predict and return the probabilities of the dataset.
+
+        Probabilities are expected from the classifier in the shape (batch_size,)
+        """
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+
+        # Get the batch_size, seq_len probabilities:
+        return self._classifier.predict_proba(activations_obj)  # type: ignore
+
     def per_token_predictions(
         self,
         inputs: Sequence[Input],
