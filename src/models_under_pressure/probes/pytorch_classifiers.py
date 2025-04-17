@@ -62,8 +62,7 @@ class PytorchLinearClassifier:
         # Initialize optimizer
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
-            lr=self.training_args.get("learning_rate", 1e-3),
-            weight_decay=self.training_args.get("weight_decay", 0.01),
+            **self.training_args["optimizer_args"],
         )
 
         criterion = nn.BCEWithLogitsLoss()
