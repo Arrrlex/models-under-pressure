@@ -19,6 +19,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 
 from models_under_pressure.config import BATCH_SIZE, CACHE_DIR, DEVICE, MODEL_MAX_MEMORY
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dialogue,
@@ -26,7 +27,6 @@ from models_under_pressure.interfaces.dataset import (
     to_dialogue,
 )
 from models_under_pressure.utils import batched_range, hf_login
-from models_under_pressure.interfaces.activations import Activation
 
 
 class HookedModel:
@@ -276,6 +276,7 @@ class LLMModel:
 
         return all_activations, inputs
 
+    @torch.no_grad()
     def get_batched_activations(
         self,
         dataset: BaseDataset,

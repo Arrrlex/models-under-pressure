@@ -84,6 +84,16 @@ class PytorchLinearClassifier:
                 outputs = self.model(acts_tensor.to(device).to(torch.bfloat16))
                 loss = criterion(outputs.squeeze(), y_tensor.to(device))
                 loss.backward()
+
+                # Calculate and print gradient norm
+                total_norm = 0.0
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.detach().data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm**0.5
+                print(f"gradient norm: {total_norm}")
+
                 optimizer.step()
                 loss = loss.item()
 
@@ -284,14 +294,8 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         # Just this bit here is different from the PytorchLinearClassifier
         per_entry_dataset = activations.to_dataset(y=y, per_token=False)
 
-        # Process the dataset to be the mean across the seq_len:
-        acts = per_entry_dataset._activations
-        mask = per_entry_dataset._attention_mask
-
-        averaged_acts = self.average_activations(acts, mask)
-
         # Get the embedding dimension from the averaged activations
-        embedding_dim = averaged_acts.shape[-1]
+        embedding_dim = activations._activations.shape[-1]
         # Create a linear model with the correct embedding dimension
 
         if self.model is None:
@@ -328,6 +332,16 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 outputs = self.model(acts_tensor.to(torch.bfloat16).to(device))
                 loss = criterion(outputs.squeeze(), y_tensor)
                 loss.backward()
+
+                # Calculate and print gradient norm
+                total_norm = 0.0
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.detach().data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm**0.5
+                print(f"gradient norm: {total_norm}")
+
                 optimizer.step()
                 loss = loss.item()
 
@@ -440,13 +454,15 @@ class AttentionLayer(nn.Module):
     attention component of the probe.
     """
 
-    def __init__(self, embed_dim: int):
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
         super().__init__()
 
-        self.query_linear = nn.Linear(embed_dim, 1)
-        self.key_linear = nn.Linear(embed_dim, 1)
-        self.value_linear = nn.Linear(embed_dim, 1)
-        self.attn = nn.MultiheadAttention(embed_dim=1, num_heads=1)
+        self.query_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.key_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.value_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=attn_hidden_dim, num_heads=1, batch_first=True
+        )
 
     def forward(
         self,
@@ -459,15 +475,16 @@ class AttentionLayer(nn.Module):
         )
 
         attn_output, _ = self.attn(query, key, value, need_weights=False)
-        return attn_output
+
+        return attn_output.mean(dim=-1, keepdim=True)
 
 
-class AttentionProbe(nn.Module):
-    def __init__(self, embed_dim: int):
+class AttentionProbeAttnWeightLogits(nn.Module):
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
         super().__init__()
 
         self.batch_norm = nn.BatchNorm1d(embed_dim)
-        self.attention_layer = AttentionLayer(embed_dim)
+        self.attention_layer = AttentionLayer(embed_dim, attn_hidden_dim)
         self.linear = nn.Linear(embed_dim, 1, bias=False)
 
     def forward(
@@ -480,25 +497,74 @@ class AttentionProbe(nn.Module):
         TODO: swap activation weighting before the attention layer and after the attention layer
         """
 
-        batch_size, seq_len, _ = activations.shape
+        # batch_size, seq_len, _ = activations.shape
         # Flatten activations:
-        activations = einops.rearrange(activations, "b s e -> (b s) e")
+        # activations = einops.rearrange(activations, "b s e -> (b s) e")
+        # Based on https://discuss.pytorch.org/t/how-does-the-batch-normalization-work-for-sequence-data/30839/2
+        activations = activations.permute(0, 2, 1)
         activations = self.batch_norm(activations)
-        activations = einops.rearrange(
-            activations, "(b s) e -> b s e", b=batch_size, s=seq_len
-        )
+        activations = activations.permute(0, 2, 1)
+        # activations = einops.rearrange(
+        #    activations, "(b s) e -> b s e", b=batch_size, s=seq_len
+        # )
 
         attn_output = self.attention_layer(activations)
 
-        # Normalize the attention output:
-        # attn_output = attn_output / attn_output.sum(dim=1, keepdim=True)
+        # Normalize the attention output using min-max normalization
+        # This ensures values are in [0,1] range without the exponential scaling of softmax
+
+        # Normalize the attention output by dividing by the sum:
+        attn_output = attn_output / attn_output.sum(dim=1, keepdim=True)
+
+        # Normalize the attention output using a softmax:
+        # attn_output = torch.softmax(attn_output / torch.tensor(0.1), dim=1)
 
         linear_output = self.linear(activations)
 
         # For debugging:
-        attn_output = torch.ones_like(linear_output)
-
+        # attn_output = torch.ones_like(linear_output)
         return (linear_output * attn_output).squeeze()
+
+
+class AttentionProbeAttnThenLinear(nn.Module):
+    """
+    Attention probe that uses a single head attention layer to aggregate the sequence.
+    The output is passed through a single linear layer.
+    """
+
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
+        super().__init__()
+
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
+
+        self.query_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.key_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.value_linear = nn.Linear(embed_dim, attn_hidden_dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=attn_hidden_dim, num_heads=1, batch_first=True
+        )
+
+        self.linear = nn.Linear(attn_hidden_dim, 1, bias=False)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        activations = activations.permute(0, 2, 1)
+        activations = self.batch_norm(activations)
+        activations = activations.permute(0, 2, 1)
+
+        keys, queries, values = (
+            self.key_linear(activations),
+            self.query_linear(activations),
+            self.value_linear(activations),
+        )
+
+        attn_output, _ = self.attn(queries, keys, values, need_weights=False)
+
+        linear_output = self.linear(attn_output).squeeze(dim=-1)
+
+        return linear_output
 
 
 class PytorchAttentionClassifier(PytorchLinearClassifier):
@@ -536,11 +602,22 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
         # Create a linear model with the correct embedding dimension
         if self.model is None:
-            self.model = self.create_model(embedding_dim).to(device)
+            self.model = self.create_model(
+                embedding_dim,
+                attn_hidden_dim=self.training_args["attn_hidden_dim"],
+                probe_architecture=self.training_args["probe_architecture"],
+            ).to(device)
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
             **self.training_args["optimizer_args"],
+        )
+
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.training_args["epochs"],
+            eta_min=self.training_args["optimizer_args"]["lr"]
+            * self.training_args["scheduler_decay"],
         )
 
         criterion = nn.BCEWithLogitsLoss()
@@ -552,35 +629,61 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         )
 
         # Training loop
-        self.model.train()
-        for epoch in range(self.training_args["epochs"]):
-            running_loss = 0.0
-            pbar = tqdm(
-                dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
-            )
-            for batch_idx, batch in enumerate(pbar):
-                acts, mask_batch, _, y = batch
+        # Enable gradient computation
+        with torch.set_grad_enabled(True):
+            self.model.train()
+            for epoch in range(self.training_args["epochs"]):
+                running_loss = 0.0
+                pbar = tqdm(
+                    dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
+                )
+                for batch_idx, batch in enumerate(pbar):
+                    acts, mask_batch, _, y = batch
 
-                y_tensor = torch.tensor(y, dtype=torch.float32).to(device)
+                    # acts = self.average_activations(acts, mask_batch)
 
-                # Standard training step for AdamW
-                optimizer.zero_grad()
-                outputs = self.model(
-                    acts.to(device).to(torch.bfloat16)
-                )  # batch_size, seq_len
-                outputs = outputs.mean(dim=1)  # aggregate the attention weighted logits
-                loss = criterion(outputs.squeeze(), y_tensor)
-                loss.backward()
-                optimizer.step()
-                loss = loss.item()
+                    assert isinstance(y, torch.Tensor), "y must be a torch.Tensor"
+                    y_tensor = y.to(device)  # type: ignore
 
-                # Update running loss and progress bar
-                running_loss += loss
-                avg_loss = running_loss / (batch_idx + 1)
-                pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
+                    # Standard training step for AdamW
+                    optimizer.zero_grad()
+                    outputs = self.model(
+                        acts.to(device).to(torch.bfloat16)
+                    )  # batch_size, seq_len
 
-            # Print epoch summary
-            print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
+                    # Multiply by the attention mask here:
+                    # We multiply the acts by the atteniont mask but the model is currently still learning from padded inputs
+                    # So we need to multiply the outputs by the attention mask to remove the padded tokens
+                    outputs = outputs * mask_batch.to(device).to(torch.bfloat16)
+
+                    outputs = outputs.mean(
+                        dim=-1
+                    )  # aggregate the attention weighted logits
+
+                    loss = criterion(outputs.squeeze(), y_tensor)
+                    print("loss", loss)
+
+                    assert not loss.isnan().any(), "Loss is NaN"
+
+                    loss.backward()
+
+                    # Calculate and print gradient norm before clipping
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), max_norm=1.0
+                    )
+                    print(f"gradient norm: {grad_norm.item()}")
+
+                    optimizer.step()
+                    loss = loss.item()
+
+                    # Update running loss and progress bar
+                    running_loss += loss
+                    avg_loss = running_loss / (batch_idx + 1)
+                    pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
+
+                # Print epoch summary
+                scheduler.step()
+                print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
 
         return self
 
@@ -627,18 +730,50 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
         return masked_logits
 
-    def create_model(self, embedding_dim: int) -> nn.Module:
+    def create_model(
+        self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
+    ) -> nn.Module:
         """
         Create a linear model over the embedding dimension dynamically.
+
+        Args:
+            embedding_dim: The embedding dimension of the model residual stream
+            attn_hidden_dim: The hidden dimension of the attention layer
+            probe_architecture: The architecture of the probe
+
+        Probe Architectures:
+        "attention_weighted_agg_logits":
+            The sequence is aggregated using a weighted sum where the weights are the
+            outputs of a learnt attention mechanism.
+
+        "attention_then_linear":
+            The sequence is passed through a learnt attention mechanism and then through a
+            linear layer.
+
+        Returns:
+            A PyTorch module
         """
 
         # Create an attention probe layer:
-        model = AttentionProbe(embedding_dim).to(torch.bfloat16)
+        if probe_architecture == "attention_weighted_agg_logits":
+            model = AttentionProbeAttnWeightLogits(embedding_dim, attn_hidden_dim).to(
+                torch.bfloat16
+            )
+        elif probe_architecture == "attention_then_linear":
+            model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim).to(
+                torch.bfloat16
+            )
+        else:
+            raise NotImplementedError(
+                f"Probe architecture {probe_architecture} not implemented"
+            )
 
-        # Initialize weights using xavier uniform
-        torch.nn.init.xavier_uniform_(model.linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.query_linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.key_linear.weight)
-        torch.nn.init.xavier_uniform_(model.attention_layer.value_linear.weight)
+        for layer in model.modules():
+            if isinstance(layer, nn.Linear):
+                torch.nn.init.xavier_uniform_(layer.weight)
+            elif isinstance(layer, AttentionLayer):
+                torch.nn.init.xavier_uniform_(layer.query_linear.weight)
+                torch.nn.init.xavier_uniform_(layer.key_linear.weight)
+                torch.nn.init.xavier_uniform_(layer.value_linear.weight)
 
         return model
