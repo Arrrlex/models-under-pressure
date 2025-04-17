@@ -18,6 +18,7 @@ from models_under_pressure.dataset_utils import (
 )
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
+    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
@@ -167,13 +168,24 @@ def run_evaluation(
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
+    if not config.validation_dataset:
+        del validation_dataset
+    elif isinstance(config.validation_dataset, Path):
+        validation_dataset = LabelledDataset.load_from(config.validation_dataset)
+        if (
+            config.max_samples is not None
+            and len(validation_dataset) > config.max_samples
+        ):
+            validation_dataset = subsample_balanced_subset(
+                validation_dataset, n_per_class=config.max_samples // 2
+            )
 
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
         train_dataset=train_dataset,
-        validation_dataset=validation_dataset if config.use_validation_set else None,
+        validation_dataset=validation_dataset if config.validation_dataset else None,
     )
 
     del train_dataset
@@ -259,7 +271,8 @@ if __name__ == "__main__":
             },
         ),
         compute_activations=True,
-        use_validation_set=True,
+        # validation_dataset=SYNTHETIC_DATASET_PATH,
+        validation_dataset=True,
     )
 
     double_check_config(config)
