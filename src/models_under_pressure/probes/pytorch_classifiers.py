@@ -345,11 +345,29 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         self,
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
-    ):
+        validation_activations: Activation | None = None,
+        validation_y: Float[np.ndarray, " batch_size"] | None = None,
+        print_gradient_norm: bool = False,
+    ) -> Self:
+        """
+        Train the classifier on the activations and labels.
+
+        Args:
+            activations: The activations to train on.
+            y: The labels to train on.
+            validation_activations: Optional validation activations.
+            validation_y: Optional validation labels.
+            print_gradient_norm: Whether to print gradient norm during training.
+
+        Returns:
+            Self - The trained classifier.
+        """
         device = self.training_args["device"]
 
         # Just this bit here is different from the PytorchLinearClassifier
-        per_entry_dataset = activations.to_dataset(y=y, per_token=False)
+        per_entry_dataset = activations.to_dataset(
+            y=torch.tensor(y, dtype=self.data_type), per_token=False
+        )
 
         # Get the embedding dimension from the averaged activations
         embedding_dim = activations._activations.shape[-1]
@@ -371,6 +389,10 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
             shuffle=True,
         )
 
+        # Initialize variables for tracking best model
+        best_val_loss = float("inf")
+        best_model_state = None
+
         # Training loop
         self.model.train()
         for epoch in range(self.training_args["epochs"]):
@@ -390,14 +412,15 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 loss = criterion(outputs.squeeze(), y_tensor)
                 loss.backward()
 
-                # Calculate and print gradient norm
-                total_norm = 0.0
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        param_norm = p.grad.detach().data.norm(2)
-                        total_norm += param_norm.item() ** 2
-                total_norm = total_norm**0.5
-                print(f"gradient norm: {total_norm}")
+                if print_gradient_norm:
+                    # Calculate and print gradient norm
+                    total_norm = 0.0
+                    for p in self.model.parameters():
+                        if p.grad is not None:
+                            param_norm = p.grad.detach().data.norm(2)
+                            total_norm += param_norm.item() ** 2
+                    total_norm = total_norm**0.5
+                    print(f"gradient norm: {total_norm}")
 
                 optimizer.step()
                 loss = loss.item()
@@ -409,6 +432,35 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
             # Print epoch summary
             print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
+
+            # Validation step if validation data is provided
+            if validation_activations is not None and validation_y is not None:
+                self.model.eval()
+                with torch.no_grad():
+                    # Get probabilities for validation data
+                    val_probs = self.predict_proba(validation_activations)
+
+                    # Convert validation labels to tensor
+                    val_y_tensor = torch.tensor(validation_y, dtype=self.data_type).to(
+                        device
+                    )
+
+                    # Convert probabilities to logits and compute loss
+                    val_logits = torch.logit(
+                        torch.tensor(val_probs, dtype=self.data_type).to(device)
+                    )
+                    val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
+
+                    print(f"Validation loss: {val_loss:.4f}")
+
+                    # Save best model
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        best_model_state = self.model.state_dict().copy()
+
+        # Load best model if validation was used
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
 
         return self
 
@@ -437,9 +489,6 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
             raise ValueError("Model not trained")
 
         device = self.training_args["device"]
-
-        # Process the activations into a per token dataset to be passed through the model
-        batch_size, seq_len, embed_dim = activations.shape
 
         # Switch batch norm to eval mode:
         self.model = self.model.to(device)

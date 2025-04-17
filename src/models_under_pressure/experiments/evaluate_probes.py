@@ -259,16 +259,18 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         layer=11,
-        max_samples=200,
+        max_samples=20,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
-            name="pytorch_per_token_probe",
+            name="pytorch_per_entry_probe_mean",
             hyperparams={
                 "batch_size": 16,
-                "epochs": 50,
+                "epochs": 10,
                 "device": "cpu",
-                "learning_rate": 1e-2,
-                "weight_decay": 0.001,
+                "optimizer_args": {
+                    "lr": 1e-2,
+                    "weight_decay": 0.001,
+                },
             },
         ),
         compute_activations=True,
