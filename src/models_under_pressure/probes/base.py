@@ -11,14 +11,10 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.model import LLMModel
 
 
 @dataclass
 class Probe(ABC):
-    _llm: LLMModel
-    layer: int
-
     @abstractmethod
     def fit(self, dataset: LabelledDataset) -> Self: ...
 

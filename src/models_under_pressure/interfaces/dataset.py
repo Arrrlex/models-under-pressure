@@ -21,6 +21,7 @@ from typing import (
 import datasets
 import numpy as np
 import pandas as pd
+import torch
 from jaxtyping import Float
 from pydantic import BaseModel, Field, model_validator
 
@@ -75,6 +76,10 @@ class Record(BaseModel):
                 f"{message.role}: {message.content}" for message in self.input
             )
 
+    def __getattr__(self, name: str) -> Any:
+        """Allow accessing other_fields values as attributes."""
+        return self.other_fields[name]
+
 
 class LabelledRecord(Record):
     @property
@@ -87,17 +92,20 @@ R = TypeVar("R", bound=Record)
 
 
 class BaseDataset(BaseModel, Generic[R]):
-    inputs: Sequence[Input]
-    ids: Sequence[str]
-    other_fields: Mapping[str, Sequence[Any]]
-    _record_class: ClassVar[Type]
-
     """
     Interface for a dataset class, the dataset is stored as a list of inputs, ids, and
     a mapping to 'other fields' which are arbitrary additional fields.
 
     The base dataset class is used to store the dataset in a way that is agnostic to the label field.
     """
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    inputs: Sequence[Input]
+    ids: Sequence[str]
+    other_fields: Mapping[str, Sequence[Any] | np.ndarray | torch.Tensor]
+    _record_class: ClassVar[Type]
 
     @model_validator(mode="after")
     def validate_lengths(self) -> Self:
@@ -124,14 +132,21 @@ class BaseDataset(BaseModel, Generic[R]):
     @overload
     def __getitem__(self, idx: slice) -> Self: ...
 
+    @overload
+    def __getitem__(self, idx: list[int]) -> Self: ...
+
     def __getitem__(self, idx: int | slice | list[int]) -> Self | R:
         if isinstance(idx, list):
+            indexed_other_fields = {}
+            for key, value in self.other_fields.items():
+                if isinstance(value, (np.ndarray, torch.Tensor)):
+                    indexed_other_fields[key] = value[idx]
+                else:
+                    indexed_other_fields[key] = [value[i] for i in idx]
             return type(self)(
                 inputs=[self.inputs[i] for i in idx],
                 ids=[self.ids[i] for i in idx],
-                other_fields={
-                    k: [v[i] for i in idx] for k, v in self.other_fields.items()
-                },
+                other_fields=indexed_other_fields,
             )
         elif isinstance(idx, slice):
             return type(self)(
@@ -155,7 +170,33 @@ class BaseDataset(BaseModel, Generic[R]):
             return self
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
-        return type(self).from_records([r for r in self.to_records() if filter_fn(r)])
+        records = self.drop_cols(
+            "activations", "input_ids", "attention_mask"
+        ).to_records()
+        idxs = [i for i, r in enumerate(records) if filter_fn(r)]
+        return self[idxs]
+
+    def assign(self, **kwargs: Sequence[Any] | np.ndarray | torch.Tensor) -> Self:
+        """
+        Assign new fields to the dataset (works like pandas assign)
+
+        Args:
+            kwargs: A mapping of field names to values. The values can be a sequence, a numpy array, or a torch tensor.
+
+        Returns:
+        """
+        return type(self)(
+            inputs=self.inputs,
+            ids=self.ids,
+            other_fields=dict(self.other_fields) | kwargs,
+        )
+
+    def drop_cols(self, *cols: Sequence[str]) -> Self:
+        return type(self)(
+            inputs=self.inputs,
+            ids=self.ids,
+            other_fields={k: v for k, v in self.other_fields.items() if k not in cols},
+        )
 
     @classmethod
     def from_records(cls, records: Sequence[R]) -> Self:
@@ -276,11 +317,39 @@ class BaseDataset(BaseModel, Generic[R]):
 
     @classmethod
     def concatenate(cls, datasets: Sequence[Self]) -> Self:
-        return cls.from_records(
-            [r for dataset in datasets for r in dataset.to_records()]
-        )
+        if not datasets:
+            raise ValueError("Cannot concatenate empty sequence of datasets")
+
+        # Verify all datasets have the same fields
+        first_fields = set(datasets[0].other_fields.keys())
+        for dataset in datasets[1:]:
+            if set(dataset.other_fields.keys()) != first_fields:
+                raise ValueError(
+                    "All datasets must have the same fields to concatenate"
+                )
+
+        ids = [id_ for dataset in datasets for id_ in dataset.ids]
+        inputs = [input_ for dataset in datasets for input_ in dataset.inputs]
+        other_fields = {}
+
+        for key, value in datasets[0].other_fields.items():
+            if isinstance(value, np.ndarray):
+                other_fields[key] = np.concatenate(
+                    [dataset.other_fields[key] for dataset in datasets]
+                )
+            elif isinstance(value, torch.Tensor):
+                other_fields[key] = torch.cat(
+                    tuple(dataset.other_fields[key] for dataset in datasets)  # type: ignore
+                )
+            else:
+                other_fields[key] = [
+                    item for dataset in datasets for item in dataset.other_fields[key]
+                ]
+        return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
     def to_records(self) -> Sequence[R]:
+        self._check_tensor_shapes()
+
         return [
             self._record_class(
                 input=input,
@@ -291,6 +360,8 @@ class BaseDataset(BaseModel, Generic[R]):
         ]
 
     def to_pandas(self) -> pd.DataFrame:
+        self._check_tensor_shapes()
+
         # Convert Dialogue inputs to dictionaries for pandas compatibility
         processed_inputs = []
         for input_item in self.inputs:
@@ -337,6 +408,8 @@ class BaseDataset(BaseModel, Generic[R]):
         return df
 
     def save_to(self, file_path: Path, overwrite: bool = False) -> None:
+        self._check_tensor_shapes()
+
         if not overwrite and file_path.exists():
             raise FileExistsError(
                 f"File {file_path} already exists. Use overwrite=True to overwrite."
@@ -349,6 +422,14 @@ class BaseDataset(BaseModel, Generic[R]):
             self.to_pandas().to_json(file_path, orient="records")
         else:
             raise ValueError(f"Unsupported file type: {file_path.suffix}")
+
+    def _check_tensor_shapes(self) -> None:
+        for field_name, col in self.other_fields.items():
+            if isinstance(col, (torch.Tensor, np.ndarray)) and len(col.shape) > 1:
+                raise ValueError(
+                    f"Field {field_name} has shape {col.shape} - "
+                    "cannot perform this action on multi-dimensional tensors/arrays"
+                )
 
 
 class Dataset(BaseDataset[Record]):
@@ -377,6 +458,9 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
 
     def labels_numpy(self) -> Float[np.ndarray, " batch_size"]:
         return np.array([label.to_int() for label in self.labels])
+
+    def labels_torch(self) -> Float[torch.Tensor, " batch_size"]:
+        return torch.tensor([label.to_int() for label in self.labels])
 
     def print_label_distribution(self) -> Dict[str, float]:
         """
@@ -410,22 +494,25 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
         return label_percentages
 
 
-def subsample_balanced_subset(dataset: LabelledDataset) -> LabelledDataset:
+def subsample_balanced_subset(
+    dataset: LabelledDataset, n_per_class: Optional[int] = None
+) -> LabelledDataset:
     """Subsample a balanced subset of the dataset"""
-    high_stakes = dataset.filter(lambda r: r.label == Label.HIGH_STAKES)
-    low_stakes = dataset.filter(lambda r: r.label == Label.LOW_STAKES)
+    high_stakes_indices = [
+        i for i, label in enumerate(dataset.labels) if label == Label.HIGH_STAKES
+    ]
+    low_stakes_indices = [
+        i for i, label in enumerate(dataset.labels) if label == Label.LOW_STAKES
+    ]
 
-    if len(high_stakes) > len(low_stakes):
-        high_stakes_sample = list(high_stakes.sample(len(low_stakes)).to_records())
-        low_stakes_sample = list(low_stakes.to_records())
-    else:
-        high_stakes_sample = list(high_stakes.to_records())
-        low_stakes_sample = list(low_stakes.sample(len(high_stakes)).to_records())
+    n_per_class = n_per_class or min(len(high_stakes_indices), len(low_stakes_indices))
 
-    balanced_records = high_stakes_sample + low_stakes_sample
-    random.shuffle(balanced_records)
+    indices = random.sample(high_stakes_indices, n_per_class) + random.sample(
+        low_stakes_indices, n_per_class
+    )
+    random.shuffle(indices)
 
-    return LabelledDataset.from_records(balanced_records)
+    return dataset[indices]
 
 
 if __name__ == "__main__":

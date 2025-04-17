@@ -3,7 +3,13 @@ from pathlib import Path
 
 import numpy as np
 
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
+from models_under_pressure.activation_store import ActivationStore
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    LabelledDataset,
+    subsample_balanced_subset,
+)
+from models_under_pressure.model import LLMModel
 
 
 def create_train_test_split(
@@ -122,48 +128,57 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 def load_train_test(
     dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     """Load the train-test split for the generated dataset.
 
+    If model_name and layer are provided, the activations are loaded and added to the dataset.
+
     Args:
         dataset_path: Path to the generated dataset
+        model_name: Name of the model to load activations for
+        layer: Layer to load activations for
 
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
     dataset = LabelledDataset.load_from(dataset_path)
 
-    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
-
-    return train_dataset, test_dataset
-
-
-def load_filtered_train_dataset(
-    dataset_path: Path,
-    variation_type: str | None = None,
-    variation_value: str | None = None,
-    max_samples: int | None = None,
-) -> LabelledDataset:
-    # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(dataset_path)
-
-    # Filter for one variation type with specific value
-    train_dataset = train_dataset.filter(
-        lambda x: (
-            variation_type is None or x.other_fields[variation_type] == variation_value
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
         )
+
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
+
+    if n_per_class is not None:
+        dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
+
+    if model_name is not None and layer is not None and compute_activations:
+        model = LLMModel.load(model_name)
+        activations = model.get_batched_activations(dataset, layer=layer)
+        dataset = dataset.assign(
+            activations=activations._activations,
+            attention_mask=activations._attention_mask,
+            input_ids=activations._input_ids,
+        )
+
+    train_dataset = dataset.filter(
+        lambda x: x.other_fields.get("split", "train") == "train"
+    )
+    test_dataset = dataset.filter(
+        lambda x: x.other_fields.get("split", "test") == "test"
     )
 
-    # Subsample so this runs on the laptop
-    if max_samples is not None:
-        print("Subsampling the dataset ...")
-        indices = np.random.choice(
-            range(len(train_dataset.ids)),
-            size=max_samples,
-            replace=False,
-        )
-        train_dataset = train_dataset[list(indices)]  # type: ignore
-
-    print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
-    return train_dataset
+    return train_dataset, test_dataset

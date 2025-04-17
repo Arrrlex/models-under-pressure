@@ -46,6 +46,7 @@ case $name in
         ;;
 esac
 
+rm -f ~/.ssh/github_$name
 echo "Please paste your private SSH key (including BEGIN and END lines):"
 mkdir -p ~/.ssh
 while IFS= read -r line; do
@@ -85,5 +86,6 @@ cd models-under-pressure
 mv ../../.env .
 uv sync
 uv run pre-commit install
+uv run pre-commit run --all
 uv run src/models_under_pressure/scripts/sync_datasets.py
 EOF

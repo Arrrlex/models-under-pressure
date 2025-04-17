@@ -13,12 +13,12 @@ outputs/*
 images/*
 multirun/*
 
-config/*local*.yaml
+config/**/*local*.yaml
 
 data/training/*.jsonl
 data/training/*.csv
 data/training/*.json
-
+notebooks/urja_tempy.py
 data/*
 
 # Created by https://www.toptal.com/developers/gitignore/api/python

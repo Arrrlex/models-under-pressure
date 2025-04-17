@@ -57,13 +57,12 @@ def run_all_experiments(config: RunAllExperimentsConfig):
         choose_best_layer_via_cv(
             ChooseLayerConfig(
                 model_name=config.model_name,
-                dataset_spec={
-                    "file_path_or_name": config.train_data,
-                },
+                dataset_path=config.train_data,
                 cv_folds=config.cv_folds,
                 batch_size=config.batch_size,
                 max_samples=config.max_samples,
                 layers=config.layers,
+                probe_spec=config.best_probe,
             )
         )
 

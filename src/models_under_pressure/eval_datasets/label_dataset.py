@@ -7,17 +7,18 @@ import typer
 from typing_extensions import deprecated
 
 from models_under_pressure.config import (
-    DEFAULT_MODEL,
     EVAL_DATASETS,
     EVAL_DATASETS_RAW,
     EVALS_DIR,
+    INPUTS_DIR,
     LABELING_RUBRIC_PATH,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
     TEST_DATASETS_RAW,
+    global_settings,
 )
-from models_under_pressure.experiments.dataset_splitting import (
-    load_filtered_train_dataset,
+from models_under_pressure.dataset_utils import (
+    load_train_test,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -37,6 +38,23 @@ Respond with a JSON using the following keys:
 
 {rubric}"""
 
+scorecard_labelling_prompt_template = """Please analyze if the prompt given by the user signify a high-stakes scenario.
+You can assess the stakes using the scorecard for who's impacted, what's at risk, how irreversible the outcome is, and the scale of the impact.
+Calculate a total score using the scorecard available in json format here - {scorecard_path}
+The interpretation of the score is as follows:
+0-5: very low-stakes, Minimal consequences, little scrutiny needed
+6-10: medium low stakes, some care needed, but not critical
+11-15: medium, signigicant consequences, needs safeguards
+16-20: medium high-stakes, High attention required, moderate-to-serious risks.
+Over 20: extremely high-stakes, Major risks, must undergo strict oversight and mitigation.
+
+Respond with a JSON using the following keys:
+- score: the total score calculated based on the scorecard.
+- answer: only 'high-stakes', 'low-stakes', or 'medium-stakes'.
+- reason: your reasoning and a short explanation for your answer.
+- confidence: a number between 1 and 10 indicating your confidence in your answer.
+"""
+
 scale_labelling_prompt_template = """Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 
@@ -52,9 +70,10 @@ async def analyse_stakes(
 ) -> Dict[str, Any] | None:
     """Async version of analyse_stakes that can be used for parallel requests"""
     rubric = LABELING_RUBRIC_PATH.read_text()
+    scorecard_path = INPUTS_DIR / "stake_scorecard.json"
     messages = []
     if prompt_template is not None:
-        prompt = prompt_template.format(rubric=rubric)
+        prompt = prompt_template.format(rubric=rubric, scorecard_path=scorecard_path)
         messages.append({"role": "system", "content": prompt})
     messages.append({"role": "user", "content": text})
 
@@ -69,7 +88,7 @@ async def analyse_stakes(
 async def label_dataset_async(
     dataset: Dataset,
     *,
-    model: str,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int,
     use_rubric: bool = False,
     confidence_threshold: int = 7,
@@ -90,7 +109,7 @@ async def label_dataset_async(
     labels = [None] * len(all_items)
     explanations = [None] * len(all_items)
     confidence = [None] * len(all_items)
-
+    score = [None] * len(all_items)
     # Create a queue to manage concurrent tasks
     queue = asyncio.Queue(maxsize=max_concurrent)
 
@@ -99,25 +118,43 @@ async def label_dataset_async(
 
     async def worker(idx: int, item: Record):
         """Process a single item and update results"""
-        input_str = item.input_str()
-        response = await analyse_stakes(
-            input_str,
-            model=model,
-            prompt_template=rubric_labelling_prompt_template
-            if use_rubric
-            else scale_labelling_prompt_template,
-        )
-
-        if response is None:
-            raise ValueError(
-                f"analyse_stakes returned None for input: {input_str[:100]}..."
+        try:
+            input_str = item.input_str()
+            response = await analyse_stakes(
+                input_str,
+                model=model,
+                prompt_template=rubric_labelling_prompt_template
+                if use_rubric
+                else scale_labelling_prompt_template,
+                # else scorecard_labelling_prompt_template,
             )
 
-        labels[idx] = response["answer"]
-        explanations[idx] = response["reason"]
-        confidence[idx] = response["confidence"]
-        pbar.update(1)
-        await queue.get()  # Signal task completion
+            if response is None:
+                print(
+                    f"Warning: analyse_stakes returned None for input: {input_str[:100]}..."
+                )
+                return
+
+            # Check for required keys
+            required_keys = ["answer", "reason", "confidence"]
+            if not all(key in response for key in required_keys):
+                print(
+                    f"Warning: Missing required keys in response for input: {input_str[:100]}..."
+                )
+                return
+
+            labels[idx] = response["answer"]
+            explanations[idx] = response["reason"]
+            confidence[idx] = response["confidence"]
+            # score[idx] = response["score"]
+        except Exception as e:
+            print(f"Error processing item {idx}: {str(e)}")
+        finally:
+            pbar.update(1)
+            try:
+                await queue.get()
+            except Exception as e:
+                print(f"Error getting from queue: {str(e)}")
 
     # Start processing all items
     tasks = []
@@ -130,14 +167,31 @@ async def label_dataset_async(
     await asyncio.gather(*tasks)
     pbar.close()
 
-    other_fields = dict(dataset.other_fields)
+    # Filter out items that weren't successfully labeled
+    valid_indices = [i for i, label in enumerate(labels) if label is not None]
+    filtered_inputs = [dataset.inputs[i] for i in valid_indices]
+    filtered_ids = [dataset.ids[i] for i in valid_indices]
+    filtered_labels = [labels[i] for i in valid_indices]
+    filtered_explanations = [explanations[i] for i in valid_indices]
+    filtered_confidence = [confidence[i] for i in valid_indices]
+    filtered_score = [score[i] for i in valid_indices]
+
+    # Filter other fields to match the valid indices
+    other_fields = {}
+    for field_name, field_values in dataset.other_fields.items():
+        if isinstance(field_values, list) and len(field_values) == len(dataset.inputs):
+            other_fields[field_name] = [field_values[i] for i in valid_indices]
+        else:
+            other_fields[field_name] = field_values
+
     prefix = "label" if use_rubric else "scale_label"
     other_fields.update(
         {
-            f"{prefix}_explanation": explanations,
-            f"{prefix}_confidence": confidence,
-            f"{prefix}s": labels,
-            f"{prefix}_model": [model for _ in range(len(labels))],
+            f"{prefix}_explanation": filtered_explanations,
+            f"{prefix}_confidence": filtered_confidence,
+            f"{prefix}_score": filtered_score,
+            f"{prefix}s": filtered_labels,
+            f"{prefix}_model": [model for _ in range(len(filtered_labels))],
         }
     )
     if not use_rubric and ("labels" not in other_fields or force_override):
@@ -170,8 +224,8 @@ async def label_dataset_async(
             other_fields["label_explanation"].append(explanation)
 
     return LabelledDataset(
-        inputs=dataset.inputs,
-        ids=dataset.ids,
+        inputs=filtered_inputs,
+        ids=filtered_ids,
         other_fields=other_fields,
     )
 
@@ -179,7 +233,7 @@ async def label_dataset_async(
 def label_dataset(
     dataset: Dataset,
     *,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     use_rubric: bool = False,
     force_override: bool = False,
@@ -204,7 +258,7 @@ def label_dataset(
 def relabel_eval_datasets(
     *,
     dataset_names: list[str] | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     use_rubric: bool = False,
 ) -> None:
@@ -229,17 +283,17 @@ def create_training_scale_labels(
     *,
     variation_type: str | None = None,
     variation_value: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = global_settings.DEFAULT_MODEL,
     max_concurrent: int = 50,
     max_samples: int | None = None,
 ) -> None:
     """Create scale labels for the training dataset"""
     # Load filtered training dataset
-    dataset = load_filtered_train_dataset(
+    dataset, _ = load_train_test(
         dataset_path=SYNTHETIC_DATASET_PATH,
         variation_type=variation_type,
         variation_value=variation_value,
-        max_samples=max_samples,
+        n_per_class=max_samples,
     )
 
     print(f"Labeling {len(dataset)} samples from training dataset...")
@@ -362,7 +416,9 @@ def main(
         "",
         help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
     ),
-    model: str = typer.Option(DEFAULT_MODEL, help="Model to use for labelling"),
+    model: str = typer.Option(
+        global_settings.DEFAULT_MODEL, help="Model to use for labelling"
+    ),
     max_concurrent: int = typer.Option(
         10, help="Maximum number of concurrent API calls"
     ),
