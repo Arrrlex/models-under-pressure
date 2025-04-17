@@ -247,40 +247,15 @@ def load_train_test(
     variation_value: str | None = None,
     n_per_class: int | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
-    if dataset_path.is_dir():
-        train_dataset = load_dataset(
-            dataset_path / "train.jsonl",
-            model_name=model_name,
-            layer=layer,
-            compute_activations=compute_activations,
-            variation_type=variation_type,
-            variation_value=variation_value,
-            n_per_class=n_per_class,
-        )
-        test_dataset = load_dataset(
-            dataset_path / "test.jsonl",
-            model_name=model_name,
-            layer=layer,
-            compute_activations=compute_activations,
-        )
-        return train_dataset, test_dataset
-    else:
-        dataset = load_dataset(
-            dataset_path,
-            model_name=model_name,
-            layer=layer,
-            compute_activations=compute_activations,
-            variation_type=variation_type,
-            variation_value=variation_value,
-            n_per_class=n_per_class,
-        )
-
-        train_dataset = dataset.filter(
-            lambda x: x.other_fields.get("split", "train") in ["train", "dev"]
-            # Note that mask uses split=="dev"
-        )
-        test_dataset = dataset.filter(
-            lambda x: x.other_fields.get("split", "train") == "test"
-        )
-
+    splits = load_splits_lazy(
+        dataset_path,
+        model_name=model_name,
+        layer=layer,
+        compute_activations=compute_activations,
+        variation_type=variation_type,
+        variation_value=variation_value,
+        n_per_class=n_per_class,
+    )
+    train_dataset = splits["train"]
+    test_dataset = splits["test"]
     return train_dataset, test_dataset
