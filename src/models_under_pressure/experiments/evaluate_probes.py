@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
+from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
@@ -23,10 +24,14 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
+from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_classifiers import (
+    AttentionProbeAttnThenLinear,
+    AttentionProbeAttnWeightLogits,
+    PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
@@ -150,6 +155,15 @@ def get_coefs(probe: Probe) -> list[float]:
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
             coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+        elif isinstance(probe._classifier, PytorchAttentionClassifier):
+            # For attention probe, get the weights from the final linear layer
+            model = probe._classifier.model
+            if isinstance(model, AttentionProbeAttnThenLinear):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            elif isinstance(model, AttentionProbeAttnWeightLogits):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            else:
+                raise ValueError(f"Unknown attention probe model type: {type(model)}")
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
             coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
@@ -179,6 +193,23 @@ def run_evaluation(
         ):
             validation_dataset = subsample_balanced_subset(
                 validation_dataset, n_per_class=config.max_samples // 2
+            )
+        if not config.compute_activations:
+            validation_dataset = ActivationStore().enrich(
+                validation_dataset,
+                path=config.validation_dataset,
+                model_name=config.model_name,
+                layer=config.layer,
+            )
+        else:
+            model = LLMModel.load(config.model_name)
+            activations = model.get_batched_activations(
+                validation_dataset, layer=config.layer
+            )
+            validation_dataset = validation_dataset.assign(
+                activations=activations._activations,
+                attention_mask=activations._attention_mask,
+                input_ids=activations._input_ids,
             )
 
     # Create the probe:
@@ -262,12 +293,24 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="sklearn_mean_agg_probe",
-            hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
+            name="pytorch_attention_probe",
+            hyperparams={
+                "batch_size": 16,
+                "epochs": 50,
+                "device": "cpu",
+                "optimizer_args": {
+                    "lr": 1e-3,
+                    "weight_decay": 0.0004,
+                },
+                "attn_hidden_dim": 27,
+                "probe_architecture": "attention_then_linear",
+                "scheduler_decay": 0.62,
+            },
         ),
         compute_activations=False,
         # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
+        # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
         # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
     )
