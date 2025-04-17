@@ -24,18 +24,25 @@ class PytorchLinearClassifier:
     training_args: dict
     model: nn.Module | None = None
 
-    def train(self, activations: Activation, y: Float[np.ndarray, " batch_size"]):
+    def train(
+        self,
+        activations: Activation,
+        y: Float[np.ndarray, " batch_size"],
+        validation_activations: Activation | None = None,
+        validation_y: Float[np.ndarray, " batch_size"] | None = None,
+    ) -> Self:
         """
         Train the classifier on the activations and labels.
 
         Args:
             activations: The activations to train on.
             y: The labels to train on.
+            validation_activations: Optional validation activations.
+            validation_labels: Optional validation labels.
 
         Returns:
-            None - The self.model is updated in place!
+            Self - The trained classifier.
         """
-
         device = self.training_args["device"]
 
         # Create a linear model
@@ -50,7 +57,9 @@ class PytorchLinearClassifier:
         )
         criterion = nn.BCEWithLogitsLoss()
 
-        per_token_dataset = activations.to_dataset(y=y, per_token=True)
+        per_token_dataset = activations.to_dataset(
+            y=torch.tensor(y, dtype=torch.float32), per_token=True
+        )
 
         # Calculate class weights to handle imbalanced data
         sample_weights = per_token_dataset._attention_mask
@@ -58,7 +67,7 @@ class PytorchLinearClassifier:
         # Create weighted sampler
         # Only sample points that are not masked
         sampler = WeightedRandomSampler(
-            weights=sample_weights.numpy(),  # type: ignore
+            weights=sample_weights.numpy().tolist(),  # Convert to list for compatibility
             num_samples=len(sample_weights),
             replacement=True,
         )
@@ -69,9 +78,13 @@ class PytorchLinearClassifier:
             sampler=sampler,
         )
 
+        # Initialize variables for tracking best model
+        best_val_loss = float("inf")
+        best_model_state = None
+
         # Training loop
-        self.model.train()
         for epoch in range(self.training_args["epochs"]):
+            self.model.train()
             running_loss = 0.0
             pbar = tqdm(
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
@@ -97,6 +110,37 @@ class PytorchLinearClassifier:
 
             # Print epoch summary
             print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
+
+            # Validation step if validation data is provided
+            if validation_activations is not None and validation_y is not None:
+                self.model.eval()
+                with torch.no_grad():
+                    val_per_token_dataset = validation_activations.to_dataset(
+                        y=torch.tensor(validation_y, dtype=torch.float32),
+                        per_token=True,
+                    )
+                    val_dataloader = DataLoader(
+                        val_per_token_dataset,
+                        batch_size=self.training_args["batch_size"],
+                    )
+
+                    val_loss = 0.0
+                    for batch in val_dataloader:
+                        acts, _, _, y = batch
+                        outputs = self.model(acts.to(device))
+                        val_loss += criterion(outputs.squeeze(), y.to(device)).item()
+
+                    val_loss /= len(val_dataloader)
+                    print(f"Validation loss: {val_loss:.4f}")
+
+                    # Save best model
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        best_model_state = self.model.state_dict().copy()
+
+        # Load best model if validation was used
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
 
         return self
 

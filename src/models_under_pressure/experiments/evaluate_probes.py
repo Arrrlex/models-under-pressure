@@ -3,13 +3,14 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
     TEST_DATASETS,
     EvalRunConfig,
 )
@@ -18,19 +19,19 @@ from models_under_pressure.dataset_utils import (
 )
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
+    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.interfaces.results import DatasetResults
+from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
-from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.sklearn_probes import SklearnProbe
+from models_under_pressure.utils import double_check_config
 
 
 def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
@@ -159,7 +160,7 @@ def run_evaluation(
     config: EvalRunConfig,
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    train_dataset, _ = load_train_test(
+    train_dataset, validation_dataset = load_train_test(
         dataset_path=config.dataset_path,
         variation_type=config.variation_type,
         variation_value=config.variation_value,
@@ -168,12 +169,24 @@ def run_evaluation(
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
+    if not config.validation_dataset:
+        del validation_dataset
+    elif isinstance(config.validation_dataset, Path):
+        validation_dataset = LabelledDataset.load_from(config.validation_dataset)
+        if (
+            config.max_samples is not None
+            and len(validation_dataset) > config.max_samples
+        ):
+            validation_dataset = subsample_balanced_subset(
+                validation_dataset, n_per_class=config.max_samples // 2
+            )
 
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
         train_dataset=train_dataset,
+        validation_dataset=validation_dataset if config.validation_dataset else None,
     )
 
     del train_dataset
@@ -193,7 +206,7 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
-            n_per_class=config.max_samples,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
             variation_type=config.variation_type,
             variation_value=config.variation_value,
         )
@@ -246,13 +259,22 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         layer=11,
-        max_samples=20,
+        max_samples=200,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_per_token_probe",
-            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+            hyperparams={
+                "batch_size": 16,
+                "epochs": 50,
+                "device": "cpu",
+                "learning_rate": 1e-2,
+                "weight_decay": 0.001,
+            },
         ),
         compute_activations=True,
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        # validation_dataset=SYNTHETIC_DATASET_PATH,
+        validation_dataset=True,
     )
 
     double_check_config(config)

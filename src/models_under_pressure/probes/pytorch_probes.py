@@ -33,14 +33,26 @@ class PytorchProbe(Probe):
     def __post_init__(self):
         self._classifier.training_args = self.hyper_params
 
-    def fit(self, dataset: LabelledDataset) -> Self:
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self:
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
         """
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
-        self._classifier.train(activations_obj, dataset.labels_numpy())
+        if validation_dataset is not None:
+            self._classifier.train(
+                activations_obj,
+                dataset.labels_numpy(),
+                validation_activations=Activation.from_dataset(validation_dataset),
+                validation_y=validation_dataset.labels_numpy(),
+            )
+        else:
+            self._classifier.train(activations_obj, dataset.labels_numpy())
         return self
 
     def predict(self, dataset: BaseDataset) -> list:
