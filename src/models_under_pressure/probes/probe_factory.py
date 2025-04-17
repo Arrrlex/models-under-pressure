@@ -45,7 +45,8 @@ class ProbeFactory:
 
         # Warn that validation dataset is not used for any probe except pytorch_per_entry_probe_mean
         if (validation_dataset is not None) and (
-            probe.name != "pytorch_per_entry_probe_mean"
+            probe.name
+            not in ["pytorch_per_entry_probe_mean", "pytorch_per_token_probe"]
         ):
             print("Warning: Validation dataset is not used for LDA probe.")
 
@@ -60,15 +61,9 @@ class ProbeFactory:
                     hyper_params=probe.hyperparams,
                 ).fit(train_dataset)
             else:
-                if validation_dataset is not None:
-                    print("Warning: Validation dataset is not used for sklearn probes.")
                 return SklearnProbe(aggregator=aggregator).fit(train_dataset)
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
-            if validation_dataset is not None:
-                print(
-                    "Warning: Validation dataset is not used for difference-of-means probe."
-                )
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
@@ -77,8 +72,6 @@ class ProbeFactory:
             ).fit(train_dataset)
         elif probe.name == "lda":
             assert probe.hyperparams is not None
-            if validation_dataset is not None:
-                print("Warning: Validation dataset is not used for LDA probe.")
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
@@ -89,7 +82,7 @@ class ProbeFactory:
             assert probe.hyperparams is not None
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
-            ).fit(train_dataset)
+            ).fit(train_dataset, validation_dataset=validation_dataset)
         elif probe.name == "pytorch_per_entry_probe_mean":
             assert probe.hyperparams is not None
             return PytorchProbe(

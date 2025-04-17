@@ -23,6 +23,15 @@ class PytorchLinearClassifier:
 
     training_args: dict
     model: nn.Module | None = None
+    data_type: torch.dtype | None = None
+
+    def __post_init__(self):
+        # Set data type based on available device
+        device = self.training_args.get("device", "auto")
+        if torch.cuda.is_available() and ("cuda" in device or "auto" in device):
+            self.data_type = torch.bfloat16
+        else:
+            self.data_type = torch.float32
 
     def train(
         self,
@@ -30,6 +39,7 @@ class PytorchLinearClassifier:
         y: Float[np.ndarray, " batch_size"],
         validation_activations: Activation | None = None,
         validation_y: Float[np.ndarray, " batch_size"] | None = None,
+        print_gradient_norm: bool = False,
     ) -> Self:
         """
         Train the classifier on the activations and labels.
@@ -59,7 +69,7 @@ class PytorchLinearClassifier:
         criterion = nn.BCEWithLogitsLoss()
 
         per_token_dataset = activations.to_dataset(
-            y=torch.tensor(y, dtype=torch.float32), per_token=True
+            y=torch.tensor(y, dtype=self.data_type), per_token=True
         )
 
         # Calculate class weights to handle imbalanced data
@@ -94,18 +104,19 @@ class PytorchLinearClassifier:
                 acts_tensor, _, _, y_tensor = batch
 
                 optimizer.zero_grad()
-                outputs = self.model(acts_tensor.to(device).to(torch.bfloat16))
+                outputs = self.model(acts_tensor.to(device).to(self.data_type))
                 loss = criterion(outputs.squeeze(), y_tensor.to(device))
                 loss.backward()
 
-                # Calculate and print gradient norm
-                total_norm = 0.0
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        param_norm = p.grad.detach().data.norm(2)
-                        total_norm += param_norm.item() ** 2
-                total_norm = total_norm**0.5
-                print(f"gradient norm: {total_norm}")
+                if print_gradient_norm:
+                    # Calculate and print gradient norm
+                    total_norm = 0.0
+                    for p in self.model.parameters():
+                        if p.grad is not None:
+                            param_norm = p.grad.detach().data.norm(2)
+                            total_norm += param_norm.item() ** 2
+                    total_norm = total_norm**0.5
+                    print(f"gradient norm: {total_norm}")
 
                 optimizer.step()
                 loss = loss.item()
@@ -122,22 +133,21 @@ class PytorchLinearClassifier:
             if validation_activations is not None and validation_y is not None:
                 self.model.eval()
                 with torch.no_grad():
-                    val_per_token_dataset = validation_activations.to_dataset(
-                        y=torch.tensor(validation_y, dtype=torch.float32),
-                        per_token=True,
-                    )
-                    val_dataloader = DataLoader(
-                        val_per_token_dataset,
-                        batch_size=self.training_args["batch_size"],
+                    # Get logits for validation data
+                    val_logits = self.predict_token_logits(validation_activations)
+
+                    # Convert validation labels to tensor
+                    val_y_tensor = torch.tensor(validation_y, dtype=self.data_type).to(
+                        device
                     )
 
-                    val_loss = 0.0
-                    for batch in val_dataloader:
-                        acts, _, _, y = batch
-                        outputs = self.model(acts.to(device))
-                        val_loss += criterion(outputs.squeeze(), y.to(device)).item()
+                    # Convert logits to tensor and compute mean over sequence length
+                    val_logits_tensor = torch.tensor(
+                        val_logits, dtype=self.data_type
+                    ).to(device)
+                    val_logits_mean = torch.mean(val_logits_tensor, dim=1, keepdim=True)
+                    val_loss = criterion(val_logits_mean.squeeze(), val_y_tensor).item()
 
-                    val_loss /= len(val_dataloader)
                     print(f"Validation loss: {val_loss:.4f}")
 
                     # Save best model
@@ -179,11 +189,12 @@ class PytorchLinearClassifier:
         self.model = self.model.to(device)
         self.model.eval()
 
-        logits = self.model(torch.tensor(acts_tensor, dtype=torch.bfloat16).to(device))
+        logits = self.model(torch.tensor(acts_tensor, dtype=self.data_type).to(device))
 
         # Multiply by the attention mask -> to remove padded tokens:
         masked_logits = logits * torch.tensor(
-            activations.get_attention_mask(per_token=True)[:, None], dtype=torch.float32
+            activations.get_attention_mask(per_token=True)[:, None],
+            dtype=self.data_type,
         ).to(device)
 
         # Reshape back to the original shape and take the mean over the sequence length
@@ -227,7 +238,7 @@ class PytorchLinearClassifier:
         mean_logits = logits.mean(axis=1)
 
         # Convert the logits to probabilities
-        return torch.sigmoid(mean_logits).cpu().to(torch.float32).numpy()
+        return torch.sigmoid(mean_logits).cpu().to(self.data_type).numpy()
 
     @torch.no_grad()
     def predict_token_proba(
@@ -256,7 +267,7 @@ class PytorchLinearClassifier:
         return nn.Sequential(
             nn.BatchNorm1d(embedding_dim),
             nn.Linear(embedding_dim, 1, bias=False),
-        ).to(torch.bfloat16)
+        ).to(self.data_type)
 
 
 @dataclass
@@ -268,14 +279,16 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        acts = torch.tensor(activations.get_activations(), dtype=torch.float32)
-        mask = torch.tensor(activations.get_attention_mask(), dtype=torch.float32)
+        acts = torch.tensor(activations.get_activations(), dtype=self.data_type)
+        mask = torch.tensor(activations.get_attention_mask(), dtype=self.data_type)
 
         batch_size, seq_len, embed_dim = acts.shape
 
         acts = acts.to(self.training_args["device"])
         mask = mask.to(self.training_args["device"])
-        y_tensor = torch.tensor(y, dtype=torch.float32).to(self.training_args["device"])
+        y_tensor = torch.tensor(y, dtype=self.data_type).to(
+            self.training_args["device"]
+        )
 
         # Apply mask to zero out irrelevant entries
         masked_acts = acts * mask.unsqueeze(
@@ -369,11 +382,11 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 acts, mask_batch, _, y = batch
 
                 acts_tensor = self.average_activations(acts, mask_batch)
-                y_tensor = torch.tensor(y, dtype=torch.float32).to(device)
+                y_tensor = torch.tensor(y, dtype=self.data_type).to(device)
 
                 # Standard training step for AdamW
                 optimizer.zero_grad()
-                outputs = self.model(acts_tensor.to(torch.bfloat16).to(device))
+                outputs = self.model(acts_tensor.to(self.data_type).to(device))
                 loss = criterion(outputs.squeeze(), y_tensor)
                 loss.backward()
 
@@ -433,12 +446,12 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         self.model.eval()
 
         acts_tensor = self.average_activations(
-            torch.tensor(activations._activations, dtype=torch.float32),
-            torch.tensor(activations._attention_mask, dtype=torch.float32),
+            torch.tensor(activations._activations, dtype=self.data_type),
+            torch.tensor(activations._attention_mask, dtype=self.data_type),
         )
-        logits = self.model(acts_tensor.to(torch.bfloat16).to(device))
+        logits = self.model(acts_tensor.to(self.data_type).to(device))
 
-        return nn.Sigmoid()(logits).detach().cpu().to(torch.float32).squeeze().numpy()
+        return nn.Sigmoid()(logits).detach().cpu().to(self.data_type).squeeze().numpy()
 
     @torch.no_grad()
     def predict_token_logits(
@@ -475,7 +488,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         # Initialize the linear layer weights to zeros
         torch.nn.init.zeros_(model[1].weight)  # type: ignore
 
-        return model.to(torch.bfloat16)
+        return model.to(self.data_type)
 
 
 class AttentionLayer(nn.Module):
@@ -692,13 +705,13 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     # Standard training step for AdamW
                     optimizer.zero_grad()
                     outputs = self.model(
-                        acts.to(device).to(torch.bfloat16)
+                        acts.to(device).to(self.data_type)
                     )  # batch_size, seq_len
 
                     # Multiply by the attention mask here:
                     # We multiply the acts by the atteniont mask but the model is currently still learning from padded inputs
                     # So we need to multiply the outputs by the attention mask to remove the padded tokens
-                    outputs = outputs * mask_batch.to(device).to(torch.bfloat16)
+                    outputs = outputs * mask_batch.to(device).to(self.data_type)
 
                     outputs = outputs.mean(
                         dim=-1
@@ -759,12 +772,12 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         self.model = self.model.to(device)
         self.model.eval()
 
-        logits = self.model(torch.tensor(acts_tensor, dtype=torch.bfloat16).to(device))
+        logits = self.model(torch.tensor(acts_tensor, dtype=self.data_type).to(device))
 
         # Multiply by the attention mask -> to remove padded tokens:
         masked_logits = logits * torch.tensor(
             activations.get_attention_mask(per_token=False),
-            dtype=torch.bfloat16,
+            dtype=self.data_type,
         ).to(device)
 
         assert masked_logits.shape == (
@@ -801,11 +814,11 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         # Create an attention probe layer:
         if probe_architecture == "attention_weighted_agg_logits":
             model = AttentionProbeAttnWeightLogits(embedding_dim, attn_hidden_dim).to(
-                torch.bfloat16
+                self.data_type
             )
         elif probe_architecture == "attention_then_linear":
             model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim).to(
-                torch.bfloat16
+                self.data_type
             )
         else:
             raise NotImplementedError(
