@@ -162,7 +162,7 @@ def load_train_test(
             lambda x: x.other_fields[variation_type] == variation_value
         )
 
-    if n_per_class is not None:
+    if n_per_class is not None and len(dataset) > n_per_class * 2:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
 
     if model_name is not None and layer is not None and compute_activations:
