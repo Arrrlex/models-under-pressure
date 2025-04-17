@@ -289,9 +289,9 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
-        max_samples=200,
-        model_name=LOCAL_MODELS["llama-1b"],
+        layer=31,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
             name="pytorch_attention_probe",
             hyperparams={
@@ -307,7 +307,8 @@ if __name__ == "__main__":
                 "scheduler_decay": 0.62,
             },
         ),
-        compute_activations=True,
+        compute_activations=False,
+        # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
         # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
         # validation_dataset=SYNTHETIC_DATASET_PATH,
