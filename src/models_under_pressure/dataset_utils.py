@@ -175,10 +175,10 @@ def load_train_test(
         )
 
     train_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "train") == "train"
+        lambda x: x.other_fields.get("split", "train") in ["train", "dev"]
     )
     test_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "test") == "test"
+        lambda x: x.other_fields.get("split", "train") == "test"
     )
 
     return train_dataset, test_dataset
