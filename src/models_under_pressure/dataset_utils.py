@@ -162,7 +162,7 @@ def load_train_test(
             lambda x: x.other_fields[variation_type] == variation_value
         )
 
-    if n_per_class is not None:
+    if n_per_class is not None and len(dataset) > n_per_class * 2:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
 
     if model_name is not None and layer is not None and compute_activations:
@@ -175,10 +175,11 @@ def load_train_test(
         )
 
     train_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "train") == "train"
+        lambda x: x.other_fields.get("split", "train") in ["train", "dev"]
+        # Note that mask uses split=="dev"
     )
     test_dataset = dataset.filter(
-        lambda x: x.other_fields.get("split", "test") == "test"
+        lambda x: x.other_fields.get("split", "train") == "test"
     )
 
     return train_dataset, test_dataset

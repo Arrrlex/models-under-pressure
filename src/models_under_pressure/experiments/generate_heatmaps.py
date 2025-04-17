@@ -18,9 +18,9 @@ from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config, print_progress
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
+from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.utils import double_check_config, print_progress
 
 
 def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
