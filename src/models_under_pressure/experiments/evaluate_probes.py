@@ -258,20 +258,15 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
-        max_samples=200,
-        model_name=LOCAL_MODELS["llama-1b"],
+        layer=31,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="pytorch_per_token_probe",
-            hyperparams={
-                "batch_size": 16,
-                "epochs": 50,
-                "device": "cpu",
-                "learning_rate": 1e-2,
-                "weight_decay": 0.001,
-            },
+            name="sklearn_mean_agg_probe",
+            hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
         ),
-        compute_activations=True,
+        compute_activations=False,
+        # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
         # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
