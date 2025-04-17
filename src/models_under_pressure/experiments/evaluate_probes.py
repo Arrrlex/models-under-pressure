@@ -10,7 +10,6 @@ from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    INPUTS_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS,
@@ -30,6 +29,9 @@ from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_classifiers import (
+    AttentionProbeAttnThenLinear,
+    AttentionProbeAttnWeightLogits,
+    PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
@@ -153,6 +155,15 @@ def get_coefs(probe: Probe) -> list[float]:
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
             coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+        elif isinstance(probe._classifier, PytorchAttentionClassifier):
+            # For attention probe, get the weights from the final linear layer
+            model = probe._classifier.model
+            if isinstance(model, AttentionProbeAttnThenLinear):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            elif isinstance(model, AttentionProbeAttnWeightLogits):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            else:
+                raise ValueError(f"Unknown attention probe model type: {type(model)}")
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
             coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
@@ -282,7 +293,7 @@ if __name__ == "__main__":
         max_samples=200,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
-            name="pytorch_per_entry_probe_mean",
+            name="pytorch_attention_probe",
             hyperparams={
                 "batch_size": 16,
                 "epochs": 40,
@@ -291,13 +302,16 @@ if __name__ == "__main__":
                     "lr": 1e-2,
                     "weight_decay": 0.001,
                 },
+                "attn_hidden_dim": 128,
+                "probe_architecture": "attention_then_linear",
+                "scheduler_decay": 0.01,
             },
         ),
         compute_activations=True,
-        # dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
-        validation_dataset=SYNTHETIC_DATASET_PATH,
-        # validation_dataset=True,
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
+        # validation_dataset=SYNTHETIC_DATASET_PATH,
+        validation_dataset=True,
     )
 
     double_check_config(config)
