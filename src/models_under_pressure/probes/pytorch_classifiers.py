@@ -695,6 +695,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         self,
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
+        validation_activations: Activation | None = None,
+        validation_y: Float[np.ndarray, " batch_size"] | None = None,
+        print_gradient_norm: bool = False,
     ) -> Self:
         """
         Train the classifier on the activations and labels.
@@ -704,14 +707,20 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         Args:
             activations: The activations to train on.
             y: The labels to train on.
+            validation_activations: Optional validation activations.
+            validation_y: Optional validation labels.
+            print_gradient_norm: Whether to print gradient norm during training.
 
         Returns:
             Self
         """
         device = self.training_args["device"]
 
+        # Convert labels to tensor
+        y_tensor = torch.tensor(y, dtype=self.data_type)
+
         # Just this bit here is different from the PytorchLinearClassifier
-        per_entry_dataset = activations.to_dataset(y=y, per_token=False)
+        per_entry_dataset = activations.to_dataset(y=y_tensor, per_token=False)
 
         # Get the embedding dimension from the averaged activations
         embedding_dim = activations._activations.shape[-1]
@@ -743,6 +752,11 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             batch_size=self.training_args["batch_size"],
             shuffle=True,
         )
+
+        # Initialize variables for tracking best model
+        best_val_loss = float("inf")
+        best_model_state = None
+        self.best_epoch = None
 
         # Training loop
         # Enable gradient computation
@@ -781,7 +795,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     y_tensor = y_tensor.view(-1)  # Flatten to (batch_size,)
 
                     loss = criterion(outputs, y_tensor)
-                    print("loss", loss)
+
+                    if print_gradient_norm:
+                        print("loss", loss)
 
                     assert not loss.isnan().any(), "Loss is NaN"
 
@@ -791,7 +807,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     grad_norm = torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), max_norm=1.0
                     )
-                    print(f"gradient norm: {grad_norm.item()}")
+                    if print_gradient_norm:
+                        print(f"gradient norm: {grad_norm.item()}")
 
                     optimizer.step()
                     loss = loss.item()
@@ -804,6 +821,41 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 # Print epoch summary
                 scheduler.step()
                 print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
+
+                # Validation step if validation data is provided
+                if validation_activations is not None and validation_y is not None:
+                    self.model.eval()
+                    with torch.no_grad():
+                        # Get probabilities for validation data
+                        val_probs = self.predict_proba(validation_activations)
+
+                        # Convert validation labels to tensor
+                        val_y_tensor = torch.tensor(
+                            validation_y, dtype=self.data_type
+                        ).to(device)
+
+                        # Convert probabilities to logits and compute loss
+                        val_probs_tensor = torch.tensor(
+                            val_probs, dtype=self.data_type
+                        ).to(device)
+                        # Add numerical stability by clipping probabilities
+                        val_probs_tensor = torch.clamp(
+                            val_probs_tensor, min=1e-7, max=1 - 1e-7
+                        )
+                        val_logits = torch.logit(val_probs_tensor)
+                        val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
+
+                        print(f"Validation loss: {val_loss:.4f}")
+
+                        # Save best model
+                        if val_loss < best_val_loss:
+                            best_val_loss = val_loss
+                            best_model_state = self.model.state_dict().copy()
+                            self.best_epoch = epoch + 1  # Store 1-indexed epoch number
+
+        # Load best model if validation was used
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
 
         return self
 

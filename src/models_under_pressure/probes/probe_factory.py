@@ -44,10 +44,13 @@ class ProbeFactory:
         if isinstance(probe, str):
             probe = ProbeSpec(name=probe)
 
-        # Warn that validation dataset is not used for any probe except pytorch_per_entry_probe_mean
         if (validation_dataset is not None) and (
             probe.name
-            not in ["pytorch_per_entry_probe_mean", "pytorch_per_token_probe"]
+            not in [
+                "pytorch_per_entry_probe_mean",
+                "pytorch_per_token_probe",
+                "pytorch_attention_probe",
+            ]
         ):
             print(
                 f"Warning: Validation dataset is not used for probe of type {probe.name}."
@@ -101,7 +104,7 @@ class ProbeFactory:
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
-            ).fit(train_dataset)
+            ).fit(train_dataset, validation_dataset=validation_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 
