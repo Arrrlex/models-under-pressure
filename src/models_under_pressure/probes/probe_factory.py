@@ -6,6 +6,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
     PytorchPerEntryLinearClassifier,
 )
@@ -93,6 +94,12 @@ class ProbeFactory:
             ).fit(
                 train_dataset, validation_dataset=validation_dataset
             )  # Only functionality for this probe atm
+        elif probe.name == "pytorch_attention_probe":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 

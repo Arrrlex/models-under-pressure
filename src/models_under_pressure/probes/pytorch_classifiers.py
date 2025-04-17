@@ -24,6 +24,7 @@ class PytorchLinearClassifier:
     training_args: dict
     model: nn.Module | None = None
     data_type: torch.dtype | None = None
+    best_epoch: int | None = None
 
     def __post_init__(self):
         # Set data type based on available device
@@ -132,20 +133,24 @@ class PytorchLinearClassifier:
             if validation_activations is not None and validation_y is not None:
                 self.model.eval()
                 with torch.no_grad():
-                    # Get logits for validation data
-                    val_logits = self.predict_token_logits(validation_activations)
+                    # Get probabilities for validation data
+                    val_probs = self.predict_proba(validation_activations)
 
                     # Convert validation labels to tensor
                     val_y_tensor = torch.tensor(validation_y, dtype=self.data_type).to(
                         device
                     )
 
-                    # Convert logits to tensor and compute mean over sequence length
-                    val_logits_tensor = torch.tensor(
-                        val_logits, dtype=self.data_type
-                    ).to(device)
-                    val_logits_mean = torch.mean(val_logits_tensor, dim=1, keepdim=True)
-                    val_loss = criterion(val_logits_mean.squeeze(), val_y_tensor).item()
+                    # Convert probabilities to logits and compute loss
+                    val_probs_tensor = torch.tensor(val_probs, dtype=self.data_type).to(
+                        device
+                    )
+                    # Add numerical stability by clipping probabilities
+                    val_probs_tensor = torch.clamp(
+                        val_probs_tensor, min=1e-7, max=1 - 1e-7
+                    )
+                    val_logits = torch.logit(val_probs_tensor)
+                    val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
 
                     print(f"Validation loss: {val_loss:.4f}")
 
@@ -153,6 +158,7 @@ class PytorchLinearClassifier:
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
                         best_model_state = self.model.state_dict().copy()
+                        self.best_epoch = epoch + 1  # Store 1-indexed epoch number
 
         # Load best model if validation was used
         if best_model_state is not None:
@@ -445,9 +451,14 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                     )
 
                     # Convert probabilities to logits and compute loss
-                    val_logits = torch.logit(
-                        torch.tensor(val_probs, dtype=self.data_type).to(device)
+                    val_probs_tensor = torch.tensor(val_probs, dtype=self.data_type).to(
+                        device
                     )
+                    # Add numerical stability by clipping probabilities
+                    val_probs_tensor = torch.clamp(
+                        val_probs_tensor, min=1e-7, max=1 - 1e-7
+                    )
+                    val_logits = torch.logit(val_probs_tensor)
                     val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
 
                     print(f"Validation loss: {val_loss:.4f}")
