@@ -205,7 +205,7 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
-            n_per_class=config.max_samples,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
             variation_type=config.variation_type,
             variation_value=config.variation_value,
         )
