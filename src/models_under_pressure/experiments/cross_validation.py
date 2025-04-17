@@ -27,7 +27,7 @@ from models_under_pressure.interfaces.results import (
     CVIntermediateResults,
 )
 from models_under_pressure.model import LLMModel
-from models_under_pressure.probes.probes import ProbeFactory
+from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import batched_range, double_check_config
 
 

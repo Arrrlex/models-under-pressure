@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -20,17 +20,16 @@ from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.interfaces.results import DatasetResults
+from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
-from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
 )
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.sklearn_probes import SklearnProbe
+from models_under_pressure.utils import double_check_config
 
 
 def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
