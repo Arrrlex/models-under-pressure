@@ -78,9 +78,7 @@ class Record(BaseModel):
 
     def __getattr__(self, name: str) -> Any:
         """Allow accessing other_fields values as attributes."""
-        if name in self.other_fields:
-            return self.other_fields[name]
-        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+        return self.other_fields[name]
 
 
 class LabelledRecord(Record):
