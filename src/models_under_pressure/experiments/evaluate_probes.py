@@ -1,4 +1,5 @@
 # Code to generate Figure 2
+import json
 from pathlib import Path
 
 import numpy as np
@@ -13,16 +14,21 @@ from models_under_pressure.config import (
     EvalRunConfig,
 )
 from models_under_pressure.dataset_utils import load_splits_lazy, load_dataset
-from models_under_pressure.interfaces.dataset import (
-    LabelledDataset,
-    subsample_balanced_subset,
-)
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.results import EvaluationResult
 from models_under_pressure.interfaces.results import DatasetResults
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.probes.pytorch_classifiers import (
+    AttentionProbeAttnThenLinear,
+    AttentionProbeAttnWeightLogits,
+    PytorchAttentionClassifier,
+    PytorchDifferenceOfMeansClassifier,
+)
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config
 
 
@@ -137,7 +143,31 @@ def evaluate_probe_and_save_results(
     return per_entry_probe_scores, DatasetResults(layer=layer, metrics=metrics)
 
 
-def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
+def get_coefs(probe: Probe) -> list[float]:
+    if isinstance(probe, SklearnProbe):
+        coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
+    elif isinstance(probe, PytorchProbe):
+        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
+            # For difference of means classifier, weights are directly in the linear layer
+            coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+        elif isinstance(probe._classifier, PytorchAttentionClassifier):
+            # For attention probe, get the weights from the final linear layer
+            model = probe._classifier.model
+            if isinstance(model, AttentionProbeAttnThenLinear):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            elif isinstance(model, AttentionProbeAttnWeightLogits):
+                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+            else:
+                raise ValueError(f"Unknown attention probe model type: {type(model)}")
+        else:
+            # For regular PyTorch probe, weights are in the second layer of Sequential
+            coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
+    return coefs
+
+
+def run_evaluation(
+    config: EvalRunConfig,
+) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
@@ -148,14 +178,13 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
     )
 
     if isinstance(config.validation_dataset, Path):
-        validation_dataset = LabelledDataset.load_from(config.validation_dataset)
-        if (
-            config.max_samples is not None
-            and len(validation_dataset) > config.max_samples
-        ):
-            validation_dataset = subsample_balanced_subset(
-                validation_dataset, n_per_class=config.max_samples // 2
-            )
+        validation_dataset = load_dataset(
+            dataset_path=config.validation_dataset,
+            model_name=config.model_name,
+            layer=config.layer,
+            compute_activations=config.compute_activations,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
+        )
     elif config.validation_dataset:
         validation_dataset = splits["test"]
     else:
@@ -222,7 +251,20 @@ def run_evaluation(config: EvalRunConfig) -> list[EvaluationResult]:
 
         del eval_dataset
 
-    return results_list
+    coefs = get_coefs(probe)
+
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results_list:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+    coefs_dict = {
+        "id": config.id,
+        "coefs": coefs[0].tolist(),  # type: ignore
+    }
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump(coefs_dict, f)
+
+    return results_list, coefs
 
 
 if __name__ == "__main__":
@@ -235,12 +277,24 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="sklearn_mean_agg_probe",
-            hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
+            name="pytorch_attention_probe",
+            hyperparams={
+                "batch_size": 16,
+                "epochs": 50,
+                "device": "cpu",
+                "optimizer_args": {
+                    "lr": 1e-3,
+                    "weight_decay": 0.0004,
+                },
+                "attn_hidden_dim": 27,
+                "probe_architecture": "attention_then_linear",
+                "scheduler_decay": 0.62,
+            },
         ),
         compute_activations=False,
         # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
+        # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
         # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
         eval_datasets=list(EVAL_DATASETS.values()),
