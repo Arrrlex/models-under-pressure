@@ -6,156 +6,102 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 class MaxOfSentenceMeans:
     def __init__(self, tokenizer: PreTrainedTokenizerBase):
         self.tokenizer = tokenizer
+        # Common sentence-ending punctuation tokens
+        self.period_like_token_ids = self._get_sentence_ending_token_ids()
 
-    def get_delimiter_token_ids(self) -> dict[str, int | list[int]]:
-        """Get all possible delimiter token IDs from the tokenizer."""
-        delimiters = {}
+    def _get_sentence_ending_token_ids(self) -> list[int]:
+        """Get token IDs for common sentence-ending punctuation."""
+        # This handles basic sentence-ending punctuation
+        punctuation = [".", "!", "?", '."', '!"', '?"', '."', '!"', '?"']
+        token_ids = []
 
-        # Special tokens that most tokenizers have
-        special_tokens = {
-            "eos": self.tokenizer.eos_token_id,
-            "bos": self.tokenizer.bos_token_id,
-            "pad": self.tokenizer.pad_token_id,
-            "sep": getattr(self.tokenizer, "sep_token_id", None),
-            "cls": getattr(self.tokenizer, "cls_token_id", None),
-        }
-        delimiters.update({k: v for k, v in special_tokens.items() if v is not None})
+        for p in punctuation:
+            # Different tokenizers handle punctuation differently
+            ids = self.tokenizer.encode(p, add_special_tokens=False)
+            if ids:
+                token_ids.append(
+                    ids[-1]
+                )  # Take the last token ID which usually corresponds to the punctuation
 
-        # Common punctuation and sentence delimiters
-        punct_tokens = [".", "!", "?", "\n"]
-        for p in punct_tokens:
-            token_id = self.tokenizer.convert_tokens_to_ids(p)
+        return token_ids
+
+    def _find_sentence_boundaries(
+        self, input_ids: torch.Tensor
+    ) -> list[tuple[int, int]]:
+        """
+        Find sentence boundaries in the token sequence.
+        Returns a list of (start_idx, end_idx) tuples for each sentence.
+        """
+        boundaries = []
+        current_start = 0
+        seq_len = input_ids.shape[0]
+
+        for i in range(seq_len):
+            token_id = input_ids[i]  # Use first batch element to find boundaries
+
+            # Check if token is a sentence-ending token
+            is_end_of_sentence = token_id in self.period_like_token_ids
+
+            # Also check if we're at the end of the sequence
+            is_end_of_sequence = i == seq_len - 1
+
+            if is_end_of_sentence or is_end_of_sequence:
+                boundaries.append((current_start, i + 1))  # Include the current token
+                current_start = i + 1
+
+            # Handle special tokens or end of sequence
             if (
-                token_id != self.tokenizer.unk_token_id
-            ):  # Only add if it's a known token
-                delimiters[p] = token_id
+                token_id == self.tokenizer.eos_token_id
+                or token_id == self.tokenizer.sep_token_id
+            ):
+                if current_start < i:
+                    boundaries.append((current_start, i))
+                break
 
-        # Chat/dialogue specific tokens
-        chat_markers = [
-            "Human:",
-            "Assistant:",
-            "System:",  # Common role markers
-            "\n\n",  # Turn separators
-            "</s>",
-            "<|endoftext|>",  # Common end markers
-            "<|im_start|>",
-            "<|im_end|>",  # Some models use these
-        ]
+        # If we didn't find any boundaries, treat the whole sequence as one sentence
+        if not boundaries and seq_len > 0:
+            boundaries.append((0, seq_len))
 
-        for marker in chat_markers:
-            # Some markers might be split into multiple tokens
-            token_ids = self.tokenizer.encode(marker, add_special_tokens=False)
-            if token_ids and token_ids[0] != self.tokenizer.unk_token_id:
-                delimiters[marker] = token_ids
-
-        return delimiters
-
-    def split_on_delimiters(
-        self,
-        input_ids: torch.Tensor,
-        include_delimiters: bool = True,
-        min_segment_length: int = 2,
-    ) -> list[torch.Tensor]:
-        """
-        Split input_ids into segments based on delimiter tokens.
-
-        Args:
-            input_ids: Input token IDs
-            include_delimiters: Whether to include delimiter tokens in the output segments
-            min_segment_length: Minimum length of segments to return
-
-        Returns:
-            List of tensor segments
-        """
-        input_ids_list = input_ids.tolist()
-
-        delimiters = self.get_delimiter_token_ids()
-
-        # Find all delimiter positions
-        split_positions = []
-        i = 0
-        while i < len(input_ids_list):
-            found_delimiter = False
-            for delimiter_name, delimiter_ids in delimiters.items():
-                if isinstance(delimiter_ids, list):
-                    # Check for multi-token delimiters
-                    if i + len(delimiter_ids) <= len(input_ids_list):
-                        if input_ids_list[i : i + len(delimiter_ids)] == delimiter_ids:
-                            split_positions.append(
-                                (i, i + len(delimiter_ids), delimiter_name)
-                            )
-                            found_delimiter = True
-                            break
-                else:
-                    # Single token delimiter
-                    if input_ids_list[i] == delimiter_ids:
-                        split_positions.append((i, i + 1, delimiter_name))
-                        found_delimiter = True
-                        break
-            i += (
-                1
-                if not found_delimiter
-                else len(delimiter_ids)
-                if isinstance(delimiter_ids, list)
-                else 1
-            )
-
-        # Split into segments
-        segments = []
-        start = 0
-        for pos_start, pos_end, delimiter_name in split_positions:
-            # Add segment before delimiter if it meets minimum length
-            if pos_start - start >= min_segment_length:
-                segments.append(torch.tensor(input_ids_list[start:pos_start]))
-
-            # Add delimiter if requested
-            if include_delimiters:
-                segments.append(torch.tensor(input_ids_list[pos_start:pos_end]))
-
-            start = pos_end
-
-        # Add final segment if it exists and meets minimum length
-        if (
-            start < len(input_ids_list)
-            and len(input_ids_list) - start >= min_segment_length
-        ):
-            segments.append(torch.tensor(input_ids_list[start:]))
-
-        return segments
+        return boundaries
 
     def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
         """
-        Split the input into segments based on delimiters and return the max of the means of each segment.
+        Compute the maximum of mean logits per sentence.
 
         Args:
-            logits: Shape (batch_size, seq_len)
-            input_ids: Shape (batch_size, seq_len)
+            logits: Tensor of shape (batch_size, seq_len)
+            input_ids: Tensor of shape (batch_size, seq_len)
 
         Returns:
-            Tensor of shape (batch_size,)
+            Tensor of shape (batch_size,) containing the maximum mean logit per sentence
         """
-        batch_size, seq_len = logits.shape
-        result = torch.zeros((batch_size,), device=logits.device)
+        batch_size = logits.size(0)
+        results = torch.zeros(batch_size, device=logits.device)
 
-        for b in range(batch_size):
-            # Split the sequence into segments
-            segments = self.split_on_delimiters(input_ids[b], include_delimiters=False)
+        for batch_idx in range(batch_size):
+            # Find sentence boundaries for this batch item
+            sentence_boundaries = self._find_sentence_boundaries(input_ids[batch_idx])
 
-            # Get the mean of each text segment
-            text_segment_means = []
-            current_pos = 0
-            for segment in segments:
-                segment_length = len(segment)
-                segment_logits = logits[b, current_pos : current_pos + segment_length]
-                segment_mean = segment_logits.mean(dim=0)
-                text_segment_means.append(segment_mean)
-                current_pos += len(segment)
+            # Calculate mean logit for each sentence
+            sentence_means = []
+            for start, end in sentence_boundaries:
+                # Skip empty sentences
+                if end <= start:
+                    continue
 
-            # Stack the means and take the max
-            text_segment_means = torch.stack(text_segment_means)
-            result[b] = text_segment_means.max(dim=0).values
+                # Calculate mean of logits for this sentence
+                sentence_logits = logits[batch_idx, start:end]
+                mean_logit = torch.mean(sentence_logits)
+                sentence_means.append(mean_logit)
 
-        return result
+            # Find the maximum mean across all sentences
+            if sentence_means:
+                results[batch_idx] = max(sentence_means)
+            else:
+                # Fallback: if no valid sentences found, use mean of all logits
+                results[batch_idx] = torch.mean(logits[batch_idx])
+
+        return results
 
 
 class MeanOfTopK:
