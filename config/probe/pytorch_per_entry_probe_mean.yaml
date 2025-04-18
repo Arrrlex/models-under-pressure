@@ -1,4 +1,4 @@
-name: pytorch_per_token_probe
+name: pytorch_per_entry_probe_mean
 hyperparams:
   batch_size: 16
   epochs: 20
