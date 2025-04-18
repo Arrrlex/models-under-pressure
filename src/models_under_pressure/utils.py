@@ -41,10 +41,10 @@ openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
 class AttrDict(dict):
     def __init__(self, dict_: dict[str, Any]):
-        self.dict = dict_
+        super().__init__(**dict_)
 
     def __getattr__(self, key: str) -> Any:
-        val = self.dict[key]
+        val = self[key]
         if isinstance(val, dict):
             return AttrDict(val)
         else:

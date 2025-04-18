@@ -170,6 +170,7 @@ def run_evaluation(
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
+        dataset_filters=config.dataset_filters,
         n_per_class=config.max_samples,
         model_name=config.model_name,
         layer=config.layer,
@@ -179,6 +180,7 @@ def run_evaluation(
     if isinstance(config.validation_dataset, Path):
         validation_dataset = load_dataset(
             dataset_path=config.validation_dataset,
+            dataset_filters=config.dataset_filters,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
@@ -234,6 +236,14 @@ def run_evaluation(
 
         print(f"Metrics for {eval_dataset_name}: {dataset_results.metrics}")
 
+        best_epoch = (
+            probe._classifier.best_epoch
+            if (
+                isinstance(probe, PytorchProbe)
+                and hasattr(probe._classifier, "best_epoch")
+            )
+            else None
+        )
         dataset_results = EvaluationResult(
             config=config,
             metrics=dataset_results,
@@ -244,7 +254,7 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
             dataset_path=eval_dataset_path,
-            best_epoch=probe.best_epoch if hasattr(probe, "best_epoch") else None,  # type: ignore
+            best_epoch=best_epoch,
         )
 
         results_list.append(dataset_results)

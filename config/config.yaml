@@ -4,11 +4,11 @@ defaults:
   - model: llama-70b
   - _self_
 
-layer: 31
 batch_size: 4
 max_samples: null
 random_seed: 42
 train_data: prompts_25_03_25_gpt-4o.jsonl
+train_filters: null
 compute_activations: false
 validation_dataset: false
 
