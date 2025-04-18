@@ -5,7 +5,6 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import (
-    SYNTHETIC_DATASET_PATH,
     global_settings,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
@@ -219,40 +218,39 @@ def filter_dataset(dataset: LabelledDataset) -> LabelledDataset:
 
 
 # Apply labeling
-# tqdm.pandas()
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
-
-# dataset = Dataset.from_pandas(df)
-# labelled_dataset = label_dataset(dataset, labelling_method="scale")  # type: ignore
-# labelled_dataset.save_to(
-#     Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl")),
-#     overwrite=True,
+tqdm.pandas()
+# input_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o.jsonl"
+# )
+# neutralised_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_neutralised.jsonl"
+# )
+# manipulated_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_manipulated.jsonl"
 # )
 
-# apply filtering
-labelled_dataset = LabelledDataset.load_from(
-    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_labeled.jsonl"))
+input_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced.jsonl"
 )
-labelled_dataset = filter_dataset(labelled_dataset)
-labelled_dataset.save_to(
-    Path(str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_filtered.jsonl")),
-    overwrite=True,
+neutralised_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_neutralised.jsonl"
 )
+manipulated_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_manipulated.jsonl"
+)
+
+df = pd.read_json(input_path, orient="records", lines=True)
+
 tqdm.pandas()
 # apply neutralization
-df_labelled = labelled_dataset.to_pandas()
-df_labelled["neutral_prompt"] = df_labelled["inputs"].progress_apply(neutralize_prompt)
-df_labelled.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
-)
+neutralised_df = df.sample(frac=0.2)
+neutralised_df["inputs"] = neutralised_df["inputs"].progress_apply(neutralize_prompt)
+neutralised_df.to_json(neutralised_path, orient="records", lines=True)
 
 # apply manipulation
-df["boolean_label"] = df["scale_labels"].apply(lambda x: x in [8, 9, 10])
-
-df["manipulated_prompt"] = [
-    manipulate_stakes(row["prompt"], row["boolean_label"])
-    for _, row in tqdm(df.iterrows(), total=len(df))
+manipulated_df = df.sample(frac=0.2)
+manipulated_df["inputs"] = [
+    manipulate_stakes(row["inputs"], row["labels"] == "high-stakes")
+    for _, row in tqdm(manipulated_df.iterrows(), total=len(manipulated_df))
 ]
-df.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
-)
+manipulated_df.to_json(manipulated_path, orient="records", lines=True)

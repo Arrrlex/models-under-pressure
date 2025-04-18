@@ -80,7 +80,7 @@ async def generate_situation_pair(
 
     separator = "-----"
 
-    prompt = SYSTEM_PROMPT_GENERATION_TEMPLATE_2.format(
+    prompt = SYSTEM_PROMPT_GENERATION_TEMPLATE.format(
         topic=topic,
         role=role_of_user,
         impact_factor=impact_factor,

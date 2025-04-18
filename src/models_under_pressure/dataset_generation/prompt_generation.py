@@ -12,6 +12,7 @@ from models_under_pressure.interfaces.variation import Variation
 from models_under_pressure.utils import async_map, call_llm_async
 
 PROMPT_TEMPLATE = """Below are two situations. For each situation, generate a single {prompt_style}.
+Prompt 1 will be for the following situation:
 {high_stakes_description}
 Prompt 2 will be for the following situation:
 {low_stakes_description}
@@ -23,20 +24,19 @@ Make sure that prompts contain roughly {length} words. Do not include any header
 """
 
 PROMPT_TEMPLATE_FROM_SYSTEM_PROMPT = """
-Below are two system instructions describing different deployment contexts of a language model. For each system prompt, generate a realistic {prompt_style} that a user might submit in that setting.
+Here is a system instruction describing a deployment context of a language model - {description}. For this system prompt, generate two realistic {prompt_style} that a user might submit in that setting.
 
-For this first system prompt, generate Prompt 1 that represents a high stakes situation:
-{high_stakes_description}
-
-For this second system prompt, generate Prompt 2 that represents a low stakes situation:
-{low_stakes_description}
+Prompt 1 should be a {prompt_style} that is used (or represents) in a high stakes scenario
+Prompt 2 should be a {prompt_style} that is used (or represents) in a low stakes scenario
 
 {tone}
 {language}
 
-The two prompts you generate should be as structurally similar as possible, while being appropriate and consistent with their respective system prompts. The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the types of words used (example, "urgent" or "caution" for high stakes and "minor" or "routing for low stakes). A prompt can carry significant consequences while being described with mild language, or it can be trivial but framed with extreme wording.
+The distinction between high-stakes and low-stakes prompts should be based on meaning and context rather than the types of words used (example, "urgent" or "caution" should be avoided to explicitly imply high stakes and words like "minor" or "routing" should be avoided for signaling low stakes). 
 
-Make sure that each prompt is roughly {length} words. Do not include headers or titles. If the request is incoherent or confusing, reply with "refuse".
+If you find this request to be confusing, incoherent or otherwise difficult to follow, respond with "refuse".
+These two prompts should be as similar as possible while staying true to their respective situations.
+Make sure that prompts contain roughly {length} words. Do not include any headers or titles.
 """
 
 extra_part = """
@@ -49,7 +49,7 @@ async def generate_prompt_pair(
     variations: dict[str, Variation],
     model: str,
     split: str,
-) -> Optional[tuple[Prompt, Prompt]]:
+) -> Optional[tuple[Prompt, Prompt, Prompt, Prompt]]:
     """
     Generate pair of prompts for a given pair of high- and low-stakes situations.
 
@@ -62,64 +62,79 @@ async def generate_prompt_pair(
     Returns:
         Pair of prompts or None if generation fails
     """
-
-    prompt = PROMPT_TEMPLATE_FROM_SYSTEM_PROMPT.format(
-        tone=variations["tone"].value,
-        language=variations["language"].value,
-        prompt_style=variations["prompt_style"].value,
-        high_stakes_description=situation_pair.high_stakes,
-        low_stakes_description=situation_pair.low_stakes,
-        length=variations["length"].value,
-    )
-
-    json_schema = {
-        "name": "PromptPair",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "prompt_1": {"type": "string"},
-                "prompt_2": {"type": "string"},
-            },
-            "required": ["prompt_1", "prompt_2"],
-            "additionalProperties": False,
-        },
-    }
-
-    # Call LLM with prompt asynchronously
-    try:
-        prompt_pair = await call_llm_async(
-            [{"role": "user", "content": prompt}],
-            model=model,
-            json_schema=json_schema,
+    high_stakes_prompts = []
+    low_stakes_prompts = []
+    for idx, system_prompt in enumerate(
+        [situation_pair.high_stakes, situation_pair.low_stakes]
+    ):
+        prompt = PROMPT_TEMPLATE_FROM_SYSTEM_PROMPT.format(
+            tone=variations["tone"].value,
+            language=variations["language"].value,
+            prompt_style=variations["prompt_style"].value,
+            description=system_prompt,
+            length=variations["length"].value,
         )
-    except Exception as e:
-        print(f"Error generating prompts: {e}")
-        return None
 
-    kwargs = {
-        "id": 0,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "tone": variations["tone"].name,
-        "language": variations["language"].name,
-        "prompt_style": variations["prompt_style"].name,
-        "length": variations["length"].name,
-        "topic": situation_pair.topic,
-        "situations": situation_pair.situation_ids,
-        "pair_id": situation_pair.id,
-        "split": split,
-        **situation_pair.factors,  # type: ignore
-    }
+        json_schema = {
+            "name": "PromptPair",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "prompt_1": {"type": "string"},
+                    "prompt_2": {"type": "string"},
+                },
+                "required": ["prompt_1", "prompt_2"],
+                "additionalProperties": False,
+            },
+        }
 
-    high_stakes_prompt = Prompt(
-        **kwargs, prompt=prompt_pair["prompt_1"], high_stakes=True
+        # Call LLM with prompt asynchronously
+        try:
+            prompt_pair = await call_llm_async(
+                [{"role": "user", "content": prompt}],
+                model=model,
+                json_schema=json_schema,
+            )
+        except Exception as e:
+            print(f"Error generating prompts: {e}")
+            return None
+
+        kwargs = {
+            "id": 0,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "tone": variations["tone"].name,
+            "language": variations["language"].name,
+            "prompt_style": variations["prompt_style"].name,
+            "length": variations["length"].name,
+            "topic": situation_pair.topic,
+            "system_prompt": system_prompt,
+            "situations": situation_pair.high_stakes_situation.id
+            if idx == 0
+            else situation_pair.low_stakes_situation.id,
+            "pair_id": situation_pair.id,
+            "split": split,
+            **situation_pair.factors,  # type: ignore
+            "inputs": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt_pair[f"prompt_{idx + 1}"]},
+            ],
+        }
+
+        high_stakes_prompts.append(
+            Prompt(**kwargs, prompt=prompt_pair["prompt_1"], high_stakes=True)
+        )
+
+        low_stakes_prompts.append(
+            Prompt(**kwargs, prompt=prompt_pair["prompt_2"], high_stakes=False)
+        )
+
+    return (
+        high_stakes_prompts[0],
+        low_stakes_prompts[0],
+        high_stakes_prompts[1],
+        low_stakes_prompts[1],
     )
-
-    low_stakes_prompt = Prompt(
-        **kwargs, prompt=prompt_pair["prompt_2"], high_stakes=False
-    )
-
-    return high_stakes_prompt, low_stakes_prompt
 
 
 def choose_variations(
