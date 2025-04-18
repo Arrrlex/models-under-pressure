@@ -1,5 +1,5 @@
 defaults:
-  - probe: sklearn_mean_agg_probe
+  - probe: sklearn
   - eval_datasets: dev_balanced
   - model: llama-70b
   - _self_

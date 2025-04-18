@@ -25,9 +25,11 @@ from models_under_pressure.probes.base import Classifier, Probe
 
 @dataclass
 class SklearnProbe(Probe):
-    aggregator: Aggregator = Aggregator(
-        preprocessor=Preprocessors.mean,
-        postprocessor=Postprocessors.sigmoid,
+    aggregator: Aggregator = field(
+        default_factory=lambda: Aggregator(
+            preprocessor=Preprocessors.mean,
+            postprocessor=Postprocessors.sigmoid,
+        )
     )
     hyper_params: dict = field(
         default_factory=lambda: {
