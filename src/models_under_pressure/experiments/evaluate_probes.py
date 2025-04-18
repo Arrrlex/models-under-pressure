@@ -6,25 +6,18 @@ import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
-    TEST_DATASETS,
     EvalRunConfig,
 )
-from models_under_pressure.dataset_utils import (
-    load_train_test,
-)
-from models_under_pressure.interfaces.dataset import (
-    LabelledDataset,
-    subsample_balanced_subset,
-)
+from models_under_pressure.dataset_utils import load_splits_lazy, load_dataset
+from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.results import EvaluationResult
+from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
@@ -60,13 +53,15 @@ def evaluate_probe_and_save_results(
     Args:
         probe: The probe to evaluate.
         train_dataset_path: The path to the train dataset.
+        eval_dataset_name: The name of the dataset to evaluate the probe on.
         eval_dataset: The dataset to evaluate the probe on.
+        model_name: The name of the model to evaluate the probe on.
         layer: The layer to evaluate the probe on.
         output_dir: The directory to save the results to.
         save_results: Whether to save the results to a file.
         fpr: The FPR threshold to evaluate the probe at.
     Returns:
-        A dictionary of the evaluated datasets and their results.
+        The per-entry probe scores and the results of the probe evaluation.
 
     Method designed to be used in the evaluate_probes.py experiment run
     """
@@ -174,72 +169,48 @@ def run_evaluation(
     config: EvalRunConfig,
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    train_dataset, validation_dataset = load_train_test(
+    splits = load_splits_lazy(
         dataset_path=config.dataset_path,
-        variation_type=config.variation_type,
-        variation_value=config.variation_value,
         n_per_class=config.max_samples,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
-    if not config.validation_dataset:
-        del validation_dataset
-    elif isinstance(config.validation_dataset, Path):
-        validation_dataset = LabelledDataset.load_from(config.validation_dataset)
-        if (
-            config.max_samples is not None
-            and len(validation_dataset) > config.max_samples
-        ):
-            validation_dataset = subsample_balanced_subset(
-                validation_dataset, n_per_class=config.max_samples // 2
-            )
-        if not config.compute_activations:
-            validation_dataset = ActivationStore().enrich(
-                validation_dataset,
-                path=config.validation_dataset,
-                model_name=config.model_name,
-                layer=config.layer,
-            )
-        else:
-            model = LLMModel.load(config.model_name)
-            activations = model.get_batched_activations(
-                validation_dataset, layer=config.layer
-            )
-            validation_dataset = validation_dataset.assign(
-                activations=activations._activations,
-                attention_mask=activations._attention_mask,
-                input_ids=activations._input_ids,
-            )
+
+    if isinstance(config.validation_dataset, Path):
+        validation_dataset = load_dataset(
+            dataset_path=config.validation_dataset,
+            model_name=config.model_name,
+            layer=config.layer,
+            compute_activations=config.compute_activations,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
+        )
+    elif config.validation_dataset:
+        validation_dataset = splits["test"]
+    else:
+        validation_dataset = None
 
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
-        train_dataset=train_dataset,
-        validation_dataset=validation_dataset if config.validation_dataset else None,
+        train_dataset=splits["train"],
+        validation_dataset=validation_dataset,
     )
-
-    del train_dataset
-
-    coefs = get_coefs(probe)
-
-    eval_dataset_paths = TEST_DATASETS if config.use_test_set else EVAL_DATASETS
 
     results_list = []
 
-    for eval_dataset_name, eval_dataset_path in tqdm(
-        eval_dataset_paths.items(), desc="Evaluating on eval datasets"
+    for eval_dataset_path in tqdm(
+        config.eval_datasets, desc="Evaluating on eval datasets"
     ):
+        eval_dataset_name = eval_dataset_path.stem
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
-        eval_dataset, _ = load_train_test(
+        eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
             n_per_class=config.max_samples // 2 if config.max_samples else None,
-            variation_type=config.variation_type,
-            variation_value=config.variation_value,
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
@@ -280,6 +251,19 @@ def run_evaluation(
 
         del eval_dataset
 
+    coefs = get_coefs(probe)
+
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results_list:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+    coefs_dict = {
+        "id": config.id,
+        "coefs": coefs[0].tolist(),  # type: ignore
+    }
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump(coefs_dict, f)
+
     return results_list, coefs
 
 
@@ -313,21 +297,11 @@ if __name__ == "__main__":
         # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
         # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
+        eval_datasets=list(EVAL_DATASETS.values()),
     )
 
     double_check_config(config)
 
     print(f"Running probe evaluation with ID {config.id}")
     print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
-    results, coefs = run_evaluation(config=config)
-
-    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
-    for result in results:
-        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
-    coefs_dict = {
-        "id": config.id,
-        "coefs": coefs[0].tolist(),  # type: ignore
-    }
-    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-        json.dump(coefs_dict, f)
+    run_evaluation(config=config)

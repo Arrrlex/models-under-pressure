@@ -22,6 +22,7 @@ class GlobalSettings(BaseSettings):
     CACHE_DIR: str | None = None
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
+    DOUBLE_CHECK_CONFIG: bool = True
 
 
 global_settings = GlobalSettings()
@@ -54,8 +55,6 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
-BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
-BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
@@ -117,14 +116,6 @@ AIS_DATASETS = {
         "field_mapping": {
             "labels": "high_stakes",
             "is_sandbagging": "labels",
-        },
-    },
-    "deception": {
-        "file_path_or_name": EVALS_DIR / "deception_labelled_.csv",
-        "field_mapping": {
-            "labels": "high_stakes",
-            "is_deceptive": "labels",
-            "id": "ids",
         },
     },
 }
@@ -342,24 +333,19 @@ class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
     probe_spec: ProbeSpec
-    use_test_set: bool = False
-    hyper_params: dict[str, Any] | None = None
-    max_samples: int | None = None
-    variation_type: str | None = None
-    variation_value: str | None = None
+    max_samples: int | None
+    dataset_path: Path
+    eval_datasets: list[Path]
+    model_name: str
     compute_activations: bool = False
     validation_dataset: Path | bool = False
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
     model_name: str = (
         DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
     )
 
     @property
     def output_filename(self) -> str:
-        if self.use_test_set:
-            return f"results_{self.id}_test.jsonl"
-        else:
-            return f"results_{self.id}.jsonl"
+        return f"results_{self.id}.jsonl"
 
     @property
     def coefs_filename(self) -> str:
@@ -369,6 +355,19 @@ class EvalRunConfig(BaseModel):
     @property
     def random_seed(self) -> int:
         return 32
+
+
+class RunBaselinesConfig(BaseModel):
+    model_name: str
+    dataset_path: Path
+    baseline_prompts: list[str]
+    eval_datasets: dict[str, Path]
+    max_samples: int | None
+    batch_size: int
+
+    @property
+    def output_path(self) -> Path:
+        return PROBES_DIR / "continuation_baseline_results.jsonl"
 
 
 @dataclass(frozen=True)

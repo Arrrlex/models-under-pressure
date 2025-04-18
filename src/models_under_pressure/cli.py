@@ -35,7 +35,7 @@ def store(
         ...,
         "--dataset",
         "--datasets",
-        help="Path to the dataset or datasets (can include wildcards)",
+        help="Path to the dataset or datasets",
     ),
     layers_str: str = typer.Option(
         ...,

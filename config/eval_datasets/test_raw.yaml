@@ -1,0 +1,8 @@
+- manual: data/evals/test/manual.csv
+- anthropic: data/evals/test/anthropic_samples.csv
+- toolace: data/evals/test/toolace_samples.csv
+- mt: data/evals/test/mt_samples_clean.jsonl
+- mts: data/evals/test/mts_samples.csv
+- mental_health: data/evals/test/mental_health.jsonl
+- redteaming: data/evals/test/aya_redteaming.jsonl
+- mask: data/evals/test/mask_samples_raw.jsonl

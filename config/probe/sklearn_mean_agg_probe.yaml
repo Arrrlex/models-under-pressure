@@ -1,0 +1,5 @@
+name: sklearn_mean_agg_probe
+hyperparams:
+  C: 1e-3
+  random_state: 42
+  fit_intercept: false
