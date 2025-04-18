@@ -29,7 +29,7 @@ from models_under_pressure.interfaces.dataset import (
     Input,
     to_dialogue,
 )
-from models_under_pressure.utils import batched_range
+from models_under_pressure.utils import batched_range, hf_login
 
 
 # type: ignore
@@ -213,6 +213,7 @@ class LLMModel:
         Returns:
             Initialized LLMModel instance
         """
+        hf_login()
 
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
 
