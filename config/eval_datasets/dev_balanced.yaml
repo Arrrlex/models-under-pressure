@@ -1,6 +1,6 @@
-- data/evals/dev/manual_upsampled.csv
-- data/evals/dev/anthropic_samples_balanced.jsonl
-- data/evals/dev/toolace_samples_balanced.jsonl
-- data/evals/dev/mt_samples_balanced.jsonl
-- data/evals/dev/mts_samples_balanced.jsonl
-- data/evals/dev/mask_samples_balanced.jsonl
+manual: data/evals/dev/manual_upsampled.csv
+anthropic: data/evals/dev/anthropic_balanced_apr_16.jsonl
+toolace: data/evals/dev/toolace_balanced_apr_15.jsonl
+mt: data/evals/dev/mt_balanced_apr_16.jsonl
+mts: data/evals/dev/mts_balanced_apr_16.jsonl
+mask: data/evals/dev/mask_samples_balanced.jsonl

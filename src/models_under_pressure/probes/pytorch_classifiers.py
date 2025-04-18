@@ -102,7 +102,6 @@ class PytorchLinearClassifier:
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
             for batch_idx, batch in enumerate(pbar):
-                # TODO! Adjust this so it applies the mask correctly (as for per-entry classifier)
                 acts_tensor, _, _, y_tensor = batch
 
                 optimizer.zero_grad()

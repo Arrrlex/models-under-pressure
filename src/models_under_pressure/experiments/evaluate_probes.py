@@ -13,11 +13,10 @@ from models_under_pressure.config import (
     SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
-from models_under_pressure.dataset_utils import load_splits_lazy, load_dataset
+from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.interfaces.results import DatasetResults
 from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
@@ -245,6 +244,7 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
             dataset_path=eval_dataset_path,
+            best_epoch=probe.best_epoch if hasattr(probe, "best_epoch") else None,  # type: ignore
         )
 
         results_list.append(dataset_results)
