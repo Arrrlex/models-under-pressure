@@ -15,7 +15,7 @@ import time
 
 import torch
 import zstandard as zstd
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings, PROJECT_ROOT
@@ -43,6 +43,10 @@ class ActivationsSpec(BaseModel):
     class Config:
         frozen = True  # Make the model immutable
         validate_assignment = True
+
+    @field_validator("dataset_path")
+    def validate_dataset_path(cls, v: Path) -> Path:
+        return v.resolve().relative_to(PROJECT_ROOT)
 
 
 class ManifestRow(BaseModel):
@@ -72,13 +76,12 @@ class ManifestRow(BaseModel):
         Returns:
             A new ManifestRow instance with generated file paths
         """
-        dataset_path = spec.dataset_path.resolve().relative_to(PROJECT_ROOT)
-        common_name = spec.model_name + str(dataset_path)
+        common_name = spec.model_name + str(spec.dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
             model_name=spec.model_name,
-            dataset_path=dataset_path,
+            dataset_path=spec.dataset_path,
             layer=spec.layer,
             timestamp=datetime.datetime.now(),
             activations=Path(f"activations/{common_id}_{spec.layer}.pt.zst"),
