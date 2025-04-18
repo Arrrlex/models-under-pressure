@@ -34,6 +34,7 @@ def run_experiment(config: DictConfig):
         evaluate_probe_config = EvalRunConfig(
             model_name=config.model.name,
             dataset_path=train_data_path,
+            dataset_filters=config.train_filters,
             layer=config.model.layer,
             probe_spec=config.probe,
             max_samples=config.max_samples,

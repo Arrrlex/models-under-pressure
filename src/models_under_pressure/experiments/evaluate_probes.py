@@ -170,6 +170,7 @@ def run_evaluation(
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
+        dataset_filters=config.dataset_filters,
         n_per_class=config.max_samples,
         model_name=config.model_name,
         layer=config.layer,
@@ -179,6 +180,7 @@ def run_evaluation(
     if isinstance(config.validation_dataset, Path):
         validation_dataset = load_dataset(
             dataset_path=config.validation_dataset,
+            dataset_filters=config.dataset_filters,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
