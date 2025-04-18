@@ -1,15 +1,14 @@
 import asyncio
+from pathlib import Path
 
 import pandas as pd
 from tqdm.auto import tqdm
 
 from models_under_pressure.config import (
-    SYNTHETIC_DATASET_PATH,
     global_settings,
 )
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.utils import call_llm_async
-
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
 
 High_stakes_words_list = [
     "Urgent",
@@ -140,16 +139,6 @@ def neutralize_prompt(prompt: str) -> str:
     return asyncio.run(neutralize_prompt_async(prompt))
 
 
-# Apply transformation
-# tqdm.pandas()
-df["neutral_prompt"] = df["prompt"].apply(neutralize_prompt)
-
-# Save to new CSV
-df.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_neutralised.csv"), index=False
-)
-
-
 async def manipulate_stakes_async(prompt: str, is_high_stakes: bool) -> str:
     """
     Manipulates the prompt by adding words that contradict its stakes level.
@@ -219,14 +208,49 @@ def manipulate_stakes(prompt: str, is_high_stakes: bool) -> str:
     return asyncio.run(manipulate_stakes_async(prompt, is_high_stakes))
 
 
-df = pd.read_json(SYNTHETIC_DATASET_PATH, orient="records", lines=True)
-df["boolean_label"] = df["scale_labels"].apply(lambda x: x == "high-stakes")
-# Example usage:
+def filter_dataset(dataset: LabelledDataset) -> LabelledDataset:
+    """Filter the dataset to only include prompts that have scale labels more than 7 or less than 3 and scale label confidence is more than 7"""
+    return dataset.filter(
+        lambda x: x.other_fields["scale_labels"] is not None
+        and x.other_fields["scale_label_confidence"] > 7
+        and x.other_fields["scale_labels"] not in [4, 5, 6]
+    )
+
+
+# Apply labeling
 tqdm.pandas()
-df["manipulated_prompt"] = [
-    manipulate_stakes(row["prompt"], row["boolean_label"])
-    for _, row in tqdm(df.iterrows(), total=len(df))
-]
-df.to_csv(
-    str(SYNTHETIC_DATASET_PATH).replace(".jsonl", "_manipulated.csv"), index=False
+# input_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o.jsonl"
+# )
+# neutralised_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_neutralised.jsonl"
+# )
+# manipulated_path = Path(
+#     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_manipulated.jsonl"
+# )
+
+input_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced.jsonl"
 )
+neutralised_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_neutralised_60.jsonl"
+)
+manipulated_path = Path(
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_manipulated_30.jsonl"
+)
+
+df = pd.read_json(input_path, orient="records", lines=True)
+
+tqdm.pandas()
+# apply neutralization
+neutralised_df = df.sample(frac=0.6)
+neutralised_df["inputs"] = neutralised_df["inputs"].progress_apply(neutralize_prompt)
+neutralised_df.to_json(neutralised_path, orient="records", lines=True)
+
+# apply manipulation
+manipulated_df = df.sample(frac=0.3)
+manipulated_df["inputs"] = [
+    manipulate_stakes(row["inputs"], row["labels"] == "high-stakes")
+    for _, row in tqdm(manipulated_df.iterrows(), total=len(manipulated_df))
+]
+manipulated_df.to_json(manipulated_path, orient="records", lines=True)
