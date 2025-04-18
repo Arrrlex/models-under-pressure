@@ -36,7 +36,8 @@ def run_experiment(config: DictConfig):
         evaluate_probe_config = EvalRunConfig.model_construct(
             model_name=config.model.name,
             dataset_path=train_data_path,
-            layer=config.layer,
+            dataset_filters=config.train_filters,
+            layer=config.model.layer,
             probe_spec=config.probe,
             max_samples=config.max_samples,
             eval_datasets=list(config.eval_datasets.values()),
@@ -49,7 +50,7 @@ def run_experiment(config: DictConfig):
 
     if config.experiment == "generalisation_heatmap":
         heatmap_config = HeatmapRunConfig.model_construct(
-            layer=config.layer,
+            layer=config.model.layer,
             model_name=config.model.name,
             dataset_path=train_data_path,
             max_samples=config.max_samples,
@@ -74,11 +75,15 @@ def run_experiment(config: DictConfig):
             double_check_config(choose_layer_config)
         choose_best_layer_via_cv(choose_layer_config)
 
-    if config.experiment == "run_baselines":
+    if config.experiment in ["run_baselines", "run_baseline"]:
+        # run_baselines: Run the baseline with all prompts
+        # run_baseline: Run the baseline only with the prompt selected in the config
         run_baselines_config = RunBaselinesConfig.model_construct(
             model_name=config.model.name,
             dataset_path=train_data_path,
-            baseline_prompts=config.baselines.prompts,
+            baseline_prompts=config.baselines.prompts
+            if config.experiment == "run_baselines"
+            else [config.model.baseline_prompt],
             eval_datasets=config.eval_datasets,
             max_samples=config.max_samples,
             batch_size=config.batch_size,

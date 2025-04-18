@@ -129,6 +129,7 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 def load_dataset(
     dataset_path: Path,
+    dataset_filters: dict[str, Any] | None = None,
     model_name: str | None = None,
     layer: int | None = None,
     compute_activations: bool = False,
@@ -162,6 +163,12 @@ def load_dataset(
         dataset = dataset.filter(
             lambda x: x.other_fields[variation_type] == variation_value
         )
+    if dataset_filters is not None:
+        dataset = dataset.filter(
+            lambda x: all(
+                x.other_fields[key] == value for key, value in dataset_filters.items()
+            )
+        )
 
     if n_per_class is not None and len(dataset) > n_per_class * 2:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
@@ -192,6 +199,7 @@ class LazyLoader:
 
 def load_splits_lazy(
     dataset_path: Path,
+    dataset_filters: dict[str, Any] | None = None,
     model_name: str | None = None,
     layer: int | None = None,
     compute_activations: bool = False,
@@ -204,6 +212,7 @@ def load_splits_lazy(
         loaders = {
             split_name: lambda: load_dataset(
                 dataset_path / f"{split_name}.jsonl",
+                dataset_filters=dataset_filters,
                 model_name=model_name,
                 layer=layer,
                 compute_activations=compute_activations,
@@ -217,6 +226,7 @@ def load_splits_lazy(
     else:
         dataset = load_dataset(
             dataset_path,
+            dataset_filters=dataset_filters,
             model_name=model_name,
             layer=layer,
             compute_activations=compute_activations,

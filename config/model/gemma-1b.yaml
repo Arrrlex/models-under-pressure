@@ -1,1 +1,2 @@
 name: google/gemma-3-1b-it
+baseline_prompt: default

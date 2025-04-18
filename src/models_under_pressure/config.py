@@ -338,6 +338,7 @@ class EvalRunConfig(BaseModel):
     dataset_path: Path
     eval_datasets: list[Path]
     model_name: str
+    dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
     model_name: str = (
