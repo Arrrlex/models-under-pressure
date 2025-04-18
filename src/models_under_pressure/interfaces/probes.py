@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import Any
 from pydantic import BaseModel
+from pydantic import JsonValue
 
 
 class ProbeType(str, Enum):
@@ -18,4 +18,4 @@ class ProbeType(str, Enum):
 
 class ProbeSpec(BaseModel):
     type: ProbeType
-    hyperparams: dict[str, Any]
+    hyperparams: dict[str, JsonValue]
