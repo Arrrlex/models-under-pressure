@@ -1,4 +1,4 @@
-name: pytorch_attention_probe
+name: attention
 hyperparams:
   batch_size: 16
   epochs: 50

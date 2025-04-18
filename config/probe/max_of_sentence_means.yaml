@@ -1,0 +1,8 @@
+name: max_of_sentence_means
+hyperparams:
+  batch_size: 16
+  epochs: 20
+  device: "cpu"
+  optimizer_args:
+    lr: 1e-3
+    weight_decay: 0.01
