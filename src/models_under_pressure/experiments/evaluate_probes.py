@@ -234,6 +234,14 @@ def run_evaluation(
 
         print(f"Metrics for {eval_dataset_name}: {dataset_results.metrics}")
 
+        best_epoch = (
+            probe._classifier.best_epoch
+            if (
+                isinstance(probe, PytorchProbe)
+                and hasattr(probe._classifier, "best_epoch")
+            )
+            else None
+        )
         dataset_results = EvaluationResult(
             config=config,
             metrics=dataset_results,
@@ -244,7 +252,7 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
             dataset_path=eval_dataset_path,
-            best_epoch=probe.best_epoch if hasattr(probe, "best_epoch") else None,  # type: ignore
+            best_epoch=best_epoch,
         )
 
         results_list.append(dataset_results)
