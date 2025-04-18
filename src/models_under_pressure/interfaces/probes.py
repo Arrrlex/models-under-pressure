@@ -1,7 +1,7 @@
-from typing import Any
 from pydantic import BaseModel
+from pydantic import JsonValue
 
 
 class ProbeSpec(BaseModel):
     name: str
-    hyperparams: dict[str, Any] | None = None
+    hyperparams: dict[str, JsonValue]

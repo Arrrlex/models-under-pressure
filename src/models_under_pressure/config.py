@@ -128,22 +128,23 @@ OTHER_DATASETS = {
     "deception_data": DATA_DIR / "evals/deception_data.yaml",
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
-    "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
     "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
-    "original_manipulated": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_manipulated.jsonl",
-    "original_neutralised": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_neutralised.jsonl",
-    "original_manipulated_new": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_manipulated_new.jsonl",
-    "original_neutralised_new": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_neutralised_new.jsonl",
-    "original_unconfounded": TRAIN_DIR / "prompts_25_03_25_gpt-4o_unconfounded.jsonl",
-    "original_plus_new": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
-    "original_plus_new_train": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_plus_new/train.jsonl",
-    "original_plus_new_test": TRAIN_DIR
-    / "prompts_25_03_25_gpt-4o_original_plus_new/test.jsonl",
+    "original_doubled_neutralised_high_train": TRAIN_DIR
+    / "original_doubled_neutralised_high/train.jsonl",
+    "original_doubled_neutralised_high_test": TRAIN_DIR
+    / "original_doubled_neutralised_high/test.jsonl",
+    "original_doubled_neutralised_low_train": TRAIN_DIR
+    / "original_doubled_neutralised_low/train.jsonl     ",
+    "original_doubled_neutralised_low_test": TRAIN_DIR
+    / "original_doubled_neutralised_low/test.jsonl",
+    "original_doubled_neutralised_low_manipulated_low_train": TRAIN_DIR
+    / "original_doubled_neutralised_low_manipulated_low/train.jsonl",
+    "original_doubled_neutralised_low_manipulated_low_test": TRAIN_DIR
+    / "original_doubled_neutralised_low_manipulated_low/test.jsonl",
+    "original_doubled_unconfounded_train": TRAIN_DIR
+    / "original_doubled_unconfounded/train.jsonl",
+    "original_doubled_unconfounded_test": TRAIN_DIR
+    / "original_doubled_unconfounded/test.jsonl",
 }
 
 

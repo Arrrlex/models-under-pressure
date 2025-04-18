@@ -1,7 +1,7 @@
 import hydra
 import numpy as np
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from models_under_pressure.baselines.baselines import run_baselines
 from models_under_pressure.config import (
@@ -16,7 +16,7 @@ from models_under_pressure.config import (
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
-from models_under_pressure.utils import double_check_config
+from models_under_pressure.utils import double_check_config, AttrDict
 
 
 @hydra.main(
@@ -25,13 +25,15 @@ from models_under_pressure.utils import double_check_config
     version_base=None,
 )
 def run_experiment(config: DictConfig):
+    config = AttrDict(OmegaConf.to_container(config, resolve=True, enum_to_str=True))
+
     np.random.seed(config.random_seed)
     torch.manual_seed(config.random_seed)
 
     train_data_path = TRAIN_DIR / config.train_data
 
     if config.experiment == "evaluate_probe":
-        evaluate_probe_config = EvalRunConfig(
+        evaluate_probe_config = EvalRunConfig.model_construct(
             model_name=config.model.name,
             dataset_path=train_data_path,
             dataset_filters=config.train_filters,
@@ -47,7 +49,7 @@ def run_experiment(config: DictConfig):
         run_evaluation(evaluate_probe_config)
 
     if config.experiment == "generalisation_heatmap":
-        heatmap_config = HeatmapRunConfig(
+        heatmap_config = HeatmapRunConfig.model_construct(
             layer=config.model.layer,
             model_name=config.model.name,
             dataset_path=train_data_path,
@@ -60,7 +62,7 @@ def run_experiment(config: DictConfig):
         generate_heatmaps(heatmap_config)
 
     if config.experiment == "cv":
-        choose_layer_config = ChooseLayerConfig(
+        choose_layer_config = ChooseLayerConfig.model_construct(
             model_name=config.model.name,
             dataset_path=train_data_path,
             cv_folds=config.cv.folds,
@@ -76,7 +78,7 @@ def run_experiment(config: DictConfig):
     if config.experiment in ["run_baselines", "run_baseline"]:
         # run_baselines: Run the baseline with all prompts
         # run_baseline: Run the baseline only with the prompt selected in the config
-        run_baselines_config = RunBaselinesConfig(
+        run_baselines_config = RunBaselinesConfig.model_construct(
             model_name=config.model.name,
             dataset_path=train_data_path,
             baseline_prompts=config.baselines.prompts
@@ -86,7 +88,6 @@ def run_experiment(config: DictConfig):
             max_samples=config.max_samples,
             batch_size=config.batch_size,
         )
-
         if global_settings.DOUBLE_CHECK_CONFIG:
             double_check_config(run_baselines_config)
         run_baselines(run_baselines_config)
