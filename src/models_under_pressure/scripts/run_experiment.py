@@ -1,11 +1,12 @@
 import hydra
 import numpy as np
-from omegaconf import DictConfig
 import torch
+from omegaconf import DictConfig
 
 from models_under_pressure.baselines.baselines import run_baselines
 from models_under_pressure.config import (
     CONFIG_DIR,
+    TRAIN_DIR,
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
@@ -16,7 +17,6 @@ from models_under_pressure.experiments.cross_validation import choose_best_layer
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.utils import double_check_config
-from models_under_pressure.config import TRAIN_DIR
 
 
 @hydra.main(
@@ -37,7 +37,9 @@ def run_experiment(config: DictConfig):
             layer=config.layer,
             probe_spec=config.probe,
             max_samples=config.max_samples,
-            eval_datasets=config.eval_datasets,
+            eval_datasets=list(config.eval_datasets.values()),
+            compute_activations=config.compute_activations,
+            validation_dataset=config.validation_dataset,
         )
         if global_settings.DOUBLE_CHECK_CONFIG:
             double_check_config(evaluate_probe_config)
