@@ -116,7 +116,7 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
+        layer=31,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(

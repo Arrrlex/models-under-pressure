@@ -204,7 +204,8 @@ class BaseDataset(BaseModel, Generic[R]):
         cls, df: pd.DataFrame, field_mapping: Optional[Mapping[str, str]] = None
     ) -> Self:
         # Extract the required columns
-        df = df.rename(columns=field_mapping or {})
+        if field_mapping is not None:
+            df = df.rename(columns=field_mapping)
 
         inputs = []
         for input_item in df["inputs"].tolist():
