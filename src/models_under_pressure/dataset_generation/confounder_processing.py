@@ -233,22 +233,22 @@ input_path = Path(
     "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced.jsonl"
 )
 neutralised_path = Path(
-    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_neutralised.jsonl"
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_neutralised_60.jsonl"
 )
 manipulated_path = Path(
-    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_manipulated.jsonl"
+    "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/results/debug/prompts_16_04_25_gpt-4o_balanced_manipulated_30.jsonl"
 )
 
 df = pd.read_json(input_path, orient="records", lines=True)
 
 tqdm.pandas()
 # apply neutralization
-neutralised_df = df.sample(frac=0.2)
-neutralised_df["inputs"] = neutralised_df["inputs"].progress_apply(neutralize_prompt)
-neutralised_df.to_json(neutralised_path, orient="records", lines=True)
+# neutralised_df = df.sample(frac=0.6)
+# neutralised_df["inputs"] = neutralised_df["inputs"].progress_apply(neutralize_prompt)
+# neutralised_df.to_json(neutralised_path, orient="records", lines=True)
 
 # apply manipulation
-manipulated_df = df.sample(frac=0.2)
+manipulated_df = df.sample(frac=0.3)
 manipulated_df["inputs"] = [
     manipulate_stakes(row["inputs"], row["labels"] == "high-stakes")
     for _, row in tqdm(manipulated_df.iterrows(), total=len(manipulated_df))
