@@ -37,7 +37,7 @@ def run_experiment(config: DictConfig):
             layer=config.layer,
             probe_spec=config.probe,
             max_samples=config.max_samples,
-            eval_datasets=config.eval_datasets,
+            eval_datasets=list(config.eval_datasets.values()),
             compute_activations=config.compute_activations,
             validation_dataset=config.validation_dataset,
         )
