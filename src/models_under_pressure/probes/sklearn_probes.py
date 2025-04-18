@@ -1,6 +1,4 @@
-import pickle
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Self, Sequence
 
 import numpy as np
@@ -9,12 +7,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.config import (
-    PROBES_DIR,
-)
 from models_under_pressure.interfaces.activations import (
     Activation,
     Aggregator,
+    Postprocessors,
+    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -23,14 +20,15 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.base import Classifier, Probe
 
 
 @dataclass
 class SklearnProbe(Probe):
-    aggregator: Aggregator
-
+    aggregator: Aggregator = Aggregator(
+        preprocessor=Preprocessors.mean,
+        postprocessor=Postprocessors.sigmoid,
+    )
     hyper_params: dict = field(
         default_factory=lambda: {
             "C": 1e-3,
@@ -47,7 +45,12 @@ class SklearnProbe(Probe):
                 LogisticRegression(**self.hyper_params),
             )  # type: ignore
 
-    def fit(self, dataset: LabelledDataset) -> Self:
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self:
+        print("Warning: SklearnProbe does not use a validation dataset")
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
@@ -63,19 +66,8 @@ class SklearnProbe(Probe):
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
 
-    def predict_proba(
-        self, dataset: BaseDataset
-    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
+    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
         activations_obj = Activation.from_dataset(dataset)
-        return activations_obj, self._predict_proba(activations_obj)
-
-    def predict_proba_without_activations(
-        self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]:
-        activations_obj = Activation.from_dataset(dataset)
-        # print(
-        #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
-        # )
         return self._predict_proba(activations_obj)
 
     def _fit(
@@ -83,9 +75,7 @@ class SklearnProbe(Probe):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        # Preprocess the aggregations to be of the correct shape:
         X, _ = self.aggregator.preprocess(activations, y)
-
         self._classifier.fit(X, y)  # type: ignore
         return self
 
@@ -139,49 +129,3 @@ class SklearnProbe(Probe):
             predictions.append(predicted_probs)
 
         return np.array(predictions)
-
-
-@dataclass
-class ProbeInfo:
-    model_name_short: str
-    dataset_path: str
-    layer: int
-
-    aggregator: Aggregator
-    seq_pos: int | str
-
-    @property
-    def name(self) -> str:
-        return f"{self.model_name_short}_{self.dataset_path}_l{self.layer}_{self.aggregator.name}_{self.seq_pos}"
-
-    @property
-    def path(self) -> Path:
-        return PROBES_DIR / f"{self.name}.pkl"
-
-
-def save_probe(probe: SklearnProbe, probe_info: ProbeInfo):
-    output_path = probe_info.path
-
-    print(f"Saving probe to {output_path}")
-    with open(output_path, "wb") as f:
-        pickle.dump(probe._classifier, f)
-
-
-def load_probe(model: LLMModel, probe_info: ProbeInfo) -> SklearnProbe:
-    probe_path = probe_info.path
-    print(f"Loading probe from {probe_path}")
-    with open(probe_path, "rb") as f:
-        classifier = pickle.load(f)
-    return SklearnProbe(
-        aggregator=probe_info.aggregator,
-        _classifier=classifier,
-    )
-
-
-def compute_accuracy(
-    probe: Probe,
-    dataset: LabelledDataset,
-) -> float:
-    pred_labels = probe.predict(dataset)
-    pred_labels_np = np.array([label.to_int() for label in pred_labels])
-    return (pred_labels_np == dataset.labels_numpy()).mean()

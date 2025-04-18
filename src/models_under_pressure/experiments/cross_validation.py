@@ -118,7 +118,7 @@ def get_cross_validation_accuracies(
     results = []
 
     for train, test in cv_splits.splits(dataset):
-        probe = ProbeFactory.build(probe=probe_spec, train_dataset=train)
+        probe = ProbeFactory.build(probe_spec=probe_spec, train_dataset=train)
         test_scores = probe.predict(test)
         results.append((np.array(test_scores) == test.labels_numpy()).mean())
 

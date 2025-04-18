@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Callable, Self
 
 import einops
 import numpy as np
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
+from models_under_pressure.probes.aggregations import Mean
 
 
 @dataclass
@@ -25,6 +26,7 @@ class PytorchLinearClassifier:
     model: nn.Module | None = None
     data_type: torch.dtype | None = None
     best_epoch: int | None = None
+    aggregation_method: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = Mean()
 
     def __post_init__(self):
         # Set data type based on available device
@@ -169,7 +171,7 @@ class PytorchLinearClassifier:
     @torch.no_grad()
     def predict_token_logits(
         self, activations: Activation
-    ) -> Float[np.ndarray, " batch_size seq_len"]:
+    ) -> Float[torch.Tensor, " batch_size seq_len"]:
         """
         Predict the logits of the activations.
 
@@ -188,13 +190,15 @@ class PytorchLinearClassifier:
         # Process the activations into a per token dataset to be passed through the model
         batch_size, seq_len, _ = activations.shape
 
-        acts_tensor = activations.get_activations(per_token=True)
+        acts_tensor = einops.rearrange(activations._activations, "b s e -> (b s) e")
+
+        # acts_tensor = activations.get_activations(per_token=True)
 
         # Switch batch norm to eval mode:
         self.model = self.model.to(device)
         self.model.eval()
 
-        logits = self.model(torch.tensor(acts_tensor, dtype=self.data_type).to(device))
+        logits = self.model(acts_tensor.to(device).to(self.data_type))
 
         # Multiply by the attention mask -> to remove padded tokens:
         masked_logits = logits * torch.tensor(
@@ -238,12 +242,13 @@ class PytorchLinearClassifier:
         """
 
         logits = self.predict_token_logits(activations)
+        input_ids = activations._input_ids
 
         # Take the mean over the sequence length:
-        mean_logits = logits.mean(axis=1)
+        agg_logits = self.aggregation_method(logits, input_ids)
 
         # Convert the logits to probabilities
-        return torch.sigmoid(mean_logits).cpu().to(self.data_type).numpy()
+        return torch.sigmoid(agg_logits).cpu().to(self.data_type).numpy()
 
     @torch.no_grad()
     def predict_token_proba(
@@ -283,7 +288,14 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         self,
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
+        validation_activations: Activation | None = None,
+        validation_y: Float[np.ndarray, " batch_size"] | None = None,
     ) -> Self:
+        if validation_activations is not None or validation_y is not None:
+            print(
+                "Warning: Validation data is not used for PytorchDifferenceOfMeansClassifier"
+            )
+
         acts = torch.tensor(activations.get_activations(), dtype=self.data_type)
         mask = torch.tensor(activations.get_attention_mask(), dtype=self.data_type)
 

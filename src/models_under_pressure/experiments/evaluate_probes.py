@@ -68,7 +68,7 @@ def evaluate_probe_and_save_results(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    _, per_entry_probe_scores = probe.predict_proba(eval_dataset)
+    per_entry_probe_scores = probe.predict_proba(eval_dataset)
     print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
     if save_results:
@@ -193,7 +193,7 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
+        probe_spec=config.probe_spec,
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
     )

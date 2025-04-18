@@ -1,112 +1,100 @@
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
+    PytorchLinearClassifier,
     PytorchPerEntryLinearClassifier,
+)
+from models_under_pressure.probes.aggregations import (
+    Max,
+    MaxOfRollingMean,
+    MeanOfTopK,
+    MaxOfSentenceMeans,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
     SklearnProbe,
-    compute_accuracy,
 )
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 
 class ProbeFactory:
     @classmethod
     def build(
         cls,
-        probe: str | ProbeSpec,
+        probe_spec: ProbeSpec,
         train_dataset: LabelledDataset,
         validation_dataset: LabelledDataset | None = None,
+        model_name: str | None = None,
     ) -> Probe:
-        if not {"activations", "attention_mask", "input_ids"}.issubset(
-            train_dataset.other_fields
-        ):
+        if not has_activations(train_dataset):
             raise ValueError(
                 "Train dataset must contain activations, attention_mask, and input_ids"
             )
-        if validation_dataset is not None and not {
-            "activations",
-            "attention_mask",
-            "input_ids",
-        }.issubset(validation_dataset.other_fields):
-            raise ValueError(
-                "Validation dataset must contain activations, attention_mask, and input_ids"
-            )
+        if validation_dataset is not None:
+            if not has_activations(validation_dataset):
+                raise ValueError(
+                    "Validation dataset must contain activations, attention_mask, and input_ids"
+                )
 
-        if isinstance(probe, str):
-            probe = ProbeSpec(name=probe)
+        if probe_spec.type == ProbeType.sklearn:
+            probe = SklearnProbe(hyper_params=probe_spec.hyperparams)
+            return probe.fit(train_dataset, validation_dataset)
 
-        if (validation_dataset is not None) and (
-            probe.name
-            not in [
-                "pytorch_per_entry_probe_mean",
-                "pytorch_per_token_probe",
-                "pytorch_attention_probe",
-            ]
-        ):
-            print(
-                f"Warning: Validation dataset is not used for probe of type {probe.name}."
-            )
+        match probe_spec.type:
+            case ProbeType.per_entry:
+                classifier = PytorchPerEntryLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                )
+            case ProbeType.difference_of_means:
+                classifier = PytorchDifferenceOfMeansClassifier(
+                    use_lda=False, training_args=probe_spec.hyperparams
+                )
+            case ProbeType.lda:
+                classifier = PytorchDifferenceOfMeansClassifier(
+                    use_lda=True, training_args=probe_spec.hyperparams
+                )
+            case ProbeType.attention:
+                classifier = PytorchAttentionClassifier(
+                    training_args=probe_spec.hyperparams,
+                )
+            case ProbeType.max:
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=Max(),
+                )
+            case ProbeType.max_of_sentence_means:
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=MaxOfSentenceMeans(tokenizer=tokenizer),
+                )
+            case ProbeType.mean_of_top_k:
+                k = probe_spec.hyperparams["k"]
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=MeanOfTopK(k=k),
+                )
+            case ProbeType.max_of_rolling_mean:
+                window_size = probe_spec.hyperparams["window_size"]
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=MaxOfRollingMean(window_size=window_size),
+                )
+            case _:
+                raise NotImplementedError(f"Probe type {probe_spec.type} not supported")
 
-        if probe.name == "sklearn_mean_agg_probe":
-            aggregator = Aggregator(
-                preprocessor=Preprocessors.mean,
-                postprocessor=Postprocessors.sigmoid,
-            )
-            if probe.hyperparams is not None:
-                return SklearnProbe(
-                    aggregator=aggregator,
-                    hyper_params=probe.hyperparams,
-                ).fit(train_dataset)
-            else:
-                return SklearnProbe(aggregator=aggregator).fit(train_dataset)
-        elif probe.name == "difference_of_means":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-                _classifier=PytorchDifferenceOfMeansClassifier(
-                    use_lda=False, training_args=probe.hyperparams
-                ),
-            ).fit(train_dataset)
-        elif probe.name == "lda":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-                _classifier=PytorchDifferenceOfMeansClassifier(
-                    use_lda=True, training_args=probe.hyperparams
-                ),
-            ).fit(train_dataset)
-        elif probe.name == "pytorch_per_token_probe":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-            ).fit(train_dataset, validation_dataset=validation_dataset)
-        elif probe.name == "pytorch_per_entry_probe_mean":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-                _classifier=PytorchPerEntryLinearClassifier(
-                    training_args=probe.hyperparams
-                ),
-            ).fit(
-                train_dataset, validation_dataset=validation_dataset
-            )  # Only functionality for this probe atm
-        elif probe.name == "pytorch_attention_probe":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-                _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
-            ).fit(train_dataset, validation_dataset=validation_dataset)
-        else:
-            raise NotImplementedError(f"Probe type {probe} not supported")
+        probe = PytorchProbe(
+            hyper_params=probe_spec.hyperparams,
+            _classifier=classifier,
+        )
+        return probe.fit(train_dataset, validation_dataset)
+
+
+def has_activations(dataset: LabelledDataset) -> bool:
+    return {"activations", "attention_mask", "input_ids"} <= set(dataset.other_fields)
 
 
 if __name__ == "__main__":
@@ -125,7 +113,7 @@ if __name__ == "__main__":
 
     # Define probe hyperparameters
     probe_spec = ProbeSpec(
-        name="pytorch_per_token_probe",
+        type=ProbeType.per_entry,
         hyperparams={
             "batch_size": 32,
             "epochs": 20,
@@ -137,10 +125,16 @@ if __name__ == "__main__":
 
     # Train the probe
     probe = ProbeFactory.build(
-        probe=probe_spec, train_dataset=train_dataset, validation_dataset=test_dataset
+        probe_spec=probe_spec,
+        train_dataset=train_dataset,
+        validation_dataset=test_dataset,
     )
+
+    def accuracy(probe: Probe, dataset: LabelledDataset) -> float:
+        pred_labels = probe.predict_proba(dataset) > 0.5
+        return (pred_labels == dataset.labels_numpy()).mean()
 
     # Print probe performance
     print("Probe training completed!")
-    print(f"Train accuracy: {compute_accuracy(probe, train_dataset)}")
-    print(f"Test accuracy: {compute_accuracy(probe, test_dataset)}")
+    print(f"Train accuracy: {accuracy(probe, train_dataset)}")
+    print(f"Test accuracy: {accuracy(probe, test_dataset)}")

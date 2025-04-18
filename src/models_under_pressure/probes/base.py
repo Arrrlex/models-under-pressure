@@ -16,7 +16,11 @@ from models_under_pressure.interfaces.dataset import (
 @dataclass
 class Probe(ABC):
     @abstractmethod
-    def fit(self, dataset: LabelledDataset) -> Self: ...
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self: ...
 
     @abstractmethod
     def predict(self, dataset: BaseDataset) -> list[Label]: ...
