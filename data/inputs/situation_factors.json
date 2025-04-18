@@ -2,9 +2,11 @@
   "role_of_user": [
     "executives and decision-makers",
     "everyday consumers",
+    "general people",
     "regulators and policymakers",
     "developers and engineers",
-    "teachers and students",
+    "teachers",
+    "students",
     "healthcare professionals and patients",
     "security experts and hackers",
     "journalists and fact-checkers"
@@ -33,6 +35,15 @@
   ],
   "topic": [
     "Medical, Healthcare and well-being",
+    "Everyday life",
+    "White collar work",
+    "Blue collar work",
+    "Household chores",
+    "Social media",
+    "Handling kids or elderly",
+    "Pets",
+    "dealing with difficult or disturbed people",
+    "Business",
     "Artificial Intelligence",
     "Cybersecurity",
     "Education",
@@ -42,7 +53,10 @@
     "Military and Espionage",
     "Science and Space Exploration",
     "Law and Justice",
-    "Journalism and Media",
-    "Finance and Business"
+    "Journalism",
+    "Media",
+    "Entertainment industry",
+    "Arts",
+    "Finance"
   ]
 }
