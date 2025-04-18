@@ -17,5 +17,5 @@ class ProbeType(str, Enum):
 
 
 class ProbeSpec(BaseModel):
-    type: ProbeType
+    name: ProbeType
     hyperparams: dict[str, JsonValue]

@@ -39,11 +39,11 @@ class ProbeFactory:
                     "Validation dataset must contain activations, attention_mask, and input_ids"
                 )
 
-        if probe_spec.type == ProbeType.sklearn:
+        if probe_spec.name == ProbeType.sklearn:
             probe = SklearnProbe(hyper_params=probe_spec.hyperparams)
             return probe.fit(train_dataset, validation_dataset)
 
-        match probe_spec.type:
+        match probe_spec.name:
             case ProbeType.per_entry:
                 classifier = PytorchPerEntryLinearClassifier(
                     training_args=probe_spec.hyperparams,
