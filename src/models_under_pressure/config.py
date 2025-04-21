@@ -129,18 +129,6 @@ OTHER_DATASETS = {
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
     "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
-    "original_doubled_neutralised_high_train": TRAIN_DIR
-    / "original_doubled_neutralised_high/train.jsonl",
-    "original_doubled_neutralised_high_test": TRAIN_DIR
-    / "original_doubled_neutralised_high/test.jsonl",
-    "original_doubled_neutralised_low_train": TRAIN_DIR
-    / "original_doubled_neutralised_low/train.jsonl     ",
-    "original_doubled_neutralised_low_test": TRAIN_DIR
-    / "original_doubled_neutralised_low/test.jsonl",
-    "original_doubled_neutralised_low_manipulated_low_train": TRAIN_DIR
-    / "original_doubled_neutralised_low_manipulated_low/train.jsonl",
-    "original_doubled_neutralised_low_manipulated_low_test": TRAIN_DIR
-    / "original_doubled_neutralised_low_manipulated_low/test.jsonl",
     "original_doubled_unconfounded_train": TRAIN_DIR
     / "original_doubled_unconfounded/train.jsonl",
     "original_doubled_unconfounded_test": TRAIN_DIR
@@ -236,7 +224,7 @@ class RunConfig:
     """
 
     num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 150
+    num_situations_to_sample: int = 300
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
