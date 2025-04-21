@@ -2,6 +2,8 @@
 Script to sync datasets between local storage and R2 storage.
 """
 
+from tqdm import tqdm
+
 from models_under_pressure.config import (
     AIS_DATASETS,
     EVAL_DATASETS_BALANCED,
@@ -18,8 +20,6 @@ from models_under_pressure.r2 import (
     file_exists_in_bucket,
     upload_file,
 )
-
-from tqdm import tqdm
 
 # Paths to datasets to sync
 ALL_DATASETS = [
@@ -71,6 +71,7 @@ def upload_datasets():
 
 def sync_all_datasets():
     """Sync all datasets between R2 storage and local storage."""
+    breakpoint()
     download_all_datasets()
     upload_datasets()
 

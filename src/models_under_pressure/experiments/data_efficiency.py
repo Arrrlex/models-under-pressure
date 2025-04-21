@@ -1,11 +1,9 @@
-import json
-
 import numpy as np
 from omegaconf import DictConfig
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
-from models_under_pressure.config import RESULTS_DIR, DataEfficiencyConfig
+from models_under_pressure.config import DataEfficiencyConfig
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.finetune_baselines import FinetunedClassifier
 from models_under_pressure.interfaces.dataset import (
@@ -142,15 +140,20 @@ def run_data_efficiency_finetune_baseline_with_activations(
             finetune_baseline.train(subset, train_dataset.labels_numpy())
 
             # Predict the probability of each example in the dataset being high-stakes:
-            # probits = finetune_baseline.predict_proba(subset)
+            results = finetune_baseline.get_results(subset)
 
             # Calculate the metrics here:
+            metrics = {
+                "auroc": results.auroc(),
+                "accuracy": results.accuracy(),
+                "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01),
+            }
 
             probe_results.append(
                 ProbeDataEfficiencyResults(
                     probe=probe_spec,
                     dataset_size=dataset_size,
-                    metrics={},
+                    metrics=metrics,
                 )
             )
 
@@ -271,10 +274,34 @@ if __name__ == "__main__":
         eval_dataset_paths=list(EVAL_DATASETS_BALANCED.values()),
         # id="g6AooBhS",
     )
-    results = run_data_efficiency_experiment(config)
 
-    with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
-        results_dict = json.loads(f.readlines()[-1])
+    # Should be defined via a hydra run config file:
+    finetune_config = DictConfig(
+        {
+            "model_name_or_path": 16,
+            "num_classes": 3,
+            "ClassifierModule": {},
+            "batch_size": 12,
+            "shuffle": True,
+            "logger": None,
+            "Trainer": {
+                "max_epochs": 5,
+                "accelerator": "gpu",
+                "devices": 1,
+                "precision": "bf16-true",
+                "default_root_dir": "/scratch/ucabwjn/models-under-pressure",
+                "accumulate_grad_batches": 1,
+            },
+        }
+    )
 
-    results = DataEfficiencyResults.model_validate(results_dict)
-    plot_data_efficiency_results(results)
+    # results = run_data_efficiency_experiment(config)
+    baseline_results = run_data_efficiency_finetune_baseline_with_activations(
+        config, finetune_config
+    )
+
+    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
+    #     results_dict = json.loads(f.readlines()[-1])
+
+    # results = DataEfficiencyResults.model_validate(results_dict)
+    plot_data_efficiency_results(baseline_results)

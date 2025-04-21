@@ -71,12 +71,19 @@ class BaselineResults(BaseModel):
         else:
             self._labels = torch.cat((self._labels, value), dim=0)
 
+    def accuracy(self) -> float:
+        """Compute the accuracy of the model."""
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing accuracy"
+        )
+        return float((self.probits[:, 1] > 0.5).eq(self._labels).float().mean())
+
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing AUROC"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing AUROC"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -90,9 +97,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing TPR at FPR"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing TPR at FPR"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -405,23 +412,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert (
-            self._tokenizer is not None
-        ), "Tokenizer must be trained before it can be accessed"
+        assert self._tokenizer is not None, (
+            "Tokenizer must be trained before it can be accessed"
+        )
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert (
-            self._classifier is not None
-        ), "Classifier must be trained before it can be accessed"
+        assert self._classifier is not None, (
+            "Classifier must be trained before it can be accessed"
+        )
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert (
-            self._model is not None
-        ), "Model must be trained before it can be accessed"
+        assert self._model is not None, (
+            "Model must be trained before it can be accessed"
+        )
         return self._model
 
     def process_model_configs(self):
@@ -537,6 +544,19 @@ class FinetunedClassifier:
         Predict the probability of each example in the dataset being high-stakes.
         """
 
+        return self.get_results(dataset).probits.tolist()
+
+    def get_results(self, dataset: BaseDataset) -> BaselineResults:
+        """
+        Using the provided dataset, test the finetuned model and return the BaselineResults
+        object.
+
+        Args:
+            dataset: The dataset to test the model on.
+
+        Returns:
+            The BaselineResults object.
+        """
         # Get the classifier, will throw an error if it is not trained:
         classifier = self.classifier
         classifier.reset_test_results()
@@ -556,4 +576,4 @@ class FinetunedClassifier:
 
         # Test the model, evaluating on the test set:
         self._trainer.test(self.classifier, test_dataloader)
-        return self.classifier.test_results.probits.tolist()
+        return self.classifier.test_results
