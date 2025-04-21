@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict
 
 import tqdm
-import typer
 from typing_extensions import deprecated
 
 from models_under_pressure.config import (
@@ -24,7 +23,7 @@ from models_under_pressure.interfaces.dataset import (
     Record,
     subsample_balanced_subset,
 )
-from models_under_pressure.utils import call_llm_async, parse_mapping_str
+from models_under_pressure.utils import call_llm_async
 
 # Load the rubric once at module level
 LABELING_RUBRIC = LABELING_RUBRIC_PATH.read_text()
@@ -420,44 +419,3 @@ def create_test_dataset(
     # Save the balanced data
     print(f"Saving the balanced data to {balanced_output_path}")
     dataset.save_to(balanced_output_path, overwrite=True)
-
-
-def main(
-    path: Path = typer.Argument(..., help="Path to the dataset file"),
-    save_path: Path = typer.Option(..., help="Path to save the labelled dataset"),
-    field_mapping: str = typer.Option(
-        "",
-        help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
-    ),
-    model: str = typer.Option(
-        global_settings.DEFAULT_MODEL, help="Model to use for labelling"
-    ),
-    max_concurrent: int = typer.Option(
-        10, help="Maximum number of concurrent API calls"
-    ),
-):
-    """
-    Label a dataset by analysing whether each situation is high-stakes or low-stakes.
-
-    The field_mapping parameter allows mapping dataset fields to expected fields.
-    Example: 'input:text,id:example_id' maps the 'text' field to 'input' and 'example_id' to 'id'.
-    """
-    # Parse field_mapping string into a dictionary
-    mapping_dict = parse_mapping_str(field_mapping)
-
-    print(f"Loading dataset from {path}")
-    dataset = Dataset.load_from(path, field_mapping=mapping_dict)
-
-    labelled_dataset = label_dataset(
-        dataset, model=model, max_concurrent=max_concurrent
-    )
-
-    print(f"Saving labelled dataset to {save_path}")
-    labelled_dataset.save_to(save_path)
-
-
-if __name__ == "__main__":
-    typer.run(main)
-
-    # Label random samples from the training dataset
-    # create_training_scale_labels()
