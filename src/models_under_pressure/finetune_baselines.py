@@ -50,7 +50,7 @@ class BaselineResults(BaseModel):
         if self._logits is None:
             raise ValueError("Logits must be set before accessing probits")
         sigmoid = torch.nn.Sigmoid()
-        return sigmoid(self._logits)[:, 1].cpu().numpy()
+        return sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()
 
     @logits.setter
     def logits(self, value: torch.Tensor):
@@ -76,7 +76,7 @@ class BaselineResults(BaseModel):
         assert self._labels is not None and self._logits is not None, (
             "Labels and logits must be set before computing accuracy"
         )
-        return float((self.probits[:, 1] > 0.5).eq(self._labels).float().mean())
+        return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
@@ -90,7 +90,7 @@ class BaselineResults(BaseModel):
         return float(
             roc_auc_score(
                 self._labels.cpu().numpy(),
-                sigmoid(self._logits)[:, 1].cpu().numpy(),
+                sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy(),
             )
         )
 
@@ -104,7 +104,7 @@ class BaselineResults(BaseModel):
         sigmoid = torch.nn.Sigmoid()
 
         fprs, tprs, _ = roc_curve(
-            self._labels.cpu().numpy(), sigmoid(self._logits)[:, 1].cpu().numpy()
+            self._labels.cpu().numpy(), sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()
         )
 
         # Find the TPR corresponding to the closest FPR
@@ -454,7 +454,8 @@ class FinetunedClassifier:
     def train(
         self,
         dataset: LabelledDataset,
-        y: Float[np.ndarray, " batch_size"],
+        val_dataset: Optional[LabelledDataset] = None,
+        val_labels: Optional[Float[np.ndarray, " batch_size"]] = None,
     ) -> Self:
         """
         Setup the dataset, logger, model checkpointing and train the model using pytorch
@@ -462,6 +463,7 @@ class FinetunedClassifier:
         """
 
         model_name_or_path, num_classes, cache_dir = self.process_model_configs()
+        print(f"Cache dir: {cache_dir}")
 
         # Load the model and tokenizer:
         self._tokenizer = AutoTokenizer.from_pretrained(
@@ -485,6 +487,17 @@ class FinetunedClassifier:
 
         # Process the dataset
         collate_fn = create_collate_fn(self.tokenizer)
+
+        # Remove pre-existing activations from the dataset:
+        try:
+            print("Try removing pre-existing activations from the dataset")
+            dataset.remove_field("activations")
+            dataset.remove_field("input_ids")
+            dataset.remove_field("attention_mask")
+        except ValueError:
+            print("No pre-existing activations to remove")
+            pass
+
         train_dataset = StakesDataset(dataset.to_pandas())
 
         train_dataloader = DataLoader(
@@ -499,7 +512,7 @@ class FinetunedClassifier:
         checkpoint_callback = ModelCheckpoint(
             monitor="val_loss",
             mode="min",
-            dirpath="/scratch/ucabwjn/models-under-pressure",
+            dirpath=cache_dir,
             filename=best_model_path_template + "-{val_loss:.2f}-{epoch:02d}",
         )
 
@@ -521,12 +534,14 @@ class FinetunedClassifier:
         self._classifier_checkpoint = checkpoint_callback.best_model_path
 
         # Load the best model checkpoint:
-        self._classifier = ClassifierModule.load_from_checkpoint(
-            self._classifier_checkpoint,
-            model=self.model,
-            num_classes=num_classes,
-            **self.finetune_config.get("ClassifierModule", {}),
-        )
+        if val_dataset is not None and val_labels is not None:
+            print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
+            self._classifier = ClassifierModule.load_from_checkpoint(
+                self._classifier_checkpoint,
+                model=self.model,
+                num_classes=num_classes,
+                **self.finetune_config.get("ClassifierModule", {}),
+            )
         self._classifier.eval()
 
         return self

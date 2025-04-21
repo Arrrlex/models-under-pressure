@@ -137,7 +137,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
             finetune_baseline = FinetunedClassifier(finetune_config)
 
             # Train the finetune baseline:
-            finetune_baseline.train(subset, train_dataset.labels_numpy())
+            finetune_baseline.train(subset)
 
             # Predict the probability of each example in the dataset being high-stakes:
             results = finetune_baseline.get_results(subset)
@@ -146,7 +146,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
             metrics = {
                 "auroc": results.auroc(),
                 "accuracy": results.accuracy(),
-                "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01),
+                "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01)[0],
             }
 
             probe_results.append(
@@ -278,8 +278,8 @@ if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = DictConfig(
         {
-            "model_name_or_path": 16,
-            "num_classes": 3,
+            "model_name_or_path": 'meta-llama/Llama-3.2-1B-Instruct',
+            "num_classes": 2,
             "ClassifierModule": {},
             "batch_size": 12,
             "shuffle": True,
@@ -289,7 +289,7 @@ if __name__ == "__main__":
                 "accelerator": "gpu",
                 "devices": 1,
                 "precision": "bf16-true",
-                "default_root_dir": "/scratch/ucabwjn/models-under-pressure",
+                "default_root_dir": "~/.cache/models-under-pressure",
                 "accumulate_grad_batches": 1,
             },
         }

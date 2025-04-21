@@ -167,6 +167,17 @@ class BaseDataset(BaseModel, Generic[R]):
         idxs = random.sample(range(len(self)), num_samples)
         return self[idxs]
 
+    def remove_field(self, field_name: str) -> Self:
+        
+        if field_name in ['inputs', 'ids']:
+            raise ValueError("Cannot remove required fields")
+        elif field_name in self.other_fields:
+            self.other_fields.pop(field_name)
+        else:
+            raise ValueError(f"Field {field_name} not found in other fields {self.other_fields.keys()}")
+        return self
+
+
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         records = self.drop_cols(
             "activations", "input_ids", "attention_mask"
