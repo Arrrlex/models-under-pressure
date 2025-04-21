@@ -4,10 +4,10 @@ import json
 import os
 import random
 import string
+from textwrap import indent
 import time
 from contextlib import contextmanager
 from datetime import timedelta
-from pprint import pformat
 from typing import (
     Any,
     Awaitable,
@@ -25,16 +25,30 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
+from pydantic import BaseModel
 import torch
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+import yaml
 
 load_dotenv()
 
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
+
+
+class AttrDict(dict):
+    def __init__(self, dict_: dict[str, Any]):
+        super().__init__(**dict_)
+
+    def __getattr__(self, key: str) -> Any:
+        val = self[key]
+        if isinstance(val, dict):
+            return AttrDict(val)
+        else:
+            return val
 
 
 def batched_range(n_samples: int, batch_size: int) -> list[tuple[int, int]]:
@@ -292,17 +306,19 @@ def generate_short_id(length: int = 8) -> str:
 
 
 def pretty_format_config(config: Any) -> str:
-    if isinstance(config, list):
-        return "\n--\n".join([pretty_format_config(item) for item in config])
-    else:
-        return "\n".join(
-            [f"  {key}: {pformat(value)}" for key, value in config.__dict__.items()]
-        )
+    if isinstance(config, list) and isinstance(config[0], BaseModel):
+        config = [config.model_dump(mode="json") for config in config]
+    if isinstance(config, BaseModel):
+        config = config.model_dump(mode="json")
+    if isinstance(config, DictConfig):
+        config = config.to_container()
+
+    return yaml.dump(config, indent=2)
 
 
 def double_check_config(config: Any) -> None:
     print("Config:")
-    print(pretty_format_config(config))
+    print(indent(pretty_format_config(config), "  "))
     is_ok = input("Do you really want to run this config? (y/n) ")
     if is_ok != "y":
         raise ValueError("Config not confirmed")
@@ -334,7 +350,6 @@ def print_progress(
 
 
 def hf_login():
-    load_dotenv()
     HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")

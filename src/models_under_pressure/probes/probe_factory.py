@@ -6,6 +6,7 @@ from models_under_pressure.interfaces.activations import (
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
     PytorchPerEntryLinearClassifier,
 )
@@ -42,13 +43,17 @@ class ProbeFactory:
 
         if isinstance(probe, str):
             probe = ProbeSpec(name=probe)
-
-        # Warn that validation dataset is not used for any probe except pytorch_per_entry_probe_mean
         if (validation_dataset is not None) and (
-            probe.name != "pytorch_per_entry_probe_mean"
+            probe.name
+            not in [
+                "pytorch_per_entry_probe_mean",
+                "pytorch_per_token_probe",
+                "pytorch_attention_probe",
+            ]
         ):
-            print("Warning: Validation dataset is not used for LDA probe.")
-
+            print(
+                f"Warning: Validation dataset is not used for probe of type {probe.name}."
+            )
         if probe.name == "sklearn_mean_agg_probe":
             aggregator = Aggregator(
                 preprocessor=Preprocessors.mean,
@@ -60,15 +65,9 @@ class ProbeFactory:
                     hyper_params=probe.hyperparams,
                 ).fit(train_dataset)
             else:
-                if validation_dataset is not None:
-                    print("Warning: Validation dataset is not used for sklearn probes.")
                 return SklearnProbe(aggregator=aggregator).fit(train_dataset)
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
-            if validation_dataset is not None:
-                print(
-                    "Warning: Validation dataset is not used for difference-of-means probe."
-                )
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
@@ -77,8 +76,6 @@ class ProbeFactory:
             ).fit(train_dataset)
         elif probe.name == "lda":
             assert probe.hyperparams is not None
-            if validation_dataset is not None:
-                print("Warning: Validation dataset is not used for LDA probe.")
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
@@ -89,7 +86,8 @@ class ProbeFactory:
             assert probe.hyperparams is not None
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
-            ).fit(train_dataset)
+            ).fit(train_dataset, validation_dataset=validation_dataset)
+
         elif probe.name == "pytorch_per_entry_probe_mean":
             assert probe.hyperparams is not None
             return PytorchProbe(
@@ -100,6 +98,12 @@ class ProbeFactory:
             ).fit(
                 train_dataset, validation_dataset=validation_dataset
             )  # Only functionality for this probe atm
+        elif probe.name == "pytorch_attention_probe":
+            assert probe.hyperparams is not None
+            return PytorchProbe(
+                hyper_params=probe.hyperparams,
+                _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
+            ).fit(train_dataset, validation_dataset=validation_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 

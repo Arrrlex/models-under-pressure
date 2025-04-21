@@ -92,6 +92,9 @@ class EvaluationResult(BaseModel):
     method: str
     """Method used to make predictions"""
 
+    best_epoch: int | None = None
+    """Number of epochs used for training (in case validation dataset was used)"""
+
     output_scores: list[float] | None = None
     """Scores for each example in the eval dataset"""
 

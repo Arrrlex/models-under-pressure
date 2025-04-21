@@ -6,6 +6,8 @@ from tqdm import tqdm
 from models_under_pressure.config import DataEfficiencyConfig
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.finetune_baselines import FinetunedClassifier
+import torch
+from models_under_pressure.config import RESULTS_DIR
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
@@ -85,6 +87,9 @@ def run_data_efficiency_experiment(
                     metrics=metrics,
                 )
             )
+            del probe
+        del subset
+        torch.cuda.empty_cache()
 
     results = DataEfficiencyResults(
         config=config,
@@ -246,8 +251,8 @@ if __name__ == "__main__":
     from models_under_pressure.interfaces.probes import ProbeSpec
 
     config = DataEfficiencyConfig(
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
+        model_name=LOCAL_MODELS["llama-70b"],
+        layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
         dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 836],
         probes=[
@@ -260,18 +265,14 @@ if __name__ == "__main__":
                 hyperparams={
                     "batch_size": 16,
                     "epochs": 3,
-                    "device": "cuda",
+                    "device": "cpu",
                     "learning_rate": 1e-2,
                     "weight_decay": 0.1,
                 },
             ),
-            ProbeSpec(
-                name="difference_of_means",
-                hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
-            ),
         ],
-        compute_activations=True,
-        eval_dataset_paths=list(EVAL_DATASETS_BALANCED.values()),
+        compute_activations=False,
+        eval_dataset_paths=[EVAL_DATASETS_BALANCED["mask"]],
         # id="g6AooBhS",
     )
 
