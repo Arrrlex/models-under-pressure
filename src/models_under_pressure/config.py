@@ -134,7 +134,7 @@ OTHER_DATASETS = {
     "original_doubled_neutralised_high_test": TRAIN_DIR
     / "original_doubled_neutralised_high/test.jsonl",
     "original_doubled_neutralised_low_train": TRAIN_DIR
-    / "original_doubled_neutralised_low/train.jsonl     ",
+    / "original_doubled_neutralised_low/train.jsonl",
     "original_doubled_neutralised_low_test": TRAIN_DIR
     / "original_doubled_neutralised_low/test.jsonl",
     "original_doubled_neutralised_low_manipulated_low_train": TRAIN_DIR

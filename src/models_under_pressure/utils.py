@@ -316,12 +316,13 @@ def pretty_format_config(config: Any) -> str:
     return yaml.dump(config, indent=2)
 
 
-def double_check_config(config: Any) -> None:
+def double_check_config(config: Any, double_check: bool = True) -> None:
     print("Config:")
     print(indent(pretty_format_config(config), "  "))
-    is_ok = input("Do you really want to run this config? (y/n) ")
-    if is_ok != "y":
-        raise ValueError("Config not confirmed")
+    if double_check:
+        is_ok = input("Do you really want to run this config? (y/n) ")
+        if is_ok != "y":
+            raise ValueError("Config not confirmed")
 
 
 def print_progress(

@@ -1,6 +1,6 @@
 name: max
 hyperparams:
-  batch_size: 16
+  batch_size: 256
   epochs: 50
   device: "cpu"
   optimizer_args:
