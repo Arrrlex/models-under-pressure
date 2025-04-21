@@ -10,16 +10,11 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from models_under_pressure.config import (
-    LOCAL_MODELS,
     PROBES_DIR,
-    SYNTHETIC_DATASET_PATH,
 )
-from models_under_pressure.dataset_utils import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
     Aggregator,
-    Postprocessors,
-    Preprocessors,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -190,26 +185,3 @@ def compute_accuracy(
     pred_labels = probe.predict(dataset)
     pred_labels_np = np.array([label.to_int() for label in pred_labels])
     return (pred_labels_np == dataset.labels_numpy()).mean()
-
-
-if __name__ == "__main__":
-    # Train a probe
-    agg = Aggregator(
-        preprocessor=Preprocessors.per_token,
-        postprocessor=Postprocessors.sigmoid,
-    )
-    train_dataset, _ = load_train_test(
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
-    )
-    probe = SklearnProbe(aggregator=agg)
-    probe.fit(train_dataset[:10])
-
-    # # Test the probe
-    # inputs = [
-    #     "Hello, how are you?",
-    #     "What is the capital of France?",
-    # ]
-    # predictions = probe.per_token_predictions(inputs)
-    # print(predictions)
