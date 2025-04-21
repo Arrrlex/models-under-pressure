@@ -322,10 +322,13 @@ def filter_dataset(
 if __name__ == "__main__":
     # Load datasets
     input_path = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o.jsonl"
+        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_original_doubled.jsonl"
     )
-    output_path = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_unconfounded.jsonl"
+    output_path_train = Path(
+        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
+    )
+    output_path_test = Path(
+        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/test.jsonl"
     )
     dataset = LabelledDataset.load_from(input_path)
     # eval_datasets = {
@@ -346,7 +349,18 @@ if __name__ == "__main__":
 
     # Filter dataset and run analysis again
     print("\nFiltered Dataset Results:")
-    filtered_dataset = filter_dataset(dataset, filter_percentile=0.7)
-    # filtered_dataset.save_to(output_path)
+    filtered_dataset = filter_dataset(dataset, filter_percentile=0.6)
+    filtered_df = filtered_dataset.to_pandas()
+    filtered_df[filtered_df["split"] == "train"].to_json(
+        output_path_train, orient="records", lines=True
+    )
+    filtered_df[filtered_df["split"] == "test"].to_json(
+        output_path_test, orient="records", lines=True
+    )
+    print(
+        len(filtered_df[filtered_df["split"] == "test"]),
+        len(filtered_df[filtered_df["split"] == "train"]),
+    )
+
     filtered_results = analyse_confounders(filtered_dataset, {}, classifier_type="bow")
     print(f"Cross-validation accuracy: {filtered_results.cv_accuracy:.3f}")
