@@ -1,6 +1,6 @@
 name: max_of_rolling_mean
 hyperparams:
-  batch_size: 256
+  batch_size: 2048
   epochs: 50
   optimizer_args:
     lr: 1e-3

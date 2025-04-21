@@ -14,6 +14,7 @@ class ProbeType(str, Enum):
     max_of_rolling_mean = "max_of_rolling_mean"
     mean_of_top_k = "mean_of_top_k"
     max_of_sentence_means = "max_of_sentence_means"
+    last = "last"
 
 
 class ProbeSpec(BaseModel):

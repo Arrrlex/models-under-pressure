@@ -25,6 +25,8 @@ import torch
 from jaxtyping import Float
 from pydantic import BaseModel, Field, model_validator
 
+from models_under_pressure.config import global_settings
+
 
 class Message(BaseModel):
     role: str
@@ -460,7 +462,11 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
         return np.array([label.to_int() for label in self.labels])
 
     def labels_torch(self) -> Float[torch.Tensor, " batch_size"]:
-        return torch.tensor([label.to_int() for label in self.labels])
+        return torch.tensor(
+            [label.to_int() for label in self.labels],
+            dtype=global_settings.DTYPE,
+            device=global_settings.DEVICE,
+        )
 
     def print_label_distribution(self) -> Dict[str, float]:
         """

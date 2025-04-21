@@ -17,18 +17,15 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 
 class GlobalSettings(BaseSettings):
-    DEVICE: str = "auto"
+    LLM_DEVICE: torch.device | str = "auto"
+    DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    DTYPE: torch.dtype = torch.float32
     BATCH_SIZE: int = 4
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
-    DTYPE: torch.dtype = torch.bfloat16 if DEVICE in ["cuda", "auto"] else torch.float16
-    PROBE_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
-    PROBE_DTYPE: torch.dtype = (
-        torch.bfloat16 if PROBE_DEVICE in ["cuda", "auto"] else torch.float32
-    )
 
 
 global_settings = GlobalSettings()
@@ -347,9 +344,7 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
-    model_name: str = (
-        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
-    )
+    model_name: str
 
     @property
     def output_filename(self) -> str:
@@ -381,13 +376,11 @@ class RunBaselinesConfig(BaseModel):
 @dataclass(frozen=True)
 class SafetyRunConfig:
     layer: int
+    model_name: str
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = (
-        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
-    )
 
     @property
     def output_filename(self) -> str:

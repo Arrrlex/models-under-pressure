@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Self
 
 import einops
 import torch
 from jaxtyping import Float
 from torch.utils.data import Dataset as TorchDataset
 
+from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.dataset import BaseDataset
 
 
@@ -42,8 +42,14 @@ class ActivationPerTokenDataset(TorchDataset):
         Returns the masked activations, attention mask, input id and label.
         """
 
+        # return (
+        #     self.activations[index].to(global_settings.DEVICE),
+        #     self.attention_mask[index].to(global_settings.DEVICE),
+        #     self.input_ids[index].to(global_settings.DEVICE),
+        #     self.y[index].to(global_settings.DEVICE),
+        # )
         return (
-            self.activations[index],  # masked activations
+            self.activations[index],
             self.attention_mask[index],
             self.input_ids[index],
             self.y[index],
@@ -53,8 +59,7 @@ class ActivationPerTokenDataset(TorchDataset):
 class ActivationDataset(TorchDataset):
     """
     A pytorch Dataset class that contains the activations structured as a batch-wise dataset.
-    Each activation and attention mask is batch_size, seq_len, (embed_dim). The class contains
-    methods to convert the dataset to a per-token dataset.
+    Each activation and attention mask is batch_size, seq_len, (embed_dim).
     """
 
     def __init__(
@@ -83,10 +88,10 @@ class ActivationDataset(TorchDataset):
         """
 
         return (
-            self.activations[index],
-            self.attention_mask[index],
-            self.input_ids[index],
-            self.y[index],
+            self.activations[index].to(global_settings.DEVICE),
+            self.attention_mask[index].to(global_settings.DEVICE),
+            self.input_ids[index].to(global_settings.DEVICE),
+            self.y[index].to(global_settings.DEVICE),
         )
 
 
@@ -102,13 +107,6 @@ class Activation:
             activations=dataset.other_fields["activations"],  # type: ignore
             attention_mask=dataset.other_fields["attention_mask"],  # type: ignore
             input_ids=dataset.other_fields["input_ids"],  # type: ignore
-        )
-
-    def to(self, device: torch.device, dtype: torch.dtype) -> Self:
-        return type(self)(
-            activations=self.activations.to(device).to(dtype),
-            attention_mask=self.attention_mask.to(device).to(dtype),
-            input_ids=self.input_ids.to(device).to(dtype),
         )
 
     @property
@@ -142,5 +140,5 @@ class Activation:
     def to_dataset(
         self, y: Float[torch.Tensor, " batch_size"], per_token: bool = False
     ) -> "ActivationDataset | ActivationPerTokenDataset":
-        cls = ActivationPerTokenDataset if per_token else ActivationDataset
-        return cls(activations=self, y=y)
+        dataset_type = ActivationPerTokenDataset if per_token else ActivationDataset
+        return dataset_type(activations=self, y=y)

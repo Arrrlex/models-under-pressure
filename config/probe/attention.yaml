@@ -2,7 +2,6 @@ name: attention
 hyperparams:
   batch_size: 16
   epochs: 50
-  device: "cpu"
   optimizer_args:
     lr: 1e-3
     weight_decay: 0.0004

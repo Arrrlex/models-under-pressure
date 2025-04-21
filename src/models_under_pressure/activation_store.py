@@ -349,9 +349,7 @@ def load_compressed(path: Path) -> torch.Tensor:
                     f_out.write(chunk)
                     pbar.update(f_in.tell() - pbar.n)
 
-    return torch.load(tmp_path, map_location=global_settings.DEVICE).to(
-        global_settings.DTYPE
-    )
+    return torch.load(tmp_path, map_location="cpu").to(global_settings.DTYPE)
 
 
 def save_compressed(path: Path, tensor: torch.Tensor):

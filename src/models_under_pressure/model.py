@@ -118,6 +118,8 @@ class HookedModel:
         self.hooks = []
         self.architecture = ArchitectureRegistry.get_architecture(model)
         self.original_layers = None
+        self.dtype = next(model.parameters()).dtype
+        self.llm_device = next(model.parameters()).device
 
     def make_hook(self, layer: int) -> Callable:
         def hook_fn(module, input, output):  # type: ignore
@@ -149,6 +151,7 @@ class HookedModel:
     ) -> torch.Tensor:
         _ = self.model(**batch_inputs)
         activations = torch.stack([self.cache[layer] for layer in self.layers], dim=0)
+        activations = activations.cpu()
         if output_buffer is not None:
             output_buffer[:] = activations
             return output_buffer
@@ -180,6 +183,9 @@ class LLMModel:
     """
 
     name: str
+    llm_device: torch.device
+    acts_device: torch.device
+    dtype: torch.dtype
     batch_size: int
     tokenize_kwargs: dict[str, Any]
     model: torch.nn.Module
@@ -189,6 +195,8 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
+        llm_device: torch.device = global_settings.LLM_DEVICE,
+        acts_device: torch.device = global_settings.DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
@@ -202,6 +210,8 @@ class LLMModel:
 
         Args:
             model_name: Name or path of the model
+            llm_device: Device to load the model on
+            acts_device: Device to store activations on
             batch_size: Default batch size
             tokenize_kwargs: Additional tokenization args
             model_kwargs: Additional model init args
@@ -214,7 +224,7 @@ class LLMModel:
 
         model_kwargs = {
             "pretrained_model_name_or_path": model_name,
-            "device_map": global_settings.DEVICE,
+            "device_map": llm_device,
             "torch_dtype": global_settings.DTYPE,
             "cache_dir": global_settings.CACHE_DIR,
             "max_memory": global_settings.MODEL_MAX_MEMORY.get(
@@ -243,8 +253,14 @@ class LLMModel:
 
         tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
 
+        llm_device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+
         return cls(
             name=model_name,
+            llm_device=llm_device,
+            acts_device=acts_device,
+            dtype=dtype,
             batch_size=batch_size,
             tokenize_kwargs=tokenize_kwargs,
             model=model,
@@ -286,9 +302,10 @@ class LLMModel:
                 f"Don't know how to get the hidden dimension for model {self.model.name_or_path}."
             )
 
-    def to(self, device: str) -> Self:
-        self.device = device
-        self.model.to(device)
+    def to(self, llm_device: torch.device, acts_device: torch.device) -> Self:
+        self.llm_device = llm_device
+        self.acts_device = acts_device
+        self.model.to(llm_device)
         return self
 
     def tokenize(
@@ -308,7 +325,7 @@ class LLMModel:
             if k in ["input_ids", "attention_mask"]:
                 token_dict[k] = v[:, 1:]
             if isinstance(v, torch.Tensor):
-                token_dict[k] = v.to(next(self.model.parameters()).device)
+                token_dict[k] = v.to(self.llm_device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
@@ -351,7 +368,7 @@ class LLMModel:
         all_activations = torch.zeros(
             (len(layers), n_samples, max_seq_len, self.hidden_dim),
             device="cpu",
-            dtype=torch.float16,
+            dtype=self.dtype,
         )
 
         with HookedModel(self.model, layers) as hooked_model:
@@ -361,7 +378,7 @@ class LLMModel:
                 seq_len = batch_inputs["input_ids"].shape[1]
 
                 # Get activations for this batch
-                batch_acts = hooked_model.get_acts(batch_inputs).half().cpu()
+                batch_acts = hooked_model.get_acts(batch_inputs)
 
                 # Store activations in their original positions
                 if self.tokenizer.padding_side == "right":
@@ -369,7 +386,10 @@ class LLMModel:
                 else:
                     all_activations[:, batch_indices, -seq_len:] = batch_acts
 
-        return all_activations, {k: v.cpu() for k, v in inputs.items()}
+        all_activations = all_activations.to(self.acts_device)
+        inputs = {k: v.to(self.acts_device) for k, v in inputs.items()}
+
+        return all_activations, inputs
 
     @torch.no_grad()
     def get_batched_activations(
@@ -382,9 +402,9 @@ class LLMModel:
             dataset, [layer], batch_size
         )
         return Activation(
-            _activations=all_activations[0],
-            _attention_mask=inputs["attention_mask"],
-            _input_ids=inputs["input_ids"],
+            activations=all_activations[0],
+            attention_mask=inputs["attention_mask"],
+            input_ids=inputs["input_ids"],
         )
 
     @torch.no_grad()
@@ -448,7 +468,7 @@ class LLMModel:
             else:
                 all_log_probs[batch_indices, -out_seq_len:] = token_log_probs
 
-        return all_log_probs
+        return all_log_probs.to(self.acts_device)
 
     def generate(
         self,

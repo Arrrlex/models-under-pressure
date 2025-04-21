@@ -10,7 +10,7 @@ random_seed: 42
 train_data: original_doubled_unconfounded
 train_filters: null
 compute_activations: false
-validation_dataset: false
+validation_dataset: true
 
 baselines:
   prompts:

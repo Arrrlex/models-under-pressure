@@ -3,27 +3,20 @@ import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
+class Last:
+    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+        return logits[:, -1]
+
+
 class MaxOfSentenceMeans:
     def __init__(self, tokenizer: PreTrainedTokenizerBase):
         self.tokenizer = tokenizer
-        # Common sentence-ending punctuation tokens
-        self.period_like_token_ids = self._get_sentence_ending_token_ids()
 
-    def _get_sentence_ending_token_ids(self) -> list[int]:
-        """Get token IDs for common sentence-ending punctuation."""
         # This handles basic sentence-ending punctuation
-        punctuation = [".", "!", "?", '."', '!"', '?"', '."', '!"', '?"']
-        token_ids = []
-
-        for p in punctuation:
-            # Different tokenizers handle punctuation differently
-            ids = self.tokenizer.encode(p, add_special_tokens=False)
-            if ids:
-                token_ids.append(
-                    ids[-1]
-                )  # Take the last token ID which usually corresponds to the punctuation
-
-        return token_ids
+        self.period_like_token_ids = [
+            self.tokenizer.encode(p, add_special_tokens=False)[-1]
+            for p in [".", "!", "?", '."', '!"', '?"', '."', '!"', '?"']
+        ]
 
     def _find_sentence_boundaries(
         self, input_ids: torch.Tensor
@@ -83,23 +76,14 @@ class MaxOfSentenceMeans:
             sentence_boundaries = self._find_sentence_boundaries(input_ids[batch_idx])
 
             # Calculate mean logit for each sentence
-            sentence_means = []
-            for start, end in sentence_boundaries:
-                # Skip empty sentences
-                if end <= start:
-                    continue
-
-                # Calculate mean of logits for this sentence
-                sentence_logits = logits[batch_idx, start:end]
-                mean_logit = torch.mean(sentence_logits)
-                sentence_means.append(mean_logit)
+            sentence_means = [
+                torch.mean(logits[batch_idx, start:end]).item()
+                for start, end in sentence_boundaries
+                if end > start
+            ]
 
             # Find the maximum mean across all sentences
-            if sentence_means:
-                results[batch_idx] = max(sentence_means)
-            else:
-                # Fallback: if no valid sentences found, use mean of all logits
-                results[batch_idx] = torch.mean(logits[batch_idx])
+            results[batch_idx] = max(sentence_means)
 
         return results
 

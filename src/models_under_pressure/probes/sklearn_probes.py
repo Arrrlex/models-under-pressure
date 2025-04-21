@@ -16,6 +16,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
+from models_under_pressure.config import global_settings
 from models_under_pressure.probes.base import Classifier, Probe
 
 
@@ -32,11 +33,10 @@ class SklearnProbe(Probe):
 
     def __post_init__(self):
         if self._classifier is None:
-            self.device = self.hyper_params.get("device", "cpu")
-            hyper_params = {k: v for k, v in self.hyper_params.items() if k != "device"}
+            self.device = global_settings.DEVICE
             self._classifier = make_pipeline(
                 StandardScaler(),
-                LogisticRegression(**hyper_params),
+                LogisticRegression(**self.hyper_params),
             )  # type: ignore
 
     def fit(

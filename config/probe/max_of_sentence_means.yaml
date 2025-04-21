@@ -3,5 +3,5 @@ hyperparams:
   batch_size: 256
   epochs: 50
   optimizer_args:
-    lr: 1e-2
+    lr: 1e-3
     weight_decay: 0.01

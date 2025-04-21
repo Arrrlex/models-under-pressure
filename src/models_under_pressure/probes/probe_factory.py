@@ -7,8 +7,10 @@ from models_under_pressure.probes.pytorch_classifiers import (
     PytorchPerEntryLinearClassifier,
 )
 from models_under_pressure.probes.aggregations import (
+    Last,
     Max,
     MaxOfRollingMean,
+    Mean,
     MeanOfTopK,
     MaxOfSentenceMeans,
 )
@@ -83,8 +85,18 @@ class ProbeFactory:
                     training_args=probe_spec.hyperparams,
                     aggregation_method=MaxOfRollingMean(window_size=window_size),
                 )
+            case ProbeType.last:
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=Last(),
+                )
+            case ProbeType.mean:
+                classifier = PytorchLinearClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation_method=Mean(),
+                )
             case _:
-                raise NotImplementedError(f"Probe type {probe_spec.type} not supported")
+                raise NotImplementedError(f"Probe type {probe_spec.name} not supported")
 
         probe = PytorchProbe(
             hyper_params=probe_spec.hyperparams,

@@ -5,4 +5,4 @@ hyperparams:
   optimizer_args:
     lr: 1e-3
     weight_decay: 0.01
-  k: 5
+  k: 10
