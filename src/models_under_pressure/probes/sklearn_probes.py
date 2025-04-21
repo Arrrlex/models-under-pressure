@@ -6,13 +6,9 @@ from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+import torch
 
-from models_under_pressure.interfaces.activations import (
-    Activation,
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dataset,
@@ -25,12 +21,6 @@ from models_under_pressure.probes.base import Classifier, Probe
 
 @dataclass
 class SklearnProbe(Probe):
-    aggregator: Aggregator = field(
-        default_factory=lambda: Aggregator(
-            preprocessor=Preprocessors.mean,
-            postprocessor=Postprocessors.sigmoid,
-        )
-    )
     hyper_params: dict = field(
         default_factory=lambda: {
             "C": 1e-3,
@@ -42,9 +32,11 @@ class SklearnProbe(Probe):
 
     def __post_init__(self):
         if self._classifier is None:
+            self.device = self.hyper_params.get("device", "cpu")
+            hyper_params = {k: v for k, v in self.hyper_params.items() if k != "device"}
             self._classifier = make_pipeline(
                 StandardScaler(),
-                LogisticRegression(**self.hyper_params),
+                LogisticRegression(**hyper_params),
             )  # type: ignore
 
     def fit(
@@ -77,7 +69,7 @@ class SklearnProbe(Probe):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        X, _ = self.aggregator.preprocess(activations, y)
+        X = mean_acts(activations)
         self._classifier.fit(X, y)  # type: ignore
         return self
 
@@ -90,9 +82,9 @@ class SklearnProbe(Probe):
     def _predict_proba(
         self, activations: Activation
     ) -> Float[np.ndarray, " batch_size"]:
-        X, _ = self.aggregator.preprocess(activations)
+        X = mean_acts(activations)
         logits = self._get_logits(X)
-        probs = self.aggregator.postprocess(logits)
+        probs = sigmoid(logits)
         return probs
 
     def _get_logits(
@@ -115,9 +107,11 @@ class SklearnProbe(Probe):
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
-        for i in range(len(activations_obj.get_activations(per_token=False))):
-            activations = activations_obj.get_activations(per_token=False)[i]
-            attention_mask = activations_obj.get_attention_mask(per_token=False)[i]
+        acts = activations_obj.activations.numpy()
+        mask = activations_obj.attention_mask.numpy()
+        for i in range(len(acts)):
+            activations = acts[i]
+            attention_mask = mask[i]
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
@@ -131,3 +125,37 @@ class SklearnProbe(Probe):
             predictions.append(predicted_probs)
 
         return np.array(predictions)
+
+
+def sigmoid(
+    logits: Float[np.ndarray, " batch_size"],
+) -> Float[np.ndarray, " batch_size"]:
+    return 1 / (1 + np.exp(-logits))
+
+
+def mean_acts(
+    X: Activation, batch_size: int = 200
+) -> Float[np.ndarray, "batch_size embed_dim"]:
+    # Initialize accumulators for sum and token counts
+    batch_size_total, seq_len, embed_dim = X.activations.shape
+    sum_acts = torch.zeros((batch_size_total, embed_dim))
+    token_counts = torch.zeros((batch_size_total, 1))
+
+    # Process in batches
+    for i in range(0, batch_size_total, batch_size):
+        end_idx = min(i + batch_size, batch_size_total)
+
+        # Get current batch
+        batch_acts = X.activations[i:end_idx].float()
+        batch_mask = X.attention_mask[i:end_idx]
+
+        # Process current batch in-place
+        batch_acts *= batch_mask[:, :, None]  # In-place multiplication
+        sum_acts[i:end_idx] = batch_acts.sum(dim=1)
+        token_counts[i:end_idx] = batch_mask.sum(dim=1, keepdim=True)
+
+    # Add small epsilon to avoid division by zero
+    token_counts = token_counts + 1e-10
+
+    # Calculate final mean
+    return (sum_acts / token_counts).numpy()

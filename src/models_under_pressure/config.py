@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
+import torch
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
@@ -23,6 +24,11 @@ class GlobalSettings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
+    DTYPE: torch.dtype = torch.bfloat16 if DEVICE in ["cuda", "auto"] else torch.float16
+    PROBE_DEVICE: str = "cuda" if torch.cuda.is_available() else "cpu"
+    PROBE_DTYPE: torch.dtype = (
+        torch.bfloat16 if PROBE_DEVICE in ["cuda", "auto"] else torch.float32
+    )
 
 
 global_settings = GlobalSettings()

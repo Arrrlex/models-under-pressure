@@ -30,11 +30,9 @@ def save_activation(activation: Activation, path: Path) -> None:
     """Save activation object's components as numpy arrays in half precision"""
     np.savez_compressed(
         path,
-        activations=activation.get_activations(per_token=False).astype(np.float16),
-        attention_mask=activation.get_attention_mask(per_token=False).astype(
-            np.float16
-        ),
-        input_ids=activation.get_input_ids().astype(np.int32),
+        activations=activation.activations.numpy().astype(np.float16),
+        attention_mask=activation.attention_mask.numpy().astype(np.float16),
+        input_ids=activation.input_ids.numpy().astype(np.int32),
     )
 
 
@@ -42,9 +40,9 @@ def load_activation(path: Path) -> Activation:
     """Load activation object from numpy arrays"""
     data = np.load(path)
     return Activation(
-        _activations=data["activations"].astype(np.float16),
-        _attention_mask=data["attention_mask"].astype(np.float16),
-        _input_ids=data["input_ids"].astype(np.int32),
+        activations=torch.from_numpy(data["activations"]).float(),
+        attention_mask=torch.from_numpy(data["attention_mask"]).float(),
+        input_ids=torch.from_numpy(data["input_ids"]).int(),
     )
 
 

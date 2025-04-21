@@ -180,7 +180,6 @@ class LLMModel:
     """
 
     name: str
-    device: str
     batch_size: int
     tokenize_kwargs: dict[str, Any]
     model: torch.nn.Module
@@ -190,7 +189,6 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
-        device: str = global_settings.DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
@@ -204,7 +202,6 @@ class LLMModel:
 
         Args:
             model_name: Name or path of the model
-            device: Device to load on (e.g., 'cuda', 'cpu')
             batch_size: Default batch size
             tokenize_kwargs: Additional tokenization args
             model_kwargs: Additional model init args
@@ -215,12 +212,10 @@ class LLMModel:
         """
         hf_login()
 
-        dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
-
         model_kwargs = {
             "pretrained_model_name_or_path": model_name,
-            "device_map": device,
-            "torch_dtype": dtype,
+            "device_map": global_settings.DEVICE,
+            "torch_dtype": global_settings.DTYPE,
             "cache_dir": global_settings.CACHE_DIR,
             "max_memory": global_settings.MODEL_MAX_MEMORY.get(
                 global_settings.DEFAULT_MODEL
@@ -251,7 +246,6 @@ class LLMModel:
         return cls(
             name=model_name,
             batch_size=batch_size,
-            device=device,
             tokenize_kwargs=tokenize_kwargs,
             model=model,
             tokenizer=tokenizer,

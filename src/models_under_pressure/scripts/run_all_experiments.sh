@@ -7,7 +7,7 @@ export DOUBLE_CHECK_CONFIG=false
 
 
 # Compare all probes
-for probe in sklearn per_entry difference_of_means lda attention max max_of_sentence_means mean_of_top_k max_of_rolling_mean; do
+for probe in per_entry difference_of_means lda attention max max_of_sentence_means mean_of_top_k max_of_rolling_mean; do
     run-exp +experiment=evaluate_probe probe=$probe ++probe.hyperparams.device=cuda
 done
 

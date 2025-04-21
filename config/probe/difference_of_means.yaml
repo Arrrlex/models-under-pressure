@@ -1,3 +1,2 @@
 name: difference_of_means
-hyperparams:
-  device: "cpu"
+hyperparams: {}

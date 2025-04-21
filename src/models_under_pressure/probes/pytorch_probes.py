@@ -49,11 +49,11 @@ class PytorchProbe(Probe):
             validation_y = None
         else:
             validation_activations = Activation.from_dataset(validation_dataset)
-            validation_y = validation_dataset.labels_numpy()
+            validation_y = validation_dataset.labels_torch()
 
         self._classifier.train(
             activations=activations_obj,
-            y=dataset.labels_numpy(),
+            y=dataset.labels_torch(),
             validation_activations=validation_activations,
             validation_y=validation_y,
         )

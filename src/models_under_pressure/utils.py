@@ -8,6 +8,7 @@ from textwrap import indent
 import time
 from contextlib import contextmanager
 from datetime import timedelta
+from pathlib import Path
 from typing import (
     Any,
     Awaitable,
@@ -305,11 +306,32 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
+def convert_paths(config: Any) -> Any:
+    if isinstance(config, Path):
+        return (
+            config.relative_to(Path.cwd())
+            if config.is_relative_to(Path.cwd())
+            else config
+        )
+    elif isinstance(config, dict):
+        return {k: convert_paths(v) for k, v in config.items()}
+    elif isinstance(config, list):
+        return [convert_paths(item) for item in config]
+    elif isinstance(config, BaseModel):
+        for field in config.model_fields_set:
+            setattr(config, field, convert_paths(getattr(config, field)))
+        return config
+    elif isinstance(config, DictConfig):
+        return {k: convert_paths(v) for k, v in config.items()}
+    return config
+
+
 def pretty_format_config(config: Any) -> str:
+    config = convert_paths(config)
     if isinstance(config, list) and isinstance(config[0], BaseModel):
-        config = [config.model_dump(mode="json") for config in config]
+        config = [config.model_dump(mode="json", by_alias=True) for config in config]
     if isinstance(config, BaseModel):
-        config = config.model_dump(mode="json")
+        config = config.model_dump(mode="json", by_alias=True)
     if isinstance(config, DictConfig):
         config = config.to_container()
 
