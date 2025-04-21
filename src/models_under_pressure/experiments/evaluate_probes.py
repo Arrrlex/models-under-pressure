@@ -148,19 +148,21 @@ def get_coefs(probe: Probe) -> list[float]:
     elif isinstance(probe, PytorchProbe):
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
-            coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+            coefs = list(
+                probe._classifier.model.weight.data.cpu().float().numpy().flatten()
+            )  # type: ignore
         elif isinstance(probe._classifier, PytorchAttentionClassifier):
             # For attention probe, get the weights from the final linear layer
             model = probe._classifier.model
             if isinstance(model, AttentionProbeAttnThenLinear):
-                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
             elif isinstance(model, AttentionProbeAttnWeightLogits):
-                coefs = list(model.linear.weight.data.cpu().numpy().flatten())  # type: ignore
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
             else:
                 raise ValueError(f"Unknown attention probe model type: {type(model)}")
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
-            coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
+            coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
     return coefs
 
 

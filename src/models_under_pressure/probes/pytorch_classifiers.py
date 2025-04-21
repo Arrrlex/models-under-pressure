@@ -146,12 +146,31 @@ class PytorchLinearClassifier:
                     val_probs_tensor = torch.tensor(val_probs, dtype=self.data_type).to(
                         device
                     )
-                    # Add numerical stability by clipping probabilities
-                    val_probs_tensor = torch.clamp(
-                        val_probs_tensor, min=1e-7, max=1 - 1e-7
-                    )
+
+                    # Convert to logits first, then handle extreme values
                     val_logits = torch.logit(val_probs_tensor)
+
+                    # Clip extreme logit values to prevent NaN in loss computation
+                    # Using values that are safe for bfloat16
+                    val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
+
+                    # Check for NaN values in logits
+                    if torch.isnan(val_logits).any():
+                        print("Warning: NaN values detected in validation logits")
+                        print("Min logit:", val_logits.min().item())
+                        print("Max logit:", val_logits.max().item())
+                        val_logits = torch.nan_to_num(val_logits, nan=0.0)
+
                     val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
+
+                    # Check for NaN loss
+                    if np.isnan(val_loss):
+                        print("Warning: NaN validation loss detected")
+                        print("Validation probabilities shape:", val_probs_tensor.shape)
+                        print("Validation labels shape:", val_y_tensor.shape)
+                        val_loss = float(
+                            "inf"
+                        )  # Set to infinity to avoid selecting this model
 
                     print(f"Validation loss: {val_loss:.4f}")
 
@@ -247,7 +266,7 @@ class PytorchLinearClassifier:
         agg_logits = self.aggregation_method(logits, input_ids)
 
         # Convert the logits to probabilities
-        return torch.sigmoid(agg_logits).cpu().to(self.data_type).numpy()
+        return torch.sigmoid(agg_logits).cpu().float().numpy()
 
     @torch.no_grad()
     def predict_token_proba(
@@ -465,12 +484,32 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                     val_probs_tensor = torch.tensor(val_probs, dtype=self.data_type).to(
                         device
                     )
-                    # Add numerical stability by clipping probabilities
-                    val_probs_tensor = torch.clamp(
-                        val_probs_tensor, min=1e-7, max=1 - 1e-7
-                    )
+
+                    # Convert to logits first, then handle extreme values
                     val_logits = torch.logit(val_probs_tensor)
+
+                    # Clip extreme logit values to prevent NaN in loss computation
+                    # Using values that are safe for bfloat16
+                    val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
+
+                    # Check for NaN values in logits
+                    if torch.isnan(val_logits).any():
+                        print("Warning: NaN values detected in validation logits")
+                        print("Min logit:", val_logits.min().item())
+                        print("Max logit:", val_logits.max().item())
+                        val_logits = torch.nan_to_num(val_logits, nan=0.0)
+
                     val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
+
+                    # Check for NaN loss
+                    if np.isnan(val_loss):
+                        print("Warning: NaN validation loss detected")
+                        print("Validation probabilities shape:", val_probs_tensor.shape)
+                        print("Validation labels shape:", val_y_tensor.shape)
+                        val_loss = float(
+                            "inf"
+                        )  # Set to infinity to avoid selecting this model
+                        breakpoint()
 
                     print(f"Validation loss: {val_loss:.4f}")
 
@@ -521,7 +560,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         )
         logits = self.model(acts_tensor.to(self.data_type).to(device))
 
-        return nn.Sigmoid()(logits).detach().cpu().to(self.data_type).squeeze().numpy()
+        return nn.Sigmoid()(logits).detach().cpu().squeeze().float().numpy()
 
     @torch.no_grad()
     def predict_token_logits(
@@ -849,12 +888,34 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                         val_probs_tensor = torch.tensor(
                             val_probs, dtype=self.data_type
                         ).to(device)
-                        # Add numerical stability by clipping probabilities
-                        val_probs_tensor = torch.clamp(
-                            val_probs_tensor, min=1e-7, max=1 - 1e-7
-                        )
+
+                        # Convert to logits first, then handle extreme values
                         val_logits = torch.logit(val_probs_tensor)
+
+                        # Clip extreme logit values to prevent NaN in loss computation
+                        # Using values that are safe for bfloat16
+                        val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
+
+                        # Check for NaN values in logits
+                        if torch.isnan(val_logits).any():
+                            print("Warning: NaN values detected in validation logits")
+                            print("Min logit:", val_logits.min().item())
+                            print("Max logit:", val_logits.max().item())
+                            val_logits = torch.nan_to_num(val_logits, nan=0.0)
+
                         val_loss = criterion(val_logits.squeeze(), val_y_tensor).item()
+
+                        # Check for NaN loss
+                        if np.isnan(val_loss):
+                            print("Warning: NaN validation loss detected")
+                            print(
+                                "Validation probabilities shape:",
+                                val_probs_tensor.shape,
+                            )
+                            print("Validation labels shape:", val_y_tensor.shape)
+                            val_loss = float(
+                                "inf"
+                            )  # Set to infinity to avoid selecting this model
 
                         print(f"Validation loss: {val_loss:.4f}")
 

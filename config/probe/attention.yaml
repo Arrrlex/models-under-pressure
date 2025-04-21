@@ -8,4 +8,4 @@ hyperparams:
     weight_decay: 0.0004
   attn_hidden_dim: 27
   probe_architecture: "attention_then_linear"
-  scheduler_decay": 0.62
+  scheduler_decay: 0.62
