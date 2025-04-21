@@ -276,11 +276,18 @@ if __name__ == "__main__":
     )
 
     # Should be defined via a hydra run config file:
-    finetune_config = DictConfig(
+    finetune_config = DictConfig( # this should be defined via a hydra run config file
         {
             "model_name_or_path": 'meta-llama/Llama-3.2-1B-Instruct',
             "num_classes": 2,
-            "ClassifierModule": {},
+            "ClassifierModule": { #set here to the default values
+                "learning_rate": 1e-3,
+                "weight_decay": 0.0,
+                "scheduler_params": None,
+                "num_classes": 2,
+                "class_weights": None,
+                "label_smoothing": 0.0,
+            },
             "batch_size": 12,
             "shuffle": True,
             "logger": None,
