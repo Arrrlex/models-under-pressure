@@ -1,6 +1,7 @@
-name: last
+name: per_token
 hyperparams:
-  batch_size: 8192
+  aggregation: last
+  batch_size: 16384
   epochs: 50
   optimizer_args:
     lr: 1e-3

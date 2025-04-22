@@ -1,6 +1,7 @@
-name: mean
+name: per_token
 hyperparams:
-  batch_size: 8192
+  aggregation: mean
+  batch_size: 16384
   epochs: 50
   optimizer_args:
     lr: 1e-3

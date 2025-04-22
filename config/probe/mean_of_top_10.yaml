@@ -1,8 +1,10 @@
-name: mean_of_top_k
+name: per_token
 hyperparams:
-  batch_size: 8192
+  aggregation:
+    name: mean_of_top_k
+    k: 10
+  batch_size: 16384
   epochs: 50
   optimizer_args:
     lr: 1e-3
     weight_decay: 0.01
-  k: 10

@@ -6,6 +6,7 @@ from models_under_pressure.probes.pytorch_classifiers import (
     PytorchLinearClassifier,
     PytorchPerEntryLinearClassifier,
 )
+from models_under_pressure.probes.base import Aggregation
 from models_under_pressure.probes.aggregations import (
     Last,
     Max,
@@ -58,11 +59,10 @@ class ProbeFactory:
                     "Validation dataset must contain activations, attention_mask, and input_ids"
                 )
 
-        if probe_spec.name == ProbeType.sklearn:
-            probe = SklearnProbe(hyper_params=probe_spec.hyperparams)
-            return probe.fit(train_dataset, validation_dataset)
-
         match probe_spec.name:
+            case ProbeType.sklearn:
+                probe = SklearnProbe(hyper_params=probe_spec.hyperparams)
+                return probe.fit(train_dataset)
             case ProbeType.per_entry:
                 classifier = PytorchPerEntryLinearClassifier(
                     training_args=probe_spec.hyperparams,
@@ -79,38 +79,13 @@ class ProbeFactory:
                 classifier = PytorchAttentionClassifier(
                     training_args=probe_spec.hyperparams,
                 )
-            case ProbeType.max:
-                classifier = PytorchLinearClassifier(
-                    training_args=probe_spec.hyperparams,
-                    aggregation_method=Max(),
+            case ProbeType.per_token:
+                aggregation = get_aggregation(
+                    probe_spec.hyperparams["aggregation"], model_name
                 )
-            case ProbeType.max_of_sentence_means:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
                 classifier = PytorchLinearClassifier(
                     training_args=probe_spec.hyperparams,
-                    aggregation_method=MaxOfSentenceMeans(tokenizer=tokenizer),
-                )
-            case ProbeType.mean_of_top_k:
-                k = probe_spec.hyperparams["k"]
-                classifier = PytorchLinearClassifier(
-                    training_args=probe_spec.hyperparams,
-                    aggregation_method=MeanOfTopK(k=k),
-                )
-            case ProbeType.max_of_rolling_mean:
-                window_size = probe_spec.hyperparams["window_size"]
-                classifier = PytorchLinearClassifier(
-                    training_args=probe_spec.hyperparams,
-                    aggregation_method=MaxOfRollingMean(window_size=window_size),
-                )
-            case ProbeType.last:
-                classifier = PytorchLinearClassifier(
-                    training_args=probe_spec.hyperparams,
-                    aggregation_method=Last(),
-                )
-            case ProbeType.mean:
-                classifier = PytorchLinearClassifier(
-                    training_args=probe_spec.hyperparams,
-                    aggregation_method=Mean(),
+                    aggregation=aggregation,
                 )
             case _:
                 raise NotImplementedError(f"Probe type {probe_spec.name} not supported")
@@ -139,44 +114,27 @@ def has_activations(dataset: LabelledDataset) -> bool:
     return {"activations", "attention_mask", "input_ids"} <= set(dataset.other_fields)
 
 
-if __name__ == "__main__":
-    from models_under_pressure.config import LOCAL_MODELS, SYNTHETIC_DATASET_PATH
-    from models_under_pressure.dataset_utils import load_train_test
-    from models_under_pressure.interfaces.probes import ProbeSpec
+def get_aggregation(aggregation_spec: str | dict, model_name: str) -> Aggregation:
+    if isinstance(aggregation_spec, str):
+        name = aggregation_spec
+        kwargs = {}
+    else:
+        name = aggregation_spec["name"]
+        kwargs = {k: v for k, v in aggregation_spec.items() if k != "name"}
 
-    # Load the synthetic dataset
-    train_dataset, test_dataset = load_train_test(
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
-        compute_activations=True,
-        n_per_class=200,
-    )
-
-    # Define probe hyperparameters
-    probe_spec = ProbeSpec(
-        type=ProbeType.per_entry,
-        hyperparams={
-            "batch_size": 32,
-            "epochs": 20,
-            "device": "cpu",
-            "learning_rate": 1e-2,
-            "weight_decay": 0.1,
-        },
-    )
-
-    # Train the probe
-    probe = ProbeFactory.build(
-        probe_spec=probe_spec,
-        train_dataset=train_dataset,
-        validation_dataset=test_dataset,
-    )
-
-    def accuracy(probe: Probe, dataset: LabelledDataset) -> float:
-        pred_labels = probe.predict_proba(dataset) > 0.5
-        return (pred_labels == dataset.labels_numpy()).mean()
-
-    # Print probe performance
-    print("Probe training completed!")
-    print(f"Train accuracy: {accuracy(probe, train_dataset)}")
-    print(f"Test accuracy: {accuracy(probe, test_dataset)}")
+    match name:
+        case "max":
+            return Max(**kwargs)
+        case "max-of-sentence-means":
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            return MaxOfSentenceMeans(tokenizer=tokenizer)
+        case "mean-of-top-k":
+            return MeanOfTopK(k=kwargs["k"])
+        case "mean":
+            return Mean()
+        case "last":
+            return Last()
+        case "max-of-rolling-mean":
+            return MaxOfRollingMean(window_size=kwargs["window_size"])
+        case _:
+            raise NotImplementedError(f"Aggregation {name} not supported")

@@ -1,8 +1,10 @@
-name: max_of_rolling_mean
+name: per_token
 hyperparams:
-  batch_size: 8192
+  aggregation:
+    name: max-of-rolling-mean
+    window_size: 10
+  batch_size: 16384
   epochs: 50
   optimizer_args:
     lr: 1e-3
     weight_decay: 0.01
-  window_size: 10

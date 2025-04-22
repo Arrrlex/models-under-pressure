@@ -4,6 +4,7 @@ from typing import Protocol, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
+import torch
 
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -51,3 +52,12 @@ class Classifier(Protocol):
     def predict_proba(
         self, X: Float[np.ndarray, "batch_size ..."]
     ) -> Float[np.ndarray, "batch_size n_classes"]: ...
+
+
+class Aggregation(Protocol):
+    def __call__(
+        self,
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]: ...

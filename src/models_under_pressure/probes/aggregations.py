@@ -1,15 +1,16 @@
 import einops
 import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from jaxtyping import Float
 
 
 class Last:
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         return logits[:, -1]
 
 
@@ -64,10 +65,10 @@ class MaxOfSentenceMeans:
 
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         """
         Compute the maximum of mean logits per sentence.
 
@@ -104,10 +105,10 @@ class MeanOfTopK:
 
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         # Calculate mean of top k values
         top_k_values = torch.topk(logits, k=self.k, dim=1).values
         mean_top_k = torch.mean(top_k_values, dim=1)
@@ -121,10 +122,10 @@ class MaxOfRollingMean:
 
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         batch_size, seq_len = logits.shape
 
         # Calculate rolling mean using unfold
@@ -145,10 +146,10 @@ class MaxOfRollingMean:
 class Mean:
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         tokens_length = attention_mask.sum(dim=1).clamp(min=1)
         return logits.sum(dim=1) / tokens_length
 
@@ -156,18 +157,18 @@ class Mean:
 class Max:
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         return einops.reduce(logits, "batch seq -> batch", "max")
 
 
 class Min:
     def __call__(
         self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor:
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]:
         return einops.reduce(logits, "batch seq -> batch", "min")
