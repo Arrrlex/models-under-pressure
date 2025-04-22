@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from jaxtyping import Float
-from omegaconf import DictConfig
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from sklearn.metrics import roc_auc_score, roc_curve
@@ -20,7 +19,7 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
-from models_under_pressure.config import global_settings
+from models_under_pressure.config import DataEfficiencyBaselineConfig, global_settings
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
 
 
@@ -73,17 +72,19 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing accuracy"
-        )
-        return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing accuracy"
+        return (
+            (self.probits > 0.5) == self._labels.cpu().numpy()
+        ).mean()  # TODO: fix this
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing AUROC"
-        )
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing AUROC"
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -97,14 +98,15 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing TPR at FPR"
-        )
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing TPR at FPR"
 
         sigmoid = torch.nn.Sigmoid()
 
         fprs, tprs, _ = roc_curve(
-            self._labels.cpu().numpy(), sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()
+            self._labels.cpu().numpy(),
+            sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy(),
         )
 
         # Find the TPR corresponding to the closest FPR
@@ -403,7 +405,7 @@ def create_collate_fn(
 
 
 class FinetunedClassifier:
-    def __init__(self, finetune_config: DictConfig):
+    def __init__(self, finetune_config: DataEfficiencyBaselineConfig):
         self.finetune_config = finetune_config
         self._classifier = None
         self._model = None
@@ -412,23 +414,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert self._tokenizer is not None, (
-            "Tokenizer must be trained before it can be accessed"
-        )
+        assert (
+            self._tokenizer is not None
+        ), "Tokenizer must be trained before it can be accessed"
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert self._classifier is not None, (
-            "Classifier must be trained before it can be accessed"
-        )
+        assert (
+            self._classifier is not None
+        ), "Classifier must be trained before it can be accessed"
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert self._model is not None, (
-            "Model must be trained before it can be accessed"
-        )
+        assert (
+            self._model is not None
+        ), "Model must be trained before it can be accessed"
         return self._model
 
     def process_model_configs(self):
