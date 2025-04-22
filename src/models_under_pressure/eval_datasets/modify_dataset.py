@@ -235,6 +235,11 @@ def modify_dataset(
     for field in fields_to_delete:
         del modified_dataset.other_fields[field]  # type: ignore
         # Stuff often breaks but create_eval_dataset skips previously labelled samples
+    modified_dataset = Dataset(
+        inputs=modified_dataset.inputs,
+        ids=modified_dataset.ids,
+        other_fields=modified_dataset.other_fields,
+    )
 
     raw_output_path = (
         DATA_DIR / f"temp/{dataset_name}_{'test_' if test else ''}raw_{date_str}.jsonl"
@@ -350,7 +355,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "toolace_test"
+    dataset_name = "redteaming"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
