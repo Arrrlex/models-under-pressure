@@ -45,6 +45,7 @@ Apr 16 versions (all based on calling parts of `modify_dataset.py`)
 Apr 22 versions (all based on calling parts of `modify_dataset.py`)
 
 - MTS dev and test datasets: Same as before with slightly modified system prompt (fixed typo and dropping "guest families" part).
+- ToolACE dev and test datasets: Based on original dataset, modify the system prompt (only changing first sentence and removing a later confusing sentence) and relabel after adding system prompt.
 
 
 ## Deployment Context Datasets
