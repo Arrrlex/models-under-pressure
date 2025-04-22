@@ -741,6 +741,55 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
         return self
 
+    @torch.no_grad()
+    def logits(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
+        """
+        Predict the logits of the activations.
+        1. Get the activations
+        2. Pass through the model
+        3. Multiply by the attention mask
+        4. Reshape back to (batch_size, seq_len) and then return.
+        Outputs the classifier logits that are expected in the shape (batch_size, seq_len)
+        """
+        if self.model is None:
+            raise ValueError("Model not trained")
+
+        self.model.eval()
+        batch_size, seq_len, _ = activations.shape
+
+        dummy_labels = torch.empty(batch_size, device=self.device)
+        dataset = activations.to_dataset(dummy_labels)
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.training_args["batch_size"],
+            shuffle=False,
+        )
+
+        logits = torch.zeros(
+            (batch_size, seq_len),
+            device="cpu",
+            dtype=self.dtype,
+        )
+
+        # Process in batches
+        start_idx = 0
+        for batch_acts, batch_mask, _, _ in tqdm(dataloader, desc="Processing batches"):
+            mb_size = len(batch_acts)
+
+            # Get logits for this batch
+            batch_logits = self.model(batch_acts) * batch_mask
+
+            # Store in output tensor
+            logits[start_idx : start_idx + mb_size] = batch_logits
+            start_idx += mb_size
+
+        if per_token:
+            return logits
+        else:
+            token_lengths = activations.attention_mask.sum(dim=1).clamp(min=1)
+            return logits.sum(dim=1) / token_lengths
+
     def create_model(
         self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
     ) -> nn.Module:
