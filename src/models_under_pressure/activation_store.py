@@ -8,17 +8,17 @@ and cloud storage (R2), with a manifest system to track available activations.
 import datetime
 import hashlib
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
-import time
 
 import torch
 import zstandard as zstd
 from pydantic import BaseModel, field_validator
 from tqdm import tqdm
 
-from models_under_pressure.config import global_settings, PROJECT_ROOT
+from models_under_pressure.config import PROJECT_ROOT, global_settings
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
