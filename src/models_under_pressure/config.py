@@ -70,7 +70,7 @@ TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 EVAL_DATASETS_RAW = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
     "anthropic": EVALS_DIR / "anthropic_raw_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_raw_apr_15.jsonl",
+    "toolace": EVALS_DIR / "toolace_raw_apr_22.jsonl",
     "mt": EVALS_DIR / "mt_raw_apr_16.jsonl",
     "mts": EVALS_DIR / "mts_raw_apr_22.jsonl",
     "mask": EVALS_DIR / "mask_samples_raw.jsonl",
@@ -79,7 +79,7 @@ EVAL_DATASETS_RAW = {
 EVAL_DATASETS_BALANCED = {
     "manual": EVALS_DIR / "manual_upsampled.csv",
     "anthropic": EVALS_DIR / "anthropic_balanced_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_balanced_apr_15.jsonl",
+    "toolace": EVALS_DIR / "toolace_balanced_apr_22.jsonl",
     "mt": EVALS_DIR / "mt_balanced_apr_16.jsonl",
     "mts": EVALS_DIR / "mts_balanced_apr_22.jsonl",
     "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
@@ -88,7 +88,7 @@ EVAL_DATASETS_BALANCED = {
 TEST_DATASETS_RAW = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_22.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_raw_apr_22.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
@@ -99,7 +99,7 @@ TEST_DATASETS_RAW = {
 TEST_DATASETS_BALANCED = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_22.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_22.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",

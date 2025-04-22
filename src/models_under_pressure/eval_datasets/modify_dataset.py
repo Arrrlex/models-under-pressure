@@ -7,6 +7,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS_RAW,
     EVALS_DIR,
     TEST_DATASETS_RAW,
+    TEST_EVALS_DIR,
 )
 from models_under_pressure.eval_datasets.label_dataset import (
     LabelledDataset,
@@ -327,7 +328,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "toolace"
+    dataset_name = "toolace_test"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -381,8 +382,8 @@ if __name__ == "__main__":
         print(prompt_mod.modified)
 
     if dataset_name == "toolace":
-        # dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
-        dataset = LabelledDataset.load_from(EVALS_DIR / "toolace_samples.csv")
+        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
+        # dataset = LabelledDataset.load_from(EVALS_DIR / "toolace_samples.csv")
 
         # If the single sample looks good, process the whole dataset
         output_path = DATA_DIR / "temp/toolace_modified.jsonl"
@@ -398,14 +399,22 @@ if __name__ == "__main__":
         print("\nRelabeling dataset...")
         labelled_output_path = DATA_DIR / "temp/toolace_raw_apr_22.jsonl"
         balanced_output_path = DATA_DIR / "temp/toolace_balanced_apr_22.jsonl"
-        create_eval_dataset(
-            modified_dataset,
-            raw_output_path=labelled_output_path,
-            balanced_output_path=balanced_output_path,
-        )
+
+        # Use batching similar to toolace_test
+        batch_size = 500
+        for batch_start in range(0, len(modified_dataset), batch_size):
+            batch_end = batch_start + batch_size
+            batch = modified_dataset[batch_start:batch_end]
+            print(f"Processing batch {batch_start} to {batch_end}")
+            create_eval_dataset(
+                batch,
+                raw_output_path=labelled_output_path,
+                balanced_output_path=balanced_output_path,
+            )
 
     if dataset_name == "toolace_test":
-        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["toolace"])
+        # dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["toolace"])
+        dataset = LabelledDataset.load_from(TEST_EVALS_DIR / "toolace_samples.csv")
 
         output_path = DATA_DIR / "temp/toolace_test_modified.jsonl"
         modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
@@ -416,12 +425,18 @@ if __name__ == "__main__":
         print("\nSample from modified dataset:")
         print(random_item.to_records()[0])
 
-        # Now relabel the dataset and create a balanced subset
         print("\nRelabeling dataset...")
-        labelled_output_path = DATA_DIR / "temp/toolace_test_raw.jsonl"
-        balanced_output_path = DATA_DIR / "temp/toolace_test_balanced.jsonl"
-        create_eval_dataset(
-            modified_dataset,
-            raw_output_path=labelled_output_path,
-            balanced_output_path=balanced_output_path,
-        )
+        labelled_output_path = DATA_DIR / "temp/toolace_test_raw_apr_22.jsonl"
+        balanced_output_path = DATA_DIR / "temp/toolace_test_balanced_apr_22.jsonl"
+
+        # Stuff often breaks but create_eval_dataset skips previously labelled samples
+        batch_size = 500
+        for batch_start in range(0, len(modified_dataset), batch_size):
+            batch_end = batch_start + batch_size
+            batch = modified_dataset[batch_start:batch_end]
+            print(f"Processing batch {batch_start} to {batch_end}")
+            create_eval_dataset(
+                batch,
+                raw_output_path=labelled_output_path,
+                balanced_output_path=balanced_output_path,
+            )
