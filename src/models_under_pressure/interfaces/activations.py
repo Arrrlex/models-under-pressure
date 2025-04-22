@@ -14,7 +14,12 @@ from models_under_pressure.interfaces.dataset import BaseDataset
 class ActivationDataset(TorchDataset):
     """
     A pytorch Dataset class that contains the activations structured as a batch-wise dataset.
-    Each activation and attention mask is batch_size, seq_len, (embed_dim).
+
+    This dataset can be either
+    - per-token (activations shape: (b, s, e), attention_mask shape: (b, s))
+    - or per-entry (activations shape: (b * s, e), attention_mask shape: (b * s))
+
+    where b is the batch size, s is the sequence length, and e is the embedding dimension.
     """
 
     def __init__(
