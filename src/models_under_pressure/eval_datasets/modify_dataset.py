@@ -5,6 +5,7 @@ from typing import List, NamedTuple, Optional
 from models_under_pressure.config import (
     DATA_DIR,
     EVAL_DATASETS_RAW,
+    EVALS_DIR,
     TEST_DATASETS_RAW,
 )
 from models_under_pressure.eval_datasets.label_dataset import (
@@ -26,9 +27,14 @@ class PromptModification(NamedTuple):
 
 
 toolace_rewriting_system_prompt = """You are an expert in writing system prompts for AI assistants.
-Your task is to modify the given system prompt to include deployment context and remove any unncessary information while maintaining all tool information and functionality.
-Describe the deployment context on a very high-level in a single sentence and overall keep the system prompt as concise as possible.
-Consider the full conversation context when adding deployment context and return the modified system prompt in JSON format using the keys 'role' and 'content'."""
+Your task is to rewrite the sentence "You are an expert in composing functions." of the system prompt to include basic deployment context such as the domain, type of task and company.
+Make sure that the system prompt is realistic and concise. Drop the "expert in composing functions" part entirely, as it is confusing and seems unrealistic.
+Return only the new sentence in JSON format using the key 'content'.
+
+Examples:
+"You are a medical assistant system interacting with doctors to improve efficiency."
+"You are a legal assistant system deployed at a law firm to answer simple user questions."
+"""
 
 
 async def modify_single_system_prompt(
@@ -67,7 +73,7 @@ async def modify_single_system_prompt(
         },
         {
             "role": "user",
-            "content": f"""Please modify this system prompt to include deployment context while maintaining all tool information and functionality. Consider the following conversation context when adding deployment context:
+            "content": f"""Please write a new first sentence for the system prompt below. Consider the following conversation context when adding deployment context:
 
 Conversation context:
 {conversation_context}
@@ -78,9 +84,16 @@ Current system prompt:
     ]
 
     try:
-        modified_prompt = await call_llm_async(modification_messages, model)
+        modified_sentence = await call_llm_async(modification_messages, model)
+        modified_prompt = system_message.content.replace(
+            "You are an expert in composing functions.", modified_sentence["content"]
+        )
+        # Also modify this other confusing sentence
+        modified_prompt = modified_prompt.replace(
+            "Should you decide to return the function call(s).", ""
+        )
         return PromptModification(
-            original=system_message.content, modified=modified_prompt["content"]
+            original=system_message.content, modified=modified_prompt
         )
     except Exception as e:
         print(f"Error modifying prompt: {e}")
@@ -127,9 +140,7 @@ async def modify_system_prompts(
     for record, prompt_mod in zip(records, prompt_mods):
         messages = record.input
         original_prompts.append(prompt_mod.original)
-        modified_prompts.append(
-            prompt_mod.modified["content"] if prompt_mod.modified else None
-        )
+        modified_prompts.append(prompt_mod.modified)
 
         if prompt_mod.modified is None:
             print(f"Warning: Failed to modify prompt for record {record.id}")
@@ -141,9 +152,7 @@ async def modify_system_prompts(
                 for msg in messages
                 if not isinstance(msg, str) and msg.role != "system"
             ]
-            new_messages.insert(
-                0, Message(role="system", content=prompt_mod.modified["content"])
-            )
+            new_messages.insert(0, Message(role="system", content=prompt_mod.modified))
             modified_inputs.append(new_messages)
 
         # Copy other fields
@@ -318,7 +327,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "mts_test"
+    dataset_name = "toolace"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -357,19 +366,23 @@ if __name__ == "__main__":
         dataset = load_mts_raw_test_dataset()
         create_test_dataset(dataset, "mts", recompute=True, remove_dev_samples=False)
 
-    if dataset_name == "toolace":
-        dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
+    if dataset_name == "toolace_single":
+        dataset = LabelledDataset.load_from(EVALS_DIR / "toolace_samples.csv")
 
         # Test with a single sample first
-        # sample = dataset.sample(1)
-        # record = sample.to_records()[0]
-        # prompt_mod = asyncio.run(modify_single_system_prompt(record.input))
+        sample = dataset.sample(1)
+        record = sample.to_records()[0]
+        prompt_mod = asyncio.run(modify_single_system_prompt(record.input))  # type: ignore
 
-        # print("\nOriginal system prompt:")
-        # print(prompt_mod.original)
+        print("\nOriginal system prompt:")
+        print(prompt_mod.original)
 
-        # print("\nModified system prompt:")
-        # print(prompt_mod.modified)
+        print("\nModified system prompt:")
+        print(prompt_mod.modified)
+
+    if dataset_name == "toolace":
+        # dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["toolace"])
+        dataset = LabelledDataset.load_from(EVALS_DIR / "toolace_samples.csv")
 
         # If the single sample looks good, process the whole dataset
         output_path = DATA_DIR / "temp/toolace_modified.jsonl"
@@ -383,8 +396,8 @@ if __name__ == "__main__":
 
         # Now relabel the dataset and create a balanced subset
         print("\nRelabeling dataset...")
-        labelled_output_path = DATA_DIR / "temp/toolace_raw.jsonl"
-        balanced_output_path = DATA_DIR / "temp/toolace_balanced.jsonl"
+        labelled_output_path = DATA_DIR / "temp/toolace_raw_apr_22.jsonl"
+        balanced_output_path = DATA_DIR / "temp/toolace_balanced_apr_22.jsonl"
         create_eval_dataset(
             modified_dataset,
             raw_output_path=labelled_output_path,
