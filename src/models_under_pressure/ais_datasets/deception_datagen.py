@@ -225,7 +225,9 @@ def label_deception_dataset() -> LabelledDataset:
 
 def main():
     model_name = (
-        DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
+        DEFAULT_GPU_MODEL
+        if "cuda" in global_settings.LLM_DEVICE
+        else DEFAULT_OTHER_MODEL
     )
 
     tokenizer = AutoTokenizer.from_pretrained(

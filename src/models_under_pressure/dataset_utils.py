@@ -177,9 +177,9 @@ def load_dataset(
         model = LLMModel.load(model_name)
         activations = model.get_batched_activations(dataset, layer=layer)
         dataset = dataset.assign(
-            activations=activations._activations,
-            attention_mask=activations._attention_mask,
-            input_ids=activations._input_ids,
+            activations=activations.activations,
+            attention_mask=activations.attention_mask,
+            input_ids=activations.input_ids,
         )
 
     return dataset

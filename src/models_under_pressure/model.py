@@ -190,7 +190,7 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
-        device: str = global_settings.DEVICE,
+        device: str = global_settings.LLM_DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
