@@ -136,25 +136,23 @@ class PytorchLinearClassifier:
             if validation_activations is not None and validation_y is not None:
                 self.model.eval()
                 with torch.no_grad():
-                    # Get probabilities for validation data
-                    val_logits = self._logits(validation_activations)
-
+                    # Get probabilities for validation data.
                     # Clip extreme logit values to prevent NaN in loss computation
                     # Using values that are safe for bfloat16
-                    val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
-
-                    val_logits = einops.rearrange(val_logits, "b s 1 -> (b s)")
+                    val_logits = (
+                        self.logits(validation_activations, per_token=True)
+                        .clamp(-10.0, 10.0)
+                        .view(-1)
+                    )
 
                     val_loss = criterion(val_logits, validation_y).item()
 
-                    # Check for NaN loss
+                    # Check for NaN loss - if it's NaN, set loss to +inf to avoid selecting this model
                     if np.isnan(val_loss):
                         print("Warning: NaN validation loss detected")
                         print(f"{val_logits.shape=}")
                         print(f"{validation_y.shape=}")
-                        val_loss = float(
-                            "inf"
-                        )  # Set to infinity to avoid selecting this model
+                        val_loss = float("inf")
 
                     print(f"Validation loss: {val_loss:.4f}")
 
@@ -170,21 +168,18 @@ class PytorchLinearClassifier:
 
         return self
 
-    def predict(self, activations: Activation) -> np.ndarray:
-        """
-        Predict the per entry labels of the inputs.
-        """
-        return self.probs(activations) > 0.5
-
-    def probs(self, activations: Activation, per_token: bool = False) -> np.ndarray:
+    def probs(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
         """
         Predict the probabilities of the activations.
 
         Outputs are expected in the shape (batch_size,)
         """
-        return self._probs(activations, per_token).detach().cpu().float().numpy()
+        return self.logits(activations, per_token=per_token).sigmoid()
 
-    def logits(self, activations: Activation, per_token: bool = False) -> np.ndarray:
+    @torch.no_grad()
+    def logits(
+        self, activations: Activation, per_token: bool = False
+    ) -> Float[torch.Tensor, " batch_size seq_len"]:
         """
         Predict the logits of the activations.
 
@@ -194,19 +189,6 @@ class PytorchLinearClassifier:
         If per_token is False, the logits are returned in the shape (batch_size,),
         with the aggregated logit for each sample in the batch.
         """
-        return self._logits(activations, per_token).detach().cpu().float().numpy()
-
-    @torch.no_grad()
-    def _probs(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
-        return self._logits(activations, per_token=per_token).sigmoid()
-
-    @torch.no_grad()
-    def _logits(
-        self, activations: Activation, per_token: bool = False
-    ) -> Float[torch.Tensor, " batch_size seq_len"]:
-        if self.model is None:
-            raise ValueError("Model not trained")
-
         batch_size, seq_len, _ = activations.shape
 
         # Process the activations into a per token dataset to be passed through the model
@@ -377,11 +359,9 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 self.model.eval()
                 with torch.no_grad():
                     # Get probabilities for validation data
-                    val_logits = self._logits(validation_activations)
-
                     # Clip extreme logit values to prevent NaN in loss computation
                     # Using values that are safe for bfloat16
-                    val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
+                    val_logits = self.logits(validation_activations).clamp(-10.0, 10.0)
 
                     val_loss = criterion(val_logits.squeeze(), validation_y).item()
 
@@ -405,18 +385,11 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
         return self
 
-    def probs(self, activations: Activation) -> np.ndarray:
-        return self._probs(activations).detach().cpu().float().numpy()
-
-    def logits(self, activations: Activation) -> np.ndarray:
-        return self._logits(activations).detach().cpu().float().numpy()
+    def probs(self, activations: Activation) -> torch.Tensor:
+        return self.logits(activations).sigmoid()
 
     @torch.no_grad()
-    def _probs(self, activations: Activation) -> torch.Tensor:
-        return self._logits(activations).sigmoid()
-
-    @torch.no_grad()
-    def _logits(self, activations: Activation) -> torch.Tensor:
+    def logits(self, activations: Activation) -> torch.Tensor:
         if self.model is None:
             raise ValueError("Model not trained")
 
@@ -694,11 +667,11 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     self.model.eval()
                     with torch.no_grad():
                         # Get probabilities for validation data
-                        val_logits = self._logits(validation_activations)
-
                         # Clip extreme logit values to prevent NaN in loss computation
                         # Using values that are safe for bfloat16
-                        val_logits = torch.clamp(val_logits, min=-10.0, max=10.0)
+                        val_logits = self.logits(validation_activations).clamp(
+                            -10.0, 10.0
+                        )
 
                         # Check for NaN values in logits
                         if torch.isnan(val_logits).any():

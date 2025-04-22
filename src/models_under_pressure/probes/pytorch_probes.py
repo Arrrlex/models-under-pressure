@@ -61,7 +61,7 @@ class PytorchProbe(Probe):
         """
 
         activations_obj = Activation.from_dataset(dataset)
-        labels = self._classifier.predict(activations_obj)
+        labels = self._classifier.probs(activations_obj) > 0.5
         return [Label.from_int(label) for label in labels]
 
     def predict_proba(
