@@ -431,7 +431,11 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
 
-        return self.model(mean_acts)
+        mean_acts = mean_acts.to(self.device).to(self.dtype)
+
+        logits = self.model(mean_acts)
+
+        return einops.rearrange(logits, "b 1 -> b")
 
     def create_model(self, embedding_dim: int) -> nn.Module:
         """

@@ -1,6 +1,6 @@
 name: pytorch_per_entry_probe_mean
 hyperparams:
-  batch_size: 16
+  batch_size: 8192
   epochs: 50
   optimizer_args:
     lr: 1e-2
