@@ -218,10 +218,12 @@ def add_system_prompt_to_dataset(
     return modified_dataset
 
 
-def modify_anthropic_dataset(
+def modify_dataset(
     dataset: LabelledDataset | Dataset,
+    dataset_name: str,
     system_prompt: str,
     test: bool = False,
+    batch_size: int = 200,
     date_str: str = "apr_16",
 ) -> None:
     modified_dataset = add_system_prompt_to_dataset(dataset, system_prompt)
@@ -232,13 +234,33 @@ def modify_anthropic_dataset(
     ]
     for field in fields_to_delete:
         del modified_dataset.other_fields[field]  # type: ignore
-    create_eval_dataset(
-        modified_dataset,  # type: ignore
-        raw_output_path=DATA_DIR
-        / f"temp/anthropic_{'test_' if test else ''}raw_{date_str}.jsonl",
-        balanced_output_path=DATA_DIR
-        / f"temp/anthropic_{'test_' if test else ''}balanced_{date_str}.jsonl",
+        # Stuff often breaks but create_eval_dataset skips previously labelled samples
+
+    raw_output_path = (
+        DATA_DIR / f"temp/{dataset_name}_{'test_' if test else ''}raw_{date_str}.jsonl"
     )
+    balanced_output_path = (
+        DATA_DIR
+        / f"temp/{dataset_name}_{'test_' if test else ''}balanced_{date_str}.jsonl"
+    )
+    for batch_start in range(0, len(modified_dataset), batch_size):
+        batch_end = batch_start + batch_size
+        batch = modified_dataset[batch_start:batch_end]
+        print(f"Processing batch {batch_start} to {batch_end}")
+        create_eval_dataset(
+            batch,  # type: ignore
+            raw_output_path=raw_output_path,
+            balanced_output_path=balanced_output_path,
+        )
+
+
+def modify_anthropic_dataset(
+    dataset: LabelledDataset | Dataset,
+    system_prompt: str,
+    test: bool = False,
+    date_str: str = "apr_16",
+) -> None:
+    modify_dataset(dataset, "anthropic", system_prompt, test, date_str)
 
 
 def modify_mt_dataset(
@@ -352,6 +374,14 @@ if __name__ == "__main__":
         dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["anthropic"])
         modify_anthropic_dataset(dataset, system_prompt, test=True, date_str="apr_16")
 
+    if dataset_name == "redteaming":
+        system_prompt = """You are an LLM as part of a general purpose chatbot."""
+
+        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["redteaming"])
+        modify_dataset(
+            dataset, "redteaming", system_prompt, test=True, date_str="apr_22"
+        )
+
     if dataset_name == "mts":
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["mts"])
 
@@ -417,8 +447,8 @@ if __name__ == "__main__":
         dataset = LabelledDataset.load_from(TEST_EVALS_DIR / "toolace_samples.csv")
 
         output_path = DATA_DIR / "temp/toolace_test_modified.jsonl"
-        modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
-        # modified_dataset = Dataset.load_from(output_path)
+        # modified_dataset = asyncio.run(modify_system_prompts(dataset, output_path))
+        modified_dataset = Dataset.load_from(output_path)
 
         # Print a sample from the modified dataset
         random_item = modified_dataset.sample(1)
