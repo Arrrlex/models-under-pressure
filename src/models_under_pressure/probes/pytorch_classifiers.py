@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Self
 
 import einops
 import numpy as np
@@ -10,9 +10,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings
-from models_under_pressure.interfaces.activations import (
-    Activation,
-)
+from models_under_pressure.interfaces.activations import Activation
 
 
 def masked_mean(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -36,9 +34,12 @@ class PytorchLinearClassifier:
     dtype: torch.dtype = global_settings.DTYPE
 
     def setup_for_training(
-        self, activations: Activation
+        self, activations: Activation, **model_kwargs: Any
     ) -> tuple[nn.Module, Activation]:
-        self.model = self.create_model(activations.embed_dim)
+        """
+        Prepare the model and activations for training.
+        """
+        self.model = self.create_model(activations.embed_dim, **model_kwargs)
         self.model = self.model.to(self.device).to(self.dtype)
         activations = activations.to(self.device, self.dtype)
         return self.model, activations
@@ -294,9 +295,9 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
     def train(
         self,
         activations: Activation,
-        y: Float[np.ndarray, " batch_size"],
+        y: Float[torch.Tensor, " batch_size"],
         validation_activations: Activation | None = None,
-        validation_y: Float[np.ndarray, " batch_size"] | None = None,
+        validation_y: Float[torch.Tensor, " batch_size"] | None = None,
         print_gradient_norm: bool = False,
     ) -> Self:
         """
@@ -312,10 +313,8 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         Returns:
             Self - The trained classifier.
         """
-        per_entry_dataset = activations.to_dataset(y)
-
-        if self.model is None:
-            self.model = self.create_model(activations.embed_dim)
+        self.model, activations = self.setup_for_training(activations)
+        dataset = activations.to_dataset(y)
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -325,7 +324,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         criterion = nn.BCEWithLogitsLoss()
 
         dataloader = DataLoader(
-            per_entry_dataset,
+            dataset,
             batch_size=self.training_args["batch_size"],
             shuffle=True,
         )
@@ -342,14 +341,14 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
             for batch_idx, batch in enumerate(pbar):
-                acts, mask_batch, _, y = batch
+                batch_acts, batch_mask, _, batch_y = batch
 
-                mean_acts = masked_mean(acts, mask_batch)
+                mean_acts = masked_mean(batch_acts, batch_mask)
 
                 # Standard training step for AdamW
                 optimizer.zero_grad()
                 outputs = self.model(mean_acts)
-                loss = criterion(outputs.squeeze(), y)
+                loss = criterion(outputs.squeeze(), batch_y)
                 loss.backward()
 
                 if print_gradient_norm:
@@ -606,15 +605,12 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         Returns:
             Self
         """
+        self.model, activations = self.setup_for_training(
+            activations,
+            attn_hidden_dim=self.training_args["attn_hidden_dim"],
+            probe_architecture=self.training_args["probe_architecture"],
+        )
         dataset = activations.to_dataset(y)
-
-        # Create a linear model with the correct embedding dimension
-        if self.model is None:
-            self.model = self.create_model(
-                activations.embed_dim,
-                attn_hidden_dim=self.training_args["attn_hidden_dim"],
-                probe_architecture=self.training_args["probe_architecture"],
-            )
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -650,9 +646,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 pbar = tqdm(
                     dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
                 )
-                for batch_idx, batch in enumerate(pbar):
-                    batch_acts, batch_mask, _, batch_y = batch
-
+                for batch_idx, (batch_acts, batch_mask, _, batch_y) in enumerate(pbar):
                     # Standard training step for AdamW
                     optimizer.zero_grad()
                     outputs = self.model(batch_acts)  # batch_size, seq_len
@@ -778,5 +772,4 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 torch.nn.init.xavier_uniform_(layer.key_linear.weight)
                 torch.nn.init.xavier_uniform_(layer.value_linear.weight)
 
-        model = model.to(self.device).to(self.dtype)
         return model
