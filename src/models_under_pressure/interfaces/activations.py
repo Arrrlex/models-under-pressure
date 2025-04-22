@@ -90,6 +90,13 @@ class Activation:
         self.shape = self.activations.shape
         self.batch_size, self.seq_len, self.embed_dim = self.shape
 
+    def to(self, device: torch.device | str, dtype: torch.dtype) -> "Activation":
+        return Activation(
+            activations=self.activations.to(device).to(dtype),
+            attention_mask=self.attention_mask.to(device).to(dtype),
+            input_ids=self.input_ids.to(device).to(dtype),
+        )
+
     def per_token(self) -> "PerTokenActivation":
         activations = einops.rearrange(self.activations, "b s e -> (b s) e")
         attention_mask = einops.rearrange(self.attention_mask, "b s -> (b s)")

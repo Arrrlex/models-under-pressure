@@ -15,12 +15,11 @@ from models_under_pressure.interfaces.activations import (
 )
 
 
-def masked_mean(activations: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def masked_mean(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """
     Compute the mean of the tensor x, ignoring the elements where the mask is 0.
     """
-    token_counts = torch.clamp(mask.sum(dim=1, keepdim=True), min=1)
-    return activations.sum(dim=1) / token_counts
+    return x.sum(dim=1) / mask.sum(dim=1, keepdim=True).clamp(min=1)
 
 
 @dataclass
@@ -35,6 +34,14 @@ class PytorchLinearClassifier:
     best_epoch: int | None = None
     device: str = global_settings.DEVICE
     dtype: torch.dtype = global_settings.DTYPE
+
+    def setup_for_training(
+        self, activations: Activation
+    ) -> tuple[nn.Module, Activation]:
+        self.model = self.create_model(activations.embed_dim)
+        self.model = self.model.to(self.device).to(self.dtype)
+        activations = activations.to(self.device, self.dtype)
+        return self.model, activations
 
     def train(
         self,
@@ -56,9 +63,7 @@ class PytorchLinearClassifier:
         Returns:
             Self - The trained classifier.
         """
-        # Create a linear model
-        if self.model is None:
-            self.model = self.create_model(activations.embed_dim)
+        self.model, activations = self.setup_for_training(activations)
 
         # Initialize optimizer
         optimizer = torch.optim.AdamW(
@@ -224,13 +229,9 @@ class PytorchLinearClassifier:
         """
 
         # Create a linear model over the embedding dimension
-        return (
-            nn.Sequential(
-                nn.BatchNorm1d(embed_dim),
-                nn.Linear(embed_dim, 1, bias=False),
-            )
-            .to(self.device)
-            .to(self.dtype)
+        return nn.Sequential(
+            nn.BatchNorm1d(embed_dim),
+            nn.Linear(embed_dim, 1, bias=False),
         )
 
 
@@ -239,19 +240,16 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
     use_lda: bool = False
 
     def create_model(self, embed_dim: int) -> nn.Module:
-        model = nn.Linear(embed_dim, 1, bias=False)
-        model = model.to(self.device).to(self.dtype)
-        return model
+        return nn.Linear(embed_dim, 1, bias=False)
 
     def train(
         self,
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        acts = activations.activations.to(self.device).to(self.dtype)
-        mask = activations.attention_mask.to(self.device).to(self.dtype)
+        self.model, activations = self.setup_for_training(activations)
 
-        mean_acts = masked_mean(acts, mask)
+        mean_acts = masked_mean(activations.activations, activations.attention_mask)
 
         # Separate positive and negative examples
         pos_acts = mean_acts[y == 1]
@@ -262,7 +260,7 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
 
         if self.use_lda:
             centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
-            covariance = centered_data.t() @ centered_data / acts.shape[0]
+            covariance = centered_data.t() @ centered_data / activations.batch_size
 
             inv = torch.linalg.pinv(covariance, hermitian=True, atol=1e-3)
             param = inv @ direction
@@ -443,7 +441,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         # todo: check if we actually want this
         torch.nn.init.zeros_(model[1].weight)  # type: ignore
 
-        return model.to(self.device).to(self.dtype)
+        return model
 
 
 class AttentionLayer(nn.Module):
