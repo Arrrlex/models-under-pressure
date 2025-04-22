@@ -34,13 +34,6 @@ class ActivationDataset(TorchDataset):
         self.input_ids = input_ids
         self.y = y
 
-        self.set_dtype = self.activations.dtype != global_settings.DTYPE
-        self.set_device = self.activations.device != global_settings.DEVICE
-
-        # We've already put y on the correct device and dtype
-        assert y.device == global_settings.DEVICE
-        assert y.dtype == global_settings.DTYPE
-
     def __len__(self) -> int:
         return self.activations.shape[0]
 
@@ -51,22 +44,15 @@ class ActivationDataset(TorchDataset):
         Return the masked activations, attention mask, input ids and label.
         """
 
-        act = self.activations[index]
-        attn = self.attention_mask[index]
-        ids = self.input_ids[index]
-        y = self.y[index]
-
-        if self.set_device:
-            act = act.to(global_settings.DEVICE)
-            attn = attn.to(global_settings.DEVICE)
-            ids = ids.to(global_settings.DEVICE)
-
-        if self.set_dtype:
-            act = act.to(global_settings.DTYPE)
-            attn = attn.to(global_settings.DTYPE)
-            ids = ids.to(global_settings.DTYPE)
-
-        return act, attn, ids, y
+        return tuple(
+            item.to(global_settings.DEVICE).to(global_settings.DTYPE)
+            for item in [
+                self.activations[index],
+                self.attention_mask[index],
+                self.input_ids[index],
+                self.y[index],
+            ]
+        )  # type: ignore
 
 
 @dataclass
