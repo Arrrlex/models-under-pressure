@@ -17,9 +17,9 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 
 class GlobalSettings(BaseSettings):
-    LLM_DEVICE: torch.device | str = "auto"
-    DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    DTYPE: torch.dtype = torch.float32
+    LLM_DEVICE: str = "auto"  # Device for the LLM model
+    DEVICE: str = "cuda"  # Device for activations, probes, etc.
+    DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
     BATCH_SIZE: int = 4
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
@@ -63,7 +63,7 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 
 # Training datasets
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "original_doubled_unconfounded"
 
 # Evals files
 USE_BALANCED_DATASETS = True
@@ -239,7 +239,7 @@ class RunConfig:
     """
 
     num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 150
+    num_situations_to_sample: int = 300
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
@@ -344,7 +344,11 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
-    model_name: str
+    model_name: str = (
+        DEFAULT_GPU_MODEL
+        if "cuda" in global_settings.LLM_DEVICE
+        else DEFAULT_OTHER_MODEL
+    )
 
     @property
     def output_filename(self) -> str:
@@ -381,6 +385,11 @@ class SafetyRunConfig:
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
+    model_name: str = (
+        DEFAULT_GPU_MODEL
+        if "cuda" in global_settings.LLM_DEVICE
+        else DEFAULT_OTHER_MODEL
+    )
 
     @property
     def output_filename(self) -> str:

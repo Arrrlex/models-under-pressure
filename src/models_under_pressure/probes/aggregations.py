@@ -4,7 +4,12 @@ from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
 class Last:
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         return logits[:, -1]
 
 
@@ -57,7 +62,12 @@ class MaxOfSentenceMeans:
 
         return boundaries
 
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Compute the maximum of mean logits per sentence.
 
@@ -92,7 +102,12 @@ class MeanOfTopK:
     def __init__(self, k: int = 5):
         self.k = k
 
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         # Calculate mean of top k values
         top_k_values = torch.topk(logits, k=self.k, dim=1).values
         mean_top_k = torch.mean(top_k_values, dim=1)
@@ -104,7 +119,12 @@ class MaxOfRollingMean:
     def __init__(self, window_size: int = 5):
         self.window_size = window_size
 
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         batch_size, seq_len = logits.shape
 
         # Calculate rolling mean using unfold
@@ -123,15 +143,31 @@ class MaxOfRollingMean:
 
 
 class Mean:
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
-        return einops.reduce(logits, "batch seq -> batch", "mean")
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        tokens_length = attention_mask.sum(dim=1).clamp(min=1)
+        return logits.sum(dim=1) / tokens_length
 
 
 class Max:
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         return einops.reduce(logits, "batch seq -> batch", "max")
 
 
 class Min:
-    def __call__(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+    def __call__(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         return einops.reduce(logits, "batch seq -> batch", "min")

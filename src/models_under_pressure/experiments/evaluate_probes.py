@@ -129,7 +129,7 @@ def evaluate_probe_and_save_results(
         )
 
     y_true = eval_dataset.labels_numpy()
-    y_pred = np.array(per_entry_probe_scores)
+    y_pred = per_entry_probe_scores
 
     # Calculate the metrics for the dataset:
     metrics = {
@@ -139,7 +139,7 @@ def evaluate_probe_and_save_results(
         "fpr": float(fpr),
     }
 
-    return per_entry_probe_scores, DatasetResults(layer=layer, metrics=metrics)
+    return per_entry_probe_scores.tolist(), DatasetResults(layer=layer, metrics=metrics)
 
 
 def get_coefs(probe: Probe) -> list[float]:

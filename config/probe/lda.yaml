@@ -1,2 +1,3 @@
 name: lda
-hyperparams: {}
+hyperparams:
+  batch_size: 16384

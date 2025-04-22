@@ -39,6 +39,16 @@ load_dotenv()
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 
 
+def as_numpy(x: torch.Tensor) -> np.ndarray:
+    """
+    Convert a torch.Tensor to a numpy array.
+    """
+    if x.dtype in [torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]:
+        return x.detach().cpu().int().numpy()
+    else:
+        return x.detach().cpu().float().numpy()
+
+
 class AttrDict(dict):
     def __init__(self, dict_: dict[str, Any]):
         super().__init__(**dict_)

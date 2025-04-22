@@ -9,90 +9,58 @@ from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.dataset import BaseDataset
 
 
-class ActivationPerTokenDataset(TorchDataset):
-    """
-    A pytorch Dataset class that contains the activations structured as a flattened per-token dataset.
-    Each activation and attention mask is batch_size * seq_len long.
-    """
-
-    def __init__(
-        self,
-        activations: "Activation",
-        y: Float[torch.Tensor, " batch_size"],
-    ):
-        self.activations = einops.rearrange(activations.activations, "b s e -> (b s) e")
-        self.attention_mask = einops.rearrange(
-            activations.attention_mask, "b s -> (b s)"
-        )
-        self.input_ids = einops.rearrange(activations.input_ids, "b s -> (b s)")
-        self.y = einops.repeat(y, "b -> (b s)", s=activations.seq_len)
-
-    def __len__(self) -> int:
-        return self.activations.shape[0]
-
-    def __getitem__(
-        self, index: int
-    ) -> tuple[
-        Float[torch.Tensor, " embed_dim"],
-        Float[torch.Tensor, ""],
-        Float[torch.Tensor, ""],
-        Float[torch.Tensor, ""],
-    ]:
-        """
-        Returns the masked activations, attention mask, input id and label.
-        """
-
-        # return (
-        #     self.activations[index].to(global_settings.DEVICE),
-        #     self.attention_mask[index].to(global_settings.DEVICE),
-        #     self.input_ids[index].to(global_settings.DEVICE),
-        #     self.y[index].to(global_settings.DEVICE),
-        # )
-        return (
-            self.activations[index],
-            self.attention_mask[index],
-            self.input_ids[index],
-            self.y[index],
-        )
-
-
 class ActivationDataset(TorchDataset):
     """
     A pytorch Dataset class that contains the activations structured as a batch-wise dataset.
-    Each activation and attention mask is batch_size, seq_len, (embed_dim).
+
+    This dataset can be either
+    - per-token (activations shape: (b, s, e), attention_mask shape: (b, s))
+    - or per-entry (activations shape: (b * s, e), attention_mask shape: (b * s))
+
+    where b is the batch size, s is the sequence length, and e is the embedding dimension.
     """
 
     def __init__(
         self,
-        activations: "Activation",
-        y: Float[torch.Tensor, " batch_size"],
+        activations: torch.Tensor,
+        attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+        y: torch.Tensor,
+        device: torch.device | str = global_settings.DEVICE,
+        dtype: torch.dtype = global_settings.DTYPE,
     ):
-        self.activations = activations.activations
-        self.attention_mask = activations.attention_mask
-        self.input_ids = activations.input_ids
+        self.activations = activations
+        self.attention_mask = attention_mask
+        self.input_ids = input_ids
         self.y = y
+        self.device = device
+        self.dtype = dtype
 
     def __len__(self) -> int:
         return self.activations.shape[0]
 
     def __getitem__(
         self, index: int
-    ) -> tuple[
-        Float[torch.Tensor, "seq_len embed_dim"],
-        Float[torch.Tensor, " seq_len"],
-        Float[torch.Tensor, " seq_len"],
-        Float[torch.Tensor, ""],
-    ]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Return the masked activations, attention mask, input ids and label.
         """
+        return self.__getitems__([index])[0]
 
-        return (
-            self.activations[index].to(global_settings.DEVICE),
-            self.attention_mask[index].to(global_settings.DEVICE),
-            self.input_ids[index].to(global_settings.DEVICE),
-            self.y[index].to(global_settings.DEVICE),
-        )
+    def __getitems__(
+        self, indices: list[int]
+    ) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
+        # Get the tensors for the batch indices
+        batch_acts = self.activations[indices].to(self.device).to(self.dtype)
+        batch_mask = self.attention_mask[indices].to(self.device).to(self.dtype)
+        batch_input_ids = self.input_ids[indices].to(self.device).to(self.dtype)
+        batch_y = self.y[indices].to(self.device).to(self.dtype)
+
+        # Return as a list of tuples
+        return [
+            (batch_acts[i], batch_mask[i], batch_input_ids[i], batch_y[i])
+            for i in range(len(indices))
+        ]
 
 
 @dataclass
@@ -111,22 +79,22 @@ class Activation:
 
     @property
     def shape(self) -> tuple[int, int, int]:
-        return self.activations.shape  # type: ignore
+        return self.activations.shape
 
     @property
     def batch_size(self) -> int:
-        return self.shape[0]  # type: ignore
+        return self.activations.shape[0]
 
     @property
     def seq_len(self) -> int:
-        return self.shape[1]  # type: ignore
+        return self.activations.shape[1]
 
     @property
     def embed_dim(self) -> int:
-        return self.shape[2]  # type: ignore
+        return self.activations.shape[2]
 
     def __post_init__(self):
-        """Validate shapes after initialization."""
+        """Validate shapes after initialization, applies attention mask to activations."""
         shape = (self.batch_size, self.seq_len)
         assert (
             self.attention_mask.shape == shape
@@ -137,8 +105,46 @@ class Activation:
 
         self.activations *= self.attention_mask[:, :, None]
 
-    def to_dataset(
-        self, y: Float[torch.Tensor, " batch_size"], per_token: bool = False
-    ) -> "ActivationDataset | ActivationPerTokenDataset":
-        dataset_type = ActivationPerTokenDataset if per_token else ActivationDataset
-        return dataset_type(activations=self, y=y)
+    def to(self, device: torch.device | str, dtype: torch.dtype) -> "Activation":
+        return Activation(
+            activations=self.activations.to(device).to(dtype),
+            attention_mask=self.attention_mask.to(device).to(dtype),
+            input_ids=self.input_ids.to(device).to(dtype),
+        )
+
+    def per_token(self) -> "PerTokenActivation":
+        activations = einops.rearrange(self.activations, "b s e -> (b s) e")
+        attention_mask = einops.rearrange(self.attention_mask, "b s -> (b s)")
+        input_ids = einops.rearrange(self.input_ids, "b s -> (b s)")
+        return PerTokenActivation(
+            activations=activations, attention_mask=attention_mask, input_ids=input_ids
+        )
+
+    def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
+        return ActivationDataset(
+            activations=self.activations,
+            attention_mask=self.attention_mask,
+            input_ids=self.input_ids,
+            y=y,
+        )
+
+
+@dataclass
+class PerTokenActivation:
+    activations: Float[torch.Tensor, "tokens embed_dim"]
+    attention_mask: Float[torch.Tensor, " tokens"]
+    input_ids: Float[torch.Tensor, " tokens"]
+
+    def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
+        tokens = self.activations.shape[0]
+        seq_len, rem = divmod(tokens, y.shape[0])
+        assert (
+            rem == 0
+        ), f"Batch size {y.shape[0]} does not divide the number of tokens {tokens}"
+        y = einops.repeat(y, "b -> (b s)", s=seq_len)
+        return ActivationDataset(
+            activations=self.activations,
+            attention_mask=self.attention_mask,
+            input_ids=self.input_ids,
+            y=y,
+        )

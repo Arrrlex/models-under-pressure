@@ -183,8 +183,8 @@ class LLMModel:
     """
 
     name: str
-    llm_device: torch.device
-    acts_device: torch.device
+    llm_device: torch.device | str
+    acts_device: torch.device | str
     dtype: torch.dtype
     batch_size: int
     tokenize_kwargs: dict[str, Any]
@@ -195,8 +195,8 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
-        llm_device: torch.device = global_settings.LLM_DEVICE,
-        acts_device: torch.device = global_settings.DEVICE,
+        llm_device: torch.device | str = global_settings.LLM_DEVICE,
+        acts_device: torch.device | str = global_settings.DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,

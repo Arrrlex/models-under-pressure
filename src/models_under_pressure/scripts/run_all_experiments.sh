@@ -12,10 +12,14 @@ for probe in mean_of_top_k; do
     run-exp +experiment=evaluate_probe probe=$probe ++probe.hyperparams.device=cuda
 done
 
-# # Compare all models (scaling)
-# for model in llama-1b llama-3b llama-8b llama-70b gemma-1b gemma-12b gemma-27b; do
-#     run-exp +experiment=evaluate_probe model=$model
-# done
+# Exit script
+exit 0
+
+
+# Compare all models (scaling)
+for model in llama-1b llama-3b llama-8b llama-70b gemma-1b gemma-12b gemma-27b; do
+    run-exp +experiment=evaluate_probe model=$model
+done
 
 # # Cross-validation
 # run-exp +experiment=cv model=llama-1b

@@ -1,0 +1,7 @@
+name: pytorch_per_entry_probe_mean
+hyperparams:
+  batch_size: 16384
+  epochs: 50
+  optimizer_args:
+    lr: 1e-2
+    weight_decay: 0.01

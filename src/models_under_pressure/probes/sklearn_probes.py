@@ -6,7 +6,6 @@ from jaxtyping import Float
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-import torch
 
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
@@ -18,6 +17,7 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.config import global_settings
 from models_under_pressure.probes.base import Classifier, Probe
+from models_under_pressure.utils import as_numpy
 
 
 @dataclass
@@ -138,21 +138,21 @@ def mean_acts(
 ) -> Float[np.ndarray, "batch_size embed_dim"]:
     # Initialize accumulators for sum and token counts
     batch_size_total, seq_len, embed_dim = X.activations.shape
-    sum_acts = torch.zeros((batch_size_total, embed_dim))
-    token_counts = torch.zeros((batch_size_total, 1))
+    sum_acts = np.zeros((batch_size_total, embed_dim))
+    token_counts = np.zeros((batch_size_total, 1))
 
     # Process in batches
     for i in range(0, batch_size_total, batch_size):
         end_idx = min(i + batch_size, batch_size_total)
 
         # Get current batch
-        batch_acts = X.activations[i:end_idx].float()
-        batch_mask = X.attention_mask[i:end_idx]
+        batch_acts = as_numpy(X.activations[i:end_idx])
+        batch_mask = as_numpy(X.attention_mask[i:end_idx])
 
         # Process current batch in-place
         batch_acts *= batch_mask[:, :, None]  # In-place multiplication
-        sum_acts[i:end_idx] = batch_acts.sum(dim=1)
-        token_counts[i:end_idx] = batch_mask.sum(dim=1, keepdim=True)
+        sum_acts[i:end_idx] = batch_acts.sum(axis=1)
+        token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
 
     # Add small epsilon to avoid division by zero
     token_counts = token_counts + 1e-10

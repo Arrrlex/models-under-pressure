@@ -1,2 +1,3 @@
 name: difference_of_means
-hyperparams: {}
+hyperparams:
+  batch_size: 16384
