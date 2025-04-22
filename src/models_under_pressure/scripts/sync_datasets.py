@@ -71,7 +71,7 @@ def upload_datasets():
 
 def sync_all_datasets():
     """Sync all datasets between R2 storage and local storage."""
-    #breakpoint()
+    # breakpoint()
     download_all_datasets()
     upload_datasets()
 

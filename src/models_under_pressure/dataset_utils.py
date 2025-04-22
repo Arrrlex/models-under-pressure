@@ -207,6 +207,7 @@ def load_dataset(
 
     return dataset
 
+
 class LazyLoader:
     def __init__(
         self, loaders: dict[str, Callable[..., LabelledDataset]], **kwargs: Any
