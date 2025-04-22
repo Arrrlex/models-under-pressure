@@ -189,17 +189,46 @@ class PytorchLinearClassifier:
         If per_token is False, the logits are returned in the shape (batch_size,),
         with the aggregated logit for each sample in the batch.
         """
+        if self.model is None:
+            raise ValueError("Model not trained")
+
         batch_size, seq_len, _ = activations.shape
 
-        # Process the activations into a per token dataset to be passed through the model
-        flattened_activations = activations.per_token()
+        # Process the activations into a per token dataset        # Create dummy labels for dataset creation
+        dummy_labels = torch.empty(batch_size, device=self.device)
+        dataset = activations.per_token().to_dataset(dummy_labels)
 
-        # Switch batch norm to eval mode:
+        # Create dataloader for batching
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.training_args["batch_size"],
+            shuffle=False,  # No need to shuffle during inference
+        )
+
+        # Switch batch norm to eval mode
         self.model.eval()
 
-        flattened_logits = self.model(flattened_activations.activations)
-        flattened_logits *= flattened_activations.attention_mask[:, None]
+        # Initialize output tensor
+        flattened_logits = torch.zeros(
+            (batch_size * seq_len, 1),
+            device="cpu",
+            dtype=self.dtype,
+        )
 
+        # Process in batches
+        start_idx = 0
+        for batch_acts, batch_mask, _, _ in tqdm(dataloader, desc="Processing batches"):
+            batch_size = len(batch_acts)
+
+            # Get logits for this batch
+            batch_logits = self.model(batch_acts)
+            batch_logits *= batch_mask[:, None]
+
+            # Store in output tensor
+            flattened_logits[start_idx : start_idx + batch_size] = batch_logits
+            start_idx += batch_size
+
+        # Reshape to (batch_size, seq_len)
         logits = einops.rearrange(
             flattened_logits, "(b s) 1 -> b s", b=batch_size, s=seq_len
         )
@@ -390,9 +419,6 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
     @torch.no_grad()
     def logits(self, activations: Activation) -> torch.Tensor:
-        if self.model is None:
-            raise ValueError("Model not trained")
-
         self.model.eval()
 
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
