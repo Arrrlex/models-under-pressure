@@ -1,8 +1,8 @@
 name: mean_of_top_k
 hyperparams:
-  batch_size: 256
+  batch_size: 8192
   epochs: 50
   optimizer_args:
     lr: 1e-3
     weight_decay: 0.01
-  k: 10
+  k: 100

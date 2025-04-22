@@ -306,14 +306,16 @@ class PytorchLinearClassifier:
         """
 
         # Create a linear model over the embedding dimension
-        return (
-            nn.Sequential(
-                nn.BatchNorm1d(embedding_dim),
-                nn.Linear(embedding_dim, 1, bias=False),
-            )
-            .to(self.device)
-            .to(self.data_type)
+        model = nn.Sequential(
+            nn.BatchNorm1d(embedding_dim),
+            nn.Linear(embedding_dim, 1, bias=False),
         )
+        model.to(self.device)
+        model.to(self.data_type)
+
+        torch.nn.init.xavier_normal_(model[1].weight)
+
+        return model
 
 
 @dataclass

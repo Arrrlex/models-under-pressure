@@ -1,6 +1,6 @@
 name: max
 hyperparams:
-  batch_size: 2048
+  batch_size: 8192
   epochs: 50
   optimizer_args:
     lr: 1e-3
