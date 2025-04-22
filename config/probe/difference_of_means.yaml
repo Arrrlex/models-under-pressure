@@ -1,4 +1,4 @@
 name: difference_of_means
 hyperparams:
-  batch_size: 16
+  batch_size: 8192
   epochs: 3

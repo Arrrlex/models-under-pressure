@@ -11,13 +11,16 @@ from tqdm import tqdm
 
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.utils import as_numpy
 
 
-def masked_mean(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def masked_mean(acts: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """
-    Compute the mean of the tensor x, ignoring the elements where the mask is 0.
+    Compute the mean of the activations, ignoring the elements where the mask is 0.
     """
-    return x.sum(dim=1) / mask.sum(dim=1, keepdim=True).clamp(min=1)
+    batch_size, seq_len, embed_dim = acts.shape
+    assert mask.shape == (batch_size, seq_len)
+    return acts.sum(dim=1) / mask.sum(dim=1, keepdims=True).clamp(min=1)
 
 
 @dataclass
@@ -77,11 +80,11 @@ class PytorchLinearClassifier:
         per_token_dataset = activations.per_token().to_dataset(y)
 
         # Calculate class weights to handle imbalanced data
-        sample_weights = per_token_dataset.attention_mask
+        sample_weights = as_numpy(per_token_dataset.attention_mask).tolist()
 
         # Only sample points that are not masked
         sampler = WeightedRandomSampler(
-            weights=sample_weights.numpy().tolist(),  # Convert to list for compatibility
+            weights=sample_weights,  # Convert to list for compatibility
             num_samples=len(sample_weights),
             replacement=True,
         )
@@ -174,7 +177,8 @@ class PytorchLinearClassifier:
 
         Outputs are expected in the shape (batch_size,)
         """
-        return self.logits(activations, per_token=per_token).sigmoid()
+        probs = self.logits(activations, per_token=per_token).sigmoid()
+        return probs
 
     @torch.no_grad()
     def logits(
@@ -218,22 +222,27 @@ class PytorchLinearClassifier:
         # Process in batches
         start_idx = 0
         for batch_acts, batch_mask, _, _ in tqdm(dataloader, desc="Processing batches"):
-            batch_size = len(batch_acts)
+            mb_size = len(batch_acts)
 
             # Get logits for this batch
             batch_logits = self.model(batch_acts)
             batch_logits *= batch_mask[:, None]
 
             # Store in output tensor
-            flattened_logits[start_idx : start_idx + batch_size] = batch_logits
-            start_idx += batch_size
+            flattened_logits[start_idx : start_idx + mb_size] = batch_logits
+            start_idx += mb_size
 
         # Reshape to (batch_size, seq_len)
         logits = einops.rearrange(
             flattened_logits, "(b s) 1 -> b s", b=batch_size, s=seq_len
         )
 
-        return logits if per_token else masked_mean(logits, activations.attention_mask)
+        if per_token:
+            return logits
+        else:
+            return logits.sum(dim=1) / activations.attention_mask.sum(dim=1).clamp(
+                min=1
+            )
 
     def create_model(self, embed_dim: int) -> nn.Module:
         """
@@ -260,7 +269,6 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
         self.model, activations = self.setup_for_training(activations)
-
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
 
         # Separate positive and negative examples
@@ -273,15 +281,15 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         if self.use_lda:
             centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
             covariance = centered_data.t() @ centered_data / activations.batch_size
-
-            inv = torch.linalg.pinv(covariance, hermitian=True, atol=1e-3)
+            inv = torch.linalg.pinv(covariance.float(), hermitian=True, atol=1e-3).to(
+                self.dtype
+            )
             param = inv @ direction
         else:
             param = direction
 
         assert param.shape == (activations.embed_dim,)
 
-        self.model = self.create_model(activations.embed_dim)
         self.model.weight.data.copy_(param.reshape(1, -1))
 
         # Set bias to put decision boundary halfway between positive and negative means
