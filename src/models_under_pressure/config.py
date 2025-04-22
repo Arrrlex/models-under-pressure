@@ -22,6 +22,7 @@ class GlobalSettings(BaseSettings):
     CACHE_DIR: str | None = None
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
+    DOUBLE_CHECK_CONFIG: bool = True
 
 
 global_settings = GlobalSettings()
@@ -54,15 +55,12 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 AIS_DIR = RESULTS_DIR / "ais_evaluation"
 PLOTS_DIR = RESULTS_DIR / "plots"
 PROBES_DIR = DATA_DIR / "probes"
-BASELINE_RESULTS_FILE = PROBES_DIR / "continuation_baseline_results.jsonl"
-BASELINE_RESULTS_FILE_TEST = PROBES_DIR / "continuation_baseline_results_test.jsonl"
 TRAIN_DIR = DATA_DIR / "training"
 EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 
 # Training datasets
-
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "original_doubled_unconfounded"
 
 # Evals files
 USE_BALANCED_DATASETS = True
@@ -90,7 +88,7 @@ EVAL_DATASETS_BALANCED = {
 TEST_DATASETS_RAW = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_raw_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_15.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_raw_apr_16.csv",
     "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
@@ -101,7 +99,7 @@ TEST_DATASETS_RAW = {
 TEST_DATASETS_BALANCED = {
     "manual": TEST_EVALS_DIR / "manual.csv",
     "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_balanced_apr_15.jsonl",
+    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_15.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_16.jsonl",
     "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
@@ -120,14 +118,6 @@ AIS_DATASETS = {
             "is_sandbagging": "labels",
         },
     },
-    "deception": {
-        "file_path_or_name": EVALS_DIR / "deception_labelled_.csv",
-        "field_mapping": {
-            "labels": "high_stakes",
-            "is_deceptive": "labels",
-            "id": "ids",
-        },
-    },
 }
 
 OTHER_DATASETS = {
@@ -137,7 +127,11 @@ OTHER_DATASETS = {
     "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
-    "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
+    "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
+    "original_doubled_unconfounded_train": TRAIN_DIR
+    / "original_doubled_unconfounded/train.jsonl",
+    "original_doubled_unconfounded_test": TRAIN_DIR
+    / "original_doubled_unconfounded/test.jsonl",
 }
 
 
@@ -229,7 +223,7 @@ class RunConfig:
     """
 
     num_situations_per_combination: int = 2
-    num_situations_to_sample: int = 150
+    num_situations_to_sample: int = 300
     num_prompts_per_situation: int = 2
     num_topics_to_sample: int | None = 2  # If None, all topics are used
     num_factors_to_sample: int | None = 2
@@ -327,23 +321,20 @@ class EvalRunConfig(BaseModel):
     id: str = Field(default_factory=generate_short_id)
     layer: int
     probe_spec: ProbeSpec
-    use_test_set: bool = False
-    hyper_params: dict[str, Any] | None = None
-    max_samples: int | None = None
-    variation_type: str | None = None
-    variation_value: str | None = None
+    max_samples: int | None
+    dataset_path: Path
+    eval_datasets: list[Path]
+    model_name: str
+    dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
+    validation_dataset: Path | bool = False
     model_name: str = (
         DEFAULT_GPU_MODEL if "cuda" in global_settings.DEVICE else DEFAULT_OTHER_MODEL
     )
 
     @property
     def output_filename(self) -> str:
-        if self.use_test_set:
-            return f"results_{self.id}_test.jsonl"
-        else:
-            return f"results_{self.id}.jsonl"
+        return f"results_{self.id}.jsonl"
 
     @property
     def coefs_filename(self) -> str:
@@ -353,6 +344,19 @@ class EvalRunConfig(BaseModel):
     @property
     def random_seed(self) -> int:
         return 32
+
+
+class RunBaselinesConfig(BaseModel):
+    model_name: str
+    dataset_path: Path
+    baseline_prompts: list[str]
+    eval_datasets: dict[str, Path]
+    max_samples: int | None
+    batch_size: int
+
+    @property
+    def output_path(self) -> Path:
+        return PROBES_DIR / "continuation_baseline_results.jsonl"
 
 
 @dataclass(frozen=True)

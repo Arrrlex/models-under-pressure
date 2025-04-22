@@ -3,34 +3,32 @@ import json
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import roc_auc_score, accuracy_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    TEST_DATASETS,
+    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
-from models_under_pressure.dataset_utils import (
-    load_train_test,
-)
-from models_under_pressure.interfaces.dataset import (
-    LabelledDataset,
-)
+from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
+from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import EvaluationResult
-from models_under_pressure.interfaces.results import DatasetResults
+from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from models_under_pressure.probes.probes import ProbeFactory
-from models_under_pressure.utils import double_check_config
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
-from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_classifiers import (
+    AttentionProbeAttnThenLinear,
+    AttentionProbeAttnWeightLogits,
+    PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
 )
+from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.sklearn_probes import SklearnProbe
+from models_under_pressure.utils import double_check_config
 
 
 def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
@@ -54,13 +52,15 @@ def evaluate_probe_and_save_results(
     Args:
         probe: The probe to evaluate.
         train_dataset_path: The path to the train dataset.
+        eval_dataset_name: The name of the dataset to evaluate the probe on.
         eval_dataset: The dataset to evaluate the probe on.
+        model_name: The name of the model to evaluate the probe on.
         layer: The layer to evaluate the probe on.
         output_dir: The directory to save the results to.
         save_results: Whether to save the results to a file.
         fpr: The FPR threshold to evaluate the probe at.
     Returns:
-        A dictionary of the evaluated datasets and their results.
+        The per-entry probe scores and the results of the probe evaluation.
 
     Method designed to be used in the evaluate_probes.py experiment run
     """
@@ -148,10 +148,21 @@ def get_coefs(probe: Probe) -> list[float]:
     elif isinstance(probe, PytorchProbe):
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
-            coefs = list(probe._classifier.model.weight.data.cpu().numpy().flatten())  # type: ignore
+            coefs = list(
+                probe._classifier.model.weight.data.cpu().float().numpy().flatten()
+            )  # type: ignore
+        elif isinstance(probe._classifier, PytorchAttentionClassifier):
+            # For attention probe, get the weights from the final linear layer
+            model = probe._classifier.model
+            if isinstance(model, AttentionProbeAttnThenLinear):
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
+            elif isinstance(model, AttentionProbeAttnWeightLogits):
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
+            else:
+                raise ValueError(f"Unknown attention probe model type: {type(model)}")
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
-            coefs = list(probe._classifier.model[1].weight.data.cpu().numpy())  # type: ignore
+            coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
     return coefs
 
 
@@ -159,43 +170,50 @@ def run_evaluation(
     config: EvalRunConfig,
 ) -> tuple[list[EvaluationResult], list[float]]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    train_dataset, _ = load_train_test(
+    splits = load_splits_lazy(
         dataset_path=config.dataset_path,
-        variation_type=config.variation_type,
-        variation_value=config.variation_value,
+        dataset_filters=config.dataset_filters,
         n_per_class=config.max_samples,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
 
+    if isinstance(config.validation_dataset, Path):
+        validation_dataset = load_dataset(
+            dataset_path=config.validation_dataset,
+            dataset_filters=config.dataset_filters,
+            model_name=config.model_name,
+            layer=config.layer,
+            compute_activations=config.compute_activations,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
+        )
+    elif config.validation_dataset:
+        validation_dataset = splits["test"]
+    else:
+        validation_dataset = None
+
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
         probe=config.probe_spec,
-        train_dataset=train_dataset,
+        train_dataset=splits["train"],
+        validation_dataset=validation_dataset,
     )
-
-    del train_dataset
-
-    coefs = get_coefs(probe)
-
-    eval_dataset_paths = TEST_DATASETS if config.use_test_set else EVAL_DATASETS
 
     results_list = []
 
-    for eval_dataset_name, eval_dataset_path in tqdm(
-        eval_dataset_paths.items(), desc="Evaluating on eval datasets"
+    for eval_dataset_path in tqdm(
+        config.eval_datasets, desc="Evaluating on eval datasets"
     ):
+        eval_dataset_name = eval_dataset_path.stem
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
-        eval_dataset, _ = load_train_test(
+        eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
-            n_per_class=config.max_samples,
-            variation_type=config.variation_type,
-            variation_value=config.variation_value,
+            n_per_class=config.max_samples // 2 if config.max_samples else None,
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
@@ -220,6 +238,14 @@ def run_evaluation(
 
         print(f"Metrics for {eval_dataset_name}: {dataset_results.metrics}")
 
+        best_epoch = (
+            probe._classifier.best_epoch
+            if (
+                isinstance(probe, PytorchProbe)
+                and hasattr(probe._classifier, "best_epoch")
+            )
+            else None
+        )
         dataset_results = EvaluationResult(
             config=config,
             metrics=dataset_results,
@@ -230,11 +256,25 @@ def run_evaluation(
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
             dataset_path=eval_dataset_path,
+            best_epoch=best_epoch,
         )
 
         results_list.append(dataset_results)
 
         del eval_dataset
+
+    coefs = get_coefs(probe)
+
+    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    for result in results_list:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+
+    coefs_dict = {
+        "id": config.id,
+        "coefs": coefs[0].tolist(),  # type: ignore
+    }
+    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+        json.dump(coefs_dict, f)
 
     return results_list, coefs
 
@@ -245,29 +285,35 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=11,
-        max_samples=20,
-        model_name=LOCAL_MODELS["llama-1b"],
+        layer=31,
+        max_samples=None,
+        model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="pytorch_per_token_probe",
-            hyperparams={"batch_size": 16, "epochs": 3, "device": "cpu"},
+            name="pytorch_attention_probe",
+            hyperparams={
+                "batch_size": 16,
+                "epochs": 50,
+                "device": "cpu",
+                "optimizer_args": {
+                    "lr": 1e-3,
+                    "weight_decay": 0.0004,
+                },
+                "attn_hidden_dim": 27,
+                "probe_architecture": "attention_then_linear",
+                "scheduler_decay": 0.62,
+            },
         ),
-        compute_activations=True,
+        compute_activations=False,
+        # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
+        dataset_path=SYNTHETIC_DATASET_PATH,
+        # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
+        # validation_dataset=SYNTHETIC_DATASET_PATH,
+        validation_dataset=True,
+        eval_datasets=list(EVAL_DATASETS.values()),
     )
 
     double_check_config(config)
 
     print(f"Running probe evaluation with ID {config.id}")
     print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
-    results, coefs = run_evaluation(config=config)
-
-    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
-    for result in results:
-        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
-    coefs_dict = {
-        "id": config.id,
-        "coefs": coefs[0].tolist(),  # type: ignore
-    }
-    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-        json.dump(coefs_dict, f)
+    run_evaluation(config=config)

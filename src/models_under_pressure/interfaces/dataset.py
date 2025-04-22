@@ -78,9 +78,7 @@ class Record(BaseModel):
 
     def __getattr__(self, name: str) -> Any:
         """Allow accessing other_fields values as attributes."""
-        if name in self.other_fields:
-            return self.other_fields[name]
-        raise AttributeError(f"'{self.__class__.__name__}' has no attribute '{name}'")
+        return self.other_fields[name]
 
 
 class LabelledRecord(Record):
@@ -164,8 +162,23 @@ class BaseDataset(BaseModel, Generic[R]):
             )
 
     def sample(self, num_samples: int) -> Self:
-        idxs = random.sample(range(len(self)), num_samples)
-        return self[idxs]
+        if num_samples < len(self):
+            return type(self).from_records(
+                random.sample(self.to_records(), num_samples)
+            )
+        else:
+            return self
+
+    def remove_field(self, field_name: str) -> Self:
+        
+        if field_name in ['inputs', 'ids']:
+            raise ValueError("Cannot remove required fields")
+        elif field_name in self.other_fields:
+            self.other_fields.pop(field_name)
+        else:
+            raise ValueError(f"Field {field_name} not found in other fields {self.other_fields.keys()}")
+        return self
+
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         records = self.drop_cols(
@@ -363,8 +376,8 @@ class BaseDataset(BaseModel, Generic[R]):
                 )
             elif isinstance(value, torch.Tensor):
                 other_fields[key] = torch.cat(
-                    tuple(dataset.other_fields[key] for dataset in datasets)
-                )  # type: ignore
+                    tuple(dataset.other_fields[key] for dataset in datasets)  # type: ignore
+                )
             else:
                 other_fields[key] = [
                     item for dataset in datasets for item in dataset.other_fields[key]

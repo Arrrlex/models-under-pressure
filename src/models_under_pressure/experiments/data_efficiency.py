@@ -1,8 +1,13 @@
-import json
-
 import numpy as np
+from omegaconf import DictConfig
+from sklearn.metrics import accuracy_score, roc_auc_score
+from tqdm import tqdm
+
+from models_under_pressure.config import DataEfficiencyConfig
+from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.finetune_baselines import FinetunedClassifier
 import torch
-from models_under_pressure.config import RESULTS_DIR, DataEfficiencyConfig
+from models_under_pressure.config import RESULTS_DIR
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
@@ -11,12 +16,9 @@ from models_under_pressure.interfaces.results import (
     DataEfficiencyResults,
     ProbeDataEfficiencyResults,
 )
-from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.probes.base import Probe
-from models_under_pressure.probes.probes import ProbeFactory
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
-from sklearn.metrics import roc_auc_score, accuracy_score
-from tqdm import tqdm
+from models_under_pressure.probes.probes import ProbeFactory
 
 
 def evaluate_probe(
@@ -99,6 +101,77 @@ def run_data_efficiency_experiment(
     return results
 
 
+def run_data_efficiency_finetune_baseline_with_activations(
+    config: DataEfficiencyConfig,
+    finetune_config: DictConfig,
+) -> DataEfficiencyResults:
+    """Run data efficiency experiment by training probes on different sized subsets of the dataset.
+
+    Args:
+        config: Configuration for the data efficiency experiment
+
+    Returns:
+        DataEfficiencyResults containing probe performance metrics for each dataset size
+    """
+
+    print("Loading train dataset")
+    train_dataset, _ = load_train_test(
+        dataset_path=config.dataset_path,
+        model_name=config.model_name,
+        layer=config.layer,
+        compute_activations=config.compute_activations,
+    )
+    print("Loading eval datasets")
+    eval_datasets = []
+    for eval_dataset_path in config.eval_dataset_paths:
+        eval_datasets.append(
+            load_dataset(
+                dataset_path=eval_dataset_path,
+                model_name=config.model_name,
+                layer=config.layer,
+                compute_activations=config.compute_activations,
+            )
+        )
+
+    probe_results = []
+
+    for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
+        subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
+
+        for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
+            finetune_baseline = FinetunedClassifier(finetune_config)
+
+            # Train the finetune baseline:
+            finetune_baseline.train(subset)
+
+            # Predict the probability of each example in the dataset being high-stakes:
+            results = finetune_baseline.get_results(subset)
+
+            # Calculate the metrics here:
+            metrics = {
+                "auroc": results.auroc(),
+                "accuracy": results.accuracy(),
+                "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01)[0],
+            }
+
+            probe_results.append(
+                ProbeDataEfficiencyResults(
+                    probe=probe_spec,
+                    dataset_size=dataset_size,
+                    metrics=metrics,
+                )
+            )
+
+    results = DataEfficiencyResults(
+        config=config,
+        probe_results=probe_results,
+    )
+
+    results.save_to(config.output_path)
+
+    return results
+
+
 def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "auroc"):
     """Plot probe performance vs dataset size.
 
@@ -106,9 +179,10 @@ def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "
         results: DataEfficiencyResults containing probe performance data
         metric: Which metric to plot. One of "auroc", "accuracy", or "tpr_at_fpr"
     """
+    from pathlib import Path
+
     import matplotlib.pyplot as plt
     import seaborn as sns
-    from pathlib import Path
 
     # Set style
     sns.set_theme(style="whitegrid")
@@ -170,9 +244,9 @@ def plot_data_efficiency_results(results: DataEfficiencyResults, metric: str = "
 
 if __name__ == "__main__":
     from models_under_pressure.config import (
-        SYNTHETIC_DATASET_PATH,
-        LOCAL_MODELS,
         EVAL_DATASETS_BALANCED,
+        LOCAL_MODELS,
+        SYNTHETIC_DATASET_PATH,
     )
     from models_under_pressure.interfaces.probes import ProbeSpec
 
@@ -201,10 +275,41 @@ if __name__ == "__main__":
         eval_dataset_paths=[EVAL_DATASETS_BALANCED["mask"]],
         # id="g6AooBhS",
     )
-    results = run_data_efficiency_experiment(config)
 
-    with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
-        results_dict = json.loads(f.readlines()[-1])
+    # Should be defined via a hydra run config file:
+    finetune_config = DictConfig( # this should be defined via a hydra run config file
+        {
+            "model_name_or_path": 'meta-llama/Llama-3.2-1B-Instruct',
+            "num_classes": 2,
+            "ClassifierModule": { #set here to the default values
+                "learning_rate": 1e-3,
+                "weight_decay": 0.0,
+                "scheduler_params": None,
+                "num_classes": 2,
+                "class_weights": None,
+                "label_smoothing": 0.0,
+            },
+            "batch_size": 12,
+            "shuffle": True,
+            "logger": None,
+            "Trainer": {
+                "max_epochs": 5,
+                "accelerator": "gpu",
+                "devices": 1,
+                "precision": "bf16-true",
+                "default_root_dir": "~/.cache/models-under-pressure",
+                "accumulate_grad_batches": 1,
+            },
+        }
+    )
 
-    results = DataEfficiencyResults.model_validate(results_dict)
-    plot_data_efficiency_results(results)
+    # results = run_data_efficiency_experiment(config)
+    baseline_results = run_data_efficiency_finetune_baseline_with_activations(
+        config, finetune_config
+    )
+
+    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
+    #     results_dict = json.loads(f.readlines()[-1])
+
+    # results = DataEfficiencyResults.model_validate(results_dict)
+    plot_data_efficiency_results(baseline_results)

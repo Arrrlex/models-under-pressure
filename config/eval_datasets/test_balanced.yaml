@@ -1,0 +1,8 @@
+manual: data/evals/test/manual.csv
+anthropic: data/evals/test/anthropic_test_balanced_apr_16.jsonl
+toolace: data/evals/test/toolace_test_balanced_apr_15.jsonl
+mt: data/evals/test/mt_test_balanced_apr_16.jsonl
+mts: data/evals/test/mts_test_balanced_apr_16.jsonl
+mental_health: data/evals/test/mental_health_balanced.jsonl
+redteaming: data/evals/test/aya_redteaming_balanced.csv
+mask: data/evals/test/mask_samples_balanced.jsonl

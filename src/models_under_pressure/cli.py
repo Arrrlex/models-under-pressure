@@ -35,7 +35,7 @@ def store(
         ...,
         "--dataset",
         "--datasets",
-        help="Path to the dataset or datasets (can include wildcards)",
+        help="Path to the dataset or datasets",
     ),
     layers_str: str = typer.Option(
         ...,
@@ -90,8 +90,6 @@ def store(
 
         store.save(model_name, dataset_path, filtered_layers, activations, inputs)
 
-        store.sync()
-
 
 @activation_store_cli.command()
 def delete(
@@ -119,23 +117,24 @@ def delete(
     dataset_paths = _parse_dataset_path(dataset_path)
 
     store = ActivationStore()
-    for dataset_path in dataset_paths:
-        for layer in layers:
-            spec = ActivationsSpec(
-                model_name=model_name,
-                dataset_path=dataset_path,
-                layer=layer,
-            )
-            store.delete(spec)
 
-    store.sync()
+    specs = [
+        ActivationsSpec(
+            model_name=model_name,
+            dataset_path=dataset_path,
+            layer=layer,
+        )
+        for dataset_path in dataset_paths
+        for layer in layers
+    ]
+    store.sync(add_specs=[], remove_specs=specs)
 
 
 @activation_store_cli.command()
 def sync():
     """Sync the activation store."""
     store = ActivationStore()
-    store.sync()
+    store.sync(add_specs=[], remove_specs=[])
 
 
 def _parse_layers(layers: str) -> list[int]:

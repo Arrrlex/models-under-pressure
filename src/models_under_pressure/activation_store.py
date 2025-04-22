@@ -15,7 +15,7 @@ import time
 
 import torch
 import zstandard as zstd
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings, PROJECT_ROOT
@@ -39,6 +39,14 @@ class ActivationsSpec(BaseModel):
     model_name: str
     dataset_path: Path
     layer: int
+
+    class Config:
+        frozen = True  # Make the model immutable
+        validate_assignment = True
+
+    @field_validator("dataset_path")
+    def validate_dataset_path(cls, v: Path) -> Path:
+        return v.resolve().relative_to(PROJECT_ROOT)
 
 
 class ManifestRow(BaseModel):
@@ -68,13 +76,12 @@ class ManifestRow(BaseModel):
         Returns:
             A new ManifestRow instance with generated file paths
         """
-        dataset_path = spec.dataset_path.resolve().relative_to(PROJECT_ROOT)
-        common_name = spec.model_name + str(dataset_path)
+        common_name = spec.model_name + str(spec.dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
             model_name=spec.model_name,
-            dataset_path=dataset_path,
+            dataset_path=spec.dataset_path,
             layer=spec.layer,
             timestamp=datetime.datetime.now(),
             activations=Path(f"activations/{common_id}_{spec.layer}.pt.zst"),
@@ -91,6 +98,17 @@ class ManifestRow(BaseModel):
         """
         return [self.activations, self.input_ids, self.attention_mask]
 
+    @property
+    def spec(self) -> ActivationsSpec:
+        """Get the specification for this manifest row.
+
+        Returns:
+            The specification for this manifest row
+        """
+        return ActivationsSpec(
+            model_name=self.model_name, dataset_path=self.dataset_path, layer=self.layer
+        )
+
 
 class Manifest(BaseModel):
     """Container for all manifest rows.
@@ -100,6 +118,25 @@ class Manifest(BaseModel):
     """
 
     rows: list[ManifestRow]
+
+    def to_lookup(self) -> dict[ActivationsSpec, ManifestRow]:
+        """Lookup a manifest row by its specification.
+
+        Returns:
+            A dictionary mapping specifications to manifest rows
+        """
+        return {row.spec: row for row in self.rows}
+
+    def add_rows(self, rows: list[ManifestRow]):
+        lookup = self.to_lookup()
+        lookup.update({row.spec: row for row in rows})
+        self.rows = [lookup[spec] for spec in lookup]
+
+    def remove_rows(self, rows: list[ManifestRow]):
+        lookup = self.to_lookup()
+        for row in rows:
+            lookup.pop(row.spec)
+        self.rows = [lookup[spec] for spec in lookup]
 
 
 @dataclass
@@ -123,9 +160,12 @@ class ActivationStore:
     manifest: Manifest = field(init=False)
 
     def __post_init__(self):
+        self.manifest = self.load_manifest()
+
+    def load_manifest(self) -> Manifest:
         download_file(self.bucket, "manifest.json", self.manifest_path)
         with open(self.manifest_path, "r") as f:
-            self.manifest = Manifest.model_validate_json(f.read())
+            return Manifest.model_validate_json(f.read())
 
     @property
     def manifest_path(self) -> Path:
@@ -137,7 +177,16 @@ class ActivationStore:
 
         upload_file(self.bucket, "manifest.json", self.manifest_path)
 
-    def sync(self):
+    def sync(
+        self, add_specs: list[ActivationsSpec], remove_specs: list[ActivationsSpec]
+    ):
+        self.manifest = self.load_manifest()
+        self.manifest.add_rows([ManifestRow.from_spec(spec) for spec in add_specs])
+        self.manifest.remove_rows(
+            [ManifestRow.from_spec(spec) for spec in remove_specs]
+        )
+        self.save_manifest()
+
         manifest_paths = {str(path) for row in self.manifest.rows for path in row.paths}
         local_paths = {
             str(path.relative_to(self.path)) for path in self.path.glob("**/*.pt.zst")
@@ -191,7 +240,6 @@ class ActivationStore:
         Raises:
             ValueError: If trying to save activations for a subset of the dataset
         """
-
         # Save layer-specific masked activations
         for layer_idx, layer in tqdm(
             list(enumerate(layers)), desc="Saving activations..."
@@ -222,9 +270,8 @@ class ActivationStore:
             print(
                 f"Attention mask size: {(self.path / manifest_row.attention_mask).stat().st_size / 1e9:.2f}GB"
             )
-            self.manifest.rows.append(manifest_row)
 
-        self.save_manifest()
+            self.sync(add_specs=[spec], remove_specs=[])
 
     def load(
         self, spec: ActivationsSpec
@@ -258,22 +305,6 @@ class ActivationStore:
 
         return activations, input_ids, attn_mask
 
-    def delete(self, spec: ActivationsSpec):
-        """Delete stored activations from storage.
-
-        Args:
-            model_name: Name of the model that generated the activations
-        """
-        # Delete layer-specific file
-        manifest_row = ManifestRow.from_spec(spec)
-        self.manifest.rows = [
-            row
-            for row in self.manifest.rows
-            if row.activations != manifest_row.activations
-        ]
-
-        self.save_manifest()
-
     def exists(self, spec: ActivationsSpec) -> bool:
         """Check if activations exist in storage.
 
@@ -283,8 +314,7 @@ class ActivationStore:
         Returns:
             True if the activations exist, False otherwise
         """
-        row = ManifestRow.from_spec(spec)
-        return any(row.activations == other.activations for other in self.manifest.rows)
+        return spec in self.manifest.to_lookup()
 
     def enrich(
         self, dataset: LabelledDataset, path: Path, model_name: str, layer: int

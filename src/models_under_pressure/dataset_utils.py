@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 
@@ -128,6 +129,7 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
 
 def load_dataset(
     dataset_path: Path,
+    dataset_filters: dict[str, Any] | None = None,
     model_name: str | None = None,
     layer: int | None = None,
     compute_activations: bool = False,
@@ -157,7 +159,6 @@ def load_dataset(
         n_per_class: Number of samples per class to load
     """
     dataset = LabelledDataset.load_from(dataset_path)
-
     if model_name is not None and layer is not None and not compute_activations:
         dataset = ActivationStore().enrich(
             dataset,
@@ -185,8 +186,14 @@ def load_dataset(
         dataset = dataset.filter(
             lambda x: x.other_fields[variation_type] == variation_value
         )
+    if dataset_filters is not None:
+        dataset = dataset.filter(
+            lambda x: all(
+                x.other_fields[key] == value for key, value in dataset_filters.items()
+            )
+        )
 
-    if n_per_class is not None:
+    if n_per_class is not None and len(dataset) > n_per_class * 2:
         dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
 
     if model_name is not None and layer is not None and compute_activations:
@@ -200,28 +207,67 @@ def load_dataset(
 
     return dataset
 
+class LazyLoader:
+    def __init__(
+        self, loaders: dict[str, Callable[..., LabelledDataset]], **kwargs: Any
+    ):
+        self.loaders = loaders
+        self.kwargs = kwargs
 
-def split_dataset(
-    dataset: LabelledDataset,
-    split_col: str,
-    default_split: str = "train",
-) -> dict[str, LabelledDataset]:
-    """Split the dataset into different subsets based on the values of a column.
+    def __getitem__(self, key: str) -> LabelledDataset:
+        loader = self.loaders[key]
+        return loader(**self.kwargs)
 
-    Args:
-        dataset: The dataset to split
-        split_col: The column to split the dataset on
-        default_split: The default split to use if the split column is not present
-    """
-    if split_col not in dataset.other_fields:
-        return {default_split: dataset}
 
-    split_indices = {}
+def load_splits_lazy(
+    dataset_path: Path,
+    dataset_filters: dict[str, Any] | None = None,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> LazyLoader:
+    if dataset_path.is_dir():
+        split_names = [p.stem for p in dataset_path.glob("*.jsonl")]
+        loaders = {
+            split_name: lambda: load_dataset(
+                dataset_path / f"{split_name}.jsonl",
+                dataset_filters=dataset_filters,
+                model_name=model_name,
+                layer=layer,
+                compute_activations=compute_activations,
+                variation_type=variation_type,
+                variation_value=variation_value,
+                n_per_class=n_per_class,
+            )
+            for split_name in split_names
+        }
+        return LazyLoader(loaders=loaders)
+    else:
+        dataset = load_dataset(
+            dataset_path,
+            dataset_filters=dataset_filters,
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+            variation_type=variation_type,
+            variation_value=variation_value,
+            n_per_class=n_per_class,
+        )
+        if "split" in dataset.other_fields:
+            split_names = {str(s) for s in dataset.other_fields["split"]}
+            loaders = {
+                split_name: lambda dataset: dataset.filter(
+                    lambda x: x.split == split_name
+                )
+                for split_name in split_names
+            }
+        else:
+            loaders = {"train": lambda dataset: dataset}
 
-    for i, split in enumerate(dataset.other_fields[split_col]):
-        split_indices[split] = split_indices.get(split, []) + [i]
-
-    return {split: dataset[idxs] for split, idxs in split_indices.items()}
+        return LazyLoader(loaders=loaders, dataset=dataset)
 
 
 def load_train_test(
@@ -233,30 +279,15 @@ def load_train_test(
     variation_value: str | None = None,
     n_per_class: int | None = None,
 ) -> tuple[LabelledDataset, LabelledDataset]:
-    """Load the train-test split for the generated dataset.
-
-    If model_name and layer are provided, the activations are loaded and added to the dataset.
-
-    Args:
-        dataset_path: Path to the generated dataset
-        model_name: Name of the model to load activations for
-        layer: Layer to load activations for
-
-    Returns:
-        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
-    """
-    dataset = load_dataset(
+    splits = load_splits_lazy(
         dataset_path,
-        model_name,
-        layer,
-        compute_activations,
-        variation_type,
-        variation_value,
-        n_per_class,
+        model_name=model_name,
+        layer=layer,
+        compute_activations=compute_activations,
+        variation_type=variation_type,
+        variation_value=variation_value,
+        n_per_class=n_per_class,
     )
-
-    splits = split_dataset(dataset, split_col="split", default_split="train")
-
-    assert set(splits.keys()) <= {"train", "test"}
-
-    return splits["train"], splits.get("test", LabelledDataset.empty())
+    train_dataset = splits["train"]
+    test_dataset = splits["test"]
+    return train_dataset, test_dataset
