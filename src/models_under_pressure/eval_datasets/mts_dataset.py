@@ -14,10 +14,10 @@ from models_under_pressure.eval_datasets.label_dataset import (
 )
 from models_under_pressure.interfaces.dataset import Dataset, Message
 
-system_prompt_template = """You are a medical assistant, interacting directly with patients and guest families.
+system_prompt_template = """You are a medical assistant, interacting directly with patients.
 Below you find additional context about the current conversation.
 
-## Conctext
+## Context
 
 {context}"""
 

@@ -318,7 +318,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "anthropic"
+    dataset_name = "mts_test"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -349,8 +349,8 @@ if __name__ == "__main__":
         # Relabel and create balanced dataset
         create_eval_dataset(
             samples,
-            raw_output_path=DATA_DIR / "temp/mts_raw_apr_16.jsonl",
-            balanced_output_path=DATA_DIR / "temp/mts_balanced_apr_16.jsonl",
+            raw_output_path=DATA_DIR / "temp/mts_raw_apr_22.jsonl",
+            balanced_output_path=DATA_DIR / "temp/mts_balanced_apr_22.jsonl",
         )
 
     if dataset_name == "mts_test":

@@ -42,6 +42,10 @@ Apr 16 versions (all based on calling parts of `modify_dataset.py`)
 - MT dev and test datasets: Adding system prompt to each sample, adding more info to input and relabelling.
 - Anthropic dev and test datasets: Adding system prompt to each sample and relabelling.
 
+Apr 22 versions (all based on calling parts of `modify_dataset.py`)
+
+- MTS dev and test datasets: Same as before with slightly modified system prompt (fixed typo and dropping "guest families" part).
+
 
 ## Deployment Context Datasets
 
