@@ -55,75 +55,81 @@ def create_manual_review_excel(
         k=samples_per_label * num_reviewers // 2,  # Each sample appears twice
     )
 
+    reviewer_dfs = []
+    # For each reviewer
+    for reviewer in range(num_reviewers):
+        # Calculate the sliding window indices
+        # Each window overlaps by half with the previous and next window
+        window_size = samples_per_label // 2
+        start_idx = reviewer * window_size
+        end_idx = start_idx + samples_per_label
+
+        # Get high stakes samples for this reviewer
+        if end_idx > len(high_stakes_selected):
+            # Take remaining samples from end and wrap around to beginning
+            remaining = end_idx - len(high_stakes_selected)
+            reviewer_high_stakes = (
+                high_stakes_selected[start_idx:] + high_stakes_selected[:remaining]
+            )
+        else:
+            reviewer_high_stakes = high_stakes_selected[start_idx:end_idx]
+
+        # Get low stakes samples for this reviewer
+        if end_idx > len(low_stakes_selected):
+            # Take remaining samples from end and wrap around to beginning
+            remaining = end_idx - len(low_stakes_selected)
+            reviewer_low_stakes = (
+                low_stakes_selected[start_idx:] + low_stakes_selected[:remaining]
+            )
+        else:
+            reviewer_low_stakes = low_stakes_selected[start_idx:end_idx]
+
+        # Combine samples
+        reviewer_samples = reviewer_high_stakes + reviewer_low_stakes
+
+        # Create DataFrame for this reviewer
+        data = []
+        for sample_idx in reviewer_samples:
+            sample = dataset[sample_idx]
+            if isinstance(sample.input, str):
+                system_message = ""
+                conversation = sample.input
+            else:
+                system_message = next(
+                    (msg.content for msg in sample.input if msg.role == "system"),
+                    "",
+                )
+                conversation = "\n\n".join(
+                    f"{msg.role.upper()}\n{msg.content}"
+                    for msg in sample.input
+                    if msg.role != "system"
+                )
+
+            data_dict = {
+                "ids": sample.id,
+                "system_message": system_message,
+                "conversation": conversation,
+                "label": "",
+                "comments": "",
+            }
+            if dataset_name == "toolace":
+                data_dict["original_system_prompt"] = sample.other_fields[
+                    "original_system_prompts"
+                ]
+            data.append(data_dict)
+
+        random.shuffle(data)
+
+        reviewer_df = pd.DataFrame(data)
+        reviewer_dfs.append(reviewer_df)
+
+    # Shuffle the reviewer dataframes so that different people are paired up for different datasets
+    random.shuffle(reviewer_dfs)
+
     # Create a writer object with append mode if specified
     mode = "a" if append else "w"
     with pd.ExcelWriter(output_path, engine="openpyxl", mode=mode) as writer:
-        # For each reviewer
-        for reviewer in range(num_reviewers):
-            # Calculate the sliding window indices
-            # Each window overlaps by half with the previous and next window
-            window_size = samples_per_label // 2
-            start_idx = reviewer * window_size
-            end_idx = start_idx + samples_per_label
-
-            # Get high stakes samples for this reviewer
-            if end_idx > len(high_stakes_selected):
-                # Take remaining samples from end and wrap around to beginning
-                remaining = end_idx - len(high_stakes_selected)
-                reviewer_high_stakes = (
-                    high_stakes_selected[start_idx:] + high_stakes_selected[:remaining]
-                )
-            else:
-                reviewer_high_stakes = high_stakes_selected[start_idx:end_idx]
-
-            # Get low stakes samples for this reviewer
-            if end_idx > len(low_stakes_selected):
-                # Take remaining samples from end and wrap around to beginning
-                remaining = end_idx - len(low_stakes_selected)
-                reviewer_low_stakes = (
-                    low_stakes_selected[start_idx:] + low_stakes_selected[:remaining]
-                )
-            else:
-                reviewer_low_stakes = low_stakes_selected[start_idx:end_idx]
-
-            # Combine samples
-            reviewer_samples = reviewer_high_stakes + reviewer_low_stakes
-
-            # Create DataFrame for this reviewer
-            data = []
-            for sample_idx in reviewer_samples:
-                sample = dataset[sample_idx]
-                if isinstance(sample.input, str):
-                    system_message = ""
-                    conversation = sample.input
-                else:
-                    system_message = next(
-                        (msg.content for msg in sample.input if msg.role == "system"),
-                        "",
-                    )
-                    conversation = "\n\n".join(
-                        f"{msg.role.upper()}\n{msg.content}"
-                        for msg in sample.input
-                        if msg.role != "system"
-                    )
-
-                data_dict = {
-                    "ids": sample.id,
-                    "system_message": system_message,
-                    "conversation": conversation,
-                    "label": "",
-                    "explanation": "",
-                }
-                if dataset_name == "toolace":
-                    data_dict["original_system_prompt"] = sample.other_fields[
-                        "original_system_prompts"
-                    ]
-                data.append(data_dict)
-
-            random.shuffle(data)
-
-            reviewer_df = pd.DataFrame(data)
-
+        for reviewer_df, reviewer in zip(reviewer_dfs, range(num_reviewers)):
             # Write to Excel sheet with dataset name in sheet name
             sheet_name = f"{dataset_name}_{reviewer + 1}"
             reviewer_df.to_excel(writer, sheet_name=sheet_name, index=False)
