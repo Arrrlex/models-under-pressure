@@ -133,6 +133,10 @@ OTHER_DATASETS = {
     / "original_doubled_unconfounded/train.jsonl",
     "original_doubled_unconfounded_test": TRAIN_DIR
     / "original_doubled_unconfounded/test.jsonl",
+    "chatbot_deployment": TRAIN_DIR / "chatbot_deployment_22_04_25.jsonl",
+    "medical_deployment": TRAIN_DIR / "medical_deployment_22_04_25.jsonl",
+    "software_deployment": TRAIN_DIR / "software_deployment_22_04_25.jsonl",
+    "combined_deployment": TRAIN_DIR / "combined_deployment_22_04_25.jsonl",
 }
 
 

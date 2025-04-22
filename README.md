@@ -41,3 +41,24 @@ Apr 16 versions (all based on calling parts of `modify_dataset.py`)
 - MTS dev and test datasets: Parsing conversations (using strict mode), adding system prompt and relabelling.
 - MT dev and test datasets: Adding system prompt to each sample, adding more info to input and relabelling.
 - Anthropic dev and test datasets: Adding system prompt to each sample and relabelling.
+
+
+## Deployment Context Datasets
+
+Medical deployment dataset:
+
+- Pair IDs up to 60 were generated using Gemini 2.5 Pro
+- Additional pairs were created with GPT 4.5, giving the pairs from Gemini as examples
+- Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
+
+Software deployment dataset:
+
+- All items generated with GPT 4.5
+- Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
+
+Chatbot deployment dataset:
+
+- All items generated with GPT 4.5
+- Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
+
+Combined deployment dataset: Created by concatenating all previous datasets.
