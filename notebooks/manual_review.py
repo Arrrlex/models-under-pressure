@@ -107,6 +107,7 @@ def create_manual_review_excel(
 
             data_dict = {
                 "ids": sample.id,
+                "input": sample.input,  # Keep track of the original input
                 "system_message": system_message,
                 "conversation": conversation,
                 "label": "",
