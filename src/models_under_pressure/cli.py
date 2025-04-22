@@ -26,59 +26,135 @@ activation_store_cli = typer.Typer(pretty_exceptions_show_locals=False)
 
 @activation_store_cli.command()
 def store(
-    model_name: str = typer.Option(..., "--model", help="Name of the model to use"),
-    dataset_path: Path = typer.Option(..., "--dataset", help="Path to the dataset"),
-    layers: str = typer.Option(
-        ..., "--layers", "--layer", help="Comma-separated list of layer numbers"
+    model_name: str = typer.Option(
+        ...,
+        "--model",
+        help="Name of the model to use",
     ),
-    batch_size: int = typer.Option(32, "--batch", help="Batch size for processing"),
+    dataset_path: Path = typer.Option(
+        ...,
+        "--dataset",
+        "--datasets",
+        help="Path to the dataset or datasets",
+    ),
+    layers_str: str = typer.Option(
+        ...,
+        "--layers",
+        "--layer",
+        help="Comma-separated list of layer numbers",
+    ),
+    batch_size: int = typer.Option(
+        4,
+        "--batch",
+        help="Batch size for processing",
+    ),
 ):
     """Calculate and store activations for a model and dataset."""
-    layer_list = [int(layer) for layer in layers.split(",")]
-    model_name = LOCAL_MODELS.get(model_name, model_name)
+    layers = _parse_layers(layers_str)
+    model_name = _parse_model_name(model_name)
+    dataset_paths = _parse_dataset_path(dataset_path)
+    print(f"Storing activations for {model_name} on {dataset_paths}")
 
     store = ActivationStore()
-    filtered_layers = []
-    for layer in layer_list:
-        activations_spec = ActivationsSpec(
+
+    model = LLMModel.load(model_name, batch_size=batch_size)
+
+    for dataset_path in dataset_paths:
+        print(f"Storing activations for {dataset_path}")
+        dataset = LabelledDataset.load_from(dataset_path)
+        filtered_layers = []
+        for layer in layers:
+            activations_spec = ActivationsSpec(
+                model_name=model_name,
+                dataset_path=dataset_path,
+                layer=layer,
+            )
+            if store.exists(activations_spec):
+                print(f"Layer {layer} already exists, skipping")
+            else:
+                filtered_layers.append(layer)
+
+        if not filtered_layers:
+            print(f"No layers to store for {dataset_path}")
+            continue
+
+        activations, inputs = model.get_batched_activations_for_layers(
+            dataset=dataset,
+            layers=filtered_layers,
+        )
+
+        approx_size = activations.numel() * activations.element_size()
+        print(
+            f"Approximately {approx_size / 10**9:.2f}GB of activations without compression"
+        )
+
+        store.save(model_name, dataset_path, filtered_layers, activations, inputs)
+
+
+@activation_store_cli.command()
+def delete(
+    model_name: str = typer.Option(
+        ...,
+        "--model",
+        help="Name of the model to use",
+    ),
+    dataset_path: Path = typer.Option(
+        ...,
+        "--dataset",
+        "--datasets",
+        help="Path to the dataset or datasets (can include wildcards)",
+    ),
+    layers_str: str = typer.Option(
+        ...,
+        "--layer",
+        "--layers",
+        help="Comma-separated list of layer numbers",
+    ),
+):
+    """Delete activations for a model and dataset."""
+    layers = _parse_layers(layers_str)
+    model_name = _parse_model_name(model_name)
+    dataset_paths = _parse_dataset_path(dataset_path)
+
+    store = ActivationStore()
+
+    specs = [
+        ActivationsSpec(
             model_name=model_name,
             dataset_path=dataset_path,
             layer=layer,
         )
-        if store.exists(activations_spec):
-            print(f"Layer {layer} already exists, skipping")
-        else:
-            filtered_layers.append(layer)
-
-    if not filtered_layers:
-        print("No layers to store")
-        return
-
-    model = LLMModel.load(model_name, batch_size=batch_size)
-    dataset = LabelledDataset.load_from(dataset_path)
-
-    activations, inputs = model.get_batched_activations_for_layers(
-        dataset=dataset,
-        layers=filtered_layers,
-    )
-
-    approx_size = activations.numel() * activations.element_size()
-    print(
-        f"Approximately {approx_size / 10**9:.2f}GB of activations without compression"
-    )
-
-    store.save(model_name, dataset_path, filtered_layers, activations, inputs)
+        for dataset_path in dataset_paths
+        for layer in layers
+    ]
+    store.sync(add_specs=[], remove_specs=specs)
 
 
 @activation_store_cli.command()
-def push_manifest():
-    """Push the current local manifest to the remote bucket."""
+def sync():
+    """Sync the activation store."""
     store = ActivationStore()
-    store.push_manifest()
+    store.sync(add_specs=[], remove_specs=[])
 
 
-@activation_store_cli.command()
-def clean():
-    """Clean up local and remote activations."""
-    store = ActivationStore()
-    store.clean()
+def _parse_layers(layers: str) -> list[int]:
+    """Parse a comma-separated list of layer numbers."""
+    return [int(layer) for layer in layers.split(",")]
+
+
+def _parse_dataset_path(dataset_path: Path) -> list[Path]:
+    """Parse a path to a dataset or datasets.
+
+    Supports both direct paths and wildcard patterns (e.g. data/**/*.csv).
+    Can handle both absolute and relative paths.
+    """
+    if "*" in str(dataset_path):
+        return list(Path.cwd().glob(str(dataset_path)))
+    else:
+        # Handle direct path
+        return [dataset_path]
+
+
+def _parse_model_name(model_name: str) -> str:
+    """Parse a model name."""
+    return LOCAL_MODELS.get(model_name, model_name)

@@ -76,6 +76,10 @@ class Record(BaseModel):
                 f"{message.role}: {message.content}" for message in self.input
             )
 
+    def __getattr__(self, name: str) -> Any:
+        """Allow accessing other_fields values as attributes."""
+        return self.other_fields[name]
+
 
 class LabelledRecord(Record):
     @property
@@ -158,8 +162,12 @@ class BaseDataset(BaseModel, Generic[R]):
             )
 
     def sample(self, num_samples: int) -> Self:
-        idxs = random.sample(range(len(self)), num_samples)
-        return self[idxs]
+        if num_samples < len(self):
+            return type(self).from_records(
+                random.sample(self.to_records(), num_samples)
+            )
+        else:
+            return self
 
     def filter(self, filter_fn: Callable[[R], bool]) -> Self:
         records = self.drop_cols(
@@ -331,8 +339,8 @@ class BaseDataset(BaseModel, Generic[R]):
                 )
             elif isinstance(value, torch.Tensor):
                 other_fields[key] = torch.cat(
-                    tuple(dataset.other_fields[key] for dataset in datasets)
-                )  # type: ignore
+                    tuple(dataset.other_fields[key] for dataset in datasets)  # type: ignore
+                )
             else:
                 other_fields[key] = [
                     item for dataset in datasets for item in dataset.other_fields[key]

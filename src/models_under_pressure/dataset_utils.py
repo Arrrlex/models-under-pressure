@@ -1,10 +1,16 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 import numpy as np
 
 from models_under_pressure.activation_store import ActivationStore
-from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
+from models_under_pressure.interfaces.dataset import (
+    Dataset,
+    LabelledDataset,
+    subsample_balanced_subset,
+)
+from models_under_pressure.model import LLMModel
 
 
 def create_train_test_split(
@@ -121,11 +127,16 @@ def create_cross_validation_splits(dataset: LabelledDataset) -> list[LabelledDat
     raise NotImplementedError("Not implemented")
 
 
-def load_train_test(
+def load_dataset(
     dataset_path: Path,
+    dataset_filters: dict[str, Any] | None = None,
     model_name: str | None = None,
     layer: int | None = None,
-) -> tuple[LabelledDataset, LabelledDataset]:
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> LabelledDataset:
     """Load the train-test split for the generated dataset.
 
     If model_name and layer are provided, the activations are loaded and added to the dataset.
@@ -138,48 +149,123 @@ def load_train_test(
     Returns:
         tuple[LabelledDataset, LabelledDataset]: Train and test datasets
     """
-    if model_name is not None and layer is not None:
-        dataset = ActivationStore().load_enriched_dataset(
-            dataset_path=dataset_path,
+    dataset = LabelledDataset.load_from(dataset_path)
+
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
             model_name=model_name,
             layer=layer,
         )
-    else:
-        dataset = LabelledDataset.load_from(dataset_path)
 
-    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
+    if dataset_filters is not None:
+        dataset = dataset.filter(
+            lambda x: all(
+                x.other_fields[key] == value for key, value in dataset_filters.items()
+            )
+        )
 
-    return train_dataset, test_dataset
+    if n_per_class is not None and len(dataset) > n_per_class * 2:
+        dataset = subsample_balanced_subset(dataset, n_per_class=n_per_class)
+
+    if model_name is not None and layer is not None and compute_activations:
+        model = LLMModel.load(model_name)
+        activations = model.get_batched_activations(dataset, layer=layer)
+        dataset = dataset.assign(
+            activations=activations._activations,
+            attention_mask=activations._attention_mask,
+            input_ids=activations._input_ids,
+        )
+
+    return dataset
 
 
-def load_filtered_train_dataset(
+class LazyLoader:
+    def __init__(
+        self, loaders: dict[str, Callable[..., LabelledDataset]], **kwargs: Any
+    ):
+        self.loaders = loaders
+        self.kwargs = kwargs
+
+    def __getitem__(self, key: str) -> LabelledDataset:
+        loader = self.loaders[key]
+        return loader(**self.kwargs)
+
+
+def load_splits_lazy(
     dataset_path: Path,
-    variation_type: str | None = None,
-    variation_value: str | None = None,
-    max_samples: int | None = None,
+    dataset_filters: dict[str, Any] | None = None,
     model_name: str | None = None,
     layer: int | None = None,
-) -> LabelledDataset:
-    # 1. Load train and eval datasets
-    train_dataset, _ = load_train_test(dataset_path, model_name, layer)
-
-    # Filter for one variation type with specific value
-    train_dataset = train_dataset.filter(
-        lambda x: (
-            variation_type is None or x.other_fields[variation_type] == variation_value
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> LazyLoader:
+    if dataset_path.is_dir():
+        split_names = [p.stem for p in dataset_path.glob("*.jsonl")]
+        loaders = {
+            split_name: lambda: load_dataset(
+                dataset_path / f"{split_name}.jsonl",
+                dataset_filters=dataset_filters,
+                model_name=model_name,
+                layer=layer,
+                compute_activations=compute_activations,
+                variation_type=variation_type,
+                variation_value=variation_value,
+                n_per_class=n_per_class,
+            )
+            for split_name in split_names
+        }
+        return LazyLoader(loaders=loaders)
+    else:
+        dataset = load_dataset(
+            dataset_path,
+            dataset_filters=dataset_filters,
+            model_name=model_name,
+            layer=layer,
+            compute_activations=compute_activations,
+            variation_type=variation_type,
+            variation_value=variation_value,
+            n_per_class=n_per_class,
         )
+        if "split" in dataset.other_fields:
+            split_names = {str(s) for s in dataset.other_fields["split"]}
+            loaders = {
+                split_name: lambda dataset: dataset.filter(
+                    lambda x: x.split == split_name
+                )
+                for split_name in split_names
+            }
+        else:
+            loaders = {"train": lambda dataset: dataset}
+
+        return LazyLoader(loaders=loaders, dataset=dataset)
+
+
+def load_train_test(
+    dataset_path: Path,
+    model_name: str | None = None,
+    layer: int | None = None,
+    compute_activations: bool = False,
+    variation_type: str | None = None,
+    variation_value: str | None = None,
+    n_per_class: int | None = None,
+) -> tuple[LabelledDataset, LabelledDataset]:
+    splits = load_splits_lazy(
+        dataset_path,
+        model_name=model_name,
+        layer=layer,
+        compute_activations=compute_activations,
+        variation_type=variation_type,
+        variation_value=variation_value,
+        n_per_class=n_per_class,
     )
-
-    # Subsample so this runs on the laptop
-    if max_samples is not None:
-        print("Subsampling the dataset ...")
-        indices = np.random.choice(
-            range(len(train_dataset.ids)),
-            size=max_samples,
-            replace=False,
-        )
-        train_dataset = train_dataset[list(indices)]  # type: ignore
-
-    print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
-    return train_dataset
+    train_dataset = splits["train"]
+    test_dataset = splits["test"]
+    return train_dataset, test_dataset

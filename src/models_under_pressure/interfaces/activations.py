@@ -21,6 +21,7 @@ class ActivationPerTokenDataset(TorchDataset):
         activations: "Activation",
         y: Float[np.ndarray, " batch_size"],
     ):
+        # Convert to activations here:
         self._activations = torch.Tensor(activations.get_activations(per_token=True))
         self._attention_mask = torch.Tensor(
             activations.get_attention_mask(per_token=True)
@@ -84,8 +85,15 @@ class ActivationPerTokenDataset(TorchDataset):
     def __getitem__(
         self, index: int
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns the masked activations, attention mask, input ids and labels.
+        """
+
+        # Multiply the attention mask to the activations:
+        acts = self.activations[index] * self.attention_mask[index]
+
         return (
-            self.activations[index],
+            acts,  # masked activations
             self.attention_mask[index],
             self.input_ids[index],
             self.y[index],
@@ -133,8 +141,16 @@ class ActivationDataset(TorchDataset):
         Float[torch.Tensor, "batch_size seq_len"],
         Float[torch.Tensor, " batch_size"],
     ]:
+        """
+        Return the masked activations, attention mask, and input ids.
+
+        TODO: write this to take a slice?
+        """
+
+        acts = self.activations[index] * self.attention_mask[index][:, None]
+
         return (
-            self._activations[index],
+            acts,  # masked activations
             self._attention_mask[index],
             self._input_ids[index],
             self.y[index],
@@ -357,27 +373,27 @@ class Preprocessors:
     ]:
         # Initialize accumulators for sum and token counts
         batch_size_total, seq_len, embed_dim = X._activations.shape
-        sum_acts = np.zeros((batch_size_total, embed_dim))
-        token_counts = np.zeros((batch_size_total, 1))
+        sum_acts = torch.zeros((batch_size_total, embed_dim))
+        token_counts = torch.zeros((batch_size_total, 1))
 
         # Process in batches
         for i in range(0, batch_size_total, batch_size):
             end_idx = min(i + batch_size, batch_size_total)
 
             # Get current batch
-            batch_acts = X._activations[i:end_idx].float().numpy()
-            batch_mask = X._attention_mask[i:end_idx].numpy()
+            batch_acts = X._activations[i:end_idx].float()
+            batch_mask = X._attention_mask[i:end_idx]
 
-            # Process current batch
-            masked_acts = batch_acts * batch_mask[:, :, None]
-            sum_acts[i:end_idx] = masked_acts.sum(axis=1)
-            token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
+            # Process current batch in-place
+            batch_acts *= batch_mask[:, :, None]  # In-place multiplication
+            sum_acts[i:end_idx] = batch_acts.sum(dim=1)
+            token_counts[i:end_idx] = batch_mask.sum(dim=1, keepdim=True)
 
         # Add small epsilon to avoid division by zero
         token_counts = token_counts + 1e-10
 
         # Calculate final mean
-        return sum_acts / token_counts, y
+        return (sum_acts / token_counts).numpy(), y
 
     @staticmethod
     def per_token(

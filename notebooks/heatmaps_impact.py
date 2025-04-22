@@ -13,15 +13,15 @@ from models_under_pressure.config import (
     HeatmapRunConfig,
     ProbeSpec,
 )
-from models_under_pressure.experiments.dataset_splitting import (
+from models_under_pressure.dataset_utils import (
     load_train_test,
 )
 from models_under_pressure.interfaces.results import (
     HeatmapCellResult,
     HeatmapRunResults,
 )
-from models_under_pressure.probes.model import LLMModel
-from models_under_pressure.probes.probes import ProbeFactory
+from models_under_pressure.model import LLMModel
+from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import double_check_config
 
 

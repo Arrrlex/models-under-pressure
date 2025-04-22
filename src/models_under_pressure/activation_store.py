@@ -8,15 +8,14 @@ and cloud storage (R2), with a manifest system to track available activations.
 import datetime
 import hashlib
 import os
-from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 import time
 
 import torch
 import zstandard as zstd
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings, PROJECT_ROOT
@@ -25,7 +24,6 @@ from models_under_pressure.r2 import (
     ACTIVATIONS_BUCKET,
     delete_file,
     download_file,
-    file_exists_in_bucket,
     list_bucket_files,
     upload_file,
 )
@@ -41,6 +39,14 @@ class ActivationsSpec(BaseModel):
     model_name: str
     dataset_path: Path
     layer: int
+
+    class Config:
+        frozen = True  # Make the model immutable
+        validate_assignment = True
+
+    @field_validator("dataset_path")
+    def validate_dataset_path(cls, v: Path) -> Path:
+        return v.resolve().relative_to(PROJECT_ROOT)
 
 
 class ManifestRow(BaseModel):
@@ -70,13 +76,12 @@ class ManifestRow(BaseModel):
         Returns:
             A new ManifestRow instance with generated file paths
         """
-        dataset_path = spec.dataset_path.resolve().relative_to(PROJECT_ROOT)
-        common_name = spec.model_name + str(dataset_path)
+        common_name = spec.model_name + str(spec.dataset_path)
         common_id = hashlib.sha1(common_name.encode()).hexdigest()[:8]
 
         return cls(
             model_name=spec.model_name,
-            dataset_path=dataset_path,
+            dataset_path=spec.dataset_path,
             layer=spec.layer,
             timestamp=datetime.datetime.now(),
             activations=Path(f"activations/{common_id}_{spec.layer}.pt.zst"),
@@ -93,6 +98,17 @@ class ManifestRow(BaseModel):
         """
         return [self.activations, self.input_ids, self.attention_mask]
 
+    @property
+    def spec(self) -> ActivationsSpec:
+        """Get the specification for this manifest row.
+
+        Returns:
+            The specification for this manifest row
+        """
+        return ActivationsSpec(
+            model_name=self.model_name, dataset_path=self.dataset_path, layer=self.layer
+        )
+
 
 class Manifest(BaseModel):
     """Container for all manifest rows.
@@ -102,6 +118,25 @@ class Manifest(BaseModel):
     """
 
     rows: list[ManifestRow]
+
+    def to_lookup(self) -> dict[ActivationsSpec, ManifestRow]:
+        """Lookup a manifest row by its specification.
+
+        Returns:
+            A dictionary mapping specifications to manifest rows
+        """
+        return {row.spec: row for row in self.rows}
+
+    def add_rows(self, rows: list[ManifestRow]):
+        lookup = self.to_lookup()
+        lookup.update({row.spec: row for row in rows})
+        self.rows = [lookup[spec] for spec in lookup]
+
+    def remove_rows(self, rows: list[ManifestRow]):
+        lookup = self.to_lookup()
+        for row in rows:
+            lookup.pop(row.spec)
+        self.rows = [lookup[spec] for spec in lookup]
 
 
 @dataclass
@@ -122,66 +157,68 @@ class ActivationStore:
 
     path: Path = global_settings.ACTIVATIONS_DIR
     bucket: str = ACTIVATIONS_BUCKET  # type: ignore
+    manifest: Manifest = field(init=False)
 
-    @contextmanager
-    def get_manifest(self):
-        """Context manager for accessing and updating the manifest.
+    def __post_init__(self):
+        self.manifest = self.load_manifest()
 
-        Downloads the manifest from cloud storage, yields it for modification,
-        and then uploads the modified manifest back to cloud storage.
+    def load_manifest(self) -> Manifest:
+        download_file(self.bucket, "manifest.json", self.manifest_path)
+        with open(self.manifest_path, "r") as f:
+            return Manifest.model_validate_json(f.read())
 
-        Yields:
-            The current manifest object
-        """
-        # Download manifest from R2 and load it
-        manifest_path = self.path / "manifest.json"
-        download_file(self.bucket, "manifest.json", manifest_path)
-        with open(manifest_path, "r") as f:
-            manifest = Manifest.model_validate_json(f.read())
+    @property
+    def manifest_path(self) -> Path:
+        return self.path / "manifest.json"
 
-        yield manifest
+    def save_manifest(self):
+        with open(self.manifest_path, "w") as f:
+            f.write(self.manifest.model_dump_json(indent=2))
 
-        # Upload modified manifest to R2
-        with open(manifest_path, "w") as f:
-            f.write(manifest.model_dump_json(indent=2))
+        upload_file(self.bucket, "manifest.json", self.manifest_path)
 
-        upload_file(self.bucket, "manifest.json", manifest_path)
+    def sync(
+        self, add_specs: list[ActivationsSpec], remove_specs: list[ActivationsSpec]
+    ):
+        self.manifest = self.load_manifest()
+        self.manifest.add_rows([ManifestRow.from_spec(spec) for spec in add_specs])
+        self.manifest.remove_rows(
+            [ManifestRow.from_spec(spec) for spec in remove_specs]
+        )
+        self.save_manifest()
 
-        # Upload any new files mentioned in manifest to R2
-        for row in manifest.rows:
-            for path in row.paths:
-                if not file_exists_in_bucket(self.bucket, str(path)):
-                    upload_file(self.bucket, str(path), self.path / path)
+        manifest_paths = {str(path) for row in self.manifest.rows for path in row.paths}
+        local_paths = {
+            str(path.relative_to(self.path)) for path in self.path.glob("**/*.pt.zst")
+        }
+        remote_paths = {
+            path for path in list_bucket_files(self.bucket) if path.endswith(".pt.zst")
+        }
 
-    def push_manifest(self):
-        """Push the current local manifest to the remote bucket."""
-        upload_file(self.bucket, "manifest.json", self.path / "manifest.json")
+        # Delete local files that are not in the manifest
+        for path in local_paths - manifest_paths:
+            print(f"Deleting {path} from local")
+            (self.path / path).unlink()
+            (self.path / path).with_suffix("").unlink()
 
-    def clean(self):
-        """Clean up local and remote activations."""
-        with self.get_manifest() as manifest:
-            to_keep = {path.name for row in manifest.rows for path in row.paths}
+        # Delete remote files that are not in the manifest
+        for path in remote_paths - manifest_paths:
+            print(f"Deleting {path} from remote")
+            delete_file(self.bucket, path)
 
-        for path in self.path.glob("**/*.pt.zst"):
-            if path.name not in to_keep:
-                print(f"Deleting {path} from local")
-                path.unlink()
-                path.with_suffix("").unlink()
+        # Any remaining local files that aren't in remote are new activations, upload them
+        for path in local_paths - remote_paths:
+            print(f"Uploading {path} to remote")
+            upload_file(self.bucket, path, self.path / path)
 
-        # List all .pt.zst files in bucket
-        bucket_files = list_bucket_files(self.bucket)
-        pt_files = [file for file in bucket_files if file.endswith(".pt.zst")]
+        # Delete from the manifest any activations that are not present locally or remotely
+        for path in manifest_paths - local_paths - remote_paths:
+            print(f"Removing {path} from manifest")
+            self.manifest.rows = [
+                row for row in self.manifest.rows if row.activations != path
+            ]
 
-        # Delete files that aren't in manifest
-        for file in pt_files:
-            if file.split("/")[-1] not in to_keep:
-                print(f"Deleting {file} from bucket")
-                delete_file(self.bucket, file)
-                # Also delete the uncompressed version if it exists
-                if file.endswith(".pt.zst"):
-                    base = file[:-4]
-                    if base in bucket_files:
-                        delete_file(self.bucket, base)
+        self.save_manifest()
 
     def save(
         self,
@@ -203,7 +240,6 @@ class ActivationStore:
         Raises:
             ValueError: If trying to save activations for a subset of the dataset
         """
-
         # Save layer-specific masked activations
         for layer_idx, layer in tqdm(
             list(enumerate(layers)), desc="Saving activations..."
@@ -235,8 +271,7 @@ class ActivationStore:
                 f"Attention mask size: {(self.path / manifest_row.attention_mask).stat().st_size / 1e9:.2f}GB"
             )
 
-            with self.get_manifest() as manifest:
-                manifest.rows.append(manifest_row)
+            self.sync(add_specs=[spec], remove_specs=[])
 
     def load(
         self, spec: ActivationsSpec
@@ -270,26 +305,6 @@ class ActivationStore:
 
         return activations, input_ids, attn_mask
 
-    def delete(self, spec: ActivationsSpec):
-        """Delete stored activations from storage.
-
-        Args:
-            model_name: Name of the model that generated the activations
-        """
-        # Delete layer-specific file
-        manifest_row = ManifestRow.from_spec(spec)
-
-        for path in manifest_row.paths:
-            if (self.path / path).exists():
-                (self.path / path).unlink()
-
-        with self.get_manifest() as manifest:
-            manifest.rows = [
-                row
-                for row in manifest.rows
-                if row.activations != manifest_row.activations
-            ]
-
     def exists(self, spec: ActivationsSpec) -> bool:
         """Check if activations exist in storage.
 
@@ -299,20 +314,12 @@ class ActivationStore:
         Returns:
             True if the activations exist, False otherwise
         """
-        row = ManifestRow.from_spec(spec)
-        with self.get_manifest() as manifest:
-            return any(row.activations == other.activations for other in manifest.rows)
+        return spec in self.manifest.to_lookup()
 
-    def load_enriched_dataset(
-        self, dataset_path: Path, model_name: str, layer: int, **loader_kwargs: Any
+    def enrich(
+        self, dataset: LabelledDataset, path: Path, model_name: str, layer: int
     ) -> LabelledDataset:
-        """
-        Loads a dataset and enriches it with activations.
-        """
-        dataset = LabelledDataset.load_from(dataset_path, **loader_kwargs)
-        spec = ActivationsSpec(
-            model_name=model_name, dataset_path=dataset_path, layer=layer
-        )
+        spec = ActivationsSpec(model_name=model_name, dataset_path=path, layer=layer)
         activations, input_ids, attn_mask = self.load(spec)
         return dataset.assign(
             activations=activations,

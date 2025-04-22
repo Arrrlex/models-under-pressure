@@ -1,7 +1,0 @@
-# @package _global_
-_target_: models_under_pressure.experiments.dataset_splitting.load_filtered_train_dataset
-dataset_path:
-  _target_: config.GENERATED_DATASET_PATH
-variation_type: null
-variation_value: null
-max_samples: 20

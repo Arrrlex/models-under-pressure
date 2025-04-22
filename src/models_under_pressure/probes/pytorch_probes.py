@@ -8,7 +8,7 @@ from models_under_pressure.config import (
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
 )
-from models_under_pressure.experiments.dataset_splitting import load_train_test
+from models_under_pressure.dataset_utils import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
@@ -33,14 +33,26 @@ class PytorchProbe(Probe):
     def __post_init__(self):
         self._classifier.training_args = self.hyper_params
 
-    def fit(self, dataset: LabelledDataset) -> Self:
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self:
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
         """
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
-        self._classifier.train(activations_obj, dataset.labels_numpy())
+        if validation_dataset is not None:
+            self._classifier.train(
+                activations_obj,
+                dataset.labels_numpy(),
+                validation_activations=Activation.from_dataset(validation_dataset),
+                validation_y=validation_dataset.labels_numpy(),
+            )
+        else:
+            self._classifier.train(activations_obj, dataset.labels_numpy())
         return self
 
     def predict(self, dataset: BaseDataset) -> list:
@@ -67,6 +79,22 @@ class PytorchProbe(Probe):
 
         # Take the mean over the sequence length:
         return activations_obj, probs
+
+    def predict_proba_without_activations(
+        self, dataset: BaseDataset
+    ) -> Float[np.ndarray, " batch_size"]:
+        """
+        Predict and return the probabilities of the dataset.
+
+        Probabilities are expected from the classifier in the shape (batch_size,)
+        """
+        activations_obj = self._llm.get_batched_activations(
+            dataset=dataset,
+            layer=self.layer,
+        )
+
+        # Get the batch_size, seq_len probabilities:
+        return self._classifier.predict_proba(activations_obj)  # type: ignore
 
     def per_token_predictions(
         self,
