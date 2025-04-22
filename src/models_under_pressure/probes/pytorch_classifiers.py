@@ -854,4 +854,4 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 torch.nn.init.xavier_uniform_(layer.key_linear.weight)
                 torch.nn.init.xavier_uniform_(layer.value_linear.weight)
 
-        return model.to(self.device).to(self.data_type)
+        return model
