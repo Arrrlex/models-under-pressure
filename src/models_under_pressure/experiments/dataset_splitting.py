@@ -4,11 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from models_under_pressure.activation_store import ActivationStore
-from models_under_pressure.interfaces.dataset import (
-    Dataset,
-    LabelledDataset,
-    subsample_balanced_subset,
-)
+from models_under_pressure.interfaces.dataset import Dataset, LabelledDataset
 
 
 def create_train_test_split(
@@ -151,15 +147,8 @@ def load_train_test(
     else:
         dataset = LabelledDataset.load_from(dataset_path)
 
-    if "split" in dataset.other_fields:
-        train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
-        test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
-    else:
-        print(
-            f"Warning: No split field found in dataset {dataset_path}, interpreting all as training data."
-        )
-        train_dataset = dataset
-        test_dataset = LabelledDataset(ids=[], inputs=[], other_fields={"labels": []})
+    train_dataset = dataset.filter(lambda x: x.other_fields["split"] == "train")
+    test_dataset = dataset.filter(lambda x: x.other_fields["split"] == "test")
 
     return train_dataset, test_dataset
 
@@ -183,11 +172,14 @@ def load_filtered_train_dataset(
     )
 
     # Subsample so this runs on the laptop
-    if max_samples is not None and len(train_dataset) > max_samples:
+    if max_samples is not None:
         print("Subsampling the dataset ...")
-        train_dataset = subsample_balanced_subset(
-            train_dataset, n_per_class=max_samples // 2
+        indices = np.random.choice(
+            range(len(train_dataset.ids)),
+            size=max_samples,
+            replace=False,
         )
+        train_dataset = train_dataset[list(indices)]  # type: ignore
 
     print(f"Number of samples in train dataset: {len(train_dataset.ids)}")
     return train_dataset

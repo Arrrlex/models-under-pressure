@@ -8,7 +8,6 @@ from models_under_pressure.activation_store import ActivationStore
 from models_under_pressure.config import (
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
-    INPUTS_DIR,
     LOCAL_MODELS,
     TEST_DATASETS,
     EvalRunConfig,
@@ -46,6 +45,10 @@ def run_evaluation(
 
     if config.compute_activations:
         model = LLMModel.load(config.model_name)
+        if config.max_samples and len(train_dataset) > config.max_samples:
+            train_dataset = subsample_balanced_subset(
+                train_dataset, n_per_class=config.max_samples // 2
+            )
         print("Computing activations for train dataset ...")
         activations = model.get_batched_activations(train_dataset, layer=config.layer)
         train_dataset = train_dataset.assign(
@@ -148,8 +151,7 @@ if __name__ == "__main__":
 
     config = EvalRunConfig(
         layer=11,
-        max_samples=100,
-        dataset_path=INPUTS_DIR / "medical_deployment_dataset.jsonl",
+        max_samples=20,
         model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_per_token_probe",
