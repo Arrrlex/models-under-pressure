@@ -139,6 +139,10 @@ OTHER_DATASETS = {
     "mask_dev": EVALS_DIR / "mask_samples.jsonl",
     "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
     "training_08_04_25": TRAIN_DIR / "prompts_08_04_25_gpt-4o.jsonl",
+    "chatbot_deployment": TRAIN_DIR / "chatbot_deployment_22_04_25.jsonl",
+    "medical_deployment": TRAIN_DIR / "medical_deployment_22_04_25.jsonl",
+    "software_deployment": TRAIN_DIR / "software_deployment_22_04_25.jsonl",
+    "combined_deployment": TRAIN_DIR / "combined_deployment_22_04_25.jsonl",
 }
 
 
