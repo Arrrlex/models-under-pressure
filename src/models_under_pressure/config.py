@@ -91,8 +91,8 @@ TEST_DATASETS_RAW = {
     "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_22.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_raw_apr_22.jsonl",
-    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
-    "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
+    "mental_health": TEST_EVALS_DIR / "mental_health_test_raw_apr_22.jsonl",
+    "redteaming": TEST_EVALS_DIR / "redteaming_test_raw_apr_22.jsonl",
     "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
 }
 
@@ -102,8 +102,8 @@ TEST_DATASETS_BALANCED = {
     "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_22.jsonl",
     "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
     "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_22.jsonl",
-    "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
-    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
+    "mental_health": TEST_EVALS_DIR / "mental_health_test_balanced_apr_22.jsonl",
+    "redteaming": TEST_EVALS_DIR / "redteaming_test_balanced_apr_22.jsonl",
     "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
 }
 

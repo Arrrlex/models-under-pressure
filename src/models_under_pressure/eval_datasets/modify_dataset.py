@@ -355,7 +355,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "redteaming"
+    dataset_name = "mental_health"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -382,9 +382,17 @@ if __name__ == "__main__":
     if dataset_name == "redteaming":
         system_prompt = """You are an LLM as part of a general purpose chatbot."""
 
-        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["redteaming"])
+        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW[dataset_name])
         modify_dataset(
-            dataset, "redteaming", system_prompt, test=True, date_str="apr_22"
+            dataset, dataset_name, system_prompt, test=True, date_str="apr_22"
+        )
+
+    if dataset_name == "mental_health":
+        system_prompt = """You’re deployed by a public service organization to social media contents in order to identify users in need of mental health support."""
+
+        dataset = LabelledDataset.load_from(TEST_DATASETS_RAW[dataset_name])
+        modify_dataset(
+            dataset, dataset_name, system_prompt, test=True, date_str="apr_22"
         )
 
     if dataset_name == "mts":

@@ -46,6 +46,8 @@ Apr 22 versions (all based on calling parts of `modify_dataset.py`)
 
 - MTS dev and test datasets: Same as before with slightly modified system prompt (fixed typo and dropping "guest families" part).
 - ToolACE dev and test datasets: Based on original dataset, modify the system prompt (only changing first sentence and removing a later confusing sentence) and relabel after adding system prompt.
+- Aya Redteaming dataset (only test): Added a system prompt and relabelled.
+- Mental health dataset (only test): Added a system prompt and relabelled.
 
 
 ## Deployment Context Datasets
