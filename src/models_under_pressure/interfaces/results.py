@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
     ChooseLayerConfig,
+    DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
     EvalRunConfig,
     HeatmapRunConfig,
@@ -243,6 +244,7 @@ class ProbeDataEfficiencyResults(BaseModel):
 
 class DataEfficiencyResults(BaseModel):
     config: DataEfficiencyConfig
+    baseline_config: Optional[DataEfficiencyBaselineConfig] = None
     probe_results: list[ProbeDataEfficiencyResults]
     timestamp: datetime = Field(default_factory=datetime.now)
 

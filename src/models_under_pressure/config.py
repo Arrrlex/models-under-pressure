@@ -2,9 +2,9 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, JsonValue, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
@@ -388,3 +388,20 @@ class DataEfficiencyConfig(BaseModel):
     @property
     def output_path(self) -> Path:
         return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"
+
+
+# TODO: Maybe rename this and keep it experiment agnostic
+class DataEfficiencyBaselineConfig(BaseModel):
+    model_name_or_path: str
+    num_classes: int
+    ClassifierModule: dict[str, JsonValue]
+    batch_size: int
+    shuffle: bool
+    logger: Any | None
+    Trainer: dict[str, JsonValue]
+
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        try:
+            return self.model_dump()[key]
+        except KeyError:
+            return default
