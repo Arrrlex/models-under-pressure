@@ -4,7 +4,7 @@ from typing import Optional
 
 import pandas as pd
 
-from models_under_pressure.config import EVAL_DATASETS_BALANCED
+from models_under_pressure.config import EVAL_DATASETS_BALANCED, TEST_DATASETS_BALANCED
 from models_under_pressure.interfaces.dataset import Label, LabelledDataset
 
 
@@ -136,13 +136,21 @@ def create_manual_review_excel(
 
 
 if __name__ == "__main__":
-    # dataset_name = "anthropic"
-    dataset_names = EVAL_DATASETS_BALANCED.keys()
-    output_path = Path("manual_review.xlsx")
+    use_test = True
 
-    for dataset_name in dataset_names:
+    if use_test:
+        datasets = TEST_DATASETS_BALANCED
+    else:
+        datasets = EVAL_DATASETS_BALANCED
+
+    output_path = Path(f"manual_review_{'test' if use_test else 'dev'}.xlsx")
+
+    for dataset_name, dataset_path in datasets.items():
+        if dataset_name == "manual" and use_test:
+            continue
+
         print(f"Creating manual review for {dataset_name} ...")
-        dataset = LabelledDataset.load_from(EVAL_DATASETS_BALANCED[dataset_name])
+        dataset = LabelledDataset.load_from(dataset_path)
 
         # Create the Excel sheet
         create_manual_review_excel(
