@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 import torch
+import yaml
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
@@ -70,45 +71,18 @@ USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
-EVAL_DATASETS_RAW = {
-    "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_raw_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_raw_apr_22.jsonl",
-    "mt": EVALS_DIR / "mt_raw_apr_16.jsonl",
-    "mts": EVALS_DIR / "mts_raw_apr_22.jsonl",
-    "mask": EVALS_DIR / "mask_samples_raw.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "dev_raw.yaml") as f:
+    EVAL_DATASETS_RAW = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-EVAL_DATASETS_BALANCED = {
-    "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_balanced_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_balanced_apr_22.jsonl",
-    "mt": EVALS_DIR / "mt_balanced_apr_16.jsonl",
-    "mts": EVALS_DIR / "mts_balanced_apr_22.jsonl",
-    "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "dev_balanced.yaml") as f:
+    EVAL_DATASETS_BALANCED = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-TEST_DATASETS_RAW = {
-    "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_22.jsonl",
-    "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_test_raw_apr_22.jsonl",
-    "mental_health": TEST_EVALS_DIR / "mental_health_test_raw_apr_22.jsonl",
-    "redteaming": TEST_EVALS_DIR / "redteaming_test_raw_apr_22.jsonl",
-    "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "test_raw.yaml") as f:
+    TEST_DATASETS_RAW = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-TEST_DATASETS_BALANCED = {
-    "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_22.jsonl",
-    "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_22.jsonl",
-    "mental_health": TEST_EVALS_DIR / "mental_health_test_balanced_apr_22.jsonl",
-    "redteaming": TEST_EVALS_DIR / "redteaming_test_balanced_apr_22.jsonl",
-    "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "test_balanced.yaml") as f:
+    TEST_DATASETS_BALANCED = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
+
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
