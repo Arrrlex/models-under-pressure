@@ -21,6 +21,7 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.probes.pytorch_classifiers import PytorchLinearClassifier
 from models_under_pressure.probes.sklearn_probes import Probe
+from models_under_pressure.utils import as_numpy
 
 
 @dataclass
@@ -47,54 +48,30 @@ class PytorchProbe(Probe):
         if validation_dataset is not None:
             self._classifier.train(
                 activations_obj,
-                dataset.labels_numpy(),
+                dataset.labels_torch(),
                 validation_activations=Activation.from_dataset(validation_dataset),
-                validation_y=validation_dataset.labels_numpy(),
+                validation_y=validation_dataset.labels_torch(),
             )
         else:
-            self._classifier.train(activations_obj, dataset.labels_numpy())
+            self._classifier.train(activations_obj, dataset.labels_torch())
         return self
 
-    def predict(self, dataset: BaseDataset) -> list:
+    def predict(self, dataset: BaseDataset) -> list[Label]:
         """
         Predict and return the labels of the dataset.
         """
 
-        activations_obj = Activation.from_dataset(dataset)
-        labels = self._classifier.predict(activations_obj)
+        labels = self.predict_proba(dataset) > 0.5
         return [Label.from_int(label) for label in labels]
 
-    def predict_proba(
-        self, dataset: BaseDataset
-    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
+    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
         """
         Predict and return the probabilities of the dataset.
 
         Probabilities are expected from the classifier in the shape (batch_size,)
         """
         activations_obj = Activation.from_dataset(dataset)
-
-        # Get the batch_size, seq_len probabilities:
-        probs = self._classifier.predict_proba(activations_obj)
-
-        # Take the mean over the sequence length:
-        return activations_obj, probs
-
-    def predict_proba_without_activations(
-        self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]:
-        """
-        Predict and return the probabilities of the dataset.
-
-        Probabilities are expected from the classifier in the shape (batch_size,)
-        """
-        activations_obj = self._llm.get_batched_activations(
-            dataset=dataset,
-            layer=self.layer,
-        )
-
-        # Get the batch_size, seq_len probabilities:
-        return self._classifier.predict_proba(activations_obj)  # type: ignore
+        return as_numpy(self._classifier.probs(activations_obj))
 
     def per_token_predictions(
         self,
@@ -110,9 +87,9 @@ class PytorchProbe(Probe):
         # TODO: Change such that it uses the aggregation framework
         activations_obj = Activation.from_dataset(dataset)
 
-        probs = self._classifier.predict_token_proba(activations_obj)
+        probs = self._classifier.probs(activations_obj, per_token=True)
 
-        return probs
+        return as_numpy(probs)
 
 
 if __name__ == "__main__":

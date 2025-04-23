@@ -61,7 +61,7 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
                     f"Evaluating on variation '{variation_type}'='{test_variation_value}'"
                 )
                 test_split = variations.test_splits[test_variation_value]
-                _, pred_scores = probe.predict_proba(test_split)
+                pred_scores = probe.predict_proba(test_split)
                 pred_labels = pred_scores > 0.5
                 labels = test_split.labels_numpy()
                 metrics = {

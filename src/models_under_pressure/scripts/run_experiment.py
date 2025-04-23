@@ -46,8 +46,9 @@ def run_experiment(config: DictConfig):
             compute_activations=config.compute_activations,
             validation_dataset=config.validation_dataset,
         )
-        if global_settings.DOUBLE_CHECK_CONFIG:
-            double_check_config(evaluate_probe_config)
+        double_check_config(
+            evaluate_probe_config, double_check=global_settings.DOUBLE_CHECK_CONFIG
+        )
         run_evaluation(evaluate_probe_config)
 
     if config.experiment == "generalisation_heatmap":
@@ -59,8 +60,9 @@ def run_experiment(config: DictConfig):
             variation_types=config.variation_types,
             probe_spec=config.probe,
         )
-        if global_settings.DOUBLE_CHECK_CONFIG:
-            double_check_config(heatmap_config)
+        double_check_config(
+            heatmap_config, double_check=global_settings.DOUBLE_CHECK_CONFIG
+        )
         generate_heatmaps(heatmap_config)
 
     if config.experiment == "cv":
@@ -73,8 +75,9 @@ def run_experiment(config: DictConfig):
             layers=config.cv.layers,
             probe_spec=config.probe,
         )
-        if global_settings.DOUBLE_CHECK_CONFIG:
-            double_check_config(choose_layer_config)
+        double_check_config(
+            choose_layer_config, double_check=global_settings.DOUBLE_CHECK_CONFIG
+        )
         choose_best_layer_via_cv(choose_layer_config)
 
     if config.experiment in ["run_baselines", "run_baseline"]:
@@ -90,8 +93,9 @@ def run_experiment(config: DictConfig):
             max_samples=config.max_samples,
             batch_size=config.batch_size,
         )
-        if global_settings.DOUBLE_CHECK_CONFIG:
-            double_check_config(run_baselines_config)
+        double_check_config(
+            run_baselines_config, double_check=global_settings.DOUBLE_CHECK_CONFIG
+        )
         run_baselines(run_baselines_config)
 
 
