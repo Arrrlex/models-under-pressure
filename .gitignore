@@ -12,6 +12,7 @@ temp_data/*
 outputs/*
 images/*
 multirun/*
+data/temp/*
 
 config/**/*local*.yaml
 config/outputs
