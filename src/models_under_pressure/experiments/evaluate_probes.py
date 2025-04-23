@@ -200,7 +200,6 @@ def run_evaluation(
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
         model_name=config.model_name,
-        layer=config.layer,
     )
 
     results_list = []

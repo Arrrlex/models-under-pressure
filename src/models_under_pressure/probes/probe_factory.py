@@ -22,8 +22,6 @@ from models_under_pressure.probes.sklearn_probes import (
 )
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
-from models_under_pressure.probes.probe_store import ProbeStore
-
 
 class ProbeFactory:
     @classmethod
@@ -32,23 +30,8 @@ class ProbeFactory:
         probe_spec: ProbeSpec,
         train_dataset: LabelledDataset,
         model_name: str,
-        layer: int,
         validation_dataset: LabelledDataset | None = None,
     ) -> Probe:
-        store = ProbeStore()
-
-        try:
-            probe = store.load(
-                probe_spec,
-                model_name,
-                layer,
-                train_dataset,
-                validation_dataset,
-            )
-            return probe
-        except FileNotFoundError:
-            print(f"Probe {probe_spec.name} not found in store, building from scratch")
-
         if not has_activations(train_dataset):
             raise ValueError(
                 "Train dataset must contain activations, attention_mask, and input_ids"
@@ -96,16 +79,6 @@ class ProbeFactory:
         )
 
         probe.fit(train_dataset, validation_dataset)
-
-        store = ProbeStore()
-        store.save(
-            probe,
-            probe_spec,
-            model_name,
-            layer,
-            train_dataset.hash,
-            validation_dataset.hash if validation_dataset is not None else None,
-        )
 
         return probe
 

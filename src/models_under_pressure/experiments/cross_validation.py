@@ -105,7 +105,6 @@ def get_cross_validation_accuracies(
     cv_splits: CVSplits,
     probe_spec: ProbeSpec,
     model_name: str,
-    layer: int,
 ) -> list[float]:
     """Get the cross validation accuracies for a given layer.
 
@@ -124,7 +123,6 @@ def get_cross_validation_accuracies(
             probe_spec=probe_spec,
             train_dataset=train,
             model_name=model_name,
-            layer=layer,
         )
         test_scores = probe.predict(test)
         results.append((np.array(test_scores) == test.labels_numpy()).mean())
@@ -177,7 +175,6 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
                 cv_splits=cv_splits,
                 probe_spec=config.probe_spec,
                 model_name=config.model_name,
-                layer=layer,
             )
 
             results.add_layer_results(layer, layer_results)
