@@ -75,9 +75,7 @@ class BaselineResults(BaseModel):
         assert (
             self._labels is not None and self._logits is not None
         ), "Labels and logits must be set before computing accuracy"
-        return (
-            (self.probits > 0.5) == self._labels.cpu().numpy()
-        ).mean()  # TODO: fix this
+        return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
@@ -112,9 +110,19 @@ class BaselineResults(BaseModel):
         # Find the TPR corresponding to the closest FPR
         # Find closest non-zero FPR value
         non_zero_mask = fprs > 0
-        idx = np.argmin(np.abs(fprs[non_zero_mask] - fpr))
-        idx = np.where(non_zero_mask)[0][idx]
-        return float(tprs[idx]), float(fprs[idx])
+        try:
+            idx = np.argmin(np.abs(fprs[non_zero_mask] - fpr))
+            idx = np.where(non_zero_mask)[0][idx]
+            return float(tprs[idx]), float(fprs[idx])
+        except ValueError:
+            print(f"labels: {self._labels.cpu().numpy()}")
+            print(
+                f"logits: {sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()}"
+            )
+            print(f"fprs: {fprs}")
+            print(f"tprs: {tprs}")
+            print("Unable to calculate tpr at fpr")
+            return 0.0, 0.0
 
 
 class ClassifierModule(pl.LightningModule):

@@ -2,6 +2,7 @@ defaults:
   - probe: sklearn_mean_agg_probe
   - eval_datasets: dev_balanced
   - model: llama-70b
+  - baseline: llama3-1b-finetune
   - _self_
 
 batch_size: 4
@@ -29,3 +30,16 @@ generalisation_heatmap:
     - tone
     - language
     - length
+
+data_efficiency:
+  dataset_sizes:
+    - 2
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
+    - 128
+    - 256
+    - 512
+    - 709

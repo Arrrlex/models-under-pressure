@@ -173,7 +173,7 @@ class BaseDataset(BaseModel, Generic[R]):
         if field_name in ["inputs", "ids"]:
             raise ValueError("Cannot remove required fields")
         elif field_name in self.other_fields:
-            self.other_fields.pop(field_name)
+            self.other_fields.pop(field_name)  # type: ignore
         else:
             raise ValueError(
                 f"Field {field_name} not found in other fields {self.other_fields.keys()}"
@@ -357,7 +357,7 @@ class BaseDataset(BaseModel, Generic[R]):
             )
             for dataset in datasets:
                 for key in set(dataset.other_fields.keys()) - cols:
-                    del dataset.other_fields[key]
+                    del dataset.other_fields[key]  # type: ignore
         if col_conflict == "error":
             for dataset in datasets[1:]:
                 if set(dataset.other_fields.keys()) != first_fields:
@@ -548,9 +548,13 @@ def subsample_balanced_subset(
 
     n_per_class = n_per_class or min(len(high_stakes_indices), len(low_stakes_indices))
 
-    indices = random.sample(high_stakes_indices, n_per_class) + random.sample(
-        low_stakes_indices, n_per_class
-    )
+    try:
+        indices = random.sample(high_stakes_indices, n_per_class) + random.sample(
+            low_stakes_indices, n_per_class
+        )
+    except ValueError:
+        breakpoint()
+
     random.shuffle(indices)
 
     return dataset[indices]

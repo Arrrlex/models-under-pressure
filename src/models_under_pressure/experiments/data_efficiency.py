@@ -1,4 +1,4 @@
-import json
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -6,7 +6,6 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    RESULTS_DIR,
     DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
 )
@@ -264,7 +263,8 @@ def plot_data_efficiency_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save plots
-    base_path = output_dir / f"data_efficiency_{results.config.id}_{metric}"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    base_path = output_dir / f"data_efficiency_{results.config.id}_{metric}_{timestamp}"
     plt.savefig(f"{base_path}.pdf", bbox_inches="tight", dpi=300)
     plt.savefig(f"{base_path}.png", bbox_inches="tight", dpi=300)
 
@@ -283,7 +283,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 836],
+        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 709],
         probes=[
             ProbeSpec(
                 name="sklearn_mean_agg_probe",
@@ -293,7 +293,7 @@ if __name__ == "__main__":
                 name="pytorch_per_token_probe",
                 hyperparams={
                     "batch_size": 16,
-                    "epochs": 20,
+                    "epochs": 20,  # 20,
                     "device": "cpu",
                     "learning_rate": 1e-2,
                     "weight_decay": 0.1,
@@ -317,16 +317,16 @@ if __name__ == "__main__":
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=12,
+        batch_size=8,
         shuffle=True,
         logger=None,
         Trainer={
-            "max_epochs": 20,
+            "max_epochs": 20,  # 20,
             "accelerator": "gpu",
-            "devices": 1,
+            "devices": [1, 2],
             "precision": "bf16-true",
             "default_root_dir": "~/.cache/models-under-pressure",
-            "accumulate_grad_batches": 1,
+            "accumulate_grad_batches": 2,
         },
     )
 
@@ -335,10 +335,10 @@ if __name__ == "__main__":
         config, finetune_config
     )
 
-    # Reload the results as a test:
-    with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
-        results_dict = json.loads(f.readlines()[-1])
+    # # Reload the results as a test:
+    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
+    #     results_dict = json.loads(f.readlines()[-1])
 
-    results = DataEfficiencyResults.model_validate(results_dict)
+    # results = DataEfficiencyResults.model_validate(results_dict)
 
     plot_data_efficiency_results(results, baseline_results)
