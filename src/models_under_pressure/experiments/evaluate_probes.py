@@ -196,7 +196,7 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
+        probe_spec=config.probe_spec,
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
     )

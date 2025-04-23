@@ -11,16 +11,30 @@ from models_under_pressure.probes.sklearn_probes import (
     SklearnProbe,
     compute_accuracy,
 )
+from models_under_pressure.probes.probe_store import FullProbeSpec, ProbeStore
 
 
 class ProbeFactory:
     @classmethod
     def build(
         cls,
-        probe: ProbeSpec,
+        probe_spec: ProbeSpec,
         train_dataset: LabelledDataset,
-        validation_dataset: LabelledDataset | None = None,
+        validation_dataset: LabelledDataset | None,
+        model_name: str,
+        layer: int,
     ) -> Probe:
+        store = ProbeStore()
+        full_spec = FullProbeSpec.from_spec(
+            spec=probe_spec,
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            model_name=model_name,
+            layer=layer,
+        )
+        if store.exists(full_spec):
+            return store.load(full_spec)
+
         if not {"activations", "attention_mask", "input_ids"}.issubset(
             train_dataset.other_fields
         ):
@@ -37,7 +51,7 @@ class ProbeFactory:
             )
 
         if (validation_dataset is not None) and (
-            probe.name
+            probe_spec.name
             not in [
                 "pytorch_per_entry_probe_mean",
                 "pytorch_per_token_probe",
@@ -45,50 +59,55 @@ class ProbeFactory:
             ]
         ):
             print(
-                f"Warning: Validation dataset is not used for probe of type {probe.name}."
+                f"Warning: Validation dataset is not used for probe of type {probe_spec.name}."
             )
 
-        if probe.name == "sklearn_mean_agg_probe":
-            return SklearnProbe(hyper_params=probe.hyperparams).fit(train_dataset)
-        elif probe.name == "difference_of_means":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
+        if probe_spec.name == "sklearn_mean_agg_probe":
+            probe = SklearnProbe(hyper_params=probe_spec.hyperparams).fit(train_dataset)
+        elif probe_spec.name == "difference_of_means":
+            assert probe_spec.hyperparams is not None
+            probe = PytorchProbe(
+                hyper_params=probe_spec.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
-                    use_lda=False, training_args=probe.hyperparams
+                    use_lda=False, training_args=probe_spec.hyperparams
                 ),
             ).fit(train_dataset)
-        elif probe.name == "lda":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
+        elif probe_spec.name == "lda":
+            assert probe_spec.hyperparams is not None
+            probe = PytorchProbe(
+                hyper_params=probe_spec.hyperparams,
                 _classifier=PytorchDifferenceOfMeansClassifier(
-                    use_lda=True, training_args=probe.hyperparams
+                    use_lda=True, training_args=probe_spec.hyperparams
                 ),
             ).fit(train_dataset)
-        elif probe.name == "pytorch_per_token_probe":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
+        elif probe_spec.name == "pytorch_per_token_probe":
+            assert probe_spec.hyperparams is not None
+            probe = PytorchProbe(
+                hyper_params=probe_spec.hyperparams,
             ).fit(train_dataset, validation_dataset=validation_dataset)
-        elif probe.name == "pytorch_per_entry_probe_mean":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
+        elif probe_spec.name == "pytorch_per_entry_probe_mean":
+            assert probe_spec.hyperparams is not None
+            probe = PytorchProbe(
+                hyper_params=probe_spec.hyperparams,
                 _classifier=PytorchPerEntryLinearClassifier(
-                    training_args=probe.hyperparams
+                    training_args=probe_spec.hyperparams
                 ),
             ).fit(
                 train_dataset, validation_dataset=validation_dataset
             )  # Only functionality for this probe atm
-        elif probe.name == "pytorch_attention_probe":
-            assert probe.hyperparams is not None
-            return PytorchProbe(
-                hyper_params=probe.hyperparams,
-                _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
+        elif probe_spec.name == "pytorch_attention_probe":
+            assert probe_spec.hyperparams is not None
+            probe = PytorchProbe(
+                hyper_params=probe_spec.hyperparams,
+                _classifier=PytorchAttentionClassifier(
+                    training_args=probe_spec.hyperparams
+                ),
             ).fit(train_dataset, validation_dataset=validation_dataset)
         else:
-            raise NotImplementedError(f"Probe type {probe} not supported")
+            raise NotImplementedError(f"Probe type {probe_spec.name} not supported")
+
+        store.save(probe, full_spec)
+        return probe
 
 
 if __name__ == "__main__":
@@ -119,7 +138,11 @@ if __name__ == "__main__":
 
     # Train the probe
     probe = ProbeFactory.build(
-        probe=probe_spec, train_dataset=train_dataset, validation_dataset=test_dataset
+        probe_spec=probe_spec,
+        train_dataset=train_dataset,
+        validation_dataset=test_dataset,
+        model_name=LOCAL_MODELS["llama-1b"],
+        layer=11,
     )
 
     # Print probe performance
