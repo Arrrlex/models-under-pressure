@@ -136,9 +136,7 @@ def create_manual_review_excel(
             reviewer_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 
-if __name__ == "__main__":
-    use_test = True
-
+def create_manual_review_excel_for_all_datasets(use_test: bool = True):
     if use_test:
         datasets = TEST_DATASETS_BALANCED
     else:
@@ -163,3 +161,197 @@ if __name__ == "__main__":
             seed=42,  # For reproducibility
             append=True if output_path.exists() else False,
         )
+
+
+def analyze_manual_review_results(
+    excel_path: Path,
+    dataset_name: str,
+    use_test: bool = True,
+) -> None:
+    """Analyze manual review results from an Excel file.
+
+    Args:
+        excel_path: Path to the Excel file containing manual review results
+        dataset_name: Name of the dataset being reviewed
+        use_test: Whether to use test or dev datasets
+    """
+    # Load the original dataset to get ground truth labels
+    if use_test:
+        dataset_path = TEST_DATASETS_BALANCED[dataset_name]
+    else:
+        dataset_path = EVAL_DATASETS_BALANCED[dataset_name]
+    original_dataset = LabelledDataset.load_from(dataset_path)
+    ground_truth_labels = {
+        record.id: record.label for record in original_dataset.to_records()
+    }
+    # ground_truth_labels = {
+    #    record.id: record.label for record in original_dataset.to_records()
+    # }
+
+    # Load the Excel file
+    excel_file = pd.ExcelFile(excel_path)
+
+    # Get all sheets for this dataset
+    dataset_sheets = [
+        sheet
+        for sheet in excel_file.sheet_names
+        if str(sheet).startswith(f"{dataset_name}_")
+    ]
+
+    if not dataset_sheets:
+        print(f"No review sheets found for dataset {dataset_name}")
+        return
+
+    # Load each reviewer's data
+    reviewer_data = {}
+    for sheet in dataset_sheets:
+        reviewer_num = int(str(sheet).split("_")[-1])
+        df = pd.read_excel(excel_file, sheet_name=sheet)
+
+        # Convert scale labels to discrete labels using the same thresholds as in label_dataset
+        scale_labels = df["label"].tolist()
+        discrete_labels = []
+        for score in scale_labels:
+            if pd.isna(score):
+                discrete_labels.append(None)
+            else:
+                try:
+                    score_float = float(score)
+                    if score_float <= 3:  # low_stakes_threshold
+                        discrete_labels.append("low-stakes")
+                    elif score_float >= 8:  # high_stakes_threshold
+                        discrete_labels.append("high-stakes")
+                    else:
+                        discrete_labels.append("ambiguous")
+                except (ValueError, TypeError):
+                    discrete_labels.append(None)
+
+        reviewer_data[reviewer_num] = {
+            "ids": df["ids"].tolist(),
+            "scale_labels": scale_labels,
+            "discrete_labels": discrete_labels,
+        }
+
+    # Calculate inter-rater agreement for both scale and discrete labels
+    print(f"\nInter-rater agreement for {dataset_name}:")
+    reviewer_pairs = [
+        (r1, r2)
+        for r1 in reviewer_data.keys()
+        for r2 in reviewer_data.keys()
+        if r1 < r2
+    ]
+
+    for r1, r2 in reviewer_pairs:
+        # Get samples that both reviewers labeled
+        common_ids = set(reviewer_data[r1]["ids"]) & set(reviewer_data[r2]["ids"])
+
+        # Calculate agreement for scale labels
+        r1_scale = {
+            id_: float(label)
+            for id_, label in zip(
+                reviewer_data[r1]["ids"], reviewer_data[r1]["scale_labels"]
+            )
+            if id_ in common_ids and pd.notna(label)
+        }
+        r2_scale = {
+            id_: float(label)
+            for id_, label in zip(
+                reviewer_data[r2]["ids"], reviewer_data[r2]["scale_labels"]
+            )
+            if id_ in common_ids and pd.notna(label)
+        }
+
+        # Calculate agreement for discrete labels
+        r1_discrete = {
+            id_: label
+            for id_, label in zip(
+                reviewer_data[r1]["ids"], reviewer_data[r1]["discrete_labels"]
+            )
+            if id_ in common_ids and label is not None
+        }
+        r2_discrete = {
+            id_: label
+            for id_, label in zip(
+                reviewer_data[r2]["ids"], reviewer_data[r2]["discrete_labels"]
+            )
+            if id_ in common_ids and label is not None
+        }
+
+        # Calculate scale agreement (using absolute difference)
+        total_scale = len(r1_scale)
+        if total_scale > 0:
+            avg_diff = (
+                sum(abs(r1_scale[id_] - r2_scale[id_]) for id_ in r1_scale)
+                / total_scale
+            )
+            print(
+                f"Reviewers {r1} and {r2} (scale): Average absolute difference = {avg_diff:.2f}"
+            )
+
+        # Calculate discrete agreement
+        total_discrete = len(r1_discrete)
+        if total_discrete > 0:
+            matches = sum(
+                1 for id_ in r1_discrete if r1_discrete[id_] == r2_discrete.get(id_)
+            )
+            agreement = matches / total_discrete * 100
+            print(
+                f"Reviewers {r1} and {r2} (discrete): {agreement:.1f}% agreement ({matches}/{total_discrete} samples)"
+            )
+
+    # Calculate agreement with ground truth
+    print(f"\nAgreement with ground truth for {dataset_name}:")
+    for reviewer_num, data in reviewer_data.items():
+        # Get samples that were labeled by this reviewer and have ground truth
+        valid_samples_scale = [
+            (id_, float(label))
+            for id_, label in zip(data["ids"], data["scale_labels"])
+            if pd.notna(label) and id_ in ground_truth_labels
+        ]
+        valid_samples_discrete = [
+            (id_, label)
+            for id_, label in zip(data["ids"], data["discrete_labels"])
+            if label is not None and id_ in ground_truth_labels
+        ]
+
+        # Calculate scale agreement with ground truth
+        total_scale = len(valid_samples_scale)
+        if total_scale > 0:
+            # Convert ground truth to scale (1 for low-stakes, 10 for high-stakes)
+            ground_truth_scale = {
+                id_: 1 if label == "low-stakes" else 10
+                for id_, label in ground_truth_labels.items()
+            }
+            avg_diff = (
+                sum(
+                    abs(score - ground_truth_scale[id_])
+                    for id_, score in valid_samples_scale
+                )
+                / total_scale
+            )
+            print(
+                f"Reviewer {reviewer_num} (scale): Average absolute difference with ground truth = {avg_diff:.2f}"
+            )
+
+        # Calculate discrete agreement with ground truth
+        total_discrete = len(valid_samples_discrete)
+        if total_discrete > 0:
+            matches = sum(
+                1
+                for id_, label in valid_samples_discrete
+                if label == ground_truth_labels[id_]
+            )
+            agreement = matches / total_discrete * 100
+            print(
+                f"Reviewer {reviewer_num} (discrete): {agreement:.1f}% agreement with ground truth ({matches}/{total_discrete} samples)"
+            )
+
+
+if __name__ == "__main__":
+    # create_manual_review_excel_for_all_datasets(use_test=True)
+    dataset_name = "anthropic"
+    analyze_manual_review_results(
+        excel_path=Path("~/Downloads/manual_review_test-2.xlsx"),
+        dataset_name=dataset_name,
+        use_test=True,
+    )
