@@ -83,7 +83,6 @@ with open(CONFIG_DIR / "eval_datasets" / "test_raw.yaml") as f:
 with open(CONFIG_DIR / "eval_datasets" / "test_balanced.yaml") as f:
     TEST_DATASETS_BALANCED = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
 
