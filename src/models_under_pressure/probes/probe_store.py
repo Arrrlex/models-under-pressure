@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
-import datetime
 import hashlib
 from pathlib import Path
 import pickle
@@ -39,41 +38,20 @@ class FullProbeSpec(ProbeSpec):
             layer=layer,
         )
 
+    @property
+    def hash(self) -> str:
+        return hashlib.sha256(str(self.model_dump()).encode()).hexdigest()[:8]
 
-class ProbeRegistry(BaseModel):
-    probes: list["ProbeManifest"]
+
+class Registry(BaseModel):
+    probes: dict[str, FullProbeSpec]
 
     @classmethod
     @contextmanager
     def open(cls, path: Path):
-        with open(path, "r") as f:
-            registry = cls.model_validate_json(f.read())
+        registry = cls.model_validate_json(path.read_text())
         yield registry
-        with open(path, "w") as f:
-            f.write(registry.model_dump_json(indent=2))
-
-
-class ProbeManifest(FullProbeSpec):
-    timestamp: datetime.datetime
-    probe_hash: str
-
-    @classmethod
-    def from_full_spec(cls, spec: FullProbeSpec) -> Self:
-        return cls(
-            **spec.model_dump(),
-            timestamp=datetime.datetime.now(),
-            probe_hash=hashlib.sha256(str(spec.model_dump()).encode()).hexdigest()[:8],
-        )
-
-    @classmethod
-    def from_spec(
-        cls,
-        spec: ProbeSpec,
-        train_dataset: LabelledDataset,
-        validation_dataset: LabelledDataset | None,
-    ) -> Self:
-        full_spec = FullProbeSpec.from_spec(spec, train_dataset, validation_dataset)
-        return cls.from_full_spec(full_spec)
+        path.write_text(registry.model_dump_json(indent=2))
 
 
 @dataclass
@@ -83,43 +61,35 @@ class ProbeStore:
     def __post_init__(self):
         self.path.mkdir(parents=True, exist_ok=True)
         if not self.registry_path.exists():
-            with open(self.registry_path, "w") as f:
-                f.write(ProbeRegistry(probes=[]).model_dump_json())
+            self.registry_path.write_text(Registry(probes={}).model_dump_json())
 
     @property
     def registry_path(self) -> Path:
         return self.path / "registry.json"
 
     def exists(self, spec: FullProbeSpec) -> bool:
-        manifest = ProbeManifest.from_full_spec(spec)
-        return (self.path / f"{manifest.probe_hash}.pkl").exists()
+        return (self.path / f"{spec.hash}.pkl").exists()
 
     def save(
         self,
         probe: Probe,
         spec: FullProbeSpec,
     ):
-        manifest = ProbeManifest.from_full_spec(spec)
+        with Registry.open(self.registry_path) as registry:
+            registry.probes[spec.hash] = spec
 
-        with ProbeRegistry.open(self.registry_path) as registry:
-            registry.probes.append(manifest)
-
-        probe_path = self.path / f"{manifest.probe_hash}.pkl"
+        probe_path = self.path / f"{spec.hash}.pkl"
         with open(probe_path, "wb") as f:
             pickle.dump(probe, f)
 
     def load(self, spec: FullProbeSpec) -> Probe:
-        manifest = ProbeManifest.from_full_spec(spec)
-        probe_path = self.path / f"{manifest.probe_hash}.pkl"
+        probe_path = self.path / f"{spec.hash}.pkl"
         with open(probe_path, "rb") as f:
             return pickle.load(f)
 
     def delete(self, spec: FullProbeSpec):
-        manifest = ProbeManifest.from_full_spec(spec)
-        probe_path = self.path / f"{manifest.probe_hash}.pkl"
+        probe_path = self.path / f"{spec.hash}.pkl"
         if probe_path.exists():
             probe_path.unlink()
-        with ProbeRegistry.open(self.registry_path) as registry:
-            registry.probes = [
-                p for p in registry.probes if p.probe_hash != manifest.probe_hash
-            ]
+        with Registry.open(self.registry_path) as registry:
+            del registry.probes[spec.hash]

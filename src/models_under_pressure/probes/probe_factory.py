@@ -33,6 +33,7 @@ class ProbeFactory:
             layer=layer,
         )
         if store.exists(full_spec):
+            print(f"Loading probe from cache for {full_spec.hash}")
             return store.load(full_spec)
 
         if not {"activations", "attention_mask", "input_ids"}.issubset(
@@ -106,6 +107,7 @@ class ProbeFactory:
         else:
             raise NotImplementedError(f"Probe type {probe_spec.name} not supported")
 
+        print(f"Saving probe to cache for {full_spec.hash}")
         store.save(probe, full_spec)
         return probe
 
@@ -120,19 +122,20 @@ if __name__ == "__main__":
         dataset_path=SYNTHETIC_DATASET_PATH,
         model_name=LOCAL_MODELS["llama-1b"],
         layer=11,
-        compute_activations=True,
-        n_per_class=200,
+        compute_activations=False,
     )
 
     # Define probe hyperparameters
     probe_spec = ProbeSpec(
         name="pytorch_per_token_probe",
         hyperparams={
-            "batch_size": 32,
+            "batch_size": 8192,
             "epochs": 20,
             "device": "cpu",
-            "learning_rate": 1e-2,
-            "weight_decay": 0.1,
+            "optimizer_args": {
+                "lr": 1e-2,
+                "weight_decay": 0.1,
+            },
         },
     )
 
@@ -146,6 +149,5 @@ if __name__ == "__main__":
     )
 
     # Print probe performance
-    print("Probe training completed!")
     print(f"Train accuracy: {compute_accuracy(probe, train_dataset)}")
     print(f"Test accuracy: {compute_accuracy(probe, test_dataset)}")
