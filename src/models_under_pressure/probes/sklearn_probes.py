@@ -1,6 +1,4 @@
-import pickle
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Self, Sequence
 
 import numpy as np
@@ -9,12 +7,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.config import (
-    PROBES_DIR,
-)
 from models_under_pressure.interfaces.activations import (
     Activation,
-    Aggregator,
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -23,14 +17,12 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.base import Classifier, Probe
+from models_under_pressure.utils import as_numpy
 
 
 @dataclass
 class SklearnProbe(Probe):
-    aggregator: Aggregator
-
     hyper_params: dict = field(
         default_factory=lambda: {
             "C": 1e-3,
@@ -73,7 +65,7 @@ class SklearnProbe(Probe):
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
         # Preprocess the aggregations to be of the correct shape:
-        X, _ = self.aggregator.preprocess(activations, y)
+        X = mean_acts(activations)
 
         self._classifier.fit(X, y)  # type: ignore
         return self
@@ -87,9 +79,9 @@ class SklearnProbe(Probe):
     def _predict_proba(
         self, activations: Activation
     ) -> Float[np.ndarray, " batch_size"]:
-        X, _ = self.aggregator.preprocess(activations)
+        X = mean_acts(activations)
         logits = self._get_logits(X)
-        probs = self.aggregator.postprocess(logits)
+        probs = sigmoid(logits)
         return probs
 
     def _get_logits(
@@ -109,12 +101,14 @@ class SklearnProbe(Probe):
         # TODO: Change such that it uses the aggregation framework
 
         activations_obj = Activation.from_dataset(dataset)
+        acts = as_numpy(activations_obj.activations)
+        attn_mask = as_numpy(activations_obj.attention_mask)
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
-        for i in range(len(activations_obj.get_activations(per_token=False))):
-            activations = activations_obj.get_activations(per_token=False)[i]
-            attention_mask = activations_obj.get_attention_mask(per_token=False)[i]
+        for i in range(len(acts)):
+            activations = acts[i]
+            attention_mask = attn_mask[i]
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
@@ -130,43 +124,6 @@ class SklearnProbe(Probe):
         return np.array(predictions)
 
 
-@dataclass
-class ProbeInfo:
-    model_name_short: str
-    dataset_path: str
-    layer: int
-
-    aggregator: Aggregator
-    seq_pos: int | str
-
-    @property
-    def name(self) -> str:
-        return f"{self.model_name_short}_{self.dataset_path}_l{self.layer}_{self.aggregator.name}_{self.seq_pos}"
-
-    @property
-    def path(self) -> Path:
-        return PROBES_DIR / f"{self.name}.pkl"
-
-
-def save_probe(probe: SklearnProbe, probe_info: ProbeInfo):
-    output_path = probe_info.path
-
-    print(f"Saving probe to {output_path}")
-    with open(output_path, "wb") as f:
-        pickle.dump(probe._classifier, f)
-
-
-def load_probe(model: LLMModel, probe_info: ProbeInfo) -> SklearnProbe:
-    probe_path = probe_info.path
-    print(f"Loading probe from {probe_path}")
-    with open(probe_path, "rb") as f:
-        classifier = pickle.load(f)
-    return SklearnProbe(
-        aggregator=probe_info.aggregator,
-        _classifier=classifier,
-    )
-
-
 def compute_accuracy(
     probe: Probe,
     dataset: LabelledDataset,
@@ -174,3 +131,36 @@ def compute_accuracy(
     pred_labels = probe.predict(dataset)
     pred_labels_np = np.array([label.to_int() for label in pred_labels])
     return (pred_labels_np == dataset.labels_numpy()).mean()
+
+
+def mean_acts(
+    X: Activation,
+    batch_size: int = 200,
+) -> Float[np.ndarray, " batch_size embed_dim"]:
+    # Initialize accumulators for sum and token counts
+    sum_acts = np.zeros((X.batch_size, X.embed_dim))
+    token_counts = np.zeros((X.batch_size, 1))
+
+    # Process in batches
+    for i in range(0, X.batch_size, batch_size):
+        end_idx = min(i + batch_size, X.batch_size)
+
+        # Get current batch
+        batch_acts = as_numpy(X.activations[i:end_idx])
+        batch_mask = as_numpy(X.attention_mask[i:end_idx])
+
+        # Process current batch in-place
+        sum_acts[i:end_idx] = batch_acts.sum(axis=1)
+        token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
+
+    # Add small epsilon to avoid division by zero
+    token_counts = token_counts + 1e-10
+
+    # Calculate final mean
+    return sum_acts / token_counts
+
+
+def sigmoid(
+    logits: Float[np.ndarray, " batch_size"],
+) -> Float[np.ndarray, " batch_size"]:
+    return 1 / (1 + np.exp(-logits))

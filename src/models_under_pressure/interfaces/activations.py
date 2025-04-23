@@ -1,15 +1,12 @@
 from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple
 
 import einops
-import numpy as np
 import torch
 from jaxtyping import Float
 from torch.utils.data import Dataset as TorchDataset
 
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.dataset import BaseDataset
-from models_under_pressure.utils import as_numpy
 
 
 class ActivationDataset(TorchDataset):
@@ -162,96 +159,3 @@ class PerTokenActivation:
             input_ids=self.input_ids,
             y=y,
         )
-
-
-class Preprocessor(Protocol):
-    def __call__(
-        self, X: Activation, y: Optional[Float[np.ndarray, " batch_size"]] = None
-    ) -> tuple[
-        Float[np.ndarray, "flattened_batch_size embed_dim"],
-        Optional[Float[np.ndarray, " flattened_batch_size"]],
-    ]: ...
-
-
-class Postprocessor(Protocol):
-    def __call__(
-        self,
-        logits: Float[np.ndarray, "flattened_batch_size ..."],
-        original_shape: tuple[int, int, int],
-    ) -> Float[np.ndarray, " new_batch_size"]: ...
-
-
-class Preprocessors:
-    @staticmethod
-    def mean(
-        X: Activation,
-        y: Optional[Float[np.ndarray, " batch_size"]] = None,
-        batch_size: int = 200,
-    ) -> Tuple[
-        Float[np.ndarray, " batch_size embed_dim"],
-        Optional[Float[np.ndarray, " batch_size"]],
-    ]:
-        # Initialize accumulators for sum and token counts
-        sum_acts = np.zeros((X.batch_size, X.embed_dim))
-        token_counts = np.zeros((X.batch_size, 1))
-
-        # Process in batches
-        for i in range(0, X.batch_size, batch_size):
-            end_idx = min(i + batch_size, X.batch_size)
-
-            # Get current batch
-            batch_acts = as_numpy(X.activations[i:end_idx])
-            batch_mask = as_numpy(X.attention_mask[i:end_idx])
-
-            # Process current batch in-place
-            sum_acts[i:end_idx] = batch_acts.sum(axis=1)
-            token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
-
-        # Add small epsilon to avoid division by zero
-        token_counts = token_counts + 1e-10
-
-        # Calculate final mean
-        return (sum_acts / token_counts), y
-
-
-class Postprocessors:
-    @staticmethod
-    def sigmoid(
-        logits: Float[np.ndarray, " batch_size"],
-        original_shape: tuple[int, int, int],
-    ) -> Float[np.ndarray, " batch_size"]:
-        return 1 / (1 + np.exp(-logits))
-
-
-@dataclass
-class Aggregator:
-    preprocessor: Preprocessor
-    postprocessor: Postprocessor
-    original_shape: tuple[int, int, int] | None = None
-
-    def preprocess(
-        self, X: Activation, y: Optional[Float[np.ndarray, " batch_size"]] = None
-    ) -> tuple[
-        Float[np.ndarray, " batch_size ..."], Optional[Float[np.ndarray, " batch_size"]]
-    ]:
-        self.original_shape = X.shape  # type: ignore
-        return self.preprocessor(X, y)
-
-    def postprocess(
-        self, logits: Float[np.ndarray, " flattened_batch_size ..."]
-    ) -> Float[np.ndarray, " batch_size"]:
-        if self.original_shape is None:
-            raise ValueError("Original shape not set")
-        return self.postprocessor(logits, self.original_shape)
-
-    @property
-    def name(self) -> str:
-        if hasattr(self.preprocessor, "id"):
-            preprocessor_id = self.preprocessor.id  # type: ignore
-        else:
-            preprocessor_id = self.preprocessor.__class__.__name__
-        if hasattr(self.postprocessor, "id"):
-            postprocessor_id = self.postprocessor.id  # type: ignore
-        else:
-            postprocessor_id = self.postprocessor.__class__.__name__
-        return f"{preprocessor_id}_{postprocessor_id}"

@@ -1,8 +1,3 @@
-from models_under_pressure.interfaces.activations import (
-    Aggregator,
-    Postprocessors,
-    Preprocessors,
-)
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.pytorch_classifiers import (
@@ -22,7 +17,7 @@ class ProbeFactory:
     @classmethod
     def build(
         cls,
-        probe: str | ProbeSpec,
+        probe: ProbeSpec,
         train_dataset: LabelledDataset,
         validation_dataset: LabelledDataset | None = None,
     ) -> Probe:
@@ -41,9 +36,6 @@ class ProbeFactory:
                 "Validation dataset must contain activations, attention_mask, and input_ids"
             )
 
-        if isinstance(probe, str):
-            probe = ProbeSpec(name=probe)
-
         if (validation_dataset is not None) and (
             probe.name
             not in [
@@ -57,17 +49,7 @@ class ProbeFactory:
             )
 
         if probe.name == "sklearn_mean_agg_probe":
-            aggregator = Aggregator(
-                preprocessor=Preprocessors.mean,
-                postprocessor=Postprocessors.sigmoid,
-            )
-            if probe.hyperparams is not None:
-                return SklearnProbe(
-                    aggregator=aggregator,
-                    hyper_params=probe.hyperparams,
-                ).fit(train_dataset)
-            else:
-                return SklearnProbe(aggregator=aggregator).fit(train_dataset)
+            return SklearnProbe(hyper_params=probe.hyperparams).fit(train_dataset)
         elif probe.name == "difference_of_means":
             assert probe.hyperparams is not None
             return PytorchProbe(
