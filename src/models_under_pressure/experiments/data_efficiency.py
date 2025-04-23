@@ -33,8 +33,11 @@ def evaluate_probe(
         probe: The probe to evaluate
         eval_datasets: A list of datasets to evaluate the probe on
     """
+
+    # TODO: This is a hack to get the probe to work with the new dataset:
+    # TOOD: Changed predict_probe(ds)[1] to probe.predict_proba(ds) -> might be a bug
     probe_scores = np.concatenate(
-        [probe.predict_proba(ds)[1] for ds in eval_datasets], axis=0
+        [probe.predict_proba(ds) for ds in eval_datasets], axis=0
     )
     labels = np.concatenate([ds.labels_numpy() for ds in eval_datasets], axis=0)
     return {
