@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Protocol, Self
+from typing import Any, Self
 
 import einops
 import numpy as np
@@ -12,6 +12,7 @@ from tqdm import tqdm
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.probes import aggregations as agg
+from models_under_pressure.probes.base import Aggregation
 
 
 def masked_mean(acts: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -21,15 +22,6 @@ def masked_mean(acts: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     batch_size, seq_len, embed_dim = acts.shape
     assert mask.shape == (batch_size, seq_len)
     return acts.sum(dim=1) / mask.sum(dim=1, keepdims=True).clamp(min=1)
-
-
-class Aggregation(Protocol):
-    def __call__(
-        self,
-        logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        input_ids: torch.Tensor,
-    ) -> torch.Tensor: ...
 
 
 @dataclass
@@ -192,7 +184,6 @@ class PytorchLinearClassifier:
         If per_token is False, the logits are returned in the shape (batch_size,),
         with the aggregated logit for each sample in the batch.
         """
-        activations = activations.to(self.device, self.data_type)
         if self.model is None:
             raise ValueError("Model not trained")
 
@@ -727,7 +718,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                         # Clip extreme logit values to prevent NaN in loss computation
                         # Using values that are safe for bfloat16
                         val_logits = self.logits(validation_activations)
-                        # val_logits = val_logits.clamp(-10.0, 10.0)
+                        val_logits = val_logits.clamp(-10.0, 10.0)
 
                         val_loss = criterion(
                             val_logits.to(self.device), validation_y
