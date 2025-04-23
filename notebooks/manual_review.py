@@ -184,6 +184,10 @@ def analyze_manual_review_results(
     ground_truth_labels = {
         record.id: record.label for record in original_dataset.to_records()
     }
+    ground_truth_scale_labels = {
+        record.id: int(record.other_fields["scale_labels"])
+        for record in original_dataset.to_records()
+    }
 
     # Load the Excel file
     excel_file = pd.ExcelFile(excel_path)
@@ -215,11 +219,11 @@ def analyze_manual_review_results(
                 try:
                     score_float = float(score)
                     if score_float <= 3:  # low_stakes_threshold
-                        discrete_labels.append("low-stakes")
+                        discrete_labels.append(Label.LOW_STAKES)
                     elif score_float >= 8:  # high_stakes_threshold
-                        discrete_labels.append("high-stakes")
+                        discrete_labels.append(Label.HIGH_STAKES)
                     else:
-                        discrete_labels.append("ambiguous")
+                        discrete_labels.append(Label.AMBIGUOUS)
                 except (ValueError, TypeError):
                     discrete_labels.append(None)
 
@@ -331,14 +335,9 @@ def analyze_manual_review_results(
         # Calculate scale agreement with ground truth
         total_scale = len(valid_samples_scale)
         if total_scale > 0:
-            # Convert ground truth to scale (1 for low-stakes, 10 for high-stakes)
-            ground_truth_scale = {
-                id_: 1 if label == "low-stakes" else 10
-                for id_, label in ground_truth_labels.items()
-            }
             avg_diff = (
                 sum(
-                    abs(score - ground_truth_scale[id_])
+                    abs(score - ground_truth_scale_labels[id_])
                     for id_, score in valid_samples_scale
                 )
                 / total_scale
