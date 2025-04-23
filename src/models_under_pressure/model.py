@@ -118,8 +118,6 @@ class HookedModel:
         self.hooks = []
         self.architecture = ArchitectureRegistry.get_architecture(model)
         self.original_layers = None
-        self.dtype = next(model.parameters()).dtype
-        self.llm_device = next(model.parameters()).device
 
     def make_hook(self, layer: int) -> Callable:
         def hook_fn(module, input, output):  # type: ignore
@@ -151,7 +149,6 @@ class HookedModel:
     ) -> torch.Tensor:
         _ = self.model(**batch_inputs)
         activations = torch.stack([self.cache[layer] for layer in self.layers], dim=0)
-        activations = activations.cpu()
         if output_buffer is not None:
             output_buffer[:] = activations
             return output_buffer
@@ -363,7 +360,7 @@ class LLMModel:
         all_activations = torch.zeros(
             (len(layers), n_samples, max_seq_len, self.hidden_dim),
             device="cpu",
-            dtype=self.dtype,
+            dtype=torch.float16,
         )
 
         with HookedModel(self.model, layers) as hooked_model:
@@ -373,7 +370,7 @@ class LLMModel:
                 seq_len = batch_inputs["input_ids"].shape[1]
 
                 # Get activations for this batch
-                batch_acts = hooked_model.get_acts(batch_inputs)
+                batch_acts = hooked_model.get_acts(batch_inputs).half().cpu()
 
                 # Store activations in their original positions
                 if self.tokenizer.padding_side == "right":
