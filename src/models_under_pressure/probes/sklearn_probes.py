@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Self, Sequence, Tuple
+from typing import Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
@@ -65,7 +65,7 @@ class SklearnProbe(Probe):
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
         # Preprocess the aggregations to be of the correct shape:
-        X, _ = self.aggregator.preprocess(activations, y)
+        X = mean_acts(activations)
 
         self._classifier.fit(X, y)  # type: ignore
         return self
@@ -79,9 +79,9 @@ class SklearnProbe(Probe):
     def _predict_proba(
         self, activations: Activation
     ) -> Float[np.ndarray, " batch_size"]:
-        X, _ = self.aggregator.preprocess(activations)
+        X = mean_acts(activations)
         logits = self._get_logits(X)
-        probs = self.aggregator.postprocess(logits)
+        probs = sigmoid(logits)
         return probs
 
     def _get_logits(
@@ -135,12 +135,8 @@ def compute_accuracy(
 
 def mean_acts(
     X: Activation,
-    y: Optional[Float[np.ndarray, " batch_size"]] = None,
     batch_size: int = 200,
-) -> Tuple[
-    Float[np.ndarray, " batch_size embed_dim"],
-    Optional[Float[np.ndarray, " batch_size"]],
-]:
+) -> Float[np.ndarray, " batch_size embed_dim"]:
     # Initialize accumulators for sum and token counts
     sum_acts = np.zeros((X.batch_size, X.embed_dim))
     token_counts = np.zeros((X.batch_size, 1))
@@ -161,11 +157,10 @@ def mean_acts(
     token_counts = token_counts + 1e-10
 
     # Calculate final mean
-    return (sum_acts / token_counts), y
+    return sum_acts / token_counts
 
 
 def sigmoid(
     logits: Float[np.ndarray, " batch_size"],
-    original_shape: tuple[int, int, int],
 ) -> Float[np.ndarray, " batch_size"]:
     return 1 / (1 + np.exp(-logits))
