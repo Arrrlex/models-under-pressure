@@ -131,9 +131,7 @@ class PytorchLinearClassifier:
                     # Clip extreme logit values to prevent NaN in loss computation
                     # Using values that are safe for bfloat16
                     val_logits = (
-                        self.logits(validation_activations, per_token=True)
-                        .clamp(-10.0, 10.0)
-                        .view(-1)
+                        self.logits(validation_activations).clamp(-10.0, 10.0).view(-1)
                     )
 
                     val_loss = criterion(val_logits, validation_y).item()
@@ -204,7 +202,7 @@ class PytorchLinearClassifier:
         # Initialize output tensor
         flattened_logits = torch.zeros(
             (batch_size * seq_len,),
-            device="cpu",
+            device=self.device,
             dtype=self.dtype,
         )
 
@@ -225,7 +223,7 @@ class PytorchLinearClassifier:
             batch_indices = present_indices[start_idx : start_idx + mb_size]
 
             # Place the logits in the correct positions
-            flattened_logits[batch_indices] = batch_logits.cpu()
+            flattened_logits[batch_indices] = batch_logits
             start_idx += mb_size
 
         # Reshape to (batch_size, seq_len)
@@ -236,9 +234,8 @@ class PytorchLinearClassifier:
         if per_token:
             return logits
         else:
-            return logits.sum(dim=1) / activations.attention_mask.sum(dim=1).clamp(
-                min=1
-            )
+            attn_mask = activations.attention_mask.to(self.device)
+            return logits.sum(dim=1) / attn_mask.sum(dim=1).clamp(min=1)
 
     def create_model(self, embed_dim: int) -> nn.Module:
         """
@@ -764,7 +761,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
         logits = torch.zeros(
             (batch_size, seq_len),
-            device="cpu",
+            device=self.device,
             dtype=self.dtype,
         )
 
@@ -783,8 +780,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         if per_token:
             return logits
         else:
-            token_lengths = activations.attention_mask.sum(dim=1).clamp(min=1)
-            return logits.sum(dim=1) / token_lengths
+            attn_mask = activations.attention_mask.to(self.device)
+            return logits.sum(dim=1) / attn_mask.sum(dim=1).clamp(min=1)
 
     def create_model(
         self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
