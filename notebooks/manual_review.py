@@ -184,9 +184,6 @@ def analyze_manual_review_results(
     ground_truth_labels = {
         record.id: record.label for record in original_dataset.to_records()
     }
-    # ground_truth_labels = {
-    #    record.id: record.label for record in original_dataset.to_records()
-    # }
 
     # Load the Excel file
     excel_file = pd.ExcelFile(excel_path)
@@ -232,6 +229,21 @@ def analyze_manual_review_results(
             "discrete_labels": discrete_labels,
         }
 
+    # Find items that have been annotated by at least two reviewers
+    item_annotations = {}  # id -> list of reviewers who annotated it
+    for reviewer_num, data in reviewer_data.items():
+        for id_, scale_label in zip(data["ids"], data["scale_labels"]):
+            if pd.notna(scale_label):  # Only count if there's an actual annotation
+                if id_ not in item_annotations:
+                    item_annotations[id_] = []
+                item_annotations[id_].append(reviewer_num)
+
+    # Only keep items with at least two annotations
+    valid_items = {
+        id_ for id_, reviewers in item_annotations.items() if len(reviewers) >= 2
+    }
+    print(f"\nFound {len(valid_items)} items with at least two annotations")
+
     # Calculate inter-rater agreement for both scale and discrete labels
     print(f"\nInter-rater agreement for {dataset_name}:")
     reviewer_pairs = [
@@ -242,8 +254,10 @@ def analyze_manual_review_results(
     ]
 
     for r1, r2 in reviewer_pairs:
-        # Get samples that both reviewers labeled
-        common_ids = set(reviewer_data[r1]["ids"]) & set(reviewer_data[r2]["ids"])
+        # Get samples that both reviewers labeled and are in valid_items
+        common_ids = (
+            set(reviewer_data[r1]["ids"]) & set(reviewer_data[r2]["ids"]) & valid_items
+        )
 
         # Calculate agreement for scale labels
         r1_scale = {
@@ -302,16 +316,16 @@ def analyze_manual_review_results(
     # Calculate agreement with ground truth
     print(f"\nAgreement with ground truth for {dataset_name}:")
     for reviewer_num, data in reviewer_data.items():
-        # Get samples that were labeled by this reviewer and have ground truth
+        # Get samples that were labeled by this reviewer, have ground truth, and are in valid_items
         valid_samples_scale = [
             (id_, float(label))
             for id_, label in zip(data["ids"], data["scale_labels"])
-            if pd.notna(label) and id_ in ground_truth_labels
+            if pd.notna(label) and id_ in ground_truth_labels and id_ in valid_items
         ]
         valid_samples_discrete = [
             (id_, label)
             for id_, label in zip(data["ids"], data["discrete_labels"])
-            if label is not None and id_ in ground_truth_labels
+            if label is not None and id_ in ground_truth_labels and id_ in valid_items
         ]
 
         # Calculate scale agreement with ground truth
