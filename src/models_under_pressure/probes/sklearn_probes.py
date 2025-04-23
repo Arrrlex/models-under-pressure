@@ -104,14 +104,14 @@ class SklearnProbe(Probe):
         # TODO: Change such that it uses the aggregation framework
 
         activations_obj = Activation.from_dataset(dataset)
+        acts = as_numpy(activations_obj.activations)
+        attn_mask = as_numpy(activations_obj.attention_mask)
 
         # TODO This can be done more efficiently -> so can a lot of things
         predictions = []
-        acts = activations_obj.activations.numpy()
-        mask = activations_obj.attention_mask.numpy()
         for i in range(len(acts)):
             activations = acts[i]
-            attention_mask = mask[i]
+            attention_mask = attn_mask[i]
 
             # Compute per-token predictions
             # Apply attention mask to zero out padding tokens
@@ -127,30 +127,32 @@ class SklearnProbe(Probe):
         return np.array(predictions)
 
 
-def sigmoid(
-    logits: Float[np.ndarray, " batch_size"],
-) -> Float[np.ndarray, " batch_size"]:
-    return 1 / (1 + np.exp(-logits))
+def compute_accuracy(
+    probe: Probe,
+    dataset: LabelledDataset,
+) -> float:
+    pred_labels = probe.predict(dataset)
+    pred_labels_np = np.array([label.to_int() for label in pred_labels])
+    return (pred_labels_np == dataset.labels_numpy()).mean()
 
 
 def mean_acts(
-    X: Activation, batch_size: int = 200
-) -> Float[np.ndarray, "batch_size embed_dim"]:
+    X: Activation,
+    batch_size: int = 200,
+) -> Float[np.ndarray, " batch_size embed_dim"]:
     # Initialize accumulators for sum and token counts
-    batch_size_total, seq_len, embed_dim = X.activations.shape
-    sum_acts = np.zeros((batch_size_total, embed_dim))
-    token_counts = np.zeros((batch_size_total, 1))
+    sum_acts = np.zeros((X.batch_size, X.embed_dim))
+    token_counts = np.zeros((X.batch_size, 1))
 
     # Process in batches
-    for i in range(0, batch_size_total, batch_size):
-        end_idx = min(i + batch_size, batch_size_total)
+    for i in range(0, X.batch_size, batch_size):
+        end_idx = min(i + batch_size, X.batch_size)
 
         # Get current batch
         batch_acts = as_numpy(X.activations[i:end_idx])
         batch_mask = as_numpy(X.attention_mask[i:end_idx])
 
         # Process current batch in-place
-        batch_acts *= batch_mask[:, :, None]  # In-place multiplication
         sum_acts[i:end_idx] = batch_acts.sum(axis=1)
         token_counts[i:end_idx] = batch_mask.sum(axis=1, keepdims=True)
 
@@ -158,4 +160,10 @@ def mean_acts(
     token_counts = token_counts + 1e-10
 
     # Calculate final mean
-    return (sum_acts / token_counts).numpy()
+    return sum_acts / token_counts
+
+
+def sigmoid(
+    logits: Float[np.ndarray, " batch_size"],
+) -> Float[np.ndarray, " batch_size"]:
+    return 1 / (1 + np.exp(-logits))
