@@ -34,17 +34,17 @@ layer = 7
 # Get activations for layer 7
 activations = model.get_batched_activations(dataset, layer=layer, batch_size=4)
 
-print("Activation shape:", activations.activations.shape)
-print("Attention mask shape:", activations.attention_mask.shape)
-print("Input IDs shape:", activations.input_ids.shape)
+print("Activation shape:", activations.get_activations().shape)
+print("Attention mask shape:", activations.get_attention_mask().shape)
+print("Input IDs shape:", activations.get_input_ids().shape)
 
 # %%
 
 out_dir = Path("../data/temp/")
 
-np.save(out_dir / "activations.npy", activations.activations.numpy().astype(np.float16))
-np.save(out_dir / "attention_mask.npy", activations.attention_mask.numpy())
-np.save(out_dir / "input_ids.npy", activations.input_ids.numpy())
+np.save(out_dir / "activations.npy", activations.get_activations().astype(np.float16))
+np.save(out_dir / "attention_mask.npy", activations.get_attention_mask())
+np.save(out_dir / "input_ids.npy", activations.get_input_ids())
 
 # %%
 
