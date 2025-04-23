@@ -7,8 +7,7 @@ export DOUBLE_CHECK_CONFIG=false
 
 
 # Compare all probes
-# sklearn_mean_agg_probe
-for probe in difference_of_means lda pytorch_per_token_probe pytorch_per_entry_probe_mean pytorch_attention_probe; do
+for probe in sklearn_mean_agg_probe difference_of_means lda pytorch_per_token_probe pytorch_per_entry_probe_mean pytorch_attention_probe; do
     run-exp +experiment=evaluate_probe probe=$probe
 done
 

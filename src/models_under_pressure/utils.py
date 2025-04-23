@@ -2,6 +2,7 @@ import asyncio
 import functools
 import json
 import os
+from pathlib import Path
 import random
 import string
 from textwrap import indent
@@ -315,23 +316,45 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
+def convert_paths(config: Any) -> Any:
+    if isinstance(config, Path):
+        return (
+            config.relative_to(Path.cwd())
+            if config.is_relative_to(Path.cwd())
+            else config
+        )
+    elif isinstance(config, dict):
+        return {k: convert_paths(v) for k, v in config.items()}
+    elif isinstance(config, list):
+        return [convert_paths(item) for item in config]
+    elif isinstance(config, BaseModel):
+        for field in config.model_fields_set:
+            setattr(config, field, convert_paths(getattr(config, field)))
+        return config
+    elif isinstance(config, DictConfig):
+        return {k: convert_paths(v) for k, v in config.items()}
+    return config
+
+
 def pretty_format_config(config: Any) -> str:
+    config = convert_paths(config)
     if isinstance(config, list) and isinstance(config[0], BaseModel):
-        config = [config.model_dump(mode="json") for config in config]
+        config = [config.model_dump(mode="json", by_alias=True) for config in config]
     if isinstance(config, BaseModel):
-        config = config.model_dump(mode="json")
+        config = config.model_dump(mode="json", by_alias=True)
     if isinstance(config, DictConfig):
         config = config.to_container()
 
     return yaml.dump(config, indent=2)
 
 
-def double_check_config(config: Any) -> None:
+def double_check_config(config: Any, double_check: bool = True) -> None:
     print("Config:")
     print(indent(pretty_format_config(config), "  "))
-    is_ok = input("Do you really want to run this config? (y/n) ")
-    if is_ok != "y":
-        raise ValueError("Config not confirmed")
+    if double_check:
+        is_ok = input("Do you really want to run this config? (y/n) ")
+        if is_ok != "y":
+            raise ValueError("Config not confirmed")
 
 
 def print_progress(
