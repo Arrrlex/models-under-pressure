@@ -8,11 +8,10 @@ import pickle
 from typing import Self
 
 from pydantic import BaseModel
-from transformers import AutoTokenizer
 
-from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
+from models_under_pressure.interfaces.dataset import LabelledDataset
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.base import Probe
-from models_under_pressure.probes import aggregations as agg
 from models_under_pressure.config import PROBES_DIR
 
 
@@ -26,7 +25,7 @@ class ProbeRegistry(BaseModel):
             registry = cls.model_validate_json(f.read())
         yield registry
         with open(path, "w") as f:
-            f.write(registry.model_dump_json())
+            f.write(registry.model_dump_json(indent=2))
 
 
 class ProbeManifest(BaseModel):
@@ -91,7 +90,6 @@ class ProbeStore:
         train_dataset_hash: str,
         validation_dataset_hash: str | None,
     ):
-        spec = prune_spec(spec)
         manifest = ProbeManifest.from_spec(
             spec, model_name, layer, train_dataset_hash, validation_dataset_hash
         )
@@ -107,18 +105,20 @@ class ProbeStore:
         spec: ProbeSpec,
         model_name: str,
         layer: int,
-        train_dataset_hash: str,
-        validation_dataset_hash: str | None,
+        train_dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None,
     ) -> Probe:
-        original_spec = spec
-        spec = prune_spec(spec)
+        train_dataset_hash = train_dataset.hash
+        if validation_dataset is not None:
+            validation_dataset_hash = validation_dataset.hash
+        else:
+            validation_dataset_hash = None
         manifest = ProbeManifest.from_spec(
             spec, model_name, layer, train_dataset_hash, validation_dataset_hash
         )
         probe_path = self.path / f"{manifest.probe_id}.pkl"
         with open(probe_path, "rb") as f:
-            probe = pickle.load(f)
-        return add_back_pruned_stuff(probe, original_spec, model_name)
+            return pickle.load(f)
 
     def delete(
         self,
@@ -138,63 +138,3 @@ class ProbeStore:
             registry.probes = [
                 p for p in registry.probes if p.probe_id != manifest.probe_id
             ]
-
-
-def prune_spec(spec: ProbeSpec) -> ProbeSpec:
-    if spec.name in [
-        ProbeType.per_entry,
-        ProbeType.difference_of_means,
-        ProbeType.lda,
-        ProbeType.attention,
-    ]:
-        pass
-    elif spec.name in [
-        ProbeType.max,
-        ProbeType.mean,
-        ProbeType.last,
-        ProbeType.max_of_rolling_mean,
-        ProbeType.mean_of_top_k,
-        ProbeType.max_of_sentence_means,
-    ]:
-        spec.name = ProbeType.mean
-    else:
-        raise ValueError(f"Need to add support for {spec.name} to prune_spec")
-    return spec
-
-
-def add_back_pruned_stuff(
-    probe: Probe, original_spec: ProbeSpec, model_name: str
-) -> Probe:
-    match original_spec.name:
-        case ProbeType.max:
-            probe._classifier.aggregation_method = agg.Max()
-        case ProbeType.mean:
-            probe._classifier.aggregation_method = agg.Mean()
-        case ProbeType.last:
-            probe._classifier.aggregation_method = agg.Last()
-        case ProbeType.max_of_rolling_mean:
-            window_size = original_spec.hyperparams["window_size"]
-            probe._classifier.aggregation_method = agg.MaxOfRollingMean(
-                window_size=window_size
-            )
-        case ProbeType.mean_of_top_k:
-            k = original_spec.hyperparams["k"]
-            probe._classifier.aggregation_method = agg.MeanOfTopK(k=k)
-        case ProbeType.max_of_sentence_means:
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            probe._classifier.aggregation_method = agg.MaxOfSentenceMeans(
-                tokenizer=tokenizer
-            )
-        case ProbeType.per_entry:
-            pass
-        case ProbeType.difference_of_means:
-            pass
-        case ProbeType.lda:
-            pass
-        case ProbeType.attention:
-            pass
-        case _:
-            raise ValueError(
-                f"Need to add support for {original_spec.name} to add_back_pruned_stuff"
-            )
-    return probe

@@ -159,7 +159,9 @@ class PytorchLinearClassifier:
                         .view(-1)
                     )
 
-                    val_loss = criterion(val_logits, validation_y).item()
+                    val_loss = criterion(
+                        val_logits.to(self.device), validation_y
+                    ).item()
 
                     # Check for NaN loss - if it's NaN, set loss to +inf to avoid selecting this model
                     if np.isnan(val_loss):
@@ -614,7 +616,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
     training_args: dict
     model: nn.Module | None = None
-    aggregation: Aggregation = agg.Last()
+    aggregation: Aggregation = agg.Mean()
 
     def train(
         self,
@@ -728,18 +730,12 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                         # Get probabilities for validation data
                         # Clip extreme logit values to prevent NaN in loss computation
                         # Using values that are safe for bfloat16
-                        val_logits = self.logits(validation_activations).clamp(
-                            -10.0, 10.0
-                        )
+                        val_logits = self.logits(validation_activations)
+                        # val_logits = val_logits.clamp(-10.0, 10.0)
 
-                        # Check for NaN values in logits
-                        if torch.isnan(val_logits).any():
-                            print("Warning: NaN values detected in validation logits")
-                            print("Min logit:", val_logits.min().item())
-                            print("Max logit:", val_logits.max().item())
-                            val_logits = torch.nan_to_num(val_logits, nan=0.0)
-
-                        val_loss = criterion(val_logits.squeeze(), validation_y).item()
+                        val_loss = criterion(
+                            val_logits.to(self.device), validation_y
+                        ).item()
 
                         # Check for NaN loss - if found, set loss to +inf to avoid selecting this model
                         if np.isnan(val_loss):

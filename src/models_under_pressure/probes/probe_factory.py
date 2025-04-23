@@ -22,7 +22,7 @@ from models_under_pressure.probes.sklearn_probes import (
 )
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
-from models_under_pressure.probes.store import ProbeStore
+from models_under_pressure.probes.probe_store import ProbeStore
 
 
 class ProbeFactory:
@@ -42,8 +42,8 @@ class ProbeFactory:
                 probe_spec,
                 model_name,
                 layer,
-                train_dataset.hash,
-                validation_dataset.hash if validation_dataset is not None else None,
+                train_dataset,
+                validation_dataset,
             )
             return probe
         except FileNotFoundError:
