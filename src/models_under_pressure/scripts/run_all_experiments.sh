@@ -16,13 +16,13 @@ for model in llama-1b llama-3b llama-8b llama-70b gemma-1b gemma-12b gemma-27b; 
     run-exp +experiment=evaluate_probe model=$model
 done
 
-# # Cross-validation
-# run-exp +experiment=cv model=llama-1b
+# Cross-validation
+run-exp +experiment=cv model=llama-1b
 
-# # Generalisation heatmap
-# run-exp +experiment=generalisation_heatmap
+# Generalisation heatmap
+run-exp +experiment=generalisation_heatmap
 
-# # Baselines
-# for model in llama-1b gemma-1b; do
-#     run-exp +experiment=run_baselines model=$model
-# done
+# Baselines
+for model in llama-1b gemma-1b; do
+    run-exp +experiment=run_baselines model=$model
+done

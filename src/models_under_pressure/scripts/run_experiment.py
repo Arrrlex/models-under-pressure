@@ -80,11 +80,15 @@ def run_experiment(config: DictConfig):
         )
         choose_best_layer_via_cv(choose_layer_config)
 
-    if config.experiment == "run_baselines":
+    if config.experiment in ["run_baselines", "run_baseline"]:
+        # run_baselines: Run the baseline with all prompts
+        # run_baseline: Run the baseline only with the prompt selected in the config
         run_baselines_config = RunBaselinesConfig(
             model_name=config.model.name,
             dataset_path=train_data_path,
-            baseline_prompts=config.baselines.prompts,
+            baseline_prompts=config.baselines.prompts
+            if config.experiment == "run_baselines"
+            else [config.model.baseline_prompt],
             eval_datasets=eval_datasets,
             max_samples=config.max_samples,
             batch_size=config.batch_size,
