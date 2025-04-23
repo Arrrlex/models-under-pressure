@@ -2,7 +2,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-import torch
 import yaml
 from sklearn.metrics import roc_auc_score
 
@@ -16,6 +15,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
@@ -44,7 +44,7 @@ def run_monitoring_cascade(
     probe_layer: int,
     dataset_name: str,
     train_dataset_path: Path,
-    probe_type: str = "pytorch_per_token_probe",
+    probe_type: str = "pytorch_per_entry_probe_mean",
     max_samples: Optional[int] = None,
     batch_size: int = 4,
     output_dir: Optional[Path] = None,
@@ -119,11 +119,10 @@ def run_monitoring_cascade(
     probe_spec = ProbeSpec(
         name=probe_type,
         hyperparams={
-            "batch_size": 32,
-            "epochs": 20,
-            "device": "cuda" if torch.cuda.is_available() else "cpu",
-            "learning_rate": 1e-2,
-            "weight_decay": 0.1,
+            "batch_size": batch_size,
+            "epochs": 10,
+            "device": global_settings.DEVICE,
+            "optimizer_args": {"lr": 1e-3, "weight_decay": 0.01},
         },
     )
 
@@ -144,11 +143,10 @@ def run_monitoring_cascade(
         model_name=probe_model_name,
         layer=probe_layer,
         output_dir=output_dir,
-        save_results=True,
     )
 
     # Save probe results
-    probe_results.save_to(output_dir / "probe_results.json")
+    probe_results.save_to(output_dir / "probe_results.jsonl")
 
     return baseline_results, probe_results
 
@@ -162,7 +160,7 @@ if __name__ == "__main__":
         model_names=model_names,
         dataset_name=dataset_name,
         train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
-        max_samples=20,  # Optional: limit to 100 samples for testing
+        max_samples=20,
         probe_model_name=LOCAL_MODELS["llama-1b"],
         probe_layer=11,
         compute_activations=True,

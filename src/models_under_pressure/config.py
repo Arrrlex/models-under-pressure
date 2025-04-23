@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
 import torch
 import yaml
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
@@ -20,7 +20,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 class GlobalSettings(BaseSettings):
     LLM_DEVICE: str = "auto"  # Device for the LLM model
     DEVICE: str = "cuda"  # Device for activations, probes, etc.
-    DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
+    DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     BATCH_SIZE: int = 4
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
