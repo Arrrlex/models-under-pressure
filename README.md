@@ -49,6 +49,8 @@ Apr 22 versions (all based on calling parts of `modify_dataset.py`)
 - Aya Redteaming dataset (only test): Added a system prompt and relabelled.
 - Mental health dataset (only test): Added a system prompt and relabelled.
 
+Apr 23 version of Anthropic (dev and test): Remove the duplicate system prompt, relabelling again just in case.
+
 
 ## Deployment Context Datasets
 

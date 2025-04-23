@@ -1,5 +1,5 @@
 manual: data/evals/test/manual.csv
-anthropic: data/evals/test/anthropic_test_raw_apr_16.jsonl
+anthropic: data/evals/test/anthropic_test_raw_apr_23.jsonl
 toolace: data/evals/test/toolace_test_raw_apr_15.jsonl
 mt: data/evals/test/mt_test_raw_apr_16.jsonl
 mts: data/evals/test/mts_test_raw_apr_16.jsonl

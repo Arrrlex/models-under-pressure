@@ -188,9 +188,15 @@ async def modify_system_prompts(
 def add_system_prompt_to_dataset(
     dataset: LabelledDataset | Dataset,
     system_prompt: str,
+    remove_existing: bool = False,
 ) -> LabelledDataset:
     """
     Add a system prompt to each sample in a dataset, creating a new version of the dataset.
+
+    Args:
+        dataset: The input dataset
+        system_prompt: The system prompt to add
+        remove_existing: If True, removes any existing system prompts before adding the new one
 
     Returns:
         The modified dataset with system prompts added
@@ -208,7 +214,16 @@ def add_system_prompt_to_dataset(
             )
         else:
             # For dialogue inputs, add system message at the beginning
-            new_inputs.append([Message(role="system", content=system_prompt), *input_])
+            if remove_existing:
+                # Filter out any existing system messages
+                filtered_input = [msg for msg in input_ if msg.role != "system"]
+                new_inputs.append(
+                    [Message(role="system", content=system_prompt), *filtered_input]
+                )
+            else:
+                new_inputs.append(
+                    [Message(role="system", content=system_prompt), *input_]
+                )
 
     # Create new dataset with modified inputs
     modified_dataset = LabelledDataset(
@@ -225,8 +240,11 @@ def modify_dataset(
     test: bool = False,
     batch_size: int = 200,
     date_str: str = "apr_16",
+    remove_existing_system_prompt: bool = False,
 ) -> None:
-    modified_dataset = add_system_prompt_to_dataset(dataset, system_prompt)
+    modified_dataset = add_system_prompt_to_dataset(
+        dataset, system_prompt, remove_existing_system_prompt
+    )
 
     # Relabel the dataset
     fields_to_delete = [
@@ -265,7 +283,14 @@ def modify_anthropic_dataset(
     test: bool = False,
     date_str: str = "apr_16",
 ) -> None:
-    modify_dataset(dataset, "anthropic", system_prompt, test, date_str)
+    modify_dataset(
+        dataset,
+        "anthropic",
+        system_prompt,
+        test,
+        date_str=date_str,
+        remove_existing_system_prompt=True,
+    )
 
 
 def modify_mt_dataset(
@@ -355,7 +380,7 @@ DESCRIPTION: {description.strip()}""",
 
 
 if __name__ == "__main__":
-    dataset_name = "mental_health"
+    dataset_name = "anthropic"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -373,11 +398,11 @@ if __name__ == "__main__":
 
         # dev datasets
         dataset = LabelledDataset.load_from(EVAL_DATASETS_RAW["anthropic"])
-        modify_anthropic_dataset(dataset, system_prompt, test=False, date_str="apr_16")
+        modify_anthropic_dataset(dataset, system_prompt, test=False, date_str="apr_23")
 
         # test datasets
         dataset = LabelledDataset.load_from(TEST_DATASETS_RAW["anthropic"])
-        modify_anthropic_dataset(dataset, system_prompt, test=True, date_str="apr_16")
+        modify_anthropic_dataset(dataset, system_prompt, test=True, date_str="apr_23")
 
     if dataset_name == "redteaming":
         system_prompt = """You are an LLM as part of a general purpose chatbot."""
@@ -388,7 +413,7 @@ if __name__ == "__main__":
         )
 
     if dataset_name == "mental_health":
-        system_prompt = """You’re deployed by a public service organization to social media contents in order to identify users in need of mental health support."""
+        system_prompt = """You're deployed by a public service organization to social media contents in order to identify users in need of mental health support."""
 
         dataset = LabelledDataset.load_from(TEST_DATASETS_RAW[dataset_name])
         modify_dataset(
