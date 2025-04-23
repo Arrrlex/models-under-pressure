@@ -102,24 +102,18 @@ def run_monitoring_cascade(
         # Load model
         model = LLMModel.load(LOCAL_MODELS[model_name])
 
-        # Create a temporary file with the sampled dataset
-        temp_dataset_path = output_dir / f"temp_eval_dataset_{model_name}.jsonl"
-        eval_dataset.save_to(temp_dataset_path, overwrite=True)
-
         results = evaluate_likelihood_continuation_baseline(
             model=model,
             prompt_config=likelihood_continuation_prompts[baseline_prompt],
             dataset_name=dataset_name,
-            dataset_path=temp_dataset_path,
+            dataset=eval_dataset,
+            dataset_path=eval_dataset_path,
             max_samples=None,  # Don't sample again, use the pre-sampled dataset
             batch_size=batch_size,
         )
         baseline_results.append(results)
         # Save baseline results
         results.save_to(output_dir / f"baseline_{model_name}.jsonl")
-
-        # Clean up temporary file
-        temp_dataset_path.unlink()
 
     # Create probe specification
     probe_spec = ProbeSpec(

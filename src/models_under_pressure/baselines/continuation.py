@@ -1,12 +1,13 @@
 from pathlib import Path
+
 import numpy as np
 import torch
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    global_settings,
     EVAL_DATASETS,
     LOCAL_MODELS,
+    global_settings,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -14,6 +15,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
     Message,
+    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.results import (
     ContinuationBaselineResults,
@@ -353,14 +355,16 @@ def evaluate_likelihood_continuation_baseline(
     prompt_config: ContinuationPrompt,
     dataset_name: str,
     dataset_path: Path,
+    dataset: LabelledDataset | None = None,
     max_samples: int | None = None,
     batch_size: int = global_settings.BATCH_SIZE,
 ) -> LikelihoodBaselineResults:
-    print(f"Loading dataset from {dataset_path}")
-    dataset = LabelledDataset.load_from(dataset_path)
-    if max_samples is not None:
-        print(f"Sampling {max_samples} samples")
-        dataset = dataset.sample(max_samples)
+    if dataset is None:
+        print(f"Loading dataset from {dataset_path}")
+        dataset = LabelledDataset.load_from(dataset_path)
+        if max_samples is not None:
+            print(f"Sampling {max_samples} samples")
+            dataset = subsample_balanced_subset(dataset, max_samples)
 
     classifier = LikelihoodContinuationBaseline(model, prompt_config)
     results = classifier.likelihood_classify_dataset(
