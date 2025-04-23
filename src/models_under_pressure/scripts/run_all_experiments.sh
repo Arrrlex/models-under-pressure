@@ -11,10 +11,6 @@ for probe in sklearn_mean_agg_probe difference_of_means lda pytorch_per_token_pr
     run-exp +experiment=evaluate_probe probe=$probe
 done
 
-# Exit script
-exit 0
-
-
 # Compare all models (scaling)
 for model in llama-1b llama-3b llama-8b llama-70b gemma-1b gemma-12b gemma-27b; do
     run-exp +experiment=evaluate_probe model=$model
