@@ -37,7 +37,8 @@ def evaluate_probe(
     # TODO: This is a hack to get the probe to work with the new dataset:
     # TOOD: Changed predict_probe(ds)[1] to probe.predict_proba(ds) -> might be a bug
     probe_scores = np.concatenate(
-        [probe.predict_proba(ds) for ds in eval_datasets], axis=0
+        [probe.predict_proba(ds) for ds in eval_datasets],  # type: ignore
+        axis=0,  # type: ignore
     )
     labels = np.concatenate([ds.labels_numpy() for ds in eval_datasets], axis=0)
     return {
@@ -326,7 +327,7 @@ if __name__ == "__main__":
         Trainer={
             "max_epochs": 20,  # 20,
             "accelerator": "gpu",
-            "devices": [1, 2],
+            "devices": [1],
             "precision": "bf16-true",
             "default_root_dir": "~/.cache/models-under-pressure",
             "accumulate_grad_batches": 2,
