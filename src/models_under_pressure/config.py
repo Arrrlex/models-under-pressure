@@ -332,11 +332,6 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
-    model_name: str = (
-        DEFAULT_GPU_MODEL
-        if "cuda" in global_settings.LLM_DEVICE
-        else DEFAULT_OTHER_MODEL
-    )
 
     @property
     def output_filename(self) -> str:
@@ -368,15 +363,11 @@ class RunBaselinesConfig(BaseModel):
 @dataclass(frozen=True)
 class SafetyRunConfig:
     layer: int
+    model_name: str
     max_samples: int | None = None
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = (
-        DEFAULT_GPU_MODEL
-        if "cuda" in global_settings.LLM_DEVICE
-        else DEFAULT_OTHER_MODEL
-    )
 
     @property
     def output_filename(self) -> str:
