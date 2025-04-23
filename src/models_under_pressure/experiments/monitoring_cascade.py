@@ -1,0 +1,189 @@
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+import torch
+import yaml
+from sklearn.metrics import roc_auc_score
+
+from models_under_pressure.baselines.continuation import (
+    evaluate_likelihood_continuation_baseline,
+    likelihood_continuation_prompts,
+)
+from models_under_pressure.config import (
+    CONFIG_DIR,
+    DATA_DIR,
+    EVAL_DATASETS,
+    LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
+)
+from models_under_pressure.dataset_utils import load_dataset
+from models_under_pressure.experiments.evaluate_probes import (
+    evaluate_probe_and_save_results,
+)
+from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.results import (
+    DatasetResults,
+    LikelihoodBaselineResults,
+)
+from models_under_pressure.model import LLMModel
+from models_under_pressure.probes.probe_factory import ProbeFactory
+
+
+def get_model_baseline_prompt(model_name: str) -> str:
+    """Get the baseline prompt for a given model from its config file."""
+    config_path = CONFIG_DIR / "model" / f"{model_name}.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    return config["baseline_prompt"]
+
+
+def run_monitoring_cascade(
+    model_names: List[str],
+    probe_model_name: str,
+    probe_layer: int,
+    dataset_name: str,
+    train_dataset_path: Path,
+    probe_type: str = "pytorch_per_token_probe",
+    max_samples: Optional[int] = None,
+    batch_size: int = 4,
+    output_dir: Optional[Path] = None,
+    compute_activations: bool = True,
+) -> tuple[List[LikelihoodBaselineResults], DatasetResults]:
+    """Run a monitoring cascade experiment that evaluates both baselines and a probe.
+
+    Args:
+        model_names: List of model names to evaluate baselines for
+        dataset_name: Name of the dataset to evaluate on
+        train_dataset_name: Name of the dataset to train the probe on
+        probe_type: Type of probe to train (default: pytorch_per_token_probe)
+        max_samples: Maximum number of samples to evaluate on. If None, uses all samples.
+        batch_size: Batch size for evaluation
+        output_dir: Directory to save results to. If None, creates a date-stamped directory in DATA_DIR/results
+
+    Returns:
+        Tuple of (baseline_results, probe_results)
+    """
+    # Create output directory
+    if output_dir is None:
+        date = datetime.now().strftime("%Y%m%d")
+        output_dir = DATA_DIR / "results" / f"monitoring_cascade_{date}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Saving results to {output_dir}")
+
+    # Get dataset paths
+    eval_dataset_path = EVAL_DATASETS[dataset_name]
+
+    # Load and sample datasets once to ensure consistency
+    print("\nLoading datasets...")
+    train_dataset = load_dataset(
+        dataset_path=train_dataset_path,
+        model_name=probe_model_name,
+        layer=probe_layer,
+        compute_activations=compute_activations,
+        n_per_class=max_samples // 2 if max_samples else None,
+    )
+    eval_dataset = load_dataset(
+        dataset_path=eval_dataset_path,
+        model_name=probe_model_name,
+        layer=probe_layer,
+        compute_activations=compute_activations,
+        n_per_class=max_samples // 2 if max_samples else None,
+    )
+
+    # Run baselines for each model
+    baseline_results = []
+    for model_name in model_names:
+        print(f"\nRunning baseline for model: {model_name}")
+        # Get model-specific baseline prompt
+        baseline_prompt = get_model_baseline_prompt(model_name)
+        print(f"Using baseline prompt: {baseline_prompt}")
+
+        # Load model
+        model = LLMModel.load(LOCAL_MODELS[model_name])
+
+        # Create a temporary file with the sampled dataset
+        temp_dataset_path = output_dir / f"temp_eval_dataset_{model_name}.jsonl"
+        eval_dataset.save_to(temp_dataset_path, overwrite=True)
+
+        results = evaluate_likelihood_continuation_baseline(
+            model=model,
+            prompt_config=likelihood_continuation_prompts[baseline_prompt],
+            dataset_name=dataset_name,
+            dataset_path=temp_dataset_path,
+            max_samples=None,  # Don't sample again, use the pre-sampled dataset
+            batch_size=batch_size,
+        )
+        baseline_results.append(results)
+        # Save baseline results
+        results.save_to(output_dir / f"baseline_{model_name}.jsonl")
+
+        # Clean up temporary file
+        temp_dataset_path.unlink()
+
+    # Create probe specification
+    probe_spec = ProbeSpec(
+        name=probe_type,
+        hyperparams={
+            "batch_size": 32,
+            "epochs": 20,
+            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "learning_rate": 1e-2,
+            "weight_decay": 0.1,
+        },
+    )
+
+    # Train probe
+    print("\nTraining probe...")
+    probe = ProbeFactory.build(
+        probe=probe_spec,
+        train_dataset=train_dataset,
+    )
+
+    # Evaluate probe
+    print("\nEvaluating probe...")
+    probe_scores, probe_results = evaluate_probe_and_save_results(
+        probe=probe,
+        train_dataset_path=train_dataset_path,
+        eval_dataset_name=dataset_name,
+        eval_dataset=eval_dataset,
+        model_name=probe_model_name,
+        layer=probe_layer,
+        output_dir=output_dir,
+        save_results=True,
+    )
+
+    # Save probe results
+    probe_results.save_to(output_dir / "probe_results.json")
+
+    return baseline_results, probe_results
+
+
+if __name__ == "__main__":
+    # Example usage
+    model_names = ["llama-1b", "gemma-1b"]
+    dataset_name = "anthropic"
+
+    baseline_results, probe_results = run_monitoring_cascade(
+        model_names=model_names,
+        dataset_name=dataset_name,
+        train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
+        max_samples=20,  # Optional: limit to 100 samples for testing
+        probe_model_name=LOCAL_MODELS["llama-1b"],
+        probe_layer=11,
+        compute_activations=True,
+    )
+
+    # Print results
+    print("\nBaseline Results:")
+    for result in baseline_results:
+        print(f"Model: {result.model_name}")
+        print(f"Prompt config: {result.prompt_config}")
+        print(f"Accuracy: {result.accuracy:.3f}")
+        auroc = roc_auc_score(result.ground_truth, result.high_stakes_scores)
+        print(f"AUROC: {auroc:.3f}")
+        print()
+
+    print("\nProbe Results:")
+    print(f"Accuracy: {probe_results.metrics['accuracy']:.3f}")
+    print(f"AUROC: {probe_results.metrics['auroc']:.3f}")
