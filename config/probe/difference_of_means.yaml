@@ -1,5 +1,4 @@
 name: difference_of_means
 hyperparams:
-  batch_size: 16
+  batch_size: 16384
   epochs: 3
-  device: "cpu"

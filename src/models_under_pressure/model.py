@@ -180,7 +180,8 @@ class LLMModel:
     """
 
     name: str
-    device: str
+    llm_device: torch.device | str
+    dtype: torch.dtype
     batch_size: int
     tokenize_kwargs: dict[str, Any]
     model: torch.nn.Module
@@ -190,7 +191,7 @@ class LLMModel:
     def load(
         cls,
         model_name: str,
-        device: str = global_settings.DEVICE,
+        llm_device: torch.device | str = global_settings.LLM_DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
@@ -204,7 +205,7 @@ class LLMModel:
 
         Args:
             model_name: Name or path of the model
-            device: Device to load on (e.g., 'cuda', 'cpu')
+            llm_device: Device to load the model on
             batch_size: Default batch size
             tokenize_kwargs: Additional tokenization args
             model_kwargs: Additional model init args
@@ -215,12 +216,10 @@ class LLMModel:
         """
         hf_login()
 
-        dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
-
         model_kwargs = {
             "pretrained_model_name_or_path": model_name,
-            "device_map": device,
-            "torch_dtype": dtype,
+            "device_map": llm_device,
+            "torch_dtype": global_settings.DTYPE,
             "cache_dir": global_settings.CACHE_DIR,
             "max_memory": global_settings.MODEL_MAX_MEMORY.get(
                 global_settings.DEFAULT_MODEL
@@ -248,10 +247,14 @@ class LLMModel:
 
         tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
 
+        llm_device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+
         return cls(
             name=model_name,
+            llm_device=llm_device,
+            dtype=dtype,
             batch_size=batch_size,
-            device=device,
             tokenize_kwargs=tokenize_kwargs,
             model=model,
             tokenizer=tokenizer,
@@ -292,9 +295,9 @@ class LLMModel:
                 f"Don't know how to get the hidden dimension for model {self.model.name_or_path}."
             )
 
-    def to(self, device: str) -> Self:
-        self.device = device
-        self.model.to(device)
+    def to(self, llm_device: torch.device) -> Self:
+        self.llm_device = llm_device
+        self.model.to(llm_device)
         return self
 
     def tokenize(
@@ -314,7 +317,7 @@ class LLMModel:
             if k in ["input_ids", "attention_mask"]:
                 token_dict[k] = v[:, 1:]
             if isinstance(v, torch.Tensor):
-                token_dict[k] = v.to(next(self.model.parameters()).device)
+                token_dict[k] = v.to(self.llm_device)
 
         # Check that attention mask exists in token dict
         if "attention_mask" not in token_dict:
@@ -375,7 +378,7 @@ class LLMModel:
                 else:
                     all_activations[:, batch_indices, -seq_len:] = batch_acts
 
-        return all_activations, {k: v.cpu() for k, v in inputs.items()}
+        return all_activations, inputs
 
     @torch.no_grad()
     def get_batched_activations(
@@ -388,9 +391,9 @@ class LLMModel:
             dataset, [layer], batch_size
         )
         return Activation(
-            _activations=all_activations[0],
-            _attention_mask=inputs["attention_mask"],
-            _input_ids=inputs["input_ids"],
+            activations=all_activations[0],
+            attention_mask=inputs["attention_mask"].cpu(),
+            input_ids=inputs["input_ids"].cpu(),
         )
 
     @torch.no_grad()
@@ -454,7 +457,7 @@ class LLMModel:
             else:
                 all_log_probs[batch_indices, -out_seq_len:] = token_log_probs
 
-        return all_log_probs
+        return all_log_probs.to(self.acts_device)
 
     def generate(
         self,

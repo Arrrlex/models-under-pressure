@@ -63,19 +63,8 @@ class SklearnProbe(Probe):
         labels = self._predict(activations_obj)
         return [Label.from_int(pred) for pred in labels]
 
-    def predict_proba(
-        self, dataset: BaseDataset
-    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]:
+    def predict_proba(self, dataset: BaseDataset) -> Float[np.ndarray, " batch_size"]:
         activations_obj = Activation.from_dataset(dataset)
-        return activations_obj, self._predict_proba(activations_obj)
-
-    def predict_proba_without_activations(
-        self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]:
-        activations_obj = Activation.from_dataset(dataset)
-        # print(
-        #     f"DEBUGGING: Obtained {len(activations_obj.get_activations(per_token=False))} activations"
-        # )
         return self._predict_proba(activations_obj)
 
     def _fit(
