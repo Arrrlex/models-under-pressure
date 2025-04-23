@@ -119,8 +119,18 @@ class Activation:
         activations = einops.rearrange(self.activations, "b s e -> (b s) e")
         attention_mask = einops.rearrange(self.attention_mask, "b s -> (b s)")
         input_ids = einops.rearrange(self.input_ids, "b s -> (b s)")
+
+        # Create entry indices tensor to track which entry each token came from
+        entry_indices = torch.arange(self.batch_size, device=activations.device)
+        entry_indices = einops.repeat(entry_indices, "b -> (b s)", s=self.seq_len)
+
+        # Use the original attention mask to index the flattened sequence
+        mask_indices = torch.where(attention_mask == 1)[0]
         return PerTokenActivation(
-            activations=activations, attention_mask=attention_mask, input_ids=input_ids
+            activations=activations[mask_indices],
+            attention_mask=attention_mask[mask_indices],
+            input_ids=input_ids[mask_indices],
+            entry_indices=entry_indices[mask_indices],
         )
 
     def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
@@ -137,14 +147,15 @@ class PerTokenActivation:
     activations: Float[torch.Tensor, "tokens embed_dim"]
     attention_mask: Float[torch.Tensor, " tokens"]
     input_ids: Float[torch.Tensor, " tokens"]
+    entry_indices: Float[torch.Tensor, " tokens"]  # Which entry each token came from
 
     def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
-        tokens = self.activations.shape[0]
-        seq_len, rem = divmod(tokens, y.shape[0])
-        assert (
-            rem == 0
-        ), f"Batch size {y.shape[0]} does not divide the number of tokens {tokens}"
-        y = einops.repeat(y, "b -> (b s)", s=seq_len)
+        # Count how many tokens we kept from each entry
+        entry_counts = torch.bincount(self.entry_indices, minlength=y.shape[0])
+
+        # Repeat each label the number of times its entry appears
+        y = torch.repeat_interleave(y, entry_counts.to(y.device))
+
         return ActivationDataset(
             activations=self.activations,
             attention_mask=self.attention_mask,

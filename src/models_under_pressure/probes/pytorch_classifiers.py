@@ -6,12 +6,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from jaxtyping import Float
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
-from models_under_pressure.utils import as_numpy
 
 
 def masked_mean(acts: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -79,20 +78,9 @@ class PytorchLinearClassifier:
 
         per_token_dataset = activations.per_token().to_dataset(y)
 
-        # Calculate class weights to handle imbalanced data
-        sample_weights = as_numpy(per_token_dataset.attention_mask).tolist()
-
-        # Only sample points that are not masked
-        sampler = WeightedRandomSampler(
-            weights=sample_weights,  # Convert to list for compatibility
-            num_samples=len(sample_weights),
-            replacement=True,
-        )
-
         dataloader = DataLoader(
             per_token_dataset,
             batch_size=self.training_args["batch_size"],
-            sampler=sampler,
         )
 
         # Initialize variables for tracking best model
@@ -198,7 +186,8 @@ class PytorchLinearClassifier:
 
         batch_size, seq_len, _ = activations.shape
 
-        # Process the activations into a per token dataset        # Create dummy labels for dataset creation
+        # Process the activations into a per token dataset
+        # Create dummy labels for dataset creation
         dummy_labels = torch.empty(batch_size, device=self.device)
         dataset = activations.per_token().to_dataset(dummy_labels)
 
@@ -214,27 +203,34 @@ class PytorchLinearClassifier:
 
         # Initialize output tensor
         flattened_logits = torch.zeros(
-            (batch_size * seq_len, 1),
+            (batch_size * seq_len,),
             device="cpu",
             dtype=self.dtype,
         )
 
+        # Create a mask to track which positions in the original sequence are present
+        # This will be used to place logits in the correct positions
+        attention_mask_flat = activations.attention_mask.view(-1)
+        present_indices = torch.where(attention_mask_flat == 1)[0]
+
         # Process in batches
         start_idx = 0
-        for batch_acts, batch_mask, _, _ in tqdm(dataloader, desc="Processing batches"):
+        for batch_acts, _, _, _ in tqdm(dataloader, desc="Processing batches"):
             mb_size = len(batch_acts)
 
             # Get logits for this batch
-            batch_logits = self.model(batch_acts)
-            batch_logits *= batch_mask[:, None]
+            batch_logits = self.model(batch_acts).squeeze()
 
-            # Store in output tensor
-            flattened_logits[start_idx : start_idx + mb_size] = batch_logits
+            # Get the indices where we should place these logits
+            batch_indices = present_indices[start_idx : start_idx + mb_size]
+
+            # Place the logits in the correct positions
+            flattened_logits[batch_indices] = batch_logits.cpu()
             start_idx += mb_size
 
         # Reshape to (batch_size, seq_len)
         logits = einops.rearrange(
-            flattened_logits, "(b s) 1 -> b s", b=batch_size, s=seq_len
+            flattened_logits, "(b s) -> b s", b=batch_size, s=seq_len
         )
 
         if per_token:
