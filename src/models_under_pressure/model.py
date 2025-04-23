@@ -184,7 +184,6 @@ class LLMModel:
 
     name: str
     llm_device: torch.device | str
-    acts_device: torch.device | str
     dtype: torch.dtype
     batch_size: int
     tokenize_kwargs: dict[str, Any]
@@ -196,7 +195,6 @@ class LLMModel:
         cls,
         model_name: str,
         llm_device: torch.device | str = global_settings.LLM_DEVICE,
-        acts_device: torch.device | str = global_settings.DEVICE,
         batch_size: int = global_settings.BATCH_SIZE,
         tokenize_kwargs: dict[str, Any] | None = None,
         model_kwargs: dict[str, Any] | None = None,
@@ -211,7 +209,6 @@ class LLMModel:
         Args:
             model_name: Name or path of the model
             llm_device: Device to load the model on
-            acts_device: Device to store activations on
             batch_size: Default batch size
             tokenize_kwargs: Additional tokenization args
             model_kwargs: Additional model init args
@@ -259,7 +256,6 @@ class LLMModel:
         return cls(
             name=model_name,
             llm_device=llm_device,
-            acts_device=acts_device,
             dtype=dtype,
             batch_size=batch_size,
             tokenize_kwargs=tokenize_kwargs,
@@ -302,9 +298,8 @@ class LLMModel:
                 f"Don't know how to get the hidden dimension for model {self.model.name_or_path}."
             )
 
-    def to(self, llm_device: torch.device, acts_device: torch.device) -> Self:
+    def to(self, llm_device: torch.device) -> Self:
         self.llm_device = llm_device
-        self.acts_device = acts_device
         self.model.to(llm_device)
         return self
 
@@ -386,9 +381,6 @@ class LLMModel:
                 else:
                     all_activations[:, batch_indices, -seq_len:] = batch_acts
 
-        all_activations = all_activations.to(self.acts_device)
-        inputs = {k: v.to(self.acts_device) for k, v in inputs.items()}
-
         return all_activations, inputs
 
     @torch.no_grad()
@@ -403,8 +395,8 @@ class LLMModel:
         )
         return Activation(
             activations=all_activations[0],
-            attention_mask=inputs["attention_mask"],
-            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"].cpu(),
+            input_ids=inputs["input_ids"].cpu(),
         )
 
     @torch.no_grad()

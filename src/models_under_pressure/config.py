@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 import torch
+import yaml
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
@@ -70,45 +71,18 @@ USE_BALANCED_DATASETS = True
 EVALS_DIR = DATA_DIR / "evals" / "dev"
 TEST_EVALS_DIR = DATA_DIR / "evals" / "test"
 
-EVAL_DATASETS_RAW = {
-    "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_raw_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_raw_apr_15.jsonl",
-    "mt": EVALS_DIR / "mt_raw_apr_16.jsonl",
-    "mts": EVALS_DIR / "mts_raw_apr_16.jsonl",
-    "mask": EVALS_DIR / "mask_samples_raw.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "dev_raw.yaml") as f:
+    EVAL_DATASETS_RAW = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-EVAL_DATASETS_BALANCED = {
-    "manual": EVALS_DIR / "manual_upsampled.csv",
-    "anthropic": EVALS_DIR / "anthropic_balanced_apr_16.jsonl",
-    "toolace": EVALS_DIR / "toolace_balanced_apr_15.jsonl",
-    "mt": EVALS_DIR / "mt_balanced_apr_16.jsonl",
-    "mts": EVALS_DIR / "mts_balanced_apr_16.jsonl",
-    "mask": EVALS_DIR / "mask_samples_balanced.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "dev_balanced.yaml") as f:
+    EVAL_DATASETS_BALANCED = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-TEST_DATASETS_RAW = {
-    "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_test_raw_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_raw_apr_15.jsonl",
-    "mt": TEST_EVALS_DIR / "mt_test_raw_apr_16.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_test_raw_apr_16.csv",
-    "mental_health": TEST_EVALS_DIR / "mental_health.jsonl",
-    "redteaming": TEST_EVALS_DIR / "aya_redteaming.jsonl",
-    "mask": TEST_EVALS_DIR / "mask_samples_raw.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "test_raw.yaml") as f:
+    TEST_DATASETS_RAW = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
 
-TEST_DATASETS_BALANCED = {
-    "manual": TEST_EVALS_DIR / "manual.csv",
-    "anthropic": TEST_EVALS_DIR / "anthropic_test_balanced_apr_16.jsonl",
-    "toolace": TEST_EVALS_DIR / "toolace_test_balanced_apr_15.jsonl",
-    "mt": TEST_EVALS_DIR / "mt_test_balanced_apr_16.jsonl",
-    "mts": TEST_EVALS_DIR / "mts_test_balanced_apr_16.jsonl",
-    "mental_health": TEST_EVALS_DIR / "mental_health_balanced.jsonl",
-    "redteaming": TEST_EVALS_DIR / "aya_redteaming_balanced.csv",
-    "mask": TEST_EVALS_DIR / "mask_samples_balanced.jsonl",
-}
+with open(CONFIG_DIR / "eval_datasets" / "test_balanced.yaml") as f:
+    TEST_DATASETS_BALANCED = {k: PROJECT_ROOT / v for k, v in yaml.safe_load(f).items()}
+
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
@@ -148,6 +122,10 @@ OTHER_DATASETS = {
     / "original_doubled_unconfounded/train.jsonl",
     "original_doubled_unconfounded_test": TRAIN_DIR
     / "original_doubled_unconfounded/test.jsonl",
+    "chatbot_deployment": TRAIN_DIR / "chatbot_deployment_22_04_25.jsonl",
+    "medical_deployment": TRAIN_DIR / "medical_deployment_22_04_25.jsonl",
+    "software_deployment": TRAIN_DIR / "software_deployment_22_04_25.jsonl",
+    "combined_deployment": TRAIN_DIR / "combined_deployment_22_04_25.jsonl",
 }
 
 
@@ -344,11 +322,6 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
-    model_name: str = (
-        DEFAULT_GPU_MODEL
-        if "cuda" in global_settings.LLM_DEVICE
-        else DEFAULT_OTHER_MODEL
-    )
 
     @property
     def output_filename(self) -> str:
@@ -385,11 +358,6 @@ class SafetyRunConfig:
     variation_type: str | None = None
     variation_value: str | None = None
     dataset_path: Path = SYNTHETIC_DATASET_PATH
-    model_name: str = (
-        DEFAULT_GPU_MODEL
-        if "cuda" in global_settings.LLM_DEVICE
-        else DEFAULT_OTHER_MODEL
-    )
 
     @property
     def output_filename(self) -> str:
