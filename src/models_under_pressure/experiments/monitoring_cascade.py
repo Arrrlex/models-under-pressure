@@ -536,10 +536,12 @@ def compute_cascade_results(
     probe_results: EvaluationResult,
     results_file: Path,
 ):
+    fraction_of_sample_options = [0.1 * i for i in range(1, 10)]
+
     # Evaluate baseline cascades
     print("\nBaseline Results:")
     for result in baseline_results:
-        for fraction_of_samples in [0.5, 0.75, 1.0]:
+        for fraction_of_samples in fraction_of_sample_options:
             print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
             cascade_results = evaluate_single_baseline_cascade(
                 result, fraction_of_samples=fraction_of_samples
@@ -580,7 +582,7 @@ def compute_cascade_results(
         {"selection_strategy": "bottom", "remaining_strategy": "probe"},
         {"selection_strategy": "mid", "remaining_strategy": "probe"},
     ]
-    for fraction_of_samples in [0.2, 0.5]:
+    for fraction_of_samples in fraction_of_sample_options:
         for strategy in strategies:
             baseline_result = baseline_results[0]
             print(
