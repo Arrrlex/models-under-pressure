@@ -1,10 +1,9 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-import numpy as np
 import yaml
-from jaxtyping import Float
+from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.baselines.continuation import (
@@ -23,7 +22,6 @@ from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
     evaluate_probe_and_save_results,
 )
-from models_under_pressure.interfaces.dataset import BaseDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
     EvalRunConfig,
@@ -176,11 +174,72 @@ def run_monitoring_cascade(
     return baseline_results, probe_results
 
 
-class CascadeClassifier:
-    def predict_proba(
-        self, dataset: BaseDataset
-    ) -> Tuple[Float[np.ndarray, " dataset_size"], Float[np.ndarray, " dataset_size"]]:
-        pass
+class CascadeResults(BaseModel):
+    scores: list[float]
+    labels: list[int]
+    ground_truth_labels: list[int]
+    ground_truth_scores: list[float]
+    auroc: float
+    flops: list[int]
+
+
+def evaluate_single_probe_cascade(
+    evaluation_results: EvaluationResult,
+) -> CascadeResults:
+    assert evaluation_results.output_scores is not None
+
+    flops = []
+
+    # Get activation dimension for model
+    model_name = next(
+        k for k, v in LOCAL_MODELS.items() if v == evaluation_results.config.model_name
+    )
+    if model_name == "llama-1b":
+        activation_dim = 2048
+    elif model_name == "gemma-1b":
+        activation_dim = 2048
+    elif model_name == "llama-8b":
+        activation_dim = 4096
+    elif model_name == "llama-70b":
+        activation_dim = 8192
+    elif model_name == "gemma-12b":
+        activation_dim = 4096
+    elif model_name == "gemma-27b":
+        activation_dim = 4096
+    else:
+        raise ValueError(f"Unknown activation dimension for model: {model_name}")
+
+    # TODO! Store ground truth scale labels in evaluation result
+    # TODO Get actual tokens per sample, write to evaluation result
+    tokens_per_sample = 200
+
+    # Depending on the probe, flops are calculated differently
+    if evaluation_results.config.probe_spec.name == "pytorch_per_entry_probe_mean":
+        # Flops per token are approximately activation_dim
+        # (Since the average has to be computed as well)
+        flops = [
+            activation_dim * tokens_per_sample
+            for _ in range(len(evaluation_results.output_scores))
+        ]
+    elif evaluation_results.config.probe_spec.name == "pytorch_per_token_probe":
+        flops = [
+            activation_dim * tokens_per_sample
+            for _ in range(len(evaluation_results.output_scores))
+        ]
+    else:
+        raise ValueError(
+            f"Unknown flops for probe type: {evaluation_results.config.probe_spec.name}"
+        )
+
+    results = CascadeResults(
+        scores=evaluation_results.output_scores,  # type: ignore
+        labels=evaluation_results.output_labels,  # type: ignore
+        ground_truth_labels=evaluation_results.ground_truth_labels,  # type: ignore
+        ground_truth_scores=evaluation_results.ground_truth_scores,  # type: ignore
+        auroc=evaluation_results.metrics.metrics["auroc"],
+        flops=flops,
+    )
+    return results
 
 
 if __name__ == "__main__":
@@ -230,3 +289,8 @@ if __name__ == "__main__":
     print("\nProbe Results:")
     print(f"Accuracy: {probe_results.metrics.metrics['accuracy']:.3f}")
     print(f"AUROC: {probe_results.metrics.metrics['auroc']:.3f}")
+
+    print("\nCascade Results:")
+    cascade_results = evaluate_single_probe_cascade(probe_results)
+    print(f"AUROC: {cascade_results.auroc:.3f}")
+    print(f"FLOPs: {cascade_results.flops}")
