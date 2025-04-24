@@ -438,11 +438,10 @@ def evaluate_probe_baseline_cascade(
         )
     elif remaining_strategy == "probe":
         # Process remaining subset with probe
-        all_results = evaluate_probe_baseline_cascade(
-            baseline_results=baseline_results,
-            probe_results=probe_results,
-            fraction_of_samples=fraction_of_samples,
+        all_results = evaluate_single_probe_cascade(
+            evaluation_results=probe_results,
         )
+        print("DEBUG: all_results.auroc", all_results.auroc)
         remaining_results = CascadeResults(
             scores=[all_results.scores[i] for i in remaining_indices],
             labels=[all_results.labels[i] for i in remaining_indices],
@@ -454,6 +453,7 @@ def evaluate_probe_baseline_cascade(
             ],
             flops=[all_results.flops[i] for i in remaining_indices],
         )
+        print("DEBUG: remaining_results.auroc", remaining_results.auroc)
     else:
         raise ValueError(f"Unknown remaining strategy: {remaining_strategy}")
 
@@ -635,12 +635,12 @@ def compute_cascade_results(
     probe_results: EvaluationResult,
     results_file: Path,
 ):
-    fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
+    fraction_of_sample_options = [0.1 * i for i in range(1, 10)]
 
     # Evaluate baseline cascades
     print("\nBaseline Results:")
     for result in baseline_results:
-        for fraction_of_samples in fraction_of_sample_options:
+        for fraction_of_samples in fraction_of_sample_options + [1.0]:
             print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
             cascade_results = evaluate_single_baseline_cascade(
                 result, fraction_of_samples=fraction_of_samples
