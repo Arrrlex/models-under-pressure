@@ -234,7 +234,14 @@ class LikelihoodContinuationBaseline:
     def likelihood_classify_dataset(
         self, dataset: Dataset, batch_size: int
     ) -> LabelledDataset:
-        assert self.prompt_config.system_prompt is not None
+        assert self.prompt_config.conversation_input_key in [
+            "system_prompt",
+            "user_prompt",
+        ]
+        if self.prompt_config.conversation_input_key == "system_prompt":
+            assert self.prompt_config.system_prompt is not None
+        if self.prompt_config.conversation_input_key == "user_prompt":
+            assert self.prompt_config.user_prompt is not None
 
         ids = []
         inputs = []

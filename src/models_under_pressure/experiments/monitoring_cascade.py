@@ -186,9 +186,19 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
     Args:
         cfg: Hydra configuration object
     """
+    cfg = cfg.experiments
+
+    # Get probe layer from model config
+    model_config_path = CONFIG_DIR / "model" / f"{cfg.probe_model_name}.yaml"
+    with open(model_config_path) as f:
+        model_config = yaml.safe_load(f)
+    if cfg.probe_layer is None:
+        cfg.probe_layer = model_config.get("layer")
+    cfg.probe_model_name = model_config.get("name", cfg.probe_model_name)
+
     cfg = AttrDict(
-        OmegaConf.to_container(cfg.experiments, resolve=True, enum_to_str=True)
-    )  # type: ignore
+        OmegaConf.to_container(cfg, resolve=True, enum_to_str=True)  # type: ignore
+    )
 
     output_dir = (
         cfg.output_dir
@@ -850,16 +860,9 @@ def load_existing_results(
         Tuple of (baseline_results, probe_results)
     """
     baseline_results = []
-    # TODO Adjust this so it just reads all the files
-    for model_name in [
-        "llama-1b",
-        "gemma-1b",
-        "llama-8b",
-        "llama-70b",
-        "gemma-12b",
-        "gemma-27b",
-    ]:
-        with open(output_dir / f"baseline_{model_name}.jsonl") as f:
+    # Read all baseline files
+    for baseline_file in output_dir.glob("baseline_*.jsonl"):
+        with open(baseline_file) as f:
             for line in f:
                 if line.strip():  # Skip empty lines
                     baseline_results.append(
