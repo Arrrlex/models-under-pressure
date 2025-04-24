@@ -674,45 +674,42 @@ def compute_cascade_results(
         fraction_of_samples=1.0,
     )
 
-    # Evaluate probe baseline cascade
+    # Evaluate probe baseline cascade for all models
     strategies = [
-        # {"selection_strategy": "top", "remaining_strategy": "fixed_0"},
-        {"selection_strategy": "top", "remaining_strategy": "probe"},
+        # {"selection_strategy": "top", "remaining_strategy": "probe"},
         {"selection_strategy": "bottom", "remaining_strategy": "probe"},
-        {"selection_strategy": "mid", "remaining_strategy": "probe"},
+        # {"selection_strategy": "mid", "remaining_strategy": "probe"},
     ]
-    for fraction_of_samples in fraction_of_sample_options:
-        for strategy in strategies:
-            baseline_result = next(
-                result
-                for result in baseline_results
-                if get_abbreviated_model_name(result.model_name) == "llama-70b"
-            )
-            print(
-                f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
-            )
-            print(f"Strategy: {strategy}")
-            probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
-                baseline_results=baseline_result,
-                probe_results=probe_results,
-                fraction_of_samples=fraction_of_samples,
-                selection_strategy=strategy["selection_strategy"],
-                remaining_strategy=strategy["remaining_strategy"],
-            )
-            print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
-            print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
 
-            # Write probe baseline cascade results to file
-            write_cascade_results_to_file(
-                results=probe_baseline_cascade_results,
-                output_file=results_file,
-                cascade_type="probe_baseline",
-                model_name=baseline_result.model_name,
-                probe_model_name=probe_results.config.model_name,
-                fraction_of_samples=fraction_of_samples,
-                selection_strategy=strategy["selection_strategy"],
-                remaining_strategy=strategy["remaining_strategy"],
-            )
+    print("\nProbe+Baseline Cascade Results:")
+    for baseline_result in baseline_results:
+        for fraction_of_samples in fraction_of_sample_options + [1.0]:
+            for strategy in strategies:
+                print(
+                    f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
+                )
+                print(f"Strategy: {strategy}")
+                probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
+                    baseline_results=baseline_result,
+                    probe_results=probe_results,
+                    fraction_of_samples=fraction_of_samples,
+                    selection_strategy=strategy["selection_strategy"],
+                    remaining_strategy=strategy["remaining_strategy"],
+                )
+                print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
+                print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
+
+                # Write probe baseline cascade results to file
+                write_cascade_results_to_file(
+                    results=probe_baseline_cascade_results,
+                    output_file=results_file,
+                    cascade_type="probe_baseline",
+                    model_name=baseline_result.model_name,
+                    probe_model_name=probe_results.config.model_name,
+                    fraction_of_samples=fraction_of_samples,
+                    selection_strategy=strategy["selection_strategy"],
+                    remaining_strategy=strategy["remaining_strategy"],
+                )
 
 
 def get_abbreviated_model_name(full_name: str) -> str:
@@ -845,7 +842,7 @@ def plot_cascade_results(
             color=color,
             linestyle=linestyle,
             label=label,
-            markersize=4,
+            markersize=3,
         )
 
         # Add fraction labels if enabled
