@@ -187,7 +187,7 @@ if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = True
+    compute = False
     max_samples = 20
 
     if compute:
@@ -201,16 +201,21 @@ if __name__ == "__main__":
             compute_activations=True,
         )
     else:
-        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250423"
+        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250424"
         baseline_results = []
         for model_name in model_names:
             with open(output_dir / f"baseline_{model_name}.jsonl") as f:
-                baseline_results.append(
-                    LikelihoodBaselineResults.model_validate_json(f.read())
-                )
+                for line in f:
+                    if line.strip():  # Skip empty lines
+                        baseline_results.append(
+                            LikelihoodBaselineResults.model_validate_json(line.strip())
+                        )
 
         with open(output_dir / "probe_results.jsonl") as f:
-            probe_results = EvaluationResult.model_validate_json(f.read())
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    probe_results = EvaluationResult.model_validate_json(line.strip())
+                    break  # Assuming we only need the first result
 
     # Print results
     print("\nBaseline Results:")

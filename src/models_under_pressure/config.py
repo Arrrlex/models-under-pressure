@@ -19,7 +19,9 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 class GlobalSettings(BaseSettings):
     LLM_DEVICE: str = "auto"  # Device for the LLM model
-    DEVICE: str = "cuda"  # Device for activations, probes, etc.
+    DEVICE: str = (
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )  # Device for activations, probes, etc.
     DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     BATCH_SIZE: int = 4
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
