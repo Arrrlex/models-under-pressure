@@ -234,6 +234,8 @@ class LikelihoodContinuationBaseline:
     def likelihood_classify_dataset(
         self, dataset: Dataset, batch_size: int
     ) -> LabelledDataset:
+        assert self.prompt_config.system_prompt is not None
+
         ids = []
         inputs = []
         other_fields = {
@@ -382,6 +384,8 @@ def evaluate_likelihood_continuation_baseline(
         accuracy=accuracy,
         labels=labels,
         ground_truth=ground_truth.tolist(),
+        ground_truth_sample_ids=list(dataset.ids),
+        ground_truth_scale_labels=list(dataset.other_fields["scale_labels"]),  # type: ignore
         dataset_name=dataset_name,
         dataset_path=dataset_path,
         model_name=model.name,

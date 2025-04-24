@@ -253,7 +253,7 @@ if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = False
+    compute = True
     max_samples = 20
 
     if compute:

@@ -125,6 +125,8 @@ class BaselineResults(BaseModel):
     accuracy: float
     labels: list[int]
     ground_truth: list[int]
+    ground_truth_scale_labels: list[int]
+    ground_truth_sample_ids: list[str]
     dataset_name: str
     dataset_path: Path
     model_name: str
