@@ -1,0 +1,17 @@
+defaults:
+  - /probe: pytorch_per_entry_probe_mean  # or any other probe type
+
+model_names:
+  - llama-1b
+  - llama-8b
+probe_model_name: llama-70b
+probe_layer: 31  # Adding probe layer configuration
+dataset_name: anthropic
+train_dataset_path: training/original_doubled_unconfounded/train.jsonl
+max_samples: 100
+batch_size: 4
+compute_activations: true
+compute_cascade: true
+compute_results: true
+plot_results: true
+output_dir: null

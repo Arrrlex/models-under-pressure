@@ -3,8 +3,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import hydra
 import numpy as np
 import yaml
+from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
 
@@ -17,8 +19,6 @@ from models_under_pressure.config import (
     DATA_DIR,
     EVAL_DATASETS,
     LOCAL_MODELS,
-    SYNTHETIC_DATASET_PATH,
-    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
@@ -33,6 +33,7 @@ from models_under_pressure.interfaces.results import (
 )
 from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.utils import AttrDict
 
 
 def get_model_baseline_prompt(model_name: str) -> str:
@@ -43,31 +44,32 @@ def get_model_baseline_prompt(model_name: str) -> str:
     return config["baseline_prompt"]
 
 
-def run_monitoring_cascade(
+def _run_monitoring_cascade(
     model_names: List[str],
     probe_model_name: str,
     probe_layer: int,
     dataset_name: str,
     train_dataset_path: Path,
-    probe_type: str = "pytorch_per_entry_probe_mean",
+    probe_spec: ProbeSpec,
     max_samples: Optional[int] = None,
     batch_size: int = 4,
     output_dir: Optional[Path] = None,
     compute_activations: bool = True,
-) -> tuple[List[LikelihoodBaselineResults], EvaluationResult]:
+) -> tuple[List[LikelihoodBaselineResults], EvaluationResult, Path]:
     """Run a monitoring cascade experiment that evaluates both baselines and a probe.
 
     Args:
         model_names: List of model names to evaluate baselines for
         dataset_name: Name of the dataset to evaluate on
         train_dataset_name: Name of the dataset to train the probe on
-        probe_type: Type of probe to train (default: pytorch_per_token_probe)
+        probe_spec: Probe specification from Hydra config
         max_samples: Maximum number of samples to evaluate on. If None, uses all samples.
         batch_size: Batch size for evaluation
         output_dir: Directory to save results to. If None, creates a date-stamped directory in DATA_DIR/results
+        compute_activations: Whether to compute activations for the probe
 
     Returns:
-        Tuple of (baseline_results, probe_results)
+        Tuple of (baseline_results, probe_results, output_dir)
     """
     # Create output directory
     if output_dir is None:
@@ -122,17 +124,6 @@ def run_monitoring_cascade(
         # Save baseline results
         results.save_to(output_dir / f"baseline_{model_name}.jsonl")
 
-    # Create probe specification
-    probe_spec = ProbeSpec(
-        name=probe_type,
-        hyperparams={
-            "batch_size": batch_size,
-            "epochs": 10,
-            "device": global_settings.DEVICE,
-            "optimizer_args": {"lr": 1e-3, "weight_decay": 0.01},
-        },
-    )
-
     # Train probe
     print("\nTraining probe...")
     probe = ProbeFactory.build(
@@ -181,7 +172,66 @@ def run_monitoring_cascade(
     # Save probe results
     probe_results.save_to(output_dir / "probe_results.jsonl")
 
-    return baseline_results, probe_results
+    return baseline_results, probe_results, output_dir
+
+
+@hydra.main(
+    config_path=str(CONFIG_DIR),
+    config_name="experiments/monitoring_cascade",
+    version_base=None,
+)
+def run_monitoring_cascade(cfg: DictConfig) -> None:
+    """Hydra wrapper for the monitoring cascade experiment.
+
+    Args:
+        cfg: Hydra configuration object
+    """
+    cfg = AttrDict(
+        OmegaConf.to_container(cfg.experiments, resolve=True, enum_to_str=True)
+    )  # type: ignore
+
+    output_dir = (
+        cfg.output_dir
+        or DATA_DIR
+        / "results"
+        / f"monitoring_cascade_{datetime.now().strftime('%Y%m%d')}"
+    )
+
+    if cfg.compute_results:
+        # Create probe specification from Hydra config
+        probe_spec = ProbeSpec(
+            name=cfg.probe.name,
+            hyperparams=cfg.probe.hyperparams,
+        )
+
+        # Convert train_dataset_path to Path object and resolve relative to DATA_DIR
+        train_dataset_path = DATA_DIR / cfg.train_dataset_path
+
+        # Run the experiment
+        baseline_results, probe_results, output_dir = _run_monitoring_cascade(
+            model_names=cfg.model_names,
+            probe_model_name=cfg.probe_model_name,
+            probe_layer=cfg.probe_layer,
+            dataset_name=cfg.dataset_name,
+            train_dataset_path=train_dataset_path,
+            probe_spec=probe_spec,
+            max_samples=cfg.max_samples,
+            batch_size=cfg.batch_size,
+            compute_activations=cfg.compute_activations,
+        )
+
+    if cfg.compute_cascade:
+        baseline_results, probe_results = load_existing_results(output_dir)
+
+    if cfg.compute_cascade or cfg.plot_results:
+        results_file = output_dir / "cascade_results.jsonl"
+        if cfg.compute_cascade:
+            compute_cascade_results(baseline_results, probe_results, results_file)
+        if cfg.plot_results:
+            plot_cascade_results(
+                results_file,
+                output_file=output_dir / "cascade_plot.pdf",
+            )
 
 
 class CascadeResults(BaseModel):
@@ -788,52 +838,42 @@ def plot_cascade_results(
     plt.close()
 
 
-if __name__ == "__main__":
-    model_names = ["llama-1b", "gemma-1b"]
-    dataset_name = "anthropic"
-    compute = False
-    compute_cascade = True
-    plot_cascade = False
-    max_samples = 100
+def load_existing_results(
+    output_dir: Path,
+) -> tuple[List[LikelihoodBaselineResults], EvaluationResult]:
+    """Load existing results from a previous run.
 
-    # Create output directory
-    date = datetime.now().strftime("%Y%m%d")
-    output_dir = DATA_DIR / "results" / f"monitoring_cascade_{date}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    results_file = output_dir / "cascade_results.jsonl"
+    Args:
+        output_dir: Directory containing the results files
 
-    if compute:
-        baseline_results, probe_results = run_monitoring_cascade(
-            model_names=model_names,
-            dataset_name=dataset_name,
-            train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
-            max_samples=max_samples,
-            probe_model_name=LOCAL_MODELS["llama-1b"],
-            probe_layer=11,
-            compute_activations=True,
-        )
-    elif compute_cascade:
-        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250424"
-        baseline_results = []
-        for model_name in model_names:
-            with open(output_dir / f"baseline_{model_name}.jsonl") as f:
-                for line in f:
-                    if line.strip():  # Skip empty lines
-                        baseline_results.append(
-                            LikelihoodBaselineResults.model_validate_json(line.strip())
-                        )
-
-        with open(output_dir / "probe_results.jsonl") as f:
+    Returns:
+        Tuple of (baseline_results, probe_results)
+    """
+    baseline_results = []
+    # TODO Adjust this so it just reads all the files
+    for model_name in [
+        "llama-1b",
+        "gemma-1b",
+        "llama-8b",
+        "llama-70b",
+        "gemma-12b",
+        "gemma-27b",
+    ]:
+        with open(output_dir / f"baseline_{model_name}.jsonl") as f:
             for line in f:
                 if line.strip():  # Skip empty lines
-                    probe_results = EvaluationResult.model_validate_json(line.strip())
-                    break  # Assuming we only need the first result
+                    baseline_results.append(
+                        LikelihoodBaselineResults.model_validate_json(line.strip())
+                    )
 
-    if compute_cascade:
-        compute_cascade_results(baseline_results, probe_results, results_file)
+    with open(output_dir / "probe_results.jsonl") as f:
+        for line in f:
+            if line.strip():  # Skip empty lines
+                probe_results = EvaluationResult.model_validate_json(line.strip())
+                break  # Assuming we only need the first result
 
-    if plot_cascade:
-        plot_cascade_results(
-            results_file,
-            output_file=output_dir / "cascade_plot.pdf",
-        )
+    return baseline_results, probe_results
+
+
+if __name__ == "__main__":
+    run_monitoring_cascade()
