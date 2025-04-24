@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 import yaml
 from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
@@ -188,6 +189,40 @@ class CascadeResults(BaseModel):
     auroc: float
     flops: list[int]
 
+    def __add__(self, other: "CascadeResults") -> "CascadeResults":
+        """Combine two CascadeResults objects using the + operator.
+
+        Args:
+            other: Another CascadeResults object to combine with
+
+        Returns:
+            A new CascadeResults object with combined data and recalculated AUROC
+        """
+        # Combine all lists
+        combined_scores = self.scores + other.scores
+        combined_labels = self.labels + other.labels
+        combined_ground_truth_labels = (
+            self.ground_truth_labels + other.ground_truth_labels
+        )
+        combined_ground_truth_scores = (
+            self.ground_truth_scores + other.ground_truth_scores
+        )
+        combined_flops = self.flops + other.flops
+
+        # Recalculate AUROC
+        combined_auroc = float(
+            roc_auc_score(combined_ground_truth_labels, combined_scores)
+        )
+
+        return CascadeResults(
+            scores=combined_scores,
+            labels=combined_labels,
+            ground_truth_labels=combined_ground_truth_labels,
+            ground_truth_scores=combined_ground_truth_scores,
+            auroc=combined_auroc,
+            flops=combined_flops,
+        )
+
 
 def evaluate_single_baseline_cascade(
     baseline_results: LikelihoodBaselineResults,
@@ -196,10 +231,17 @@ def evaluate_single_baseline_cascade(
     assert baseline_results.ground_truth_scale_labels is not None
     assert baseline_results.ground_truth is not None
     assert baseline_results.token_counts is not None
-    flops = []
 
-    # TODO! Consider fraction_of_samples
+    # Calculate number of samples to use
+    total_samples = len(baseline_results.labels)
+    num_samples_to_use = int(total_samples * fraction_of_samples)
 
+    # Randomly sample indices for the subset
+    np.random.seed(42)  # For reproducibility
+    sampled_indices = np.random.choice(total_samples, num_samples_to_use, replace=False)
+    remaining_indices = np.setdiff1d(np.arange(total_samples), sampled_indices)
+
+    # Get model-specific per_token_flops
     model_name = next(
         k for k, v in LOCAL_MODELS.items() if v == baseline_results.model_name
     )
@@ -219,22 +261,43 @@ def evaluate_single_baseline_cascade(
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
-    flops = [
-        per_token_flops * token_count for token_count in baseline_results.token_counts
+    # Process sampled subset
+    sampled_flops = [
+        int(per_token_flops) * baseline_results.token_counts[i] for i in sampled_indices
     ]
-
-    return CascadeResults(
-        scores=baseline_results.high_stakes_scores,
-        labels=baseline_results.labels,
-        ground_truth_labels=baseline_results.ground_truth,
-        ground_truth_scores=baseline_results.ground_truth_scale_labels,
+    sampled_results = CascadeResults(
+        scores=[baseline_results.high_stakes_scores[i] for i in sampled_indices],
+        labels=[baseline_results.labels[i] for i in sampled_indices],
+        ground_truth_labels=[baseline_results.ground_truth[i] for i in sampled_indices],
+        ground_truth_scores=[
+            baseline_results.ground_truth_scale_labels[i] for i in sampled_indices
+        ],
         auroc=float(
             roc_auc_score(
-                baseline_results.ground_truth, baseline_results.high_stakes_scores
+                [baseline_results.ground_truth[i] for i in sampled_indices],
+                [baseline_results.high_stakes_scores[i] for i in sampled_indices],
             )
         ),
-        flops=flops,
+        flops=sampled_flops,
     )
+
+    if len(remaining_indices) < 1:
+        return sampled_results
+
+    # Process remaining subset with fixed cascade
+    remaining_results = evaluate_fixed_cascade(
+        ground_truth_labels=[
+            baseline_results.ground_truth[i] for i in remaining_indices
+        ],
+        ground_truth_scale_labels=[
+            baseline_results.ground_truth_scale_labels[i] for i in remaining_indices
+        ],
+        fixed_score=0.5,
+        fixed_label=0,
+    )
+
+    # Combine results
+    return sampled_results + remaining_results
 
 
 def evaluate_single_probe_cascade(
@@ -295,6 +358,26 @@ def evaluate_single_probe_cascade(
     return results
 
 
+def evaluate_fixed_cascade(
+    ground_truth_labels: list[int],
+    ground_truth_scale_labels: list[int],
+    fixed_score: float = 0.5,
+    fixed_label: int = 0,
+) -> CascadeResults:
+    num_samples = len(ground_truth_labels)
+    labels = [fixed_label] * num_samples
+    scores = [fixed_score] * num_samples
+
+    return CascadeResults(
+        scores=scores,
+        labels=labels,
+        ground_truth_labels=ground_truth_labels,
+        ground_truth_scores=ground_truth_scale_labels,
+        auroc=float(roc_auc_score(ground_truth_labels, scores)),
+        flops=[0] * num_samples,  # No computation
+    )
+
+
 if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
@@ -332,11 +415,15 @@ if __name__ == "__main__":
     # Print results
     print("\nBaseline Results:")
     for result in baseline_results:
-        cascade_results = evaluate_single_baseline_cascade(result)
-        print(f"AUROC: {cascade_results.auroc:.3f}")
-        print(f"Total FLOPs: {sum(cascade_results.flops)}")
+        for fraction_of_samples in [0.5, 0.75, 1.0]:
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
     print("\nProbe Results:")
     cascade_results = evaluate_single_probe_cascade(probe_results)
-    print(f"AUROC: {cascade_results.auroc:.3f}")
-    print(f"Total FLOPs: {sum(cascade_results.flops)}")
+    print(f"- AUROC: {cascade_results.auroc:.3f}")
+    print(f"- Total FLOPs: {sum(cascade_results.flops)}")
