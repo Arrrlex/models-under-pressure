@@ -272,6 +272,7 @@ def evaluate_probe_baseline_cascade(
     fraction_of_samples: float = 0.2,
     selection_strategy: str = "top",
     remaining_strategy: str = "fixed_0",
+    debug: bool = False,
 ) -> CascadeResults:
     assert probe_results.output_scores is not None
     assert probe_results.ground_truth_labels is not None
@@ -301,6 +302,19 @@ def evaluate_probe_baseline_cascade(
         raise ValueError(f"Unknown selection strategy: {selection_strategy}")
 
     remaining_indices = np.setdiff1d(np.arange(total_samples), selected_indices)
+
+    if debug:
+        # Debug prints for token lengths and sample counts
+        selected_token_counts = [
+            baseline_results.token_counts[i] for i in selected_indices
+        ]
+        avg_selected_token_length = np.mean(selected_token_counts)
+        print(f"\nStrategy: {selection_strategy}/{remaining_strategy}")
+        print(f"Number of samples selected for baseline: {len(selected_indices)}")
+        print(
+            f"Average token length of selected samples: {avg_selected_token_length:.2f}"
+        )
+        print(f"Total tokens in selected samples: {sum(selected_token_counts)}")
 
     # Get model-specific per_token_flops
     per_token_flops = get_per_token_flops(baseline_results.model_name)
@@ -536,7 +550,7 @@ def compute_cascade_results(
     probe_results: EvaluationResult,
     results_file: Path,
 ):
-    fraction_of_sample_options = [0.1 * i for i in range(1, 10)]
+    fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
     # Evaluate baseline cascades
     print("\nBaseline Results:")
@@ -778,8 +792,8 @@ if __name__ == "__main__":
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
     compute = False
-    compute_cascade = False
-    plot_cascade = True
+    compute_cascade = True
+    plot_cascade = False
     max_samples = 100
 
     # Create output directory
