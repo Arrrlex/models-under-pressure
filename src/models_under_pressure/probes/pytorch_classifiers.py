@@ -32,11 +32,11 @@ class PytorchLinearClassifier:
     """
 
     training_args: dict
+    aggregation: Aggregation
     model: nn.Module | None = None
     best_epoch: int | None = None
     device: str = global_settings.DEVICE
     dtype: torch.dtype = global_settings.DTYPE
-    aggregation: Aggregation = agg.Last()
 
     def setup_for_training(
         self, activations: Activation, **model_kwargs: Any

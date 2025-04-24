@@ -41,6 +41,13 @@ class ProbeFactory:
                 raise ValueError(
                     "Validation dataset must contain activations, attention_mask, and input_ids"
                 )
+        if "aggregation" not in probe_spec.hyperparams:
+            aggregation = get_aggregation("mean", model_name)
+        else:
+            aggregation = get_aggregation(
+                probe_spec.hyperparams["aggregation"],  # type: ignore
+                model_name,
+            )
 
         match probe_spec.name:
             case ProbeType.sklearn:
@@ -49,23 +56,26 @@ class ProbeFactory:
             case ProbeType.per_entry:
                 classifier = PytorchPerEntryLinearClassifier(
                     training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
                 )
             case ProbeType.difference_of_means:
                 classifier = PytorchDifferenceOfMeansClassifier(
-                    use_lda=False, training_args=probe_spec.hyperparams
+                    use_lda=False,
+                    training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
                 )
             case ProbeType.lda:
                 classifier = PytorchDifferenceOfMeansClassifier(
-                    use_lda=True, training_args=probe_spec.hyperparams
+                    use_lda=True,
+                    training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
                 )
             case ProbeType.attention:
                 classifier = PytorchAttentionClassifier(
                     training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
                 )
             case ProbeType.per_token:
-                aggregation = get_aggregation(
-                    probe_spec.hyperparams["aggregation"], model_name
-                )
                 classifier = PytorchLinearClassifier(
                     training_args=probe_spec.hyperparams,
                     aggregation=aggregation,

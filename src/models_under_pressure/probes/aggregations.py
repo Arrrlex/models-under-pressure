@@ -150,8 +150,7 @@ class Mean:
         attention_mask: Float[torch.Tensor, "batch_size seq_len"],
         input_ids: Float[torch.Tensor, "batch_size seq_len"],
     ) -> Float[torch.Tensor, " batch_size"]:
-        tokens_length = attention_mask.sum(dim=1).clamp(min=1)
-        return logits.sum(dim=1) / tokens_length
+        return logits.sum(dim=1) / attention_mask.sum(dim=1).clamp(min=1)
 
 
 class Max:
