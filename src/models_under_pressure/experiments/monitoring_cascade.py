@@ -93,6 +93,8 @@ def run_monitoring_cascade(
         n_per_class=max_samples // 2 if max_samples else None,
     )
 
+    assert eval_dataset.other_fields["scale_labels"] is not None
+
     # Run baselines for each model
     baseline_results = []
     for model_name in model_names:
@@ -166,6 +168,8 @@ def run_monitoring_cascade(
         output_scores=probe_scores,
         output_labels=[int(score > 0.5) for score in probe_scores],
         ground_truth_labels=eval_dataset.labels_numpy().tolist(),
+        ground_truth_sample_ids=list(eval_dataset.ids),
+        ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),  # type: ignore
     )
 
     # Save probe results
@@ -187,6 +191,10 @@ def evaluate_single_probe_cascade(
     evaluation_results: EvaluationResult,
 ) -> CascadeResults:
     assert evaluation_results.output_scores is not None
+    assert evaluation_results.ground_truth_labels is not None
+    assert evaluation_results.ground_truth_scale_labels is not None
+    assert evaluation_results.ground_truth_sample_ids is not None
+    assert evaluation_results.ground_truth_scale_labels is not None
 
     flops = []
 
@@ -209,7 +217,6 @@ def evaluate_single_probe_cascade(
     else:
         raise ValueError(f"Unknown activation dimension for model: {model_name}")
 
-    # TODO! Store ground truth scale labels in evaluation result
     # TODO Get actual tokens per sample, write to evaluation result
     tokens_per_sample = 200
 
@@ -235,7 +242,7 @@ def evaluate_single_probe_cascade(
         scores=evaluation_results.output_scores,  # type: ignore
         labels=evaluation_results.output_labels,  # type: ignore
         ground_truth_labels=evaluation_results.ground_truth_labels,  # type: ignore
-        ground_truth_scores=evaluation_results.ground_truth_scores,  # type: ignore
+        ground_truth_scores=evaluation_results.ground_truth_scale_labels,  # type: ignore
         auroc=evaluation_results.metrics.metrics["auroc"],
         flops=flops,
     )
