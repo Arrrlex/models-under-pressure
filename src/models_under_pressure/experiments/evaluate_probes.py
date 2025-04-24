@@ -285,25 +285,27 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
-        layer=31,
-        max_samples=None,
-        model_name=LOCAL_MODELS["llama-70b"],
+        layer=11,
+        max_samples=20,
+        model_name=LOCAL_MODELS["llama-1b"],
         probe_spec=ProbeSpec(
             name="pytorch_attention_probe",
             hyperparams={
                 "batch_size": 16,
-                "epochs": 50,
+                "epochs": 10,
                 "device": "cpu",
                 "optimizer_args": {
-                    "lr": 1e-3,
-                    "weight_decay": 0.0004,
+                    "lr": 1e-4,
+                    "weight_decay": 0.01,
                 },
                 "attn_hidden_dim": 27,
-                "probe_architecture": "attention_then_linear",
+                # "probe_architecture": "attention_only",
+                "probe_architecture": "attention_weighted_agg_logits",
+                # "probe_architecture": "attention_then_linear",
                 "scheduler_decay": 0.62,
             },
         ),
-        compute_activations=False,
+        compute_activations=True,
         # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
         # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
