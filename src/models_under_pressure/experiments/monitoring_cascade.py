@@ -267,7 +267,8 @@ def evaluate_probe_baseline_cascade(
     baseline_results: LikelihoodBaselineResults,
     probe_results: EvaluationResult,
     fraction_of_samples: float = 0.2,
-    remaining_strategy: str = "fixed_low",
+    selection_strategy: str = "top",
+    remaining_strategy: str = "fixed_0",
 ) -> CascadeResults:
     assert probe_results.output_scores is not None
     assert probe_results.ground_truth_labels is not None
@@ -281,23 +282,39 @@ def evaluate_probe_baseline_cascade(
     total_samples = len(probe_results.output_scores)
     num_samples_to_use = int(total_samples * fraction_of_samples)
 
-    # Get indices of top scoring samples from probe
-    top_indices = np.argsort(probe_results.output_scores)[-num_samples_to_use:]
-    remaining_indices = np.setdiff1d(np.arange(total_samples), top_indices)
+    # Get indices based on selection strategy
+    sorted_indices = np.argsort(probe_results.output_scores)
+    if selection_strategy == "top":
+        selected_indices = sorted_indices[-num_samples_to_use:]
+    elif selection_strategy == "bottom":
+        selected_indices = sorted_indices[:num_samples_to_use]
+    elif selection_strategy == "mid":
+        mid_point = len(sorted_indices) // 2
+        half_samples = num_samples_to_use // 2
+        start_idx = mid_point - half_samples
+        end_idx = start_idx + num_samples_to_use
+        selected_indices = sorted_indices[start_idx:end_idx]
+    else:
+        raise ValueError(f"Unknown selection strategy: {selection_strategy}")
+
+    remaining_indices = np.setdiff1d(np.arange(total_samples), selected_indices)
 
     # Get model-specific per_token_flops
     per_token_flops = get_per_token_flops(baseline_results.model_name)
 
     # Process top scoring subset
     top_flops = [
-        int(per_token_flops) * baseline_results.token_counts[i] for i in top_indices
+        int(per_token_flops) * baseline_results.token_counts[i]
+        for i in selected_indices
     ]
     top_results = CascadeResults(
-        scores=[baseline_results.high_stakes_scores[i] for i in top_indices],
-        labels=[baseline_results.labels[i] for i in top_indices],
-        ground_truth_labels=[baseline_results.ground_truth[i] for i in top_indices],
+        scores=[baseline_results.high_stakes_scores[i] for i in selected_indices],
+        labels=[baseline_results.labels[i] for i in selected_indices],
+        ground_truth_labels=[
+            baseline_results.ground_truth[i] for i in selected_indices
+        ],
         ground_truth_scores=[
-            baseline_results.ground_truth_scale_labels[i] for i in top_indices
+            baseline_results.ground_truth_scale_labels[i] for i in selected_indices
         ],
         flops=top_flops,
     )
@@ -305,7 +322,10 @@ def evaluate_probe_baseline_cascade(
     if len(remaining_indices) < 1:
         return top_results
 
-    if remaining_strategy == "fixed_low":
+    if remaining_strategy.startswith("fixed_"):
+        fixed_score = float(remaining_strategy.split("_")[1])
+        fixed_label = fixed_score > 0.5
+
         # Process remaining subset with fixed cascade
         remaining_results = evaluate_fixed_cascade(
             ground_truth_labels=[
@@ -314,8 +334,8 @@ def evaluate_probe_baseline_cascade(
             ground_truth_scale_labels=[
                 probe_results.ground_truth_scale_labels[i] for i in remaining_indices
             ],
-            fixed_score=0.0,
-            fixed_label=0,
+            fixed_score=fixed_score,
+            fixed_label=fixed_label,
         )
     elif remaining_strategy == "probe":
         # Process remaining subset with probe
@@ -471,10 +491,9 @@ def evaluate_fixed_cascade(
 
 
 if __name__ == "__main__":
-    # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = True
+    compute = False
     max_samples = 100
 
     if compute:
@@ -521,16 +540,25 @@ if __name__ == "__main__":
     print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
     # Evaluate probe baseline cascade
-    for fraction_of_samples in [0.5, 0.75, 1.0]:
-        baseline_result = baseline_results[0]
-        print(
-            f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
-        )
-        probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
-            baseline_results=baseline_result,
-            probe_results=probe_results,
-            fraction_of_samples=fraction_of_samples,
-            remaining_strategy="fixed_low",
-        )
-        print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
-        print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
+    strategies = [
+        {"selection_strategy": "top", "remaining_strategy": "fixed_0"},
+        {"selection_strategy": "top", "remaining_strategy": "probe"},
+        {"selection_strategy": "bottom", "remaining_strategy": "probe"},
+        {"selection_strategy": "mid", "remaining_strategy": "probe"},
+    ]
+    for fraction_of_samples in [0.2, 0.5]:
+        for strategy in strategies:
+            baseline_result = baseline_results[0]
+            print(
+                f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
+            )
+            print(f"Strategy: {strategy}")
+            probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
+                baseline_results=baseline_result,
+                probe_results=probe_results,
+                fraction_of_samples=fraction_of_samples,
+                selection_strategy=strategy["selection_strategy"],
+                remaining_strategy=strategy["remaining_strategy"],
+            )
+            print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
