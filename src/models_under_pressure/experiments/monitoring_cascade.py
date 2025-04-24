@@ -155,16 +155,29 @@ if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
+    compute = False
 
-    baseline_results, probe_results = run_monitoring_cascade(
-        model_names=model_names,
-        dataset_name=dataset_name,
-        train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
-        max_samples=20,
-        probe_model_name=LOCAL_MODELS["llama-1b"],
-        probe_layer=11,
-        compute_activations=True,
-    )
+    if compute:
+        baseline_results, probe_results = run_monitoring_cascade(
+            model_names=model_names,
+            dataset_name=dataset_name,
+            train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
+            max_samples=20,
+            probe_model_name=LOCAL_MODELS["llama-1b"],
+            probe_layer=11,
+            compute_activations=True,
+        )
+    else:
+        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250423"
+        baseline_results = []
+        for model_name in model_names:
+            with open(output_dir / f"baseline_{model_name}.jsonl") as f:
+                baseline_results.append(
+                    LikelihoodBaselineResults.model_validate_json(f.read())
+                )
+
+        with open(output_dir / "probe_results.jsonl") as f:
+            probe_results = DatasetResults.model_validate_json(f.read())
 
     # Print results
     print("\nBaseline Results:")
