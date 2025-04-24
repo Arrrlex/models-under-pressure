@@ -189,6 +189,23 @@ class CascadeResults(BaseModel):
     auroc: float
     flops: list[int]
 
+    def __init__(
+        self,
+        scores: list[float],
+        labels: list[int],
+        ground_truth_labels: list[int],
+        ground_truth_scores: list[int],
+        flops: list[int],
+    ):
+        super().__init__(
+            scores=scores,
+            labels=labels,
+            ground_truth_labels=ground_truth_labels,
+            ground_truth_scores=ground_truth_scores,
+            auroc=float(roc_auc_score(ground_truth_labels, scores)),
+            flops=flops,
+        )
+
     def __add__(self, other: "CascadeResults") -> "CascadeResults":
         """Combine two CascadeResults objects using the + operator.
 
@@ -209,19 +226,33 @@ class CascadeResults(BaseModel):
         )
         combined_flops = self.flops + other.flops
 
-        # Recalculate AUROC
-        combined_auroc = float(
-            roc_auc_score(combined_ground_truth_labels, combined_scores)
-        )
-
         return CascadeResults(
             scores=combined_scores,
             labels=combined_labels,
             ground_truth_labels=combined_ground_truth_labels,
             ground_truth_scores=combined_ground_truth_scores,
-            auroc=combined_auroc,
             flops=combined_flops,
         )
+
+
+def get_per_token_flops(full_model_name: str) -> int:
+    model_name = next(k for k, v in LOCAL_MODELS.items() if v == full_model_name)
+    # TODO These are from GPT-4.5 and should be verified
+    if model_name == "llama-1b":
+        per_token_flops = 1.3 * 10**9
+    elif model_name == "llama-8b":
+        per_token_flops = 9.6 * 10**9
+    elif model_name == "llama-70b":
+        per_token_flops = 85.9 * 10**9
+    elif model_name == "gemma-1b":
+        per_token_flops = 4.8 * 10**9
+    elif model_name == "gemma-12b":
+        per_token_flops = 10.9 * 10**9
+    elif model_name == "gemma-27b":
+        per_token_flops = 32.6 * 10**9
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+    return int(per_token_flops)
 
 
 def evaluate_single_baseline_cascade(
@@ -242,24 +273,7 @@ def evaluate_single_baseline_cascade(
     remaining_indices = np.setdiff1d(np.arange(total_samples), sampled_indices)
 
     # Get model-specific per_token_flops
-    model_name = next(
-        k for k, v in LOCAL_MODELS.items() if v == baseline_results.model_name
-    )
-    # TODO These are from GPT-4.5 and should be verified
-    if model_name == "llama-1b":
-        per_token_flops = 1.3 * 10**9
-    elif model_name == "llama-8b":
-        per_token_flops = 9.6 * 10**9
-    elif model_name == "llama-70b":
-        per_token_flops = 85.9 * 10**9
-    elif model_name == "gemma-1b":
-        per_token_flops = 4.8 * 10**9
-    elif model_name == "gemma-12b":
-        per_token_flops = 10.9 * 10**9
-    elif model_name == "gemma-27b":
-        per_token_flops = 32.6 * 10**9
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
+    per_token_flops = get_per_token_flops(baseline_results.model_name)
 
     # Process sampled subset
     sampled_flops = [
@@ -272,12 +286,6 @@ def evaluate_single_baseline_cascade(
         ground_truth_scores=[
             baseline_results.ground_truth_scale_labels[i] for i in sampled_indices
         ],
-        auroc=float(
-            roc_auc_score(
-                [baseline_results.ground_truth[i] for i in sampled_indices],
-                [baseline_results.high_stakes_scores[i] for i in sampled_indices],
-            )
-        ),
         flops=sampled_flops,
     )
 
@@ -300,20 +308,8 @@ def evaluate_single_baseline_cascade(
     return sampled_results + remaining_results
 
 
-def evaluate_single_probe_cascade(
-    evaluation_results: EvaluationResult,
-) -> CascadeResults:
-    assert evaluation_results.output_scores is not None
-    assert evaluation_results.ground_truth_labels is not None
-    assert evaluation_results.ground_truth_scale_labels is not None
-    assert evaluation_results.token_counts is not None
-
-    flops = []
-
-    # Get activation dimension for model
-    model_name = next(
-        k for k, v in LOCAL_MODELS.items() if v == evaluation_results.config.model_name
-    )
+def get_activation_dim(full_model_name: str) -> int:
+    model_name = next(k for k, v in LOCAL_MODELS.items() if v == full_model_name)
     if model_name == "llama-1b":
         activation_dim = 2048
     elif model_name == "gemma-1b":
@@ -328,6 +324,19 @@ def evaluate_single_probe_cascade(
         activation_dim = 4096
     else:
         raise ValueError(f"Unknown activation dimension for model: {model_name}")
+    return int(activation_dim)
+
+
+def evaluate_single_probe_cascade(
+    evaluation_results: EvaluationResult,
+) -> CascadeResults:
+    assert evaluation_results.output_scores is not None
+    assert evaluation_results.ground_truth_labels is not None
+    assert evaluation_results.ground_truth_scale_labels is not None
+    assert evaluation_results.token_counts is not None
+
+    # Get activation dimension for model
+    activation_dim = get_activation_dim(evaluation_results.config.model_name)
 
     # Depending on the probe, flops are calculated differently
     if evaluation_results.config.probe_spec.name == "pytorch_per_entry_probe_mean":
@@ -352,7 +361,6 @@ def evaluate_single_probe_cascade(
         labels=evaluation_results.output_labels,  # type: ignore
         ground_truth_labels=evaluation_results.ground_truth_labels,  # type: ignore
         ground_truth_scores=evaluation_results.ground_truth_scale_labels,
-        auroc=evaluation_results.metrics.metrics["auroc"],
         flops=flops,
     )
     return results
@@ -373,7 +381,6 @@ def evaluate_fixed_cascade(
         labels=labels,
         ground_truth_labels=ground_truth_labels,
         ground_truth_scores=ground_truth_scale_labels,
-        auroc=float(roc_auc_score(ground_truth_labels, scores)),
         flops=[0] * num_samples,  # No computation
     )
 
