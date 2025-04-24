@@ -197,6 +197,14 @@ class CascadeResults(BaseModel):
         ground_truth_scores: list[int],
         flops: list[int],
     ):
+        assert (
+            len(scores)
+            == len(labels)
+            == len(ground_truth_labels)
+            == len(ground_truth_scores)
+            == len(flops)
+        )
+
         super().__init__(
             scores=scores,
             labels=labels,
@@ -255,6 +263,85 @@ def get_per_token_flops(full_model_name: str) -> int:
     return int(per_token_flops)
 
 
+def evaluate_probe_baseline_cascade(
+    baseline_results: LikelihoodBaselineResults,
+    probe_results: EvaluationResult,
+    fraction_of_samples: float = 0.2,
+    remaining_strategy: str = "fixed_low",
+) -> CascadeResults:
+    assert probe_results.output_scores is not None
+    assert probe_results.ground_truth_labels is not None
+    assert probe_results.ground_truth_scale_labels is not None
+    assert probe_results.token_counts is not None
+    assert baseline_results.token_counts is not None
+
+    assert probe_results.ids == baseline_results.ids
+
+    # Calculate number of samples to use
+    total_samples = len(probe_results.output_scores)
+    num_samples_to_use = int(total_samples * fraction_of_samples)
+
+    # Get indices of top scoring samples from probe
+    top_indices = np.argsort(probe_results.output_scores)[-num_samples_to_use:]
+    remaining_indices = np.setdiff1d(np.arange(total_samples), top_indices)
+
+    # Get model-specific per_token_flops
+    per_token_flops = get_per_token_flops(baseline_results.model_name)
+
+    # Process top scoring subset
+    top_flops = [
+        int(per_token_flops) * baseline_results.token_counts[i] for i in top_indices
+    ]
+    top_results = CascadeResults(
+        scores=[baseline_results.high_stakes_scores[i] for i in top_indices],
+        labels=[baseline_results.labels[i] for i in top_indices],
+        ground_truth_labels=[baseline_results.ground_truth[i] for i in top_indices],
+        ground_truth_scores=[
+            baseline_results.ground_truth_scale_labels[i] for i in top_indices
+        ],
+        flops=top_flops,
+    )
+
+    if len(remaining_indices) < 1:
+        return top_results
+
+    if remaining_strategy == "fixed_low":
+        # Process remaining subset with fixed cascade
+        remaining_results = evaluate_fixed_cascade(
+            ground_truth_labels=[
+                probe_results.ground_truth_labels[i] for i in remaining_indices
+            ],
+            ground_truth_scale_labels=[
+                probe_results.ground_truth_scale_labels[i] for i in remaining_indices
+            ],
+            fixed_score=0.0,
+            fixed_label=0,
+        )
+    elif remaining_strategy == "probe":
+        # Process remaining subset with probe
+        all_results = evaluate_probe_baseline_cascade(
+            baseline_results=baseline_results,
+            probe_results=probe_results,
+            fraction_of_samples=fraction_of_samples,
+        )
+        remaining_results = CascadeResults(
+            scores=[all_results.scores[i] for i in remaining_indices],
+            labels=[all_results.labels[i] for i in remaining_indices],
+            ground_truth_labels=[
+                all_results.ground_truth_labels[i] for i in remaining_indices
+            ],
+            ground_truth_scores=[
+                all_results.ground_truth_scores[i] for i in remaining_indices
+            ],
+            flops=[all_results.flops[i] for i in remaining_indices],
+        )
+    else:
+        raise ValueError(f"Unknown remaining strategy: {remaining_strategy}")
+
+    # Combine results
+    return top_results + remaining_results
+
+
 def evaluate_single_baseline_cascade(
     baseline_results: LikelihoodBaselineResults,
     fraction_of_samples: float = 1.0,
@@ -300,8 +387,6 @@ def evaluate_single_baseline_cascade(
         ground_truth_scale_labels=[
             baseline_results.ground_truth_scale_labels[i] for i in remaining_indices
         ],
-        fixed_score=0.5,
-        fixed_label=0,
     )
 
     # Combine results
@@ -369,7 +454,7 @@ def evaluate_single_probe_cascade(
 def evaluate_fixed_cascade(
     ground_truth_labels: list[int],
     ground_truth_scale_labels: list[int],
-    fixed_score: float = 0.5,
+    fixed_score: float = 0.0,
     fixed_label: int = 0,
 ) -> CascadeResults:
     num_samples = len(ground_truth_labels)
@@ -389,8 +474,8 @@ if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = False
-    max_samples = 20
+    compute = True
+    max_samples = 100
 
     if compute:
         baseline_results, probe_results = run_monitoring_cascade(
@@ -434,3 +519,18 @@ if __name__ == "__main__":
     cascade_results = evaluate_single_probe_cascade(probe_results)
     print(f"- AUROC: {cascade_results.auroc:.3f}")
     print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+
+    # Evaluate probe baseline cascade
+    for fraction_of_samples in [0.5, 0.75, 1.0]:
+        baseline_result = baseline_results[0]
+        print(
+            f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
+        )
+        probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
+            baseline_results=baseline_result,
+            probe_results=probe_results,
+            fraction_of_samples=fraction_of_samples,
+            remaining_strategy="fixed_low",
+        )
+        print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
+        print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
