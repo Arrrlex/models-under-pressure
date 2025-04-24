@@ -20,10 +20,11 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
-    evaluate_probe_and_save_results,
+    calculate_metrics,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
+    DatasetResults,
     EvalRunConfig,
     EvaluationResult,
     LikelihoodBaselineResults,
@@ -139,15 +140,15 @@ def run_monitoring_cascade(
 
     # Evaluate probe
     print("\nEvaluating probe...")
-    probe_scores, dataset_results = evaluate_probe_and_save_results(
-        probe=probe,
-        train_dataset_path=train_dataset_path,
-        eval_dataset_name=dataset_name,
-        eval_dataset=eval_dataset,
-        model_name=probe_model_name,
+    probe_scores = probe.predict_proba(eval_dataset)  # .tolist()
+    dataset_results = DatasetResults(
         layer=probe_layer,
-        output_dir=output_dir,
+        metrics=calculate_metrics(eval_dataset.labels_numpy(), probe_scores, fpr=0.01),
     )
+
+    # Get the token counts from the activations array
+    # token_counts = eval_dataset.other_fields["activations"].shape[1]
+    token_counts = eval_dataset.other_fields["attention_mask"].sum(axis=1)
 
     # Create EvaluationResult with all scores and labels
     probe_results = EvaluationResult(
@@ -165,9 +166,10 @@ def run_monitoring_cascade(
         dataset_path=eval_dataset_path,
         metrics=dataset_results,
         method="linear_probe",
-        output_scores=probe_scores,
+        output_scores=probe_scores.tolist(),
         output_labels=[int(score > 0.5) for score in probe_scores],
         ground_truth_labels=eval_dataset.labels_numpy().tolist(),
+        token_counts=token_counts.tolist(),
         ids=list(eval_dataset.ids),
         ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),  # type: ignore
     )
@@ -193,6 +195,7 @@ def evaluate_single_probe_cascade(
     assert evaluation_results.output_scores is not None
     assert evaluation_results.ground_truth_labels is not None
     assert evaluation_results.ground_truth_scale_labels is not None
+    assert evaluation_results.token_counts is not None
 
     flops = []
 
@@ -223,13 +226,13 @@ def evaluate_single_probe_cascade(
         # Flops per token are approximately activation_dim
         # (Since the average has to be computed as well)
         flops = [
-            activation_dim * tokens_per_sample
-            for _ in range(len(evaluation_results.output_scores))
+            activation_dim * token_count
+            for token_count in evaluation_results.token_counts
         ]
     elif evaluation_results.config.probe_spec.name == "pytorch_per_token_probe":
         flops = [
             activation_dim * tokens_per_sample
-            for _ in range(len(evaluation_results.output_scores))
+            for token_count in evaluation_results.token_counts
         ]
     else:
         raise ValueError(
@@ -251,7 +254,7 @@ if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = True
+    compute = False
     max_samples = 20
 
     if compute:

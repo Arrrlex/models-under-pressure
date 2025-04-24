@@ -104,6 +104,9 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
+    token_counts: list[int] | None = None
+    """Number of tokens in each sample in the eval dataset"""
+
     ids: list[str] | None = None
     """Ground truth sample IDs for each example in the eval dataset"""
 
