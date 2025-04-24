@@ -184,9 +184,57 @@ class CascadeResults(BaseModel):
     scores: list[float]
     labels: list[int]
     ground_truth_labels: list[int]
-    ground_truth_scores: list[float]
+    ground_truth_scores: list[int]
     auroc: float
     flops: list[int]
+
+
+def evaluate_single_baseline_cascade(
+    baseline_results: LikelihoodBaselineResults,
+    fraction_of_samples: float = 1.0,
+) -> CascadeResults:
+    assert baseline_results.ground_truth_scale_labels is not None
+    assert baseline_results.ground_truth is not None
+    assert baseline_results.token_counts is not None
+    flops = []
+
+    # TODO! Consider fraction_of_samples
+
+    model_name = next(
+        k for k, v in LOCAL_MODELS.items() if v == baseline_results.model_name
+    )
+    # TODO These are from GPT-4.5 and should be verified
+    if model_name == "llama-1b":
+        per_token_flops = 1.3 * 10**9
+    elif model_name == "llama-8b":
+        per_token_flops = 9.6 * 10**9
+    elif model_name == "llama-70b":
+        per_token_flops = 85.9 * 10**9
+    elif model_name == "gemma-1b":
+        per_token_flops = 4.8 * 10**9
+    elif model_name == "gemma-12b":
+        per_token_flops = 10.9 * 10**9
+    elif model_name == "gemma-27b":
+        per_token_flops = 32.6 * 10**9
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    flops = [
+        per_token_flops * token_count for token_count in baseline_results.token_counts
+    ]
+
+    return CascadeResults(
+        scores=baseline_results.high_stakes_scores,
+        labels=baseline_results.labels,
+        ground_truth_labels=baseline_results.ground_truth,
+        ground_truth_scores=baseline_results.ground_truth_scale_labels,
+        auroc=float(
+            roc_auc_score(
+                baseline_results.ground_truth, baseline_results.high_stakes_scores
+            )
+        ),
+        flops=flops,
+    )
 
 
 def evaluate_single_probe_cascade(
@@ -218,9 +266,6 @@ def evaluate_single_probe_cascade(
     else:
         raise ValueError(f"Unknown activation dimension for model: {model_name}")
 
-    # TODO Get actual tokens per sample, write to evaluation result
-    tokens_per_sample = 200
-
     # Depending on the probe, flops are calculated differently
     if evaluation_results.config.probe_spec.name == "pytorch_per_entry_probe_mean":
         # Flops per token are approximately activation_dim
@@ -231,7 +276,7 @@ def evaluate_single_probe_cascade(
         ]
     elif evaluation_results.config.probe_spec.name == "pytorch_per_token_probe":
         flops = [
-            activation_dim * tokens_per_sample
+            activation_dim * token_count
             for token_count in evaluation_results.token_counts
         ]
     else:
@@ -243,7 +288,7 @@ def evaluate_single_probe_cascade(
         scores=evaluation_results.output_scores,  # type: ignore
         labels=evaluation_results.output_labels,  # type: ignore
         ground_truth_labels=evaluation_results.ground_truth_labels,  # type: ignore
-        ground_truth_scores=evaluation_results.ground_truth_scale_labels,  # type: ignore
+        ground_truth_scores=evaluation_results.ground_truth_scale_labels,
         auroc=evaluation_results.metrics.metrics["auroc"],
         flops=flops,
     )
@@ -287,18 +332,11 @@ if __name__ == "__main__":
     # Print results
     print("\nBaseline Results:")
     for result in baseline_results:
-        print(f"Model: {result.model_name}")
-        print(f"Prompt config: {result.prompt_config}")
-        print(f"Accuracy: {result.accuracy:.3f}")
-        auroc = roc_auc_score(result.ground_truth, result.high_stakes_scores)
-        print(f"AUROC: {auroc:.3f}")
-        print()
+        cascade_results = evaluate_single_baseline_cascade(result)
+        print(f"AUROC: {cascade_results.auroc:.3f}")
+        print(f"Total FLOPs: {sum(cascade_results.flops)}")
 
     print("\nProbe Results:")
-    print(f"Accuracy: {probe_results.metrics.metrics['accuracy']:.3f}")
-    print(f"AUROC: {probe_results.metrics.metrics['auroc']:.3f}")
-
-    print("\nCascade Results:")
     cascade_results = evaluate_single_probe_cascade(probe_results)
     print(f"AUROC: {cascade_results.auroc:.3f}")
-    print(f"FLOPs: {cascade_results.flops}")
+    print(f"Total FLOPs: {sum(cascade_results.flops)}")
