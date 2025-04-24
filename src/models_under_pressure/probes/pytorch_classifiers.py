@@ -492,6 +492,40 @@ class AttentionLayer(nn.Module):
         return attn_output.mean(dim=-1, keepdim=True)
 
 
+class AttentionProbeAttnOnly(nn.Module):
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
+        super().__init__()
+
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
+        self.attention_layer = AttentionLayer(embed_dim, attn_hidden_dim)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        """
+        The forward pass of the attention probe.
+        """
+
+        # batch_size, seq_len, _ = activations.shape
+        # Flatten activations:
+        # activations = einops.rearrange(activations, "b s e -> (b s) e")
+        # Based on https://discuss.pytorch.org/t/how-does-the-batch-normalization-work-for-sequence-data/30839/2
+        activations = activations.permute(0, 2, 1)
+        activations = self.batch_norm(activations)
+        activations = activations.permute(0, 2, 1)
+        # activations = einops.rearrange(
+        #    activations, "(b s) e -> b s e", b=batch_size, s=seq_len
+        # )
+
+        attn_output = self.attention_layer(activations)
+
+        # Normalize the attention output by dividing by the sum:
+        attn_output = attn_output / attn_output.sum(dim=1, keepdim=True)
+
+        return attn_output.squeeze()
+
+
 class AttentionProbeAttnWeightLogits(nn.Module):
     def __init__(self, embed_dim: int, attn_hidden_dim: int):
         super().__init__()
@@ -812,6 +846,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             model = AttentionProbeAttnWeightLogits(embedding_dim, attn_hidden_dim)
         elif probe_architecture == "attention_then_linear":
             model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim)
+        elif probe_architecture == "attention_only":
+            model = AttentionProbeAttnOnly(embedding_dim, attn_hidden_dim)
         else:
             raise NotImplementedError(
                 f"Probe architecture {probe_architecture} not implemented"
