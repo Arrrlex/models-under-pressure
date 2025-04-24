@@ -250,12 +250,14 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             compute_activations=cfg.compute_activations,
         )
 
-    if cfg.compute_cascade:
-        baseline_results, probe_results = load_existing_results(output_dir)
-
     if cfg.compute_cascade or cfg.plot_results:
         results_file = output_dir / "cascade_results.jsonl"
         if cfg.compute_cascade:
+            # Load existing results if needed
+            baseline_results, probe_results = load_existing_results(output_dir)
+            # Remove existing results file if it exists
+            if results_file.exists():
+                results_file.unlink()
             compute_cascade_results(baseline_results, probe_results, results_file)
         if cfg.plot_results:
             plot_cascade_results(
@@ -674,14 +676,18 @@ def compute_cascade_results(
 
     # Evaluate probe baseline cascade
     strategies = [
-        {"selection_strategy": "top", "remaining_strategy": "fixed_0"},
+        # {"selection_strategy": "top", "remaining_strategy": "fixed_0"},
         {"selection_strategy": "top", "remaining_strategy": "probe"},
         {"selection_strategy": "bottom", "remaining_strategy": "probe"},
         {"selection_strategy": "mid", "remaining_strategy": "probe"},
     ]
     for fraction_of_samples in fraction_of_sample_options:
         for strategy in strategies:
-            baseline_result = baseline_results[0]
+            baseline_result = next(
+                result
+                for result in baseline_results
+                if get_abbreviated_model_name(result.model_name) == "llama-70b"
+            )
             print(
                 f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
             )
@@ -709,6 +715,15 @@ def compute_cascade_results(
             )
 
 
+def get_abbreviated_model_name(full_name: str) -> str:
+    """Convert full model name to abbreviated form using LOCAL_MODELS mapping."""
+    if not full_name:
+        return ""
+    # Get the short name from LOCAL_MODELS
+    model_name = next((k for k, v in LOCAL_MODELS.items() if v == full_name), full_name)
+    return model_name
+
+
 def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
@@ -730,16 +745,6 @@ def plot_cascade_results(
     import seaborn as sns
     from matplotlib.ticker import FuncFormatter
 
-    def get_abbreviated_model_name(full_name: str) -> str:
-        """Convert full model name to abbreviated form using LOCAL_MODELS mapping."""
-        if not full_name:
-            return ""
-        # Get the short name from LOCAL_MODELS
-        model_name = next(
-            (k for k, v in LOCAL_MODELS.items() if v == full_name), full_name
-        )
-        return model_name
-
     # Read results from file
     results = []
     with open(results_file) as f:
@@ -747,36 +752,46 @@ def plot_cascade_results(
             if line.strip():
                 results.append(json.loads(line))
 
-    # Group results by cascade type, model, and strategies
+    # Group results by baseline model first, then by cascade type and strategies
     grouped_results = defaultdict(list)
     probe_auroc = None
     for result in results:
         if result["cascade_type"] == "probe":
             probe_auroc = result["auroc"]
             continue
-        # Include both strategies in the key for probe_baseline type
-        if result["cascade_type"] == "probe_baseline":
-            key = (
-                result["cascade_type"],
-                result["baseline_model_name"],
-                result["probe_model_name"],
-                result.get("selection_strategy", "top"),
-                result.get("remaining_strategy", "fixed_0"),
-            )
-        else:
-            key = (
-                result["cascade_type"],
-                result["baseline_model_name"],
-                result["probe_model_name"],
-            )
-        grouped_results[key].append(result)
+
+        baseline_model = result.get("baseline_model_name")
+        if baseline_model:
+            # For probe_baseline, include both strategies in the key
+            if result["cascade_type"] == "probe_baseline":
+                key = (
+                    baseline_model,
+                    result["cascade_type"],
+                    result.get("selection_strategy", "top"),
+                    result.get("remaining_strategy", "fixed_0"),
+                )
+            else:
+                key = (baseline_model, result["cascade_type"])
+            grouped_results[key].append(result)
 
     # Set up the plot
     plt.figure(figsize=figsize)
     sns.set_style("whitegrid")
 
-    # Create color palette
-    colors = sns.color_palette("husl", n_colors=len(grouped_results))
+    # Create color palette based on number of unique baseline models
+    baseline_models = sorted(set(key[0] for key in grouped_results.keys()))
+    colors = sns.color_palette("husl", n_colors=len(baseline_models))
+    model_to_color = {model: color for model, color in zip(baseline_models, colors)}
+
+    # Define line styles
+    line_styles = {
+        "baseline": "-",
+        "probe_baseline": {
+            "top": "--",
+            "bottom": ":",
+            "mid": "-.",
+        },
+    }
 
     # Plot probe performance as a horizontal line if available
     if probe_auroc is not None:
@@ -789,19 +804,17 @@ def plot_cascade_results(
         )
 
     # Plot each group
-    for i, (key, group_results) in enumerate(grouped_results.items()):
-        if len(key) == 5:  # probe_baseline with both strategies
-            (
-                cascade_type,
-                baseline_model,
-                probe_model,
-                selection_strategy,
-                remaining_strategy,
-            ) = key
-        else:
-            cascade_type, baseline_model, probe_model = key
-            selection_strategy = None
-            remaining_strategy = None
+    for key, group_results in grouped_results.items():
+        baseline_model = key[0]
+        cascade_type = key[1]
+        color = model_to_color[baseline_model]
+
+        # Get appropriate line style
+        if cascade_type == "baseline":
+            linestyle = line_styles["baseline"]
+        else:  # probe_baseline
+            selection_strategy = key[2]
+            linestyle = line_styles["probe_baseline"][selection_strategy]
 
         # Sort by fraction_of_samples
         group_results.sort(key=lambda x: x["fraction_of_samples"])
@@ -811,13 +824,12 @@ def plot_cascade_results(
         aurocs = [r["auroc"] for r in group_results]
         fractions = [r["fraction_of_samples"] for r in group_results]
 
-        # Create label with abbreviated model names and strategies
+        # Create label
         if cascade_type == "baseline":
             label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
-        elif cascade_type == "probe":
-            label = f"Probe ({get_abbreviated_model_name(probe_model)})"
         else:  # probe_baseline
-            # For probe+baseline, show both strategies in legend
+            selection_strategy = key[2]
+            remaining_strategy = key[3]
             remaining_strategy_display = (
                 remaining_strategy.replace("fixed_", "fixed=")
                 if remaining_strategy
@@ -825,8 +837,16 @@ def plot_cascade_results(
             )
             label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}"
 
-        # Plot points and connecting lines with consistent style
-        plt.plot(flops, aurocs, "o-", color=colors[i], label=label, markersize=8)
+        # Plot points and connecting lines
+        plt.plot(
+            flops,
+            aurocs,
+            "o",
+            color=color,
+            linestyle=linestyle,
+            label=label,
+            markersize=4,
+        )
 
         # Add fraction labels if enabled
         if show_fraction_labels:
@@ -847,7 +867,7 @@ def plot_cascade_results(
     plt.grid(True, alpha=0.3)
 
     # Set x-axis to log scale
-    plt.xscale("log")  # Use log scale instead of symlog
+    plt.xscale("log")
 
     # Format x-axis ticks to be more readable
     ax = plt.gca()
