@@ -531,45 +531,11 @@ def write_cascade_results_to_file(
         f.write(json.dumps(result_dict) + "\n")
 
 
-if __name__ == "__main__":
-    model_names = ["llama-1b", "gemma-1b"]
-    dataset_name = "anthropic"
-    compute = False
-    max_samples = 100
-
-    # Create output directory
-    date = datetime.now().strftime("%Y%m%d")
-    output_dir = DATA_DIR / "results" / f"monitoring_cascade_{date}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    results_file = output_dir / "cascade_results.jsonl"
-
-    if compute:
-        baseline_results, probe_results = run_monitoring_cascade(
-            model_names=model_names,
-            dataset_name=dataset_name,
-            train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
-            max_samples=max_samples,
-            probe_model_name=LOCAL_MODELS["llama-1b"],
-            probe_layer=11,
-            compute_activations=True,
-        )
-    else:
-        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250424"
-        baseline_results = []
-        for model_name in model_names:
-            with open(output_dir / f"baseline_{model_name}.jsonl") as f:
-                for line in f:
-                    if line.strip():  # Skip empty lines
-                        baseline_results.append(
-                            LikelihoodBaselineResults.model_validate_json(line.strip())
-                        )
-
-        with open(output_dir / "probe_results.jsonl") as f:
-            for line in f:
-                if line.strip():  # Skip empty lines
-                    probe_results = EvaluationResult.model_validate_json(line.strip())
-                    break  # Assuming we only need the first result
-
+def compute_cascade_results(
+    baseline_results: List[LikelihoodBaselineResults],
+    probe_results: EvaluationResult,
+    results_file: Path,
+):
     # Evaluate baseline cascades
     print("\nBaseline Results:")
     for result in baseline_results:
@@ -642,3 +608,143 @@ if __name__ == "__main__":
                 selection_strategy=strategy["selection_strategy"],
                 remaining_strategy=strategy["remaining_strategy"],
             )
+
+
+def plot_cascade_results(
+    results_file: Path,
+    output_file: Optional[Path] = None,
+    figsize: tuple[int, int] = (10, 6),
+) -> None:
+    """Plot cascade results showing the tradeoff between FLOPs and AUROC.
+
+    Args:
+        results_file: Path to the JSONL file containing cascade results
+        output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
+        figsize: Figure size as (width, height) in inches
+    """
+    import json
+    from collections import defaultdict
+
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    # Read results from file
+    results = []
+    with open(results_file) as f:
+        for line in f:
+            if line.strip():
+                results.append(json.loads(line))
+
+    # Group results by cascade type and model
+    grouped_results = defaultdict(list)
+    for result in results:
+        key = (
+            result["cascade_type"],
+            result["baseline_model_name"],
+            result["probe_model_name"],
+        )
+        grouped_results[key].append(result)
+
+    # Set up the plot
+    plt.figure(figsize=figsize)
+    sns.set_style("whitegrid")
+
+    # Create color palette
+    colors = sns.color_palette("husl", n_colors=len(grouped_results))
+
+    # Plot each group
+    for i, (key, group_results) in enumerate(grouped_results.items()):
+        cascade_type, baseline_model, probe_model = key
+
+        # Sort by fraction_of_samples
+        group_results.sort(key=lambda x: x["fraction_of_samples"])
+
+        # Extract data
+        flops = [r["total_flops"] for r in group_results]
+        aurocs = [r["auroc"] for r in group_results]
+        fractions = [r["fraction_of_samples"] for r in group_results]
+
+        # Create label
+        if cascade_type == "baseline":
+            label = f"Baseline ({baseline_model})"
+        elif cascade_type == "probe":
+            label = f"Probe ({probe_model})"
+        else:  # probe_baseline
+            label = f"Probe+Baseline ({probe_model}+{baseline_model})"
+
+        # Plot points and connecting lines
+        plt.plot(flops, aurocs, "o-", color=colors[i], label=label, markersize=8)
+
+        # Add fraction labels
+        for x, y, f in zip(flops, aurocs, fractions):
+            plt.annotate(
+                f"{f:.2f}",
+                (x, y),
+                xytext=(5, 5),
+                textcoords="offset points",
+                fontsize=8,
+            )
+
+    # Customize plot
+    plt.xlabel("Total FLOPs", fontsize=12)
+    plt.ylabel("AUROC", fontsize=12)
+    plt.title("Cascade Performance Tradeoff", fontsize=14, pad=20)
+    plt.legend(title="Method", bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True, alpha=0.3)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save plot
+    if output_file is None:
+        output_file = results_file.parent / "cascade_plot.pdf"
+    plt.savefig(output_file, bbox_inches="tight")
+    plt.close()
+
+
+if __name__ == "__main__":
+    model_names = ["llama-1b", "gemma-1b"]
+    dataset_name = "anthropic"
+    compute = False
+    compute_cascade = False
+    plot_cascade = True
+    max_samples = 100
+
+    # Create output directory
+    date = datetime.now().strftime("%Y%m%d")
+    output_dir = DATA_DIR / "results" / f"monitoring_cascade_{date}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results_file = output_dir / "cascade_results.jsonl"
+
+    if compute:
+        baseline_results, probe_results = run_monitoring_cascade(
+            model_names=model_names,
+            dataset_name=dataset_name,
+            train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
+            max_samples=max_samples,
+            probe_model_name=LOCAL_MODELS["llama-1b"],
+            probe_layer=11,
+            compute_activations=True,
+        )
+    elif compute_cascade:
+        output_dir = DATA_DIR / "results" / "monitoring_cascade_20250424"
+        baseline_results = []
+        for model_name in model_names:
+            with open(output_dir / f"baseline_{model_name}.jsonl") as f:
+                for line in f:
+                    if line.strip():  # Skip empty lines
+                        baseline_results.append(
+                            LikelihoodBaselineResults.model_validate_json(line.strip())
+                        )
+
+        with open(output_dir / "probe_results.jsonl") as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    probe_results = EvaluationResult.model_validate_json(line.strip())
+                    break  # Assuming we only need the first result
+
+    if compute_cascade:
+        compute_cascade_results(baseline_results, probe_results, results_file)
+
+    if plot_cascade:
+        plot_cascade_results(results_file, output_file=output_dir / "cascade_plot.pdf")
