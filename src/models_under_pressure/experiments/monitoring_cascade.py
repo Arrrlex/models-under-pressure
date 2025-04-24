@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -149,7 +150,9 @@ def run_monitoring_cascade(
 
     # Get the token counts from the activations array
     # token_counts = eval_dataset.other_fields["activations"].shape[1]
-    token_counts = eval_dataset.other_fields["attention_mask"].sum(axis=1)
+    token_counts = (
+        np.array(eval_dataset.other_fields["attention_mask"]).sum(axis=1).tolist()
+    )
 
     # Create EvaluationResult with all scores and labels
     probe_results = EvaluationResult(
@@ -170,7 +173,7 @@ def run_monitoring_cascade(
         output_scores=probe_scores.tolist(),
         output_labels=[int(score > 0.5) for score in probe_scores],
         ground_truth_labels=eval_dataset.labels_numpy().tolist(),
-        token_counts=token_counts.tolist(),
+        token_counts=token_counts,
         ids=list(eval_dataset.ids),
         ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),  # type: ignore
     )
@@ -490,11 +493,55 @@ def evaluate_fixed_cascade(
     )
 
 
+def write_cascade_results_to_file(
+    results: CascadeResults,
+    output_file: Path,
+    cascade_type: str,
+    fraction_of_samples: float,
+    model_name: Optional[str] = None,
+    probe_model_name: Optional[str] = None,
+    selection_strategy: Optional[str] = None,
+    remaining_strategy: Optional[str] = None,
+) -> None:
+    """Write cascade results to a JSONL file.
+
+    Args:
+        results: CascadeResults object containing the results
+        output_file: Path to the output JSONL file
+        cascade_type: Type of cascade (e.g., "baseline", "probe", "probe_baseline")
+        model_name: Name of the baseline model used
+        probe_model_name: Name of the probe model used (if applicable)
+        fraction_of_samples: Fraction of samples used
+        selection_strategy: Strategy used for selecting samples (if applicable)
+        remaining_strategy: Strategy used for remaining samples (if applicable)
+    """
+    result_dict = {
+        "cascade_type": cascade_type,
+        "baseline_model_name": model_name,
+        "probe_model_name": probe_model_name,
+        "fraction_of_samples": fraction_of_samples,
+        "auroc": results.auroc,
+        "total_flops": sum(results.flops),
+        "selection_strategy": selection_strategy,
+        "remaining_strategy": remaining_strategy,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    with open(output_file, "a") as f:
+        f.write(json.dumps(result_dict) + "\n")
+
+
 if __name__ == "__main__":
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
     compute = False
     max_samples = 100
+
+    # Create output directory
+    date = datetime.now().strftime("%Y%m%d")
+    output_dir = DATA_DIR / "results" / f"monitoring_cascade_{date}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results_file = output_dir / "cascade_results.jsonl"
 
     if compute:
         baseline_results, probe_results = run_monitoring_cascade(
@@ -523,7 +570,7 @@ if __name__ == "__main__":
                     probe_results = EvaluationResult.model_validate_json(line.strip())
                     break  # Assuming we only need the first result
 
-    # Print results
+    # Evaluate baseline cascades
     print("\nBaseline Results:")
     for result in baseline_results:
         for fraction_of_samples in [0.5, 0.75, 1.0]:
@@ -534,10 +581,31 @@ if __name__ == "__main__":
             print(f"- AUROC: {cascade_results.auroc:.3f}")
             print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+            )
+
+    # Evaluate probe cascade
     print("\nProbe Results:")
     cascade_results = evaluate_single_probe_cascade(probe_results)
     print(f"- AUROC: {cascade_results.auroc:.3f}")
     print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+
+    # Write probe results to file
+    write_cascade_results_to_file(
+        results=cascade_results,
+        output_file=results_file,
+        cascade_type="probe",
+        model_name=None,
+        probe_model_name=probe_results.config.model_name,
+        fraction_of_samples=1.0,
+    )
 
     # Evaluate probe baseline cascade
     strategies = [
@@ -562,3 +630,15 @@ if __name__ == "__main__":
             )
             print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
             print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
+
+            # Write probe baseline cascade results to file
+            write_cascade_results_to_file(
+                results=probe_baseline_cascade_results,
+                output_file=results_file,
+                cascade_type="probe_baseline",
+                model_name=baseline_result.model_name,
+                probe_model_name=probe_results.config.model_name,
+                fraction_of_samples=fraction_of_samples,
+                selection_strategy=strategy["selection_strategy"],
+                remaining_strategy=strategy["remaining_strategy"],
+            )
