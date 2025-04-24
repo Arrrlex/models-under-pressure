@@ -228,7 +228,7 @@ def analyze_manual_review_results(
                     discrete_labels.append(None)
 
         reviewer_data[reviewer_num] = {
-            "ids": df["ids"].tolist(),
+            "ids": df["ids"].astype(str).tolist(),
             "scale_labels": scale_labels,
             "discrete_labels": discrete_labels,
         }
