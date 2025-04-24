@@ -221,7 +221,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
     )
 
     output_dir = (
-        cfg.output_dir
+        Path(cfg.output_dir)
         or DATA_DIR
         / "results"
         / f"monitoring_cascade_{datetime.now().strftime('%Y%m%d')}"
@@ -541,7 +541,10 @@ def evaluate_single_probe_cascade(
     activation_dim = get_activation_dim(evaluation_results.config.model_name)
 
     # Depending on the probe, flops are calculated differently
-    if evaluation_results.config.probe_spec.name == "pytorch_per_entry_probe_mean":
+    if evaluation_results.config.probe_spec.name in [
+        "pytorch_per_entry_probe_mean",
+        "sklearn_mean_agg_probe",
+    ]:
         # Flops per token are approximately activation_dim
         # (Since the average has to be computed as well)
         flops = [
