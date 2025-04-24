@@ -614,6 +614,8 @@ def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (10, 6),
+    include_probe: bool = True,
+    show_fraction_labels: bool = False,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -621,12 +623,25 @@ def plot_cascade_results(
         results_file: Path to the JSONL file containing cascade results
         output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
         figsize: Figure size as (width, height) in inches
+        include_probe: Whether to include the probe-only cascade in the plot
+        show_fraction_labels: Whether to show the fraction of samples labels on the plot points
     """
     import json
     from collections import defaultdict
 
     import matplotlib.pyplot as plt
     import seaborn as sns
+    from matplotlib.ticker import FuncFormatter
+
+    def get_abbreviated_model_name(full_name: str) -> str:
+        """Convert full model name to abbreviated form using LOCAL_MODELS mapping."""
+        if not full_name:
+            return ""
+        # Get the short name from LOCAL_MODELS
+        model_name = next(
+            (k for k, v in LOCAL_MODELS.items() if v == full_name), full_name
+        )
+        return model_name
 
     # Read results from file
     results = []
@@ -635,14 +650,26 @@ def plot_cascade_results(
             if line.strip():
                 results.append(json.loads(line))
 
-    # Group results by cascade type and model
+    # Group results by cascade type, model, and strategies
     grouped_results = defaultdict(list)
     for result in results:
-        key = (
-            result["cascade_type"],
-            result["baseline_model_name"],
-            result["probe_model_name"],
-        )
+        if not include_probe and result["cascade_type"] == "probe":
+            continue
+        # Include both strategies in the key for probe_baseline type
+        if result["cascade_type"] == "probe_baseline":
+            key = (
+                result["cascade_type"],
+                result["baseline_model_name"],
+                result["probe_model_name"],
+                result.get("selection_strategy", "top"),
+                result.get("remaining_strategy", "fixed_0"),
+            )
+        else:
+            key = (
+                result["cascade_type"],
+                result["baseline_model_name"],
+                result["probe_model_name"],
+            )
         grouped_results[key].append(result)
 
     # Set up the plot
@@ -654,7 +681,18 @@ def plot_cascade_results(
 
     # Plot each group
     for i, (key, group_results) in enumerate(grouped_results.items()):
-        cascade_type, baseline_model, probe_model = key
+        if len(key) == 5:  # probe_baseline with both strategies
+            (
+                cascade_type,
+                baseline_model,
+                probe_model,
+                selection_strategy,
+                remaining_strategy,
+            ) = key
+        else:
+            cascade_type, baseline_model, probe_model = key
+            selection_strategy = None
+            remaining_strategy = None
 
         # Sort by fraction_of_samples
         group_results.sort(key=lambda x: x["fraction_of_samples"])
@@ -664,33 +702,55 @@ def plot_cascade_results(
         aurocs = [r["auroc"] for r in group_results]
         fractions = [r["fraction_of_samples"] for r in group_results]
 
-        # Create label
+        # Create label with abbreviated model names and strategies
         if cascade_type == "baseline":
-            label = f"Baseline ({baseline_model})"
+            label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "probe":
-            label = f"Probe ({probe_model})"
+            label = f"Probe ({get_abbreviated_model_name(probe_model)})"
         else:  # probe_baseline
-            label = f"Probe+Baseline ({probe_model}+{baseline_model})"
+            # For probe+baseline, show both strategies in legend
+            remaining_strategy_display = (
+                remaining_strategy.replace("fixed_", "fixed=")
+                if remaining_strategy
+                else "fixed_0"
+            )
+            label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}"
 
-        # Plot points and connecting lines
+        # Plot points and connecting lines with consistent style
         plt.plot(flops, aurocs, "o-", color=colors[i], label=label, markersize=8)
 
-        # Add fraction labels
-        for x, y, f in zip(flops, aurocs, fractions):
-            plt.annotate(
-                f"{f:.2f}",
-                (x, y),
-                xytext=(5, 5),
-                textcoords="offset points",
-                fontsize=8,
-            )
+        # Add fraction labels if enabled
+        if show_fraction_labels:
+            for x, y, f in zip(flops, aurocs, fractions):
+                plt.annotate(
+                    f"{f:.2f}",
+                    (x, y),
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    fontsize=8,
+                )
 
     # Customize plot
-    plt.xlabel("Total FLOPs", fontsize=12)
+    plt.xlabel("Total FLOPs (log scale)", fontsize=12)
     plt.ylabel("AUROC", fontsize=12)
     plt.title("Cascade Performance Tradeoff", fontsize=14, pad=20)
     plt.legend(title="Method", bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.grid(True, alpha=0.3)
+
+    # Set x-axis to log scale
+    plt.xscale("log")  # Use log scale instead of symlog
+
+    # Format x-axis ticks to be more readable
+    ax = plt.gca()
+    ax.xaxis.set_major_formatter(
+        FuncFormatter(
+            lambda x, p: f"{x / 1e9:.0f}B"
+            if x >= 1e9
+            else f"{x / 1e6:.0f}M"
+            if x >= 1e6
+            else f"{x / 1e3:.0f}K"
+        )
+    )
 
     # Adjust layout
     plt.tight_layout()
@@ -747,4 +807,8 @@ if __name__ == "__main__":
         compute_cascade_results(baseline_results, probe_results, results_file)
 
     if plot_cascade:
-        plot_cascade_results(results_file, output_file=output_dir / "cascade_plot.pdf")
+        plot_cascade_results(
+            results_file,
+            output_file=output_dir / "cascade_plot.pdf",
+            include_probe=False,
+        )
