@@ -616,7 +616,6 @@ def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (10, 6),
-    include_probe: bool = True,
     show_fraction_labels: bool = False,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
@@ -625,7 +624,6 @@ def plot_cascade_results(
         results_file: Path to the JSONL file containing cascade results
         output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
         figsize: Figure size as (width, height) in inches
-        include_probe: Whether to include the probe-only cascade in the plot
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
     """
     import json
@@ -654,8 +652,10 @@ def plot_cascade_results(
 
     # Group results by cascade type, model, and strategies
     grouped_results = defaultdict(list)
+    probe_auroc = None
     for result in results:
-        if not include_probe and result["cascade_type"] == "probe":
+        if result["cascade_type"] == "probe":
+            probe_auroc = result["auroc"]
             continue
         # Include both strategies in the key for probe_baseline type
         if result["cascade_type"] == "probe_baseline":
@@ -680,6 +680,16 @@ def plot_cascade_results(
 
     # Create color palette
     colors = sns.color_palette("husl", n_colors=len(grouped_results))
+
+    # Plot probe performance as a horizontal line if available
+    if probe_auroc is not None:
+        plt.axhline(
+            y=probe_auroc,
+            color="gray",
+            linestyle="--",
+            label="Probe Performance",
+            alpha=0.5,
+        )
 
     # Plot each group
     for i, (key, group_results) in enumerate(grouped_results.items()):
@@ -812,5 +822,4 @@ if __name__ == "__main__":
         plot_cascade_results(
             results_file,
             output_file=output_dir / "cascade_plot.pdf",
-            include_probe=False,
         )
