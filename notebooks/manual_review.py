@@ -228,7 +228,7 @@ def analyze_manual_review_results(
                     discrete_labels.append(None)
 
         reviewer_data[reviewer_num] = {
-            "ids": df["ids"].tolist(),
+            "ids": [str(id_) for id_ in df["ids"].tolist()],
             "scale_labels": scale_labels,
             "discrete_labels": discrete_labels,
         }
@@ -362,9 +362,10 @@ def analyze_manual_review_results(
 
 if __name__ == "__main__":
     # create_manual_review_excel_for_all_datasets(use_test=True)
-    dataset_name = "anthropic"
-    analyze_manual_review_results(
-        excel_path=Path("~/Downloads/manual_review_test-2.xlsx"),
-        dataset_name=dataset_name,
-        use_test=True,
-    )
+    for dataset_name in ["anthropic", "mt", "mts", "toolace"]:
+        print(f"\nAnalyzing {dataset_name} ...".upper())
+        analyze_manual_review_results(
+            excel_path=Path("~/Downloads/manual_review_test.xlsx"),
+            dataset_name=dataset_name,
+            use_test=True,
+        )
