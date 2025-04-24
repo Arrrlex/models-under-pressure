@@ -408,6 +408,7 @@ if __name__ == "__main__":
             model,
             prompt_config=likelihood_continuation_prompts["prompt_at_end"],
             dataset_name=dataset_name,
+            dataset_path=EVAL_DATASETS[dataset_name],
             max_samples=max_samples,
             batch_size=4,
         )

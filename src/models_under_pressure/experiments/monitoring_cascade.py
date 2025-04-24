@@ -1,8 +1,10 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
+import numpy as np
 import yaml
+from jaxtyping import Float
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.baselines.continuation import (
@@ -21,9 +23,11 @@ from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
     evaluate_probe_and_save_results,
 )
+from models_under_pressure.interfaces.dataset import BaseDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
-    DatasetResults,
+    EvalRunConfig,
+    EvaluationResult,
     LikelihoodBaselineResults,
 )
 from models_under_pressure.model import LLMModel
@@ -49,7 +53,7 @@ def run_monitoring_cascade(
     batch_size: int = 4,
     output_dir: Optional[Path] = None,
     compute_activations: bool = True,
-) -> tuple[List[LikelihoodBaselineResults], DatasetResults]:
+) -> tuple[List[LikelihoodBaselineResults], EvaluationResult]:
     """Run a monitoring cascade experiment that evaluates both baselines and a probe.
 
     Args:
@@ -135,7 +139,7 @@ def run_monitoring_cascade(
 
     # Evaluate probe
     print("\nEvaluating probe...")
-    probe_scores, probe_results = evaluate_probe_and_save_results(
+    probe_scores, dataset_results = evaluate_probe_and_save_results(
         probe=probe,
         train_dataset_path=train_dataset_path,
         eval_dataset_name=dataset_name,
@@ -145,24 +149,53 @@ def run_monitoring_cascade(
         output_dir=output_dir,
     )
 
+    # Create EvaluationResult with all scores and labels
+    probe_results = EvaluationResult(
+        config=EvalRunConfig(
+            id="monitoring_cascade",
+            layer=probe_layer,
+            probe_spec=probe_spec,
+            max_samples=max_samples,
+            dataset_path=train_dataset_path,
+            eval_datasets=[eval_dataset_path],
+            model_name=probe_model_name,
+            compute_activations=compute_activations,
+        ),
+        dataset_name=dataset_name,
+        dataset_path=eval_dataset_path,
+        metrics=dataset_results,
+        method="linear_probe",
+        output_scores=probe_scores,
+        output_labels=[int(score > 0.5) for score in probe_scores],
+        ground_truth_labels=eval_dataset.labels_numpy().tolist(),
+    )
+
     # Save probe results
     probe_results.save_to(output_dir / "probe_results.jsonl")
 
     return baseline_results, probe_results
 
 
+class CascadeClassifier:
+    def predict_proba(
+        self, dataset: BaseDataset
+    ) -> Tuple[Float[np.ndarray, " dataset_size"], Float[np.ndarray, " dataset_size"]]:
+        pass
+
+
 if __name__ == "__main__":
     # Example usage
     model_names = ["llama-1b", "gemma-1b"]
     dataset_name = "anthropic"
-    compute = False
+    compute = True
+    max_samples = 20
 
     if compute:
         baseline_results, probe_results = run_monitoring_cascade(
             model_names=model_names,
             dataset_name=dataset_name,
             train_dataset_path=SYNTHETIC_DATASET_PATH / "train.jsonl",
-            max_samples=20,
+            max_samples=max_samples,
             probe_model_name=LOCAL_MODELS["llama-1b"],
             probe_layer=11,
             compute_activations=True,
@@ -177,7 +210,7 @@ if __name__ == "__main__":
                 )
 
         with open(output_dir / "probe_results.jsonl") as f:
-            probe_results = DatasetResults.model_validate_json(f.read())
+            probe_results = EvaluationResult.model_validate_json(f.read())
 
     # Print results
     print("\nBaseline Results:")
@@ -190,5 +223,5 @@ if __name__ == "__main__":
         print()
 
     print("\nProbe Results:")
-    print(f"Accuracy: {probe_results.metrics['accuracy']:.3f}")
-    print(f"AUROC: {probe_results.metrics['auroc']:.3f}")
+    print(f"Accuracy: {probe_results.metrics.metrics['accuracy']:.3f}")
+    print(f"AUROC: {probe_results.metrics.metrics['auroc']:.3f}")
