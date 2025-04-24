@@ -104,7 +104,7 @@ class EvaluationResult(BaseModel):
     ground_truth_scale_labels: list[int] | None = None
     """Ground truth scale labels for each example in the eval dataset"""
 
-    ground_truth_sample_ids: list[str] | None = None
+    ids: list[str] | None = None
     """Ground truth sample IDs for each example in the eval dataset"""
 
     mean_of_masked_activations: list[Any] | None = None
@@ -126,7 +126,6 @@ class BaselineResults(BaseModel):
     labels: list[int]
     ground_truth: list[int]
     ground_truth_scale_labels: list[int]
-    ground_truth_sample_ids: list[str]
     dataset_name: str
     dataset_path: Path
     model_name: str
@@ -161,6 +160,7 @@ class LikelihoodBaselineResults(BaselineResults):
     high_stakes_log_likelihoods: list[float]
     low_stakes_log_likelihoods: list[float]
     prompt_config: ContinuationPrompt
+    token_counts: list[int] | None = None
 
 
 class HeatmapCellResult(BaseModel):

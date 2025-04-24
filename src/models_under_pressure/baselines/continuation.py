@@ -245,6 +245,7 @@ class LikelihoodContinuationBaseline:
             "high_stakes_log_likelihood": [],
             "low_stakes_log_likelihood": [],
             "model": [],
+            "token_counts": [],
         }
 
         # Process inputs in batches, using half batch size since we'll combine high/low stakes
@@ -322,6 +323,11 @@ class LikelihoodContinuationBaseline:
                 high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
                 low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
 
+                # Count tokens for this sample
+                token_count = len(
+                    self.model.tokenizer.encode(format_conversation(input_))
+                )
+
                 # Find first index where likelihoods differ
                 diff_indices = np.where(high_stakes_ll != low_stakes_ll)[0]
                 diff_idx = diff_indices[0] if len(diff_indices) > 0 else 0
@@ -348,6 +354,7 @@ class LikelihoodContinuationBaseline:
                 other_fields["high_stakes_score"].append(float(probs[1]))
                 other_fields["low_stakes_score"].append(float(probs[0]))
                 other_fields["model"].append(self.model.name)
+                other_fields["token_counts"].append(token_count)
 
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
 
@@ -384,7 +391,6 @@ def evaluate_likelihood_continuation_baseline(
         accuracy=accuracy,
         labels=labels,
         ground_truth=ground_truth.tolist(),
-        ground_truth_sample_ids=list(dataset.ids),
         ground_truth_scale_labels=list(dataset.other_fields["scale_labels"]),  # type: ignore
         dataset_name=dataset_name,
         dataset_path=dataset_path,
@@ -394,6 +400,7 @@ def evaluate_likelihood_continuation_baseline(
         low_stakes_scores=results.other_fields["low_stakes_score"],  # type: ignore
         high_stakes_log_likelihoods=results.other_fields["high_stakes_log_likelihood"],  # type: ignore
         low_stakes_log_likelihoods=results.other_fields["low_stakes_log_likelihood"],  # type: ignore
+        token_counts=results.other_fields["token_counts"],  # type: ignore
         prompt_config=prompt_config,
     )
 
