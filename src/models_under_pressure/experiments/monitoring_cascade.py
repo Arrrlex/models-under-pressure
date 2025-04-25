@@ -400,10 +400,12 @@ def evaluate_probe_baseline_cascade(
 
     # Get model-specific per_token_flops
     per_token_flops = get_per_token_flops(baseline_results.model_name)
+    activation_dim = get_activation_dim(probe_results.config.model_name)
 
     # Process top scoring subset
     top_flops = [
         int(per_token_flops) * baseline_results.token_counts[i]
+        + activation_dim * probe_results.token_counts[i]
         for i in selected_indices
     ]
     top_results = CascadeResults(
@@ -435,13 +437,16 @@ def evaluate_probe_baseline_cascade(
             ],
             fixed_score=fixed_score,
             fixed_label=fixed_label,
+            flops=[
+                activation_dim * probe_results.token_counts[i]
+                for i in remaining_indices
+            ],
         )
     elif remaining_strategy == "probe":
         # Process remaining subset with probe
         all_results = evaluate_single_probe_cascade(
             evaluation_results=probe_results,
         )
-        print("DEBUG: all_results.auroc", all_results.auroc)
         remaining_results = CascadeResults(
             scores=[all_results.scores[i] for i in remaining_indices],
             labels=[all_results.labels[i] for i in remaining_indices],
@@ -453,7 +458,6 @@ def evaluate_probe_baseline_cascade(
             ],
             flops=[all_results.flops[i] for i in remaining_indices],
         )
-        print("DEBUG: remaining_results.auroc", remaining_results.auroc)
     else:
         raise ValueError(f"Unknown remaining strategy: {remaining_strategy}")
 
@@ -576,8 +580,9 @@ def evaluate_single_probe_cascade(
 def evaluate_fixed_cascade(
     ground_truth_labels: list[int],
     ground_truth_scale_labels: list[int],
-    fixed_score: float = 0.0,
+    fixed_score: float = 0.5,
     fixed_label: int = 0,
+    flops: list[int] | None = None,
 ) -> CascadeResults:
     num_samples = len(ground_truth_labels)
     labels = [fixed_label] * num_samples
@@ -588,7 +593,7 @@ def evaluate_fixed_cascade(
         labels=labels,
         ground_truth_labels=ground_truth_labels,
         ground_truth_scores=ground_truth_scale_labels,
-        flops=[0] * num_samples,  # No computation
+        flops=flops or [0] * num_samples,  # No computation
     )
 
 
