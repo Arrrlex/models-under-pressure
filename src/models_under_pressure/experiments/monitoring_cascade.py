@@ -352,6 +352,7 @@ def evaluate_probe_baseline_cascade(
     baseline_results: LikelihoodBaselineResults,
     probe_results: EvaluationResult,
     fraction_of_samples: float = 0.2,
+    merge_strategy: str = "baseline",
     selection_strategy: str = "top",
     remaining_strategy: str = "fixed_0",
     debug: bool = False,
@@ -408,9 +409,28 @@ def evaluate_probe_baseline_cascade(
         + activation_dim * probe_results.token_counts[i]
         for i in selected_indices
     ]
+    if merge_strategy == "baseline":
+        scores = [baseline_results.high_stakes_scores[i] for i in selected_indices]
+        labels = [baseline_results.labels[i] for i in selected_indices]
+    elif merge_strategy == "mean":
+        scores = [
+            (baseline_results.high_stakes_scores[i] + probe_results.output_scores[i])
+            / 2
+            for i in selected_indices
+        ]
+        labels = [score > 0.5 for score in scores]
+    elif merge_strategy == "max":
+        scores = [
+            max(baseline_results.high_stakes_scores[i], probe_results.output_scores[i])
+            for i in selected_indices
+        ]
+        labels = [score > 0.5 for score in scores]
+    else:
+        raise ValueError(f"Unknown merge strategy: {merge_strategy}")
+
     top_results = CascadeResults(
-        scores=[baseline_results.high_stakes_scores[i] for i in selected_indices],
-        labels=[baseline_results.labels[i] for i in selected_indices],
+        scores=scores,
+        labels=labels,
         ground_truth_labels=[
             baseline_results.ground_truth[i] for i in selected_indices
         ],
@@ -606,6 +626,7 @@ def write_cascade_results_to_file(
     probe_model_name: Optional[str] = None,
     selection_strategy: Optional[str] = None,
     remaining_strategy: Optional[str] = None,
+    merge_strategy: Optional[str] = None,
 ) -> None:
     """Write cascade results to a JSONL file.
 
@@ -628,6 +649,7 @@ def write_cascade_results_to_file(
         "total_flops": sum(results.flops),
         "selection_strategy": selection_strategy,
         "remaining_strategy": remaining_strategy,
+        "merge_strategy": merge_strategy,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -640,12 +662,14 @@ def compute_cascade_results(
     probe_results: EvaluationResult,
     results_file: Path,
 ):
-    fraction_of_sample_options = [0.1 * i for i in range(1, 10)]
+    fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
     # Evaluate baseline cascades
     print("\nBaseline Results:")
     for result in baseline_results:
-        for fraction_of_samples in fraction_of_sample_options + [1.0]:
+        for fraction_of_samples in fraction_of_sample_options + (
+            [1.0] if 1.0 not in fraction_of_sample_options else []
+        ):
             print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
             cascade_results = evaluate_single_baseline_cascade(
                 result, fraction_of_samples=fraction_of_samples
@@ -680,15 +704,24 @@ def compute_cascade_results(
     )
 
     # Evaluate probe baseline cascade for all models
-    strategies = [
-        # {"selection_strategy": "top", "remaining_strategy": "probe"},
-        {"selection_strategy": "bottom", "remaining_strategy": "probe"},
-        # {"selection_strategy": "mid", "remaining_strategy": "probe"},
-    ]
+    selection_strategies = ["mid"]  # , "top", "bottom"]
+    merge_strategies = ["mean"]  # , "max", "baseline"]
+    remaining_strategies = ["probe"]
+    strategies = []
+    for selection_strategy in selection_strategies:
+        for merge_strategy in merge_strategies:
+            for remaining_strategy in remaining_strategies:
+                strategies.append(
+                    {
+                        "selection_strategy": selection_strategy,
+                        "remaining_strategy": remaining_strategy,
+                        "merge_strategy": merge_strategy,
+                    }
+                )
 
     print("\nProbe+Baseline Cascade Results:")
     for baseline_result in baseline_results:
-        for fraction_of_samples in fraction_of_sample_options + [1.0]:
+        for fraction_of_samples in fraction_of_sample_options:
             for strategy in strategies:
                 print(
                     f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
@@ -698,8 +731,7 @@ def compute_cascade_results(
                     baseline_results=baseline_result,
                     probe_results=probe_results,
                     fraction_of_samples=fraction_of_samples,
-                    selection_strategy=strategy["selection_strategy"],
-                    remaining_strategy=strategy["remaining_strategy"],
+                    **strategy,
                 )
                 print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
                 print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
@@ -712,8 +744,7 @@ def compute_cascade_results(
                     model_name=baseline_result.model_name,
                     probe_model_name=probe_results.config.model_name,
                     fraction_of_samples=fraction_of_samples,
-                    selection_strategy=strategy["selection_strategy"],
-                    remaining_strategy=strategy["remaining_strategy"],
+                    **strategy,
                 )
 
 
@@ -771,6 +802,7 @@ def plot_cascade_results(
                     result["cascade_type"],
                     result.get("selection_strategy", "top"),
                     result.get("remaining_strategy", "fixed_0"),
+                    result.get("merge_strategy", "baseline"),
                 )
             else:
                 key = (baseline_model, result["cascade_type"])
@@ -832,12 +864,13 @@ def plot_cascade_results(
         else:  # probe_baseline
             selection_strategy = key[2]
             remaining_strategy = key[3]
+            merge_strategy = key[4]
             remaining_strategy_display = (
                 remaining_strategy.replace("fixed_", "fixed=")
                 if remaining_strategy
                 else "fixed_0"
             )
-            label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}"
+            label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
 
         # Plot points and connecting lines
         plt.plot(
