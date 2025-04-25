@@ -202,7 +202,7 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
                     other_fields={k: k_split.other_fields[k] for k in common_fields},
                 )
                 combined_split = LabelledDataset.concatenate(
-                    [train_split_filtered] + [k_split_filtered] * 10
+                    [train_split_filtered] + [k_split_filtered] * 5
                 )
                 probe = ProbeFactory.build(
                     probe=config.probe_spec,
@@ -251,8 +251,8 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
 
     # Save results
     print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
-    # for result in results_list:
-    #    result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+    for result in results_list:
+        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
 
     return results_list
 
@@ -263,7 +263,7 @@ if __name__ == "__main__":
 
     config = KShotFineTuningConfig(
         layer=11,
-        max_samples=250,
+        max_samples=None,
         # fine_tune_epochs=10,
         combine_datasets=True,
         model_name=LOCAL_MODELS["llama-1b"],
@@ -278,10 +278,11 @@ if __name__ == "__main__":
             #     "optimizer_args": {"lr": 0.001, "weight_decay": 0.01},
             # },
         ),
-        compute_activations=True,
+        compute_activations=False,
         dataset_path=SYNTHETIC_DATASET_PATH,
         validation_dataset=False,
-        eval_datasets=[EVAL_DATASETS["anthropic"]],  # list(EVAL_DATASETS.values()),
+        # eval_datasets=[EVAL_DATASETS["anthropic"]],
+        eval_datasets=list(EVAL_DATASETS.values()),
     )
 
     double_check_config(config)
