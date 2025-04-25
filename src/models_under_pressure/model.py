@@ -457,7 +457,7 @@ class LLMModel:
             else:
                 all_log_probs[batch_indices, -out_seq_len:] = token_log_probs
 
-        return all_log_probs.to(self.acts_device)
+        return all_log_probs.to(self.llm_device)
 
     def generate(
         self,

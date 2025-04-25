@@ -35,6 +35,18 @@ def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
     return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
 
 
+def calculate_metrics(
+    y_true: np.ndarray, y_pred: np.ndarray, fpr: float
+) -> dict[str, float]:
+    metrics = {
+        "auroc": float(roc_auc_score(y_true, y_pred)),
+        "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
+        "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
+        "fpr": float(fpr),
+    }
+    return metrics
+
+
 def evaluate_probe_and_save_results(
     probe: Probe,
     train_dataset_path: Path,
@@ -64,13 +76,12 @@ def evaluate_probe_and_save_results(
 
     Method designed to be used in the evaluate_probes.py experiment run
     """
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     per_entry_probe_scores = probe.predict_proba(eval_dataset)
     print(f"Obtained {len(per_entry_probe_scores)} probe scores")
 
     if save_results:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         # Get rid of the padding in the per token probe scores
         per_token_probe_scores = [
             probe_score[probe_score != -1]
@@ -128,18 +139,12 @@ def evaluate_probe_and_save_results(
             overwrite=True,
         )
 
-    y_true = eval_dataset.labels_numpy()
-    y_pred = per_entry_probe_scores
-
-    # Calculate the metrics for the dataset:
-    metrics = {
-        "auroc": float(roc_auc_score(y_true, y_pred)),
-        "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
-        "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
-        "fpr": float(fpr),
-    }
-
-    return per_entry_probe_scores.tolist(), DatasetResults(layer=layer, metrics=metrics)
+    return per_entry_probe_scores.tolist(), DatasetResults(
+        layer=layer,
+        metrics=calculate_metrics(
+            eval_dataset.labels_numpy(), per_entry_probe_scores, fpr
+        ),
+    )
 
 
 def get_coefs(probe: Probe) -> list[float]:
