@@ -1,5 +1,7 @@
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -13,8 +15,21 @@ from models_under_pressure.r2 import (
 )
 
 
+class DatasetManifest(BaseModel):
+    path: Path
+    md5: str
+
+    @classmethod
+    def from_path(cls, path: Path) -> Self:
+        return cls(path=path, md5=md5(path))
+
+
 class DatasetRegistry(BaseModel):
-    paths: list[Path]
+    datasets: list[DatasetManifest]
+
+    @property
+    def paths(self) -> list[Path]:
+        return [dataset.path for dataset in self.datasets]
 
 
 @dataclass
@@ -22,7 +37,7 @@ class DatasetStore:
     bucket: str = DATASETS_BUCKET  # type: ignore
 
     def load_registry(self) -> DatasetRegistry:
-        # download_file(self.bucket, "registry.json", self.registry_path)
+        download_file(self.bucket, "registry.json", self.registry_path)
         with open(self.registry_path, "r") as f:
             return DatasetRegistry.model_validate_json(f.read())
 
@@ -45,24 +60,28 @@ class DatasetStore:
                     print(f"Dataset {path} already exists in bucket")
                 else:
                     upload_file(self.bucket, str(path), PROJECT_ROOT / path)
-                registry.paths.append(path)
+                registry.datasets.append(DatasetManifest.from_path(path))
             else:
                 print(f"Dataset {path} already exists")
         self.save_registry(registry)
 
     def download_all(self):
         registry = self.load_registry()
-        to_download = [
-            path for path in registry.paths if not (PROJECT_ROOT / path).exists()
-        ]
+        to_download = []
+        for dataset in registry.datasets:
+            if (PROJECT_ROOT / dataset.path).exists():
+                if md5(PROJECT_ROOT / dataset.path) != dataset.md5:
+                    print(f"Warning: Dataset {dataset.path} has changed")
+            else:
+                to_download.append(dataset)
         if not to_download:
             print("All datasets are already downloaded")
             return
-        for path in tqdm(to_download, desc="Downloading datasets"):
+        for dataset in tqdm(to_download, desc="Downloading datasets"):
             download_file(
                 bucket_name=self.bucket,
-                key=str(path),
-                local_path=path,
+                key=str(dataset.path),
+                local_path=PROJECT_ROOT / dataset.path,
             )
 
     def delete(self, path: Path):
@@ -71,5 +90,11 @@ class DatasetStore:
         if path not in registry.paths:
             print(f"Dataset {path} not found")
         else:
-            registry.paths.remove(path)
+            registry.datasets = [
+                dataset for dataset in registry.datasets if dataset.path != path
+            ]
             self.save_registry(registry)
+
+
+def md5(path: Path) -> str:
+    return hashlib.md5(path.read_bytes()).hexdigest()
