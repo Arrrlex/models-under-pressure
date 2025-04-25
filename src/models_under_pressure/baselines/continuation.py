@@ -398,7 +398,9 @@ def evaluate_likelihood_continuation_baseline(
         accuracy=accuracy,
         labels=labels,
         ground_truth=ground_truth.tolist(),
-        ground_truth_scale_labels=list(dataset.other_fields["scale_labels"]),  # type: ignore
+        ground_truth_scale_labels=list(dataset.other_fields["scale_labels"])
+        if "scale_labels" in dataset.other_fields
+        else None,  # type: ignore
         dataset_name=dataset_name,
         dataset_path=dataset_path,
         model_name=model.name,
