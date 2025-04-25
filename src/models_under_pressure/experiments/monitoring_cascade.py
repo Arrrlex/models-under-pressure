@@ -348,29 +348,35 @@ def get_per_token_flops(full_model_name: str) -> int:
     return int(per_token_flops)
 
 
-def evaluate_probe_baseline_cascade(
-    baseline_results: LikelihoodBaselineResults,
-    probe_results: EvaluationResult,
+def evaluate_two_step_cascade(
+    first_step_results: CascadeResults,  # Probe results
+    second_step_results: CascadeResults,  # Baseline results
     fraction_of_samples: float = 0.2,
     merge_strategy: str = "baseline",
     selection_strategy: str = "top",
     remaining_strategy: str = "fixed_0",
     debug: bool = False,
 ) -> CascadeResults:
-    assert probe_results.output_scores is not None
-    assert probe_results.ground_truth_labels is not None
-    assert probe_results.ground_truth_scale_labels is not None
-    assert probe_results.token_counts is not None
-    assert baseline_results.token_counts is not None
+    """Combine two cascade results into a single cascade result.
 
-    assert probe_results.ids == baseline_results.ids
-
+    Args:
+        first_step_results: Results from the first step (probe) of the cascade
+        second_step_results: Results from the second step (baseline) of the cascade
+        fraction_of_samples: Fraction of samples to use from first step
+        merge_strategy: How to merge scores when both steps have results for the same sample
+            Options: "baseline", "mean", "max"
+        selection_strategy: How to select samples for first step
+            Options: "top", "bottom", "mid"
+        remaining_strategy: How to handle remaining samples
+            Options: "fixed_X" where X is the fixed score, or "probe"
+        debug: Whether to print debug information
+    """
     # Calculate number of samples to use
-    total_samples = len(probe_results.output_scores)
+    total_samples = len(first_step_results.scores)
     num_samples_to_use = int(total_samples * fraction_of_samples)
 
-    # Get indices based on selection strategy
-    sorted_indices = np.argsort(probe_results.output_scores)
+    # Get indices based on selection strategy using probe scores
+    sorted_indices = np.argsort(first_step_results.scores)
     if selection_strategy == "top":
         selected_indices = sorted_indices[-num_samples_to_use:]
     elif selection_strategy == "bottom":
@@ -388,101 +394,145 @@ def evaluate_probe_baseline_cascade(
 
     if debug:
         # Debug prints for token lengths and sample counts
-        selected_token_counts = [
-            baseline_results.token_counts[i] for i in selected_indices
-        ]
-        avg_selected_token_length = np.mean(selected_token_counts)
+        selected_flops = [second_step_results.flops[i] for i in selected_indices]
+        avg_selected_flops = np.mean(selected_flops)
         print(f"\nStrategy: {selection_strategy}/{remaining_strategy}")
         print(f"Number of samples selected for baseline: {len(selected_indices)}")
-        print(
-            f"Average token length of selected samples: {avg_selected_token_length:.2f}"
-        )
-        print(f"Total tokens in selected samples: {sum(selected_token_counts)}")
+        print(f"Average FLOPs of selected samples: {avg_selected_flops:.2f}")
+        print(f"Total FLOPs in selected samples: {sum(selected_flops)}")
 
-    # Get model-specific per_token_flops
-    per_token_flops = get_per_token_flops(baseline_results.model_name)
-    activation_dim = get_activation_dim(probe_results.config.model_name)
-
-    # Process top scoring subset
-    top_flops = [
-        int(per_token_flops) * baseline_results.token_counts[i]
-        + activation_dim * probe_results.token_counts[i]
-        for i in selected_indices
-    ]
+    # Process selected subset - use baseline results for selected samples
     if merge_strategy == "baseline":
-        scores = [baseline_results.high_stakes_scores[i] for i in selected_indices]
-        labels = [baseline_results.labels[i] for i in selected_indices]
+        scores = [second_step_results.scores[i] for i in selected_indices]
+        labels = [second_step_results.labels[i] for i in selected_indices]
     elif merge_strategy == "mean":
         scores = [
-            (baseline_results.high_stakes_scores[i] + probe_results.output_scores[i])
-            / 2
+            (first_step_results.scores[i] + second_step_results.scores[i]) / 2
             for i in selected_indices
         ]
         labels = [score > 0.5 for score in scores]
     elif merge_strategy == "max":
         scores = [
-            max(baseline_results.high_stakes_scores[i], probe_results.output_scores[i])
+            max(first_step_results.scores[i], second_step_results.scores[i])
             for i in selected_indices
         ]
         labels = [score > 0.5 for score in scores]
     else:
         raise ValueError(f"Unknown merge strategy: {merge_strategy}")
 
+    # For selected samples, FLOPs include both probe (for selection) and baseline
+    selected_flops = [
+        first_step_results.flops[i] + second_step_results.flops[i]
+        for i in selected_indices
+    ]
+
     top_results = CascadeResults(
         scores=scores,
         labels=labels,
         ground_truth_labels=[
-            baseline_results.ground_truth[i] for i in selected_indices
+            second_step_results.ground_truth_labels[i] for i in selected_indices
         ],
         ground_truth_scores=[
-            baseline_results.ground_truth_scale_labels[i] for i in selected_indices
+            second_step_results.ground_truth_scores[i] for i in selected_indices
         ],
-        flops=top_flops,
+        flops=selected_flops,
     )
 
     if len(remaining_indices) < 1:
         return top_results
 
+    # Process remaining subset based on remaining strategy
     if remaining_strategy.startswith("fixed_"):
         fixed_score = float(remaining_strategy.split("_")[1])
         fixed_label = fixed_score > 0.5
 
-        # Process remaining subset with fixed cascade
-        remaining_results = evaluate_fixed_cascade(
-            ground_truth_labels=[
-                probe_results.ground_truth_labels[i] for i in remaining_indices
-            ],
-            ground_truth_scale_labels=[
-                probe_results.ground_truth_scale_labels[i] for i in remaining_indices
-            ],
-            fixed_score=fixed_score,
-            fixed_label=fixed_label,
-            flops=[
-                activation_dim * probe_results.token_counts[i]
-                for i in remaining_indices
-            ],
-        )
-    elif remaining_strategy == "probe":
-        # Process remaining subset with probe
-        all_results = evaluate_single_probe_cascade(
-            evaluation_results=probe_results,
-        )
+        # For fixed strategy, we still need to account for probe FLOPs since it was used for selection
+        remaining_flops = [first_step_results.flops[i] for i in remaining_indices]
+
         remaining_results = CascadeResults(
-            scores=[all_results.scores[i] for i in remaining_indices],
-            labels=[all_results.labels[i] for i in remaining_indices],
+            scores=[fixed_score] * len(remaining_indices),
+            labels=[fixed_label] * len(remaining_indices),
             ground_truth_labels=[
-                all_results.ground_truth_labels[i] for i in remaining_indices
+                first_step_results.ground_truth_labels[i] for i in remaining_indices
             ],
             ground_truth_scores=[
-                all_results.ground_truth_scores[i] for i in remaining_indices
+                first_step_results.ground_truth_scores[i] for i in remaining_indices
             ],
-            flops=[all_results.flops[i] for i in remaining_indices],
+            flops=remaining_flops,
+        )
+    elif remaining_strategy == "probe":
+        # For probe strategy, we use probe results and FLOPs
+        remaining_results = CascadeResults(
+            scores=[first_step_results.scores[i] for i in remaining_indices],
+            labels=[first_step_results.labels[i] for i in remaining_indices],
+            ground_truth_labels=[
+                first_step_results.ground_truth_labels[i] for i in remaining_indices
+            ],
+            ground_truth_scores=[
+                first_step_results.ground_truth_scores[i] for i in remaining_indices
+            ],
+            flops=[first_step_results.flops[i] for i in remaining_indices],
         )
     else:
         raise ValueError(f"Unknown remaining strategy: {remaining_strategy}")
 
     # Combine results
     return top_results + remaining_results
+
+
+def evaluate_probe_baseline_cascade(
+    baseline_results: LikelihoodBaselineResults,
+    probe_results: EvaluationResult,
+    fraction_of_samples: float = 0.2,
+    merge_strategy: str = "baseline",
+    selection_strategy: str = "top",
+    remaining_strategy: str = "fixed_0",
+    debug: bool = False,
+) -> CascadeResults:
+    assert probe_results.output_scores is not None
+    assert probe_results.ground_truth_labels is not None
+    assert probe_results.ground_truth_scale_labels is not None
+    assert probe_results.token_counts is not None
+    assert baseline_results.token_counts is not None
+
+    assert probe_results.ids == baseline_results.ids
+
+    # Get model-specific per_token_flops
+    per_token_flops = get_per_token_flops(baseline_results.model_name)
+    activation_dim = get_activation_dim(probe_results.config.model_name)
+
+    # Create probe cascade results for all samples (first step)
+    probe_flops = [activation_dim * count for count in probe_results.token_counts]
+    probe_cascade = CascadeResults(
+        scores=probe_results.output_scores,
+        labels=[int(score > 0.5) for score in probe_results.output_scores],
+        ground_truth_labels=probe_results.ground_truth_labels,
+        ground_truth_scores=probe_results.ground_truth_scale_labels,
+        flops=probe_flops,
+    )
+
+    # Create baseline cascade results for all samples (second step)
+    baseline_flops = [
+        int(per_token_flops) * count for count in baseline_results.token_counts
+    ]
+    baseline_cascade = CascadeResults(
+        scores=baseline_results.high_stakes_scores,
+        labels=baseline_results.labels,
+        ground_truth_labels=baseline_results.ground_truth,
+        ground_truth_scores=baseline_results.ground_truth_scale_labels,
+        flops=baseline_flops,
+    )
+
+    # Combine the two cascade results
+    return evaluate_two_step_cascade(
+        first_step_results=probe_cascade,  # Probe is first step
+        second_step_results=baseline_cascade,  # Baseline is second step
+        fraction_of_samples=fraction_of_samples,
+        merge_strategy=merge_strategy,
+        selection_strategy=selection_strategy,
+        remaining_strategy=remaining_strategy,
+        debug=debug,
+    )
 
 
 def evaluate_single_baseline_cascade(
