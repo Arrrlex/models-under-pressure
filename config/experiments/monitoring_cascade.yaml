@@ -8,6 +8,7 @@ model_names:
   - gemma-1b
   - gemma-12b
   - gemma-27b
+first_baseline_model_name: llama-1b
 #probe_model_name: llama-70b
 probe_model_name: null
 probe_layer: null

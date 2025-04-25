@@ -258,7 +258,12 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             # Remove existing results file if it exists
             if results_file.exists():
                 results_file.unlink()
-            compute_cascade_results(baseline_results, probe_results, results_file)
+            compute_cascade_results(
+                baseline_results,
+                probe_results,
+                results_file,
+                cfg.first_baseline_model_name,
+            )
         if cfg.plot_results:
             plot_cascade_results(
                 results_file,
@@ -368,7 +373,7 @@ def evaluate_two_step_cascade(
         selection_strategy: How to select samples for first step
             Options: "top", "bottom", "mid"
         remaining_strategy: How to handle remaining samples
-            Options: "fixed_X" where X is the fixed score, or "probe"
+            Options: "fixed_X" where X is the fixed score, or "first"
         debug: Whether to print debug information
     """
     # Calculate number of samples to use
@@ -460,8 +465,8 @@ def evaluate_two_step_cascade(
             ],
             flops=remaining_flops,
         )
-    elif remaining_strategy == "probe":
-        # For probe strategy, we use probe results and FLOPs
+    elif remaining_strategy == "first":
+        # For first strategy, we use first step results and FLOPs
         remaining_results = CascadeResults(
             scores=[first_step_results.scores[i] for i in remaining_indices],
             labels=[first_step_results.labels[i] for i in remaining_indices],
@@ -711,6 +716,7 @@ def compute_cascade_results(
     baseline_results: List[LikelihoodBaselineResults],
     probe_results: EvaluationResult,
     results_file: Path,
+    first_baseline_model_name: Optional[str] = None,
 ):
     fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
@@ -756,7 +762,7 @@ def compute_cascade_results(
     # Evaluate probe baseline cascade for all models
     selection_strategies = ["mid"]  # , "top", "bottom"]
     merge_strategies = ["mean"]  # , "max", "baseline"]
-    remaining_strategies = ["probe"]
+    remaining_strategies = ["first"]
     strategies = []
     for selection_strategy in selection_strategies:
         for merge_strategy in merge_strategies:
@@ -796,6 +802,57 @@ def compute_cascade_results(
                     fraction_of_samples=fraction_of_samples,
                     **strategy,
                 )
+
+    # Evaluate two-step baseline cascades if first_baseline_model_name is provided
+    if first_baseline_model_name:
+        print("\nTwo-Step Baseline Cascade Results:")
+        # Find the first baseline results
+        first_baseline_result = next(
+            (
+                r
+                for r in baseline_results
+                if get_abbreviated_model_name(r.model_name) == first_baseline_model_name
+            ),
+            None,
+        )
+        if first_baseline_result:
+            # For each other baseline, create a two-step cascade
+            for second_baseline_result in baseline_results:
+                if (
+                    get_abbreviated_model_name(second_baseline_result.model_name)
+                    != first_baseline_model_name
+                ):
+                    for fraction_of_samples in fraction_of_sample_options:
+                        strategy = {
+                            "selection_strategy": "mid",
+                            "remaining_strategy": "first",
+                            "merge_strategy": "mean",
+                        }
+                        print(
+                            f"\nTwo-step cascade with fraction of samples: {fraction_of_samples}"
+                        )
+                        print(
+                            f"First baseline: {first_baseline_model_name}, Second baseline: {second_baseline_result.model_name}"
+                        )
+                        two_step_cascade_results = evaluate_two_baselines_cascade(
+                            first_baseline_results=first_baseline_result,
+                            second_baseline_results=second_baseline_result,
+                            fraction_of_samples=fraction_of_samples,
+                            **strategy,
+                        )
+                        print(f"- AUROC: {two_step_cascade_results.auroc:.3f}")
+                        print(f"- Total FLOPs: {sum(two_step_cascade_results.flops)}")
+
+                        # Write two-step baseline cascade results to file
+                        write_cascade_results_to_file(
+                            results=two_step_cascade_results,
+                            output_file=results_file,
+                            cascade_type="two_step_baseline",
+                            model_name=second_baseline_result.model_name,  # Use second baseline for color matching
+                            probe_model_name=first_baseline_model_name,  # Use first baseline as probe_model_name
+                            fraction_of_samples=fraction_of_samples,
+                            **strategy,
+                        )
 
 
 def get_abbreviated_model_name(full_name: str) -> str:
@@ -845,8 +902,8 @@ def plot_cascade_results(
 
         baseline_model = result.get("baseline_model_name")
         if baseline_model:
-            # For probe_baseline, include both strategies in the key
-            if result["cascade_type"] == "probe_baseline":
+            # For probe_baseline and two_step_baseline, include strategies in the key
+            if result["cascade_type"] in ["probe_baseline", "two_step_baseline"]:
                 key = (
                     baseline_model,
                     result["cascade_type"],
@@ -854,7 +911,7 @@ def plot_cascade_results(
                     result.get("remaining_strategy", "fixed_0"),
                     result.get("merge_strategy", "baseline"),
                 )
-            else:
+            else:  # baseline
                 key = (baseline_model, result["cascade_type"])
             grouped_results[key].append(result)
 
@@ -871,6 +928,11 @@ def plot_cascade_results(
     line_styles = {
         "baseline": "-",
         "probe_baseline": {
+            "top": "--",
+            "bottom": ":",
+            "mid": "-.",
+        },
+        "two_step_baseline": {
             "top": "--",
             "bottom": ":",
             "mid": "-.",
@@ -896,9 +958,9 @@ def plot_cascade_results(
         # Get appropriate line style
         if cascade_type == "baseline":
             linestyle = line_styles["baseline"]
-        else:  # probe_baseline
+        else:  # probe_baseline or two_step_baseline
             selection_strategy = key[2]
-            linestyle = line_styles["probe_baseline"][selection_strategy]
+            linestyle = line_styles[cascade_type][selection_strategy]
 
         # Sort by fraction_of_samples
         group_results.sort(key=lambda x: x["fraction_of_samples"])
@@ -911,7 +973,7 @@ def plot_cascade_results(
         # Create label
         if cascade_type == "baseline":
             label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
-        else:  # probe_baseline
+        elif cascade_type == "probe_baseline":
             selection_strategy = key[2]
             remaining_strategy = key[3]
             merge_strategy = key[4]
@@ -921,6 +983,17 @@ def plot_cascade_results(
                 else "fixed_0"
             )
             label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+        else:  # two_step_baseline
+            selection_strategy = key[2]
+            remaining_strategy = key[3]
+            merge_strategy = key[4]
+            first_baseline = group_results[0].get("probe_model_name", "unknown")
+            remaining_strategy_display = (
+                remaining_strategy.replace("fixed_", "fixed=")
+                if remaining_strategy
+                else "fixed_0"
+            )
+            label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
 
         # Plot points and connecting lines
         plt.plot(
@@ -1004,6 +1077,75 @@ def load_existing_results(
                 break  # Assuming we only need the first result
 
     return baseline_results, probe_results
+
+
+def evaluate_two_baselines_cascade(
+    first_baseline_results: LikelihoodBaselineResults,
+    second_baseline_results: LikelihoodBaselineResults,
+    fraction_of_samples: float = 0.2,
+    merge_strategy: str = "baseline",
+    selection_strategy: str = "top",
+    remaining_strategy: str = "fixed_0",
+) -> CascadeResults:
+    """Evaluate a cascade that uses two different baselines.
+
+    The first baseline is used to select samples, and the second baseline is applied to those samples.
+    The remaining samples are handled according to the remaining strategy.
+
+    Args:
+        first_baseline_results: Results from the first baseline (used for selection)
+        second_baseline_results: Results from the second baseline (applied to selected samples)
+        fraction_of_samples: Fraction of samples to use from first baseline
+        merge_strategy: How to merge scores when both baselines have results for the same sample
+            Options: "baseline", "mean", "max"
+        selection_strategy: How to select samples for first baseline
+            Options: "top", "bottom", "mid"
+        remaining_strategy: How to handle remaining samples
+            Options: "fixed_X" where X is the fixed score, or "baseline"
+    """
+    assert first_baseline_results.token_counts is not None
+    assert second_baseline_results.token_counts is not None
+    assert first_baseline_results.ids == second_baseline_results.ids
+
+    # Get model-specific per_token_flops
+    first_per_token_flops = get_per_token_flops(first_baseline_results.model_name)
+    second_per_token_flops = get_per_token_flops(second_baseline_results.model_name)
+
+    # Create first baseline cascade results for all samples (first step)
+    first_baseline_flops = [
+        int(first_per_token_flops) * count
+        for count in first_baseline_results.token_counts
+    ]
+    first_baseline_cascade = CascadeResults(
+        scores=first_baseline_results.high_stakes_scores,
+        labels=first_baseline_results.labels,
+        ground_truth_labels=first_baseline_results.ground_truth,
+        ground_truth_scores=first_baseline_results.ground_truth_scale_labels,
+        flops=first_baseline_flops,
+    )
+
+    # Create second baseline cascade results for all samples (second step)
+    second_baseline_flops = [
+        int(second_per_token_flops) * count
+        for count in second_baseline_results.token_counts
+    ]
+    second_baseline_cascade = CascadeResults(
+        scores=second_baseline_results.high_stakes_scores,
+        labels=second_baseline_results.labels,
+        ground_truth_labels=second_baseline_results.ground_truth,
+        ground_truth_scores=second_baseline_results.ground_truth_scale_labels,
+        flops=second_baseline_flops,
+    )
+
+    # Combine the two cascade results
+    return evaluate_two_step_cascade(
+        first_step_results=first_baseline_cascade,  # First baseline is first step
+        second_step_results=second_baseline_cascade,  # Second baseline is second step
+        fraction_of_samples=fraction_of_samples,
+        merge_strategy=merge_strategy,
+        selection_strategy=selection_strategy,
+        remaining_strategy=remaining_strategy,
+    )
 
 
 if __name__ == "__main__":
