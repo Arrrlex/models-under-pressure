@@ -40,11 +40,11 @@ class KShotFineTuningConfig(BaseModel):
 
     layer: int
     probe_spec: ProbeSpec
+    eval_data_usage: str  # "fine-tune", "only", "combine"
     max_samples: Optional[int] = None
     fine_tune_epochs: int = 5
     model_name: str = LOCAL_MODELS["llama-70b"]
     compute_activations: bool = False
-    combine_datasets: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     validation_dataset: bool = True
     eval_datasets: List[Path] = list(EVAL_DATASETS.values())
@@ -147,6 +147,18 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
         train_split = eval_dataset[train_indices]
         test_split = eval_dataset[test_indices]
 
+        # Load initial probe state
+        if initial_state is not None:
+            probe._classifier.model.load_state_dict(initial_state)
+        else:
+            probe = ProbeFactory.build(
+                probe=config.probe_spec,
+                train_dataset=splits["train"],
+                validation_dataset=splits["test"]
+                if config.validation_dataset
+                else None,
+            )
+
         # Evaluate initial probe on test split
         initial_scores, initial_metrics = evaluate_probe(probe, test_split)
         initial_result = KShotResult(
@@ -181,7 +193,7 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
             # Sample k examples from train split
             k_split = subsample_balanced_subset(train_split, n_per_class=k // 2)
 
-            if config.combine_datasets:
+            if config.eval_data_usage == "combine":
                 # Combine train split and k_split
                 # Get common fields between train_split and k_split
                 train_fields = set(train_split.other_fields.keys())
@@ -209,7 +221,13 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
                     train_dataset=combined_split,
                     validation_dataset=None,
                 )
-            else:
+            elif config.eval_data_usage == "only":
+                probe = ProbeFactory.build(
+                    probe=config.probe_spec,
+                    train_dataset=k_split,
+                    validation_dataset=None,
+                )
+            elif config.eval_data_usage == "fine-tune":
                 # Restore initial probe state before fine-tuning
                 if (
                     initial_state is not None
@@ -217,6 +235,10 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
                     and hasattr(probe._classifier, "model")
                 ):
                     probe._classifier.model.load_state_dict(initial_state)
+                else:
+                    raise NotImplementedError(
+                        "Cannot restore initial probe state for this probe type"
+                    )
 
                 # Fine-tune probe
                 print(f"Fine-tuning probe on {k} examples...")
@@ -225,6 +247,10 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
                 ):
                     probe._classifier.training_args["epochs"] = config.fine_tune_epochs
                 probe.fit(k_split)
+            else:
+                raise ValueError(
+                    f"Invalid eval_data_usage: {config.eval_data_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
+                )
 
             # Evaluate fine-tuned probe
             fine_tuned_scores, fine_tuned_metrics = evaluate_probe(probe, test_split)
@@ -262,11 +288,11 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     config = KShotFineTuningConfig(
-        layer=11,
+        layer=31,
         max_samples=None,
         # fine_tune_epochs=10,
-        combine_datasets=True,
-        model_name=LOCAL_MODELS["llama-1b"],
+        eval_data_usage="combine",
+        model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
             hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
