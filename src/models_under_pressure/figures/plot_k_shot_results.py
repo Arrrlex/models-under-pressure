@@ -79,13 +79,16 @@ def plot_k_shot_results(
     # Print number of results per dataset
     print("\nNumber of results per dataset:")
     for dataset in df["dataset"].unique():
-        # Extract base dataset name for display
-        base_dataset = dataset.split("_k")[0]
         dataset_data = df[df["dataset"] == dataset]
         count = len(dataset_data)
+        # Get k value counts
+        k_counts = dataset_data["k"].value_counts().sort_index()
+        k_str = ", ".join([f"k={k}: {v}" for k, v in k_counts.items()])
         usage_counts = dataset_data["eval_data_usage"].value_counts().to_dict()
         usage_str = ", ".join([f"{k}: {v}" for k, v in usage_counts.items()])
-        print(f"{base_dataset}: {count} results ({usage_str})")
+        print(f"{dataset}: {count} results")
+        print(f"  k values: {k_str}")
+        print(f"  usage: {usage_str}")
     print(f"Total datasets: {len(df['dataset'].unique())}")
     print(f"Total results: {len(df)}")
 
