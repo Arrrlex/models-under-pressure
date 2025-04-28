@@ -111,11 +111,28 @@ def plot_k_shot_results(
             mean_metric = usage_data.groupby("k")["metric"].mean()
             std_metric = usage_data.groupby("k")["metric"].std()
 
-        # Plot line with error bars
+        # Get k=0 point
+        if usage == "combine":
+            # For combine, use the training dataset only baseline
+            k0_mean = sum(k0_metrics.values()) / len(k0_metrics)
+            k0_std = pd.Series(list(k0_metrics.values())).std()
+        else:  # usage == "only"
+            # For only, use 0.5 for auroc and 0 for tpr_at_fpr
+            k0_mean = 0.5 if metric == "auroc" else 0.0
+            k0_std = 0.0  # No variance for these fixed values
+
+        # Plot line with error bars, including k=0 point
+        k_0_point = 1
+        x_values = [k_0_point] + list(
+            mean_metric.index
+        )  # Use 0.1 for k=0 to make spacing more consistent
+        y_values = [k0_mean] + list(mean_metric.values)
+        y_err = [k0_std] + list(std_metric.values)
+
         plt.errorbar(
-            mean_metric.index,
-            mean_metric.values,
-            yerr=std_metric.values,
+            x_values,
+            y_values,
+            yerr=y_err,
             label=usage,
             marker="o",
             capsize=5,
@@ -133,27 +150,31 @@ def plot_k_shot_results(
             alpha=0.7,
         )
         # Add error band for k=0
+        x_min = k_0_point  # Match the k=0 point position
+        x_max = max(df["k"].unique())  # * 1.1  # Add 10% padding
         plt.fill_between(
-            plt.xlim(),
-            k0_mean - k0_std,
-            k0_mean + k0_std,
+            [x_min, x_max],
+            [k0_mean - k0_std, k0_mean - k0_std],
+            [k0_mean + k0_std, k0_mean + k0_std],
             color="gray",
             alpha=0.1,
         )
 
     # Customize plot
-    plt.xlabel("Number of Examples (k)")
+    plt.xlabel("Number of evaluation samples for training")
     plt.ylabel(metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
-    plt.title(
-        "K-Shot Fine-Tuning Performance"
-        + (f" - {dataset_name}" if dataset_name else "")
-    )
+    # plt.title(
+    #   "Performance when training on evaluation data"
+    #    + (f" - {dataset_name}" if dataset_name else "")
+    # )
     plt.legend(title="Training Method")
     plt.grid(True, alpha=0.3)
 
     # Set x-axis to log scale since k values are powers of 2
     plt.xscale("log", base=2)
-    plt.xticks(df["k"].unique())
+    plt.xticks(
+        [k_0_point] + list(df["k"].unique()), ["0"] + [str(k) for k in df["k"].unique()]
+    )
 
     # Adjust layout
     plt.tight_layout()
