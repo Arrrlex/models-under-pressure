@@ -218,13 +218,18 @@ def analyze_manual_review_results(
             else:
                 try:
                     score_float = float(score)
-                    if score_float <= 3:  # low_stakes_threshold
-                        discrete_labels.append(Label.LOW_STAKES)
-                    elif score_float >= 8:  # high_stakes_threshold
+                    # if score_float <= 3:  # low_stakes_threshold
+                    #    discrete_labels.append(Label.LOW_STAKES)
+                    # elif score_float >= 8:  # high_stakes_threshold
+                    #    discrete_labels.append(Label.HIGH_STAKES)
+                    # else:
+                    #    discrete_labels.append(Label.AMBIGUOUS)
+                    if score_float > 5:
                         discrete_labels.append(Label.HIGH_STAKES)
                     else:
-                        discrete_labels.append(Label.AMBIGUOUS)
+                        discrete_labels.append(Label.LOW_STAKES)
                 except (ValueError, TypeError):
+                    print(f"Error converting score {score} to float")
                     discrete_labels.append(None)
 
         reviewer_data[reviewer_num] = {
