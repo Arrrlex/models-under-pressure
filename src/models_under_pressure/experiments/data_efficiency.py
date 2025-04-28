@@ -351,7 +351,7 @@ if __name__ == "__main__":
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=8,
+        batch_size=4,
         shuffle=True,
         logger={
             "_target_": "pytorch_lightning.loggers.WandbLogger",
@@ -363,7 +363,7 @@ if __name__ == "__main__":
             "devices": [0],
             "precision": "bf16-true",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "accumulate_grad_batches": 2,
+            "accumulate_grad_batches": 4,
         },
     )
 

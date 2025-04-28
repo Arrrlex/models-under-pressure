@@ -547,6 +547,8 @@ class FinetunedClassifier:
         else:
             logger = None
 
+        print("logger.name=", logger.name)
+
         # Setup the pytorch lightning trainer:
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
@@ -620,7 +622,7 @@ class FinetunedClassifier:
         test_dataloader = (
             DataLoader(
                 StakesDataset(dataset.to_pandas()),
-                batch_size=self.finetune_config.get("batch_size", 12),
+                batch_size=1,
                 shuffle=False,
                 collate_fn=collate_fn,
             ),

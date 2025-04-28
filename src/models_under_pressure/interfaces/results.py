@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Optional, Self
 
 import numpy as np
 import pandas as pd
