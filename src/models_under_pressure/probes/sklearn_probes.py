@@ -7,9 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from models_under_pressure.interfaces.activations import (
-    Activation,
-)
+from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     Dataset,
@@ -17,6 +15,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
+from models_under_pressure.config import global_settings
 from models_under_pressure.probes.base import Classifier, Probe
 from models_under_pressure.utils import as_numpy
 
@@ -34,12 +33,18 @@ class SklearnProbe(Probe):
 
     def __post_init__(self):
         if self._classifier is None:
+            self.device = global_settings.DEVICE
             self._classifier = make_pipeline(
                 StandardScaler(),
                 LogisticRegression(**self.hyper_params),
             )  # type: ignore
 
-    def fit(self, dataset: LabelledDataset) -> Self:
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self:
+        print("Warning: SklearnProbe does not use a validation dataset")
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")
@@ -64,9 +69,7 @@ class SklearnProbe(Probe):
         activations: Activation,
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
-        # Preprocess the aggregations to be of the correct shape:
         X = mean_acts(activations)
-
         self._classifier.fit(X, y)  # type: ignore
         return self
 

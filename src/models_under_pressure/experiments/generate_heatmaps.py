@@ -52,8 +52,9 @@ def generate_heatmaps(config: HeatmapRunConfig) -> HeatmapRunResults:
             print(f"Training on variation '{variation_type}'='{train_variation_value}'")
             train_split = variations.train_splits[train_variation_value]
             probe = ProbeFactory.build(
-                probe=config.probe_spec,
+                probe_spec=config.probe_spec,
                 train_dataset=train_split,
+                model_name=config.model_name,
             )
 
             for test_variation_value in variations.variation_values:

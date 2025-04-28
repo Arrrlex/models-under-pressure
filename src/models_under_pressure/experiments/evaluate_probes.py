@@ -201,9 +201,10 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
+        probe_spec=config.probe_spec,
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
+        model_name=config.model_name,
     )
 
     results_list = []
@@ -294,11 +295,10 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="pytorch_attention_probe",
+            name="attention",
             hyperparams={
                 "batch_size": 16,
                 "epochs": 50,
-                "device": "cpu",
                 "optimizer_args": {
                     "lr": 1e-3,
                     "weight_decay": 0.0004,
