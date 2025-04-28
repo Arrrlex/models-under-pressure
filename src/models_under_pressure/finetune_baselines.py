@@ -589,6 +589,15 @@ class FinetunedClassifier:
         # Create a collate function:
         collate_fn = create_collate_fn(self.tokenizer)
 
+        # Remove pre-existing activations from the dataset:
+        try:
+            print("Try removing pre-existing activations from the dataset")
+            dataset.remove_field("activations")
+            dataset.remove_field("input_ids")
+            dataset.remove_field("attention_mask")
+        except ValueError:
+            print("No pre-existing activations to remove")
+            pass
         # Create a test dataloader:
         test_dataloader = (
             DataLoader(

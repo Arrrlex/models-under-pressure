@@ -151,14 +151,21 @@ def run_data_efficiency_finetune_baseline_with_activations(
             # Train the finetune baseline:
             finetune_baseline.train(subset)
 
-            # Predict the probability of each example in the dataset being high-stakes:
-            results = finetune_baseline.get_results(subset)
+            eval_dataset_aurocs = []
+            eval_dataset_accuracies = []
+            eval_dataset_tpr_at_fprs = []
+
+            for eval_dataset in tqdm(eval_datasets, desc="Eval Datasets", leave=False):
+                results = finetune_baseline.get_results(eval_dataset)
+                eval_dataset_aurocs.append(results.auroc())
+                eval_dataset_accuracies.append(results.accuracy())
+                eval_dataset_tpr_at_fprs.append(results.tpr_at_fixed_fpr(fpr=0.01)[0])
 
             # Calculate the metrics here:
             metrics = {
-                "auroc": results.auroc(),
-                "accuracy": results.accuracy(),
-                "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01)[0],
+                "auroc": np.mean(eval_dataset_aurocs),
+                "accuracy": np.mean(eval_dataset_accuracies),
+                "tpr_at_fpr": np.mean(eval_dataset_tpr_at_fprs),
             }
 
             probe_results.append(
@@ -293,20 +300,19 @@ if __name__ == "__main__":
                 name="sklearn_mean_agg_probe",
                 hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
             ),
-            ProbeSpec(
-                name="pytorch_per_token_probe",
+            ProbeSpec(name="pytorch_per_token_probe",
                 hyperparams={
                     "batch_size": 16,
-                    "epochs": 20,  # 20,
+                    "epochs": 1,  # 20,
                     "device": "cpu",
-                    "learning_rate": 1e-2,
-                    "weight_decay": 0.1,
-                    "optimizer_args": {"lr": 1e-2, "weight_decay": 0.1},
+                    "learning_rate": 1e-3,
+                    "weight_decay": 10,
+                    "optimizer_args": {"lr": 1e-3, "weight_decay": 0.1},
                 },
             ),
         ],
         compute_activations=False,
-        eval_dataset_paths=[EVAL_DATASETS_BALANCED["mask"]],
+        eval_dataset_paths=list(EVAL_DATASETS_BALANCED.values()),
         # id="g6AooBhS",
     )
 
@@ -315,7 +321,7 @@ if __name__ == "__main__":
         model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
-            "learning_rate": 1e-3,
+            "learning_rate": 1e-5,
             "weight_decay": 0.0,
             "scheduler_params": None,
             "class_weights": None,
@@ -327,7 +333,7 @@ if __name__ == "__main__":
         Trainer={
             "max_epochs": 20,  # 20,
             "accelerator": "gpu",
-            "devices": [1],
+            "devices": [0],
             "precision": "bf16-true",
             "default_root_dir": "~/.cache/models-under-pressure",
             "accumulate_grad_batches": 2,
