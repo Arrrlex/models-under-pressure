@@ -205,8 +205,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
     Args:
         cfg: Hydra configuration object
     """
-    cfg = cfg.experiments
-
+    print(cfg)
     # Get probe layer from model config
     if cfg.probe_model_name:
         model_config_path = CONFIG_DIR / "model" / f"{cfg.probe_model_name}.yaml"
@@ -237,18 +236,20 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Convert train_dataset_path to Path object and resolve relative to DATA_DIR
         train_dataset_path = DATA_DIR / cfg.train_dataset_path
 
-        # Run the experiment
-        baseline_results, probe_results, output_dir = _run_monitoring_cascade(
-            model_names=cfg.model_names,
-            probe_model_name=cfg.probe_model_name,
-            probe_layer=cfg.probe_layer,
-            dataset_name=cfg.dataset_name,
-            train_dataset_path=train_dataset_path,
-            probe_spec=probe_spec,
-            max_samples=cfg.max_samples,
-            batch_size=cfg.batch_size,
-            compute_activations=cfg.compute_activations,
-        )
+        eval_datasets = cfg.eval_datasets if cfg.eval_datasets else EVAL_DATASETS.keys()
+        for eval_dataset in eval_datasets:
+            # Run the experiment
+            baseline_results, probe_results, output_dir = _run_monitoring_cascade(
+                model_names=cfg.model_names,
+                probe_model_name=cfg.probe_model_name,
+                probe_layer=cfg.probe_layer,
+                dataset_name=eval_dataset,
+                train_dataset_path=train_dataset_path,
+                probe_spec=probe_spec,
+                max_samples=cfg.max_samples,
+                batch_size=cfg.batch_size,
+                compute_activations=cfg.compute_activations,
+            )
 
     if cfg.compute_cascade or cfg.plot_results:
         results_file = output_dir / "cascade_results.jsonl"
