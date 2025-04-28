@@ -339,6 +339,26 @@ class RunBaselinesConfig(BaseModel):
         return PROBES_DIR / "continuation_baseline_results.jsonl"
 
 
+class KShotFineTuningConfig(BaseModel):
+    """Configuration for k-shot fine-tuning experiment."""
+
+    layer: int
+    probe_spec: ProbeSpec
+    eval_data_usage: str  # "fine-tune", "only", "combine"
+    max_samples: int | None = None
+    fine_tune_epochs: int = 5
+    model_name: str = LOCAL_MODELS["llama-70b"]
+    compute_activations: bool = False
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
+    validation_dataset: bool = True
+    eval_datasets: list[Path] = list(EVAL_DATASETS.values())
+    train_split_ratio: float = 0.3
+    k_values: list[int] = [2, 4, 8, 16, 32, 64, 128, 256, 512]
+    output_filename: str = "k_shot_fine_tuning_results.jsonl"
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
 @dataclass(frozen=True)
 class SafetyRunConfig:
     layer: int

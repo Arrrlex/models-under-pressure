@@ -11,6 +11,7 @@ from models_under_pressure.config import (
     ChooseLayerConfig,
     EvalRunConfig,
     HeatmapRunConfig,
+    KShotFineTuningConfig,
 )
 
 
@@ -164,6 +165,44 @@ class LikelihoodBaselineResults(BaselineResults):
     low_stakes_log_likelihoods: list[float]
     prompt_config: ContinuationPrompt
     token_counts: list[int] | None = None
+
+
+class KShotResult(BaseModel):
+    """Results for a single k-shot fine-tuning run."""
+
+    config: KShotFineTuningConfig
+    """Configuration used for the k-shot fine-tuning run"""
+
+    k: int
+    """Number of examples used for fine-tuning"""
+
+    metrics: dict[str, float]
+    """Metrics for the evaluation"""
+
+    probe_scores: list[float]
+    """Scores for each example in the eval dataset"""
+
+    ground_truth_labels: list[int]
+    """Ground truth labels for each example in the eval dataset"""
+
+    ground_truth_scale_labels: list[int] | None = None
+    """Ground truth scale labels for each example in the eval dataset"""
+
+    dataset_name: str
+    """Name of the dataset that was evaluated on"""
+
+    dataset_path: Path
+    """Path to the dataset that was evaluated on"""
+
+    method: str
+    """Method used to make predictions (initial_probe or fine_tuned_probe)"""
+
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def save_to(self, path: Path) -> None:
+        """Save the results to a file."""
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
 
 
 class HeatmapCellResult(BaseModel):

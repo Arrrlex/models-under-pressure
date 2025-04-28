@@ -6,11 +6,9 @@ It first trains a probe on the training dataset, then splits the eval dataset in
 the probe is fine-tuned on k many samples and evaluated on the test split.
 """
 
-from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import numpy as np
-from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -19,7 +17,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
-    EvalRunConfig,
+    KShotFineTuningConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
@@ -28,55 +26,10 @@ from models_under_pressure.interfaces.dataset import (
     subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
+from models_under_pressure.interfaces.results import DatasetResults, KShotResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import double_check_config
-
-
-# @dataclass
-class KShotFineTuningConfig(BaseModel):
-    """Configuration for k-shot fine-tuning experiment."""
-
-    layer: int
-    probe_spec: ProbeSpec
-    eval_data_usage: str  # "fine-tune", "only", "combine"
-    max_samples: Optional[int] = None
-    fine_tune_epochs: int = 5
-    model_name: str = LOCAL_MODELS["llama-70b"]
-    compute_activations: bool = False
-    dataset_path: Path = SYNTHETIC_DATASET_PATH
-    validation_dataset: bool = True
-    eval_datasets: List[Path] = list(EVAL_DATASETS.values())
-    train_split_ratio: float = 0.3
-    k_values: List[int] = [2, 4, 8, 16, 32, 64, 128, 256, 512]
-    output_filename: str = "k_shot_fine_tuning_results.jsonl"
-    coefs_filename: str = "k_shot_fine_tuning_coefs.json"
-
-    model_config = {"arbitrary_types_allowed": True}
-
-    def to_eval_run_config(self) -> EvalRunConfig:
-        """Convert to EvalRunConfig for compatibility with EvaluationResult."""
-        return EvalRunConfig(
-            layer=self.layer,
-            max_samples=self.max_samples,
-            model_name=self.model_name,
-            probe_spec=self.probe_spec,
-            compute_activations=self.compute_activations,
-            dataset_path=self.dataset_path,
-            validation_dataset=self.validation_dataset,
-            eval_datasets=self.eval_datasets,
-        )
-
-
-class KShotResult(BaseModel):
-    """Results for a single k-shot fine-tuning run."""
-
-    k: int
-    metrics: dict
-    probe_scores: List[float]
-    ground_truth_labels: List[int]
-    ground_truth_scale_labels: Optional[List[int]] = None
 
 
 def evaluate_probe(
@@ -95,7 +48,7 @@ def evaluate_probe(
     )
 
 
-def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResult]:
+def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[KShotResult]:
     """Run k-shot fine-tuning experiment."""
     # Load and split the training dataset
     splits = load_splits_lazy(
@@ -162,25 +115,17 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
         # Evaluate initial probe on test split
         initial_scores, initial_metrics = evaluate_probe(probe, test_split)
         initial_result = KShotResult(
+            config=config,
             k=0,
             metrics=initial_metrics.metrics,
             probe_scores=initial_scores,
             ground_truth_labels=test_split.labels_numpy().tolist(),
             ground_truth_scale_labels=test_split.other_fields.get("scale_labels"),
+            dataset_name=f"{eval_dataset_name}_k0",
+            dataset_path=eval_dataset_path,
+            method="initial_probe",
         )
-        results_list.append(
-            EvaluationResult(
-                config=config.to_eval_run_config(),
-                metrics=initial_metrics,
-                dataset_name=f"{eval_dataset_name}_k0",
-                method="initial_probe",
-                output_scores=initial_scores,
-                output_labels=[int(a > 0.5) for a in initial_scores],
-                ground_truth_scale_labels=initial_result.ground_truth_scale_labels,
-                ground_truth_labels=initial_result.ground_truth_labels,
-                dataset_path=eval_dataset_path,
-            )
-        )
+        results_list.append(initial_result)
 
         # Fine-tune and evaluate for each k
         for k in tqdm(config.k_values, desc=f"Fine-tuning on {eval_dataset_name}"):
@@ -255,25 +200,17 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[EvaluationResu
             # Evaluate fine-tuned probe
             fine_tuned_scores, fine_tuned_metrics = evaluate_probe(probe, test_split)
             fine_tuned_result = KShotResult(
+                config=config,
                 k=k,
                 metrics=fine_tuned_metrics.metrics,
                 probe_scores=fine_tuned_scores,
                 ground_truth_labels=test_split.labels_numpy().tolist(),
                 ground_truth_scale_labels=test_split.other_fields.get("scale_labels"),
+                dataset_name=f"{eval_dataset_name}_k{k}",
+                dataset_path=eval_dataset_path,
+                method="fine_tuned_probe",
             )
-            results_list.append(
-                EvaluationResult(
-                    config=config.to_eval_run_config(),
-                    metrics=fine_tuned_metrics,
-                    dataset_name=f"{eval_dataset_name}_k{k}",
-                    method="fine_tuned_probe",
-                    output_scores=fine_tuned_scores,
-                    output_labels=[int(a > 0.5) for a in fine_tuned_scores],
-                    ground_truth_scale_labels=fine_tuned_result.ground_truth_scale_labels,
-                    ground_truth_labels=fine_tuned_result.ground_truth_labels,
-                    dataset_path=eval_dataset_path,
-                )
-            )
+            results_list.append(fine_tuned_result)
 
     # Save results
     print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
@@ -291,11 +228,11 @@ if __name__ == "__main__":
         layer=31,
         max_samples=None,
         # fine_tune_epochs=10,
-        eval_data_usage="combine",
+        eval_data_usage="only",
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
-            hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
+            hyperparams={"C": 1e-3, "fit_intercept": False},
             # name="pytorch_per_entry_probe_mean",
             # hyperparams={
             #     "batch_size": 16,
