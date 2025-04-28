@@ -159,7 +159,7 @@ def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[KShotResult]:
                     other_fields={k: k_split.other_fields[k] for k in common_fields},
                 )
                 combined_split = LabelledDataset.concatenate(
-                    [train_split_filtered] + [k_split_filtered] * 5
+                    [train_split_filtered] + [k_split_filtered] * config.sample_repeats
                 )
                 probe = ProbeFactory.build(
                     probe=config.probe_spec,
@@ -228,7 +228,7 @@ if __name__ == "__main__":
         layer=31,
         max_samples=None,
         # fine_tune_epochs=10,
-        eval_data_usage="only",
+        eval_data_usage="combine",
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
@@ -250,10 +250,13 @@ if __name__ == "__main__":
 
     double_check_config(config)
 
-    print("Running k-shot fine-tuning experiment")
-    print(f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}")
-    results = run_k_shot_fine_tuning(config)
-    for result in results:
-        print("-" * 100)
-        print(result.dataset_name)
-        print(result.metrics)
+    for k in range(4):
+        print("Running k-shot fine-tuning experiment")
+        print(
+            f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
+        )
+        results = run_k_shot_fine_tuning(config)
+        for result in results:
+            print("-" * 100)
+            print(result.dataset_name)
+            print(result.metrics)
