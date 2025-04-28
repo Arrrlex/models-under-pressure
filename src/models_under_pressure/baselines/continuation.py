@@ -1,12 +1,13 @@
 from pathlib import Path
+
 import numpy as np
 import torch
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    global_settings,
     EVAL_DATASETS,
     LOCAL_MODELS,
+    global_settings,
 )
 from models_under_pressure.interfaces.dataset import (
     Dataset,
@@ -14,6 +15,7 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
     Message,
+    subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.results import (
     ContinuationBaselineResults,
@@ -232,6 +234,15 @@ class LikelihoodContinuationBaseline:
     def likelihood_classify_dataset(
         self, dataset: Dataset, batch_size: int
     ) -> LabelledDataset:
+        assert self.prompt_config.conversation_input_key in [
+            "system_prompt",
+            "user_prompt",
+        ]
+        if self.prompt_config.conversation_input_key == "system_prompt":
+            assert self.prompt_config.system_prompt is not None
+        if self.prompt_config.conversation_input_key == "user_prompt":
+            assert self.prompt_config.user_prompt is not None
+
         ids = []
         inputs = []
         other_fields = {
@@ -241,6 +252,7 @@ class LikelihoodContinuationBaseline:
             "high_stakes_log_likelihood": [],
             "low_stakes_log_likelihood": [],
             "model": [],
+            "token_counts": [],
         }
 
         # Process inputs in batches, using half batch size since we'll combine high/low stakes
@@ -318,6 +330,11 @@ class LikelihoodContinuationBaseline:
                 high_stakes_ll = high_stakes_ll.detach().cpu().to(torch.float32).numpy()
                 low_stakes_ll = low_stakes_ll.detach().cpu().to(torch.float32).numpy()
 
+                # Count tokens for this sample
+                token_count = len(
+                    self.model.tokenizer.encode(format_conversation(input_))
+                )
+
                 # Find first index where likelihoods differ
                 diff_indices = np.where(high_stakes_ll != low_stakes_ll)[0]
                 diff_idx = diff_indices[0] if len(diff_indices) > 0 else 0
@@ -344,6 +361,7 @@ class LikelihoodContinuationBaseline:
                 other_fields["high_stakes_score"].append(float(probs[1]))
                 other_fields["low_stakes_score"].append(float(probs[0]))
                 other_fields["model"].append(self.model.name)
+                other_fields["token_counts"].append(token_count)
 
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
 
@@ -353,14 +371,16 @@ def evaluate_likelihood_continuation_baseline(
     prompt_config: ContinuationPrompt,
     dataset_name: str,
     dataset_path: Path,
+    dataset: LabelledDataset | None = None,
     max_samples: int | None = None,
     batch_size: int = global_settings.BATCH_SIZE,
 ) -> LikelihoodBaselineResults:
-    print(f"Loading dataset from {dataset_path}")
-    dataset = LabelledDataset.load_from(dataset_path)
-    if max_samples is not None:
-        print(f"Sampling {max_samples} samples")
-        dataset = dataset.sample(max_samples)
+    if dataset is None:
+        print(f"Loading dataset from {dataset_path}")
+        dataset = LabelledDataset.load_from(dataset_path)
+        if max_samples is not None:
+            print(f"Sampling {max_samples} samples")
+            dataset = subsample_balanced_subset(dataset, max_samples)
 
     classifier = LikelihoodContinuationBaseline(model, prompt_config)
     results = classifier.likelihood_classify_dataset(
@@ -378,6 +398,9 @@ def evaluate_likelihood_continuation_baseline(
         accuracy=accuracy,
         labels=labels,
         ground_truth=ground_truth.tolist(),
+        ground_truth_scale_labels=list(dataset.other_fields["scale_labels"])
+        if "scale_labels" in dataset.other_fields
+        else None,  # type: ignore
         dataset_name=dataset_name,
         dataset_path=dataset_path,
         model_name=model.name,
@@ -386,6 +409,7 @@ def evaluate_likelihood_continuation_baseline(
         low_stakes_scores=results.other_fields["low_stakes_score"],  # type: ignore
         high_stakes_log_likelihoods=results.other_fields["high_stakes_log_likelihood"],  # type: ignore
         low_stakes_log_likelihoods=results.other_fields["low_stakes_log_likelihood"],  # type: ignore
+        token_counts=results.other_fields["token_counts"],  # type: ignore
         prompt_config=prompt_config,
     )
 
@@ -404,6 +428,7 @@ if __name__ == "__main__":
             model,
             prompt_config=likelihood_continuation_prompts["prompt_at_end"],
             dataset_name=dataset_name,
+            dataset_path=EVAL_DATASETS[dataset_name],
             max_samples=max_samples,
             batch_size=4,
         )
