@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
-from pydantic_settings import BaseSettings
 import torch
 import yaml
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.utils import generate_short_id
@@ -19,8 +19,10 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 class GlobalSettings(BaseSettings):
     LLM_DEVICE: str = "auto"  # Device for the LLM model
-    DEVICE: str = "cuda"  # Device for activations, probes, etc.
-    DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float16
+    DEVICE: str = (
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )  # Device for activations, probes, etc.
+    DTYPE: torch.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     BATCH_SIZE: int = 4
     MODEL_MAX_MEMORY: dict[str, int | None] = Field(default_factory=dict)
     CACHE_DIR: str | None = None
@@ -94,25 +96,6 @@ AIS_DATASETS = {
             "is_sandbagging": "labels",
         },
     },
-}
-
-OTHER_DATASETS = {
-    "redteaming_en": TEST_EVALS_DIR / "language/english_aya_redteaming.jsonl",
-    "redteaming_fr": TEST_EVALS_DIR / "language/french_aya_redteaming.jsonl",
-    "redteaming_hi": TEST_EVALS_DIR / "language/hindi_aya_redteaming.jsonl",
-    "redteaming_es": TEST_EVALS_DIR / "language/spanish_aya_redteaming.jsonl",
-    "deception_data": DATA_DIR / "evals/deception_data.yaml",
-    "mask_dev": EVALS_DIR / "mask_samples.jsonl",
-    "mask_test": TEST_EVALS_DIR / "mask_samples.jsonl",
-    "original_doubled": TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_doubled.jsonl",
-    "original_doubled_unconfounded_train": TRAIN_DIR
-    / "original_doubled_unconfounded/train.jsonl",
-    "original_doubled_unconfounded_test": TRAIN_DIR
-    / "original_doubled_unconfounded/test.jsonl",
-    "chatbot_deployment": TRAIN_DIR / "chatbot_deployment_22_04_25.jsonl",
-    "medical_deployment": TRAIN_DIR / "medical_deployment_22_04_25.jsonl",
-    "software_deployment": TRAIN_DIR / "software_deployment_22_04_25.jsonl",
-    "combined_deployment": TRAIN_DIR / "combined_deployment_22_04_25.jsonl",
 }
 
 
