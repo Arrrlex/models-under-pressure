@@ -717,13 +717,18 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                         # Get probabilities for validation data
                         # Clip extreme logit values to prevent NaN in loss computation
                         # Using values that are safe for bfloat16
-                        val_logits = self.logits(validation_activations)
-                        val_logits = val_logits.clamp(-10.0, 10.0)
+                        val_logits = self.logits(validation_activations).clamp(
+                            -10.0, 10.0
+                        )
 
-                        val_loss = criterion(
-                            val_logits.to(self.device), validation_y
-                        ).item()
+                        # Check for NaN values in logits
+                        if torch.isnan(val_logits).any():
+                            print("Warning: NaN values detected in validation logits")
+                            print("Min logit:", val_logits.min().item())
+                            print("Max logit:", val_logits.max().item())
+                            val_logits = torch.nan_to_num(val_logits, nan=0.0)
 
+                        val_loss = criterion(val_logits.squeeze(), validation_y).item()
                         # Check for NaN loss - if found, set loss to +inf to avoid selecting this model
                         if np.isnan(val_loss):
                             print("Warning: NaN validation loss detected")
@@ -831,12 +836,21 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 f"Probe architecture {probe_architecture} not implemented"
             )
 
+        # Set random seed for reproducible initialization
+        random_seed = 42
+        generator = torch.Generator().manual_seed(random_seed)
         for layer in model.modules():
             if isinstance(layer, nn.Linear):
-                torch.nn.init.xavier_uniform_(layer.weight)
+                torch.nn.init.xavier_uniform_(layer.weight, generator=generator)
             elif isinstance(layer, AttentionLayer):
-                torch.nn.init.xavier_uniform_(layer.query_linear.weight)
-                torch.nn.init.xavier_uniform_(layer.key_linear.weight)
-                torch.nn.init.xavier_uniform_(layer.value_linear.weight)
+                torch.nn.init.xavier_uniform_(
+                    layer.query_linear.weight, generator=generator
+                )
+                torch.nn.init.xavier_uniform_(
+                    layer.key_linear.weight, generator=generator
+                )
+                torch.nn.init.xavier_uniform_(
+                    layer.value_linear.weight, generator=generator
+                )
 
         return model

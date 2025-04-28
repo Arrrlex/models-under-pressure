@@ -2,7 +2,7 @@ name: per_token
 hyperparams:
   aggregation:
     name: max-of-rolling-mean
-    window_size: 10
+    window_size: 40
   batch_size: 16384
   epochs: 50
   optimizer_args:

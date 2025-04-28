@@ -1,6 +1,6 @@
 name: per_token
 hyperparams:
-  aggregation: max_of_sentence_means
+  aggregation: max-of-sentence-means
   batch_size: 16384
   epochs: 50
   optimizer_args:

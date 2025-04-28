@@ -1,7 +1,7 @@
 name: per_token
 hyperparams:
   aggregation:
-    name: mean_of_top_k
+    name: mean-of-top-k
     k: 10
   batch_size: 16384
   epochs: 50
