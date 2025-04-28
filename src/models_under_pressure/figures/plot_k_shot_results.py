@@ -47,6 +47,11 @@ def plot_k_shot_results(
             if line.strip():
                 results.append(KShotResult.model_validate_json(line))
 
+    eval_usage_mapping = {
+        "only": "Evaluation samples only",
+        "combine": "Synthetic + evaluation samples",
+    }
+
     # Create DataFrame for plotting
     plot_data = []
     k0_metrics = {}  # Store k=0 metrics for each dataset
@@ -54,7 +59,7 @@ def plot_k_shot_results(
         if dataset_name is not None:
             # Extract base dataset name by removing _k{num} suffix
             base_dataset = result.dataset_name.rsplit("_k", 1)[0]
-            if not base_dataset.startswith(dataset_name):
+            if not base_dataset.startswith(dataset_name + "_"):
                 continue
         if result.method == "initial_probe" or result.k == 0:
             k0_metrics[result.dataset_name] = result.metrics[metric]
@@ -63,7 +68,9 @@ def plot_k_shot_results(
                 {
                     "k": result.k,
                     "metric": result.metrics[metric],
-                    "eval_data_usage": result.config.eval_data_usage,
+                    "eval_data_usage": eval_usage_mapping[
+                        result.config.eval_data_usage
+                    ],
                     "dataset": result.dataset_name.rsplit("_k", 1)[0],
                 }
             )
@@ -112,14 +119,16 @@ def plot_k_shot_results(
             std_metric = usage_data.groupby("k")["metric"].std()
 
         # Get k=0 point
-        if usage == "combine":
+        if usage == eval_usage_mapping["combine"]:
             # For combine, use the training dataset only baseline
             k0_mean = sum(k0_metrics.values()) / len(k0_metrics)
             k0_std = pd.Series(list(k0_metrics.values())).std()
-        else:  # usage == "only"
+        elif usage == eval_usage_mapping["only"]:  # usage == "only"
             # For only, use 0.5 for auroc and 0 for tpr_at_fpr
             k0_mean = 0.5 if metric == "auroc" else 0.0
             k0_std = 0.0  # No variance for these fixed values
+        else:
+            raise NotImplementedError(f"Didn't implement eval_data_usage: {usage}")
 
         # Plot line with error bars, including k=0 point
         k_0_point = 1
@@ -146,12 +155,12 @@ def plot_k_shot_results(
             y=k0_mean,
             color="gray",
             linestyle="--",
-            label="Training data only",
+            label="Synthetic dataset only",
             alpha=0.7,
         )
         # Add error band for k=0
-        x_min = k_0_point  # Match the k=0 point position
-        x_max = max(df["k"].unique())  # * 1.1  # Add 10% padding
+        x_min = 0  # Match the k=0 point position
+        x_max = max(df["k"].unique())
         plt.fill_between(
             [x_min, x_max],
             [k0_mean - k0_std, k0_mean - k0_std],
@@ -167,7 +176,7 @@ def plot_k_shot_results(
     #   "Performance when training on evaluation data"
     #    + (f" - {dataset_name}" if dataset_name else "")
     # )
-    plt.legend(title="Training Method")
+    plt.legend(title="Training Data")
     plt.grid(True, alpha=0.3)
 
     # Set x-axis to log scale since k values are powers of 2
