@@ -2,13 +2,14 @@ import asyncio
 import functools
 import json
 import os
-from pathlib import Path
 import random
 import string
-from textwrap import indent
 import time
+import traceback
 from contextlib import contextmanager
 from datetime import timedelta
+from pathlib import Path
+from textwrap import indent
 from typing import (
     Any,
     Awaitable,
@@ -26,14 +27,14 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
-from pydantic import BaseModel
 import torch
+import yaml
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-import yaml
 
 load_dotenv()
 
@@ -98,10 +99,29 @@ class pydra:
         return decorator
 
 
-def _get_async_client() -> AsyncOpenAI:
-    if not hasattr(_get_async_client, "_instance"):
-        _get_async_client._instance = AsyncOpenAI(api_key=os.getenv("OPEN_AI_API_KEY"))
-    return _get_async_client._instance
+def _get_async_client(model: str | None = None) -> AsyncOpenAI:
+    if not hasattr(_get_async_client, "_instances"):
+        _get_async_client._instances = {}
+
+    # Use model name as cache key, default to "default" if None
+    cache_key = model or "default"
+
+    if cache_key not in _get_async_client._instances:
+        # Check if model is OpenAI or OpenRouter
+        if model and "gpt" in model.lower():
+            # OpenAI model
+            api_key = os.getenv("OPEN_AI_API_KEY")
+            base_url = None
+        else:
+            # OpenRouter model
+            api_key = os.getenv("OPEN_ROUTER_API_KEY")
+            base_url = "https://openrouter.ai/api/v1"
+
+        _get_async_client._instances[cache_key] = AsyncOpenAI(
+            api_key=api_key, base_url=base_url
+        )
+
+    return _get_async_client._instances[cache_key]
 
 
 # TODO Change messages type to Dialogue type?
@@ -123,7 +143,7 @@ async def call_llm_async(
     json_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Async version of call_llm that can be used for parallel requests"""
-    client = _get_async_client()
+    client = _get_async_client(model)
     if json_schema is not None:
         response_format = {
             "type": "json_schema",
@@ -139,6 +159,7 @@ async def call_llm_async(
     )
     content = response.choices[0].message.content
     if content is None:
+        print(messages)
         raise ValueError("No content returned from LLM")
     return json.loads(content)
 
@@ -266,6 +287,7 @@ async def async_map(
                 return result
             except (asyncio.TimeoutError, Exception) as e:
                 print(f"Task failed with error: {e}")
+                traceback.print_exc()
                 if pbar is not None:
                     pbar.update(1)
                 return None
