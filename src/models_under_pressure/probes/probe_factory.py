@@ -34,7 +34,7 @@ class ProbeFactory:
         model_name: str,
         layer: int,
         validation_dataset: LabelledDataset | None = None,
-        use_store: bool = True,
+        use_store: bool = False,
     ) -> Probe:
         if use_store:
             store = ProbeStore()
