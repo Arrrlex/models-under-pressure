@@ -87,5 +87,5 @@ mv ../../.env .
 uv sync
 uv run pre-commit install
 uv run pre-commit run --all
-uv run src/models_under_pressure/scripts/sync_datasets.py
+uv run mup datasets download
 EOF
