@@ -122,12 +122,13 @@ def run_data_efficiency_finetune_baseline_with_activations(
     """
 
     print("Loading train dataset")
-    train_dataset, _ = load_train_test(
+    train_dataset, val_dataset = load_train_test(
         dataset_path=config.dataset_path,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
+
     print("Loading eval datasets")
     eval_datasets = []
     for eval_dataset_path in config.eval_dataset_paths:
@@ -149,7 +150,10 @@ def run_data_efficiency_finetune_baseline_with_activations(
             finetune_baseline = FinetunedClassifier(finetune_config)
 
             # Train the finetune baseline:
-            finetune_baseline.train(subset)
+            finetune_baseline.train(
+                subset,
+                val_dataset=val_dataset,
+            )
 
             eval_dataset_aurocs = []
             eval_dataset_accuracies = []
@@ -282,6 +286,23 @@ def plot_data_efficiency_results(
     return fig
 
 
+def ensure_wandb_login():
+    """
+    Ensures wandb is logged in by checking login status and prompting if needed.
+    """
+    import wandb
+
+    try:
+        # Check if already logged in
+        wandb.ensure_configured()
+        if wandb.api.api_key is None:
+            print("WandB not logged in. Please enter your API key to log in.")
+            wandb.login()
+    except Exception as e:
+        print(f"Error checking wandb login status: {e}")
+        print("Please run 'wandb login' manually if you want to use wandb logging")
+
+
 if __name__ == "__main__":
     from models_under_pressure.config import (
         EVAL_DATASETS_BALANCED,
@@ -290,17 +311,20 @@ if __name__ == "__main__":
     )
     from models_under_pressure.interfaces.probes import ProbeSpec
 
+    ensure_wandb_login()
+
     config = DataEfficiencyConfig(
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 709],
+        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2000],
         probes=[
             ProbeSpec(
                 name="sklearn_mean_agg_probe",
                 hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
             ),
-            ProbeSpec(name="pytorch_per_token_probe",
+            ProbeSpec(
+                name="pytorch_per_token_probe",
                 hyperparams={
                     "batch_size": 16,
                     "epochs": 1,  # 20,
@@ -329,18 +353,21 @@ if __name__ == "__main__":
         },
         batch_size=8,
         shuffle=True,
-        logger=None,
+        logger={
+            "_target_": "pytorch_lightning.loggers.WandbLogger",
+            "project": "models-under-pressure",
+        },
         Trainer={
             "max_epochs": 20,  # 20,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
-            "default_root_dir": "~/.cache/models-under-pressure",
+            "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
             "accumulate_grad_batches": 2,
         },
     )
 
-    results = run_data_efficiency_experiment(config)
+    # results = run_data_efficiency_experiment(config)
     baseline_results = run_data_efficiency_finetune_baseline_with_activations(
         config, finetune_config
     )

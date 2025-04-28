@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
 import hydra
@@ -7,7 +8,6 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from jaxtyping import Float
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from sklearn.metrics import roc_auc_score, roc_curve
@@ -72,17 +72,17 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing accuracy"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing accuracy"
+        )
         return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing AUROC"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing AUROC"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -96,9 +96,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing TPR at FPR"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing TPR at FPR"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -422,23 +422,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert (
-            self._tokenizer is not None
-        ), "Tokenizer must be trained before it can be accessed"
+        assert self._tokenizer is not None, (
+            "Tokenizer must be trained before it can be accessed"
+        )
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert (
-            self._classifier is not None
-        ), "Classifier must be trained before it can be accessed"
+        assert self._classifier is not None, (
+            "Classifier must be trained before it can be accessed"
+        )
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert (
-            self._model is not None
-        ), "Model must be trained before it can be accessed"
+        assert self._model is not None, (
+            "Model must be trained before it can be accessed"
+        )
         return self._model
 
     def process_model_configs(self):
@@ -462,10 +462,7 @@ class FinetunedClassifier:
         return model_name_or_path, num_classes, cache_dir
 
     def train(
-        self,
-        dataset: LabelledDataset,
-        val_dataset: Optional[LabelledDataset] = None,
-        val_labels: Optional[Float[np.ndarray, " batch_size"]] = None,
+        self, dataset: LabelledDataset, val_dataset: Optional[LabelledDataset] = None
     ) -> Self:
         """
         Setup the dataset, logger, model checkpointing and train the model using pytorch
@@ -504,6 +501,12 @@ class FinetunedClassifier:
             dataset.remove_field("activations")
             dataset.remove_field("input_ids")
             dataset.remove_field("attention_mask")
+
+            if val_dataset is not None:
+                val_dataset.remove_field("activations")
+                val_dataset.remove_field("input_ids")
+                val_dataset.remove_field("attention_mask")
+
         except ValueError:
             print("No pre-existing activations to remove")
             pass
@@ -517,6 +520,15 @@ class FinetunedClassifier:
             collate_fn=collate_fn,
         )
 
+        if val_dataset is not None:
+            val_dataset_object = StakesDataset(val_dataset.to_pandas())
+            val_dataloader = DataLoader(
+                val_dataset_object,
+                batch_size=self.finetune_config.get("batch_size", 12),
+                shuffle=False,
+                collate_fn=collate_fn,
+            )
+
         # Create checkpoint callback:
         best_model_path_template = f"finetune-baselines-{model_name_or_path}"
         checkpoint_callback = ModelCheckpoint(
@@ -528,7 +540,10 @@ class FinetunedClassifier:
 
         # Create logger:
         if self.finetune_config.get("logger", None) is not None:
-            logger = hydra.utils.instantiate(self.finetune_config.get("logger"))
+            logger = hydra.utils.instantiate(
+                self.finetune_config.get("logger"),
+                name=f"finetune-baselines-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+            )
         else:
             logger = None
 
@@ -540,11 +555,14 @@ class FinetunedClassifier:
         )
 
         # Train the finetuned model:
-        self._trainer.fit(self.classifier, train_dataloader)
-        self._classifier_checkpoint = checkpoint_callback.best_model_path
+        if val_dataset is not None:
+            self._trainer.fit(self.classifier, train_dataloader, val_dataloader)
+        else:
+            self._trainer.fit(self.classifier, train_dataloader)
 
         # Load the best model checkpoint:
-        if val_dataset is not None and val_labels is not None:
+        if val_dataset is not None:
+            self._classifier_checkpoint = checkpoint_callback.best_model_path
             print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
             self._classifier = ClassifierModule.load_from_checkpoint(
                 self._classifier_checkpoint,
