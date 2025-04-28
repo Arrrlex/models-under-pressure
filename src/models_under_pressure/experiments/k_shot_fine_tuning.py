@@ -228,7 +228,7 @@ if __name__ == "__main__":
         layer=31,
         max_samples=None,
         # fine_tune_epochs=10,
-        eval_data_usage="combine",
+        eval_data_usage="only",
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
