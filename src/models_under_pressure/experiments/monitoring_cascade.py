@@ -53,14 +53,14 @@ def _run_monitoring_cascade(
     model_names: List[str],
     probe_model_name: str | None,
     probe_layer: int | None,
-    dataset_name: str,
+    dataset_names: List[str],
     train_dataset_path: Path,
     probe_spec: ProbeSpec,
     max_samples: Optional[int] = None,
     batch_size: int = 4,
     output_dir: Optional[Path] = None,
     compute_activations: bool = True,
-) -> tuple[List[LikelihoodBaselineResults], EvaluationResult | None, Path]:
+) -> tuple[List[LikelihoodBaselineResults], List[EvaluationResult], Path]:
     """Run a monitoring cascade experiment that evaluates both baselines and a probe.
 
     Args:
@@ -76,6 +76,11 @@ def _run_monitoring_cascade(
     Returns:
         Tuple of (baseline_results, probe_results, output_dir)
     """
+    if max_samples is not None:
+        print(
+            "Warning: In the current implementation, max_samples leads to different samples for different methods and the analysis part won't work!"
+        )
+
     # Create output directory
     if output_dir is None:
         date = datetime.now().strftime("%Y%m%d")
@@ -83,33 +88,11 @@ def _run_monitoring_cascade(
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Saving results to {output_dir}")
 
-    # Get dataset paths
-    eval_dataset_path = EVAL_DATASETS[dataset_name]
-
-    # Load and sample datasets once to ensure consistency
-    print("\nLoading datasets...")
-    if probe_model_name:
-        eval_dataset = load_dataset(
-            dataset_path=eval_dataset_path,
-            model_name=probe_model_name,
-            layer=probe_layer,
-            compute_activations=compute_activations,
-            n_per_class=max_samples // 2 if max_samples else None,
-        )
-    else:
-        # We don't need any activations in this case!
-        eval_dataset = LabelledDataset.load_from(eval_dataset_path)
-        if max_samples is not None and len(eval_dataset) > max_samples:
-            eval_dataset = subsample_balanced_subset(
-                eval_dataset, n_per_class=max_samples // 2
-            )
-
-    assert eval_dataset.other_fields["scale_labels"] is not None
-
     # Run baselines for each model
     baseline_results = []
     for model_name in model_names:
         print(f"\nRunning baseline for model: {model_name}")
+
         # Get model-specific baseline prompt
         baseline_prompt = get_model_baseline_prompt(model_name)
         print(f"Using baseline prompt: {baseline_prompt}")
@@ -117,18 +100,42 @@ def _run_monitoring_cascade(
         # Load model
         model = LLMModel.load(LOCAL_MODELS[model_name])
 
-        results = evaluate_likelihood_continuation_baseline(
-            model=model,
-            prompt_config=likelihood_continuation_prompts[baseline_prompt],
-            dataset_name=dataset_name,
-            dataset=eval_dataset,
-            dataset_path=eval_dataset_path,
-            max_samples=None,  # Don't sample again, use the pre-sampled dataset
-            batch_size=batch_size,
-        )
-        baseline_results.append(results)
-        # Save baseline results
-        results.save_to(output_dir / f"baseline_{model_name}.jsonl")
+        try:
+            for dataset_name in dataset_names:
+                print(
+                    f"\nRunning baseline for model: {model_name} on dataset: {dataset_name}"
+                )
+
+                # Get dataset paths
+                eval_dataset_path = EVAL_DATASETS[dataset_name]
+
+                # We don't need any activations in this case!
+                eval_dataset = LabelledDataset.load_from(eval_dataset_path)
+                if max_samples is not None and len(eval_dataset) > max_samples:
+                    eval_dataset = subsample_balanced_subset(
+                        eval_dataset, n_per_class=max_samples // 2
+                    )
+                assert eval_dataset.other_fields["scale_labels"] is not None
+
+                results = evaluate_likelihood_continuation_baseline(
+                    model=model,
+                    prompt_config=likelihood_continuation_prompts[baseline_prompt],
+                    dataset_name=dataset_name,
+                    dataset=eval_dataset,
+                    dataset_path=eval_dataset_path,
+                    max_samples=None,  # Don't sample again, use the pre-sampled dataset
+                    batch_size=batch_size,
+                )
+                baseline_results.append(results)
+                # Save baseline results
+                results.save_to(output_dir / f"baseline_{model_name}.jsonl")
+        finally:
+            # Ensure model is unloaded and GPU memory is freed
+            del model
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     if probe_model_name:
         assert probe_layer is not None
@@ -148,49 +155,63 @@ def _run_monitoring_cascade(
         )
 
         # Evaluate probe
-        print("\nEvaluating probe...")
-        probe_scores = probe.predict_proba(eval_dataset)  # .tolist()
-        dataset_results = DatasetResults(
-            layer=probe_layer,
-            metrics=calculate_metrics(
-                eval_dataset.labels_numpy(), probe_scores, fpr=0.01
-            ),
-        )
-
-        # Get the token counts from the activations array
-        # token_counts = eval_dataset.other_fields["activations"].shape[1]
-        token_counts = (
-            np.array(eval_dataset.other_fields["attention_mask"]).sum(axis=1).tolist()
-        )
-
-        # Create EvaluationResult with all scores and labels
-        probe_results = EvaluationResult(
-            config=EvalRunConfig(
-                id="monitoring_cascade",
-                layer=probe_layer,
-                probe_spec=probe_spec,
-                max_samples=max_samples,
-                dataset_path=train_dataset_path,
-                eval_datasets=[eval_dataset_path],
+        probe_results = []
+        for dataset_name in dataset_names:
+            eval_dataset = load_dataset(
+                dataset_path=eval_dataset_path,
                 model_name=probe_model_name,
+                layer=probe_layer,
                 compute_activations=compute_activations,
-            ),
-            dataset_name=dataset_name,
-            dataset_path=eval_dataset_path,
-            metrics=dataset_results,
-            method="linear_probe",
-            output_scores=probe_scores.tolist(),
-            output_labels=[int(score > 0.5) for score in probe_scores],
-            ground_truth_labels=eval_dataset.labels_numpy().tolist(),
-            token_counts=token_counts,
-            ids=list(eval_dataset.ids),
-            ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),  # type: ignore
-        )
+                n_per_class=max_samples // 2 if max_samples else None,
+            )
+            assert eval_dataset.other_fields["scale_labels"] is not None
 
-        # Save probe results
-        probe_results.save_to(output_dir / "probe_results.jsonl")
-    else:
-        probe_results = None
+            print("\nEvaluating probe...")
+            probe_scores = probe.predict_proba(eval_dataset)  # .tolist()
+            dataset_results = DatasetResults(
+                layer=probe_layer,
+                metrics=calculate_metrics(
+                    eval_dataset.labels_numpy(), probe_scores, fpr=0.01
+                ),
+            )
+
+            # Get the token counts from the activations array
+            # token_counts = eval_dataset.other_fields["activations"].shape[1]
+            token_counts = (
+                np.array(eval_dataset.other_fields["attention_mask"])
+                .sum(axis=1)
+                .tolist()
+            )
+
+            # Create EvaluationResult with all scores and labels
+            probe_result = EvaluationResult(
+                config=EvalRunConfig(
+                    id="monitoring_cascade",
+                    layer=probe_layer,
+                    probe_spec=probe_spec,
+                    max_samples=max_samples,
+                    dataset_path=train_dataset_path,
+                    eval_datasets=[eval_dataset_path],
+                    model_name=probe_model_name,
+                    compute_activations=compute_activations,
+                ),
+                dataset_name=dataset_name,
+                dataset_path=eval_dataset_path,
+                metrics=dataset_results,
+                method="linear_probe",
+                output_scores=probe_scores.tolist(),
+                output_labels=[int(score > 0.5) for score in probe_scores],
+                ground_truth_labels=eval_dataset.labels_numpy().tolist(),
+                token_counts=token_counts,
+                ids=list(eval_dataset.ids),
+                ground_truth_scale_labels=list(
+                    eval_dataset.other_fields["scale_labels"]
+                ),  # type: ignore
+            )
+
+            # Save probe results
+            probe_result.save_to(output_dir / "probe_results.jsonl")
+            probe_results.append(probe_result)
 
     return baseline_results, probe_results, output_dir
 
@@ -207,6 +228,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         cfg: Hydra configuration object
     """
     print(cfg)
+
     # Get probe layer from model config
     if cfg.probe_model_name:
         model_config_path = CONFIG_DIR / "model" / f"{cfg.probe_model_name}.yaml"
@@ -237,20 +259,19 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Convert train_dataset_path to Path object and resolve relative to DATA_DIR
         train_dataset_path = DATA_DIR / cfg.train_dataset_path
 
-        eval_datasets = cfg.eval_datasets if cfg.eval_datasets else EVAL_DATASETS.keys()
-        for eval_dataset in eval_datasets:
-            # Run the experiment
-            baseline_results, probe_results, output_dir = _run_monitoring_cascade(
-                model_names=cfg.model_names,
-                probe_model_name=cfg.probe_model_name,
-                probe_layer=cfg.probe_layer,
-                dataset_name=eval_dataset,
-                train_dataset_path=train_dataset_path,
-                probe_spec=probe_spec,
-                max_samples=cfg.max_samples,
-                batch_size=cfg.batch_size,
-                compute_activations=cfg.compute_activations,
-            )
+        baseline_results, probe_results, output_dir = _run_monitoring_cascade(
+            model_names=cfg.model_names,
+            probe_model_name=cfg.probe_model_name,
+            probe_layer=cfg.probe_layer,
+            dataset_names=cfg.eval_datasets
+            if cfg.eval_datasets
+            else EVAL_DATASETS.keys(),
+            train_dataset_path=train_dataset_path,
+            probe_spec=probe_spec,
+            max_samples=cfg.max_samples,
+            batch_size=cfg.batch_size,
+            compute_activations=cfg.compute_activations,
+        )
 
     if cfg.analyze_cascade:
         results_file = output_dir / "cascade_results.jsonl"
