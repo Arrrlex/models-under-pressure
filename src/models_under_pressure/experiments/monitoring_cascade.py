@@ -272,6 +272,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
                 results_file,
                 output_file=output_dir / "cascade_plot.pdf",
                 target_dataset=cfg.target_dataset,
+                show_difference_from_probe=cfg.show_difference_from_probe,
             )
 
 
@@ -701,13 +702,16 @@ def write_cascade_results_to_file(
         remaining_strategy: Strategy used for remaining samples (if applicable)
         dataset_name: Name of the dataset (if applicable)
     """
+    # Compute average FLOPs per sample
+    avg_flops_per_sample = sum(results.flops) / len(results.flops)
+
     result_dict = {
         "cascade_type": cascade_type,
         "baseline_model_name": model_name,
         "probe_model_name": probe_model_name,
         "fraction_of_samples": fraction_of_samples,
         "auroc": results.auroc,
-        "total_flops": sum(results.flops),
+        "avg_flops_per_sample": avg_flops_per_sample,
         "selection_strategy": selection_strategy,
         "remaining_strategy": remaining_strategy,
         "merge_strategy": merge_strategy,
@@ -912,6 +916,7 @@ def plot_cascade_results(
     figsize: tuple[int, int] = (10, 6),
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
+    show_difference_from_probe: bool = False,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -921,6 +926,7 @@ def plot_cascade_results(
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
+        show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
     """
     import json
     from collections import defaultdict
@@ -944,11 +950,22 @@ def plot_cascade_results(
 
     # Group results by method and fraction
     grouped_results = defaultdict(lambda: defaultdict(list))
-    probe_aurocs = []
+    probe_aurocs = defaultdict(list)  # Store probe AUROCs by dataset
 
+    # First pass: collect probe AUROCs for each dataset
     for result in results:
         if result["cascade_type"] == "probe":
-            probe_aurocs.append(result["auroc"])
+            dataset = result.get("dataset_name", "default")
+            probe_aurocs[dataset].append(result["auroc"])
+
+    # Calculate mean probe AUROC for each dataset
+    mean_probe_aurocs = {
+        dataset: float(np.mean(aurocs)) for dataset, aurocs in probe_aurocs.items()
+    }
+
+    # Second pass: process cascade results
+    for result in results:
+        if result["cascade_type"] == "probe":
             continue
 
         baseline_model = result.get("baseline_model_name")
@@ -967,8 +984,21 @@ def plot_cascade_results(
 
             # Group by fraction_of_samples
             fraction = result["fraction_of_samples"]
+            dataset = result.get("dataset_name", "default")
+            probe_auroc = mean_probe_aurocs.get(dataset, 0.0)
+
+            # Calculate AUROC value based on show_difference_from_probe flag
+            auroc_value = (
+                result["auroc"] - probe_auroc
+                if show_difference_from_probe
+                else result["auroc"]
+            )
+
             grouped_results[key][fraction].append(
-                {"auroc": result["auroc"], "flops": result["total_flops"]}
+                {
+                    "auroc": auroc_value,
+                    "avg_flops_per_sample": result["avg_flops_per_sample"],
+                }
             )
 
     # Set up the plot
@@ -995,25 +1025,6 @@ def plot_cascade_results(
         },
     }
 
-    # Plot probe performance as a horizontal line if available
-    if probe_aurocs:
-        mean_probe_auroc = float(np.mean(probe_aurocs))
-        std_probe_auroc = float(np.std(probe_aurocs))
-        plt.axhline(
-            y=mean_probe_auroc,
-            color="gray",
-            linestyle="--",
-            label="Probe Performance",
-            alpha=0.5,
-        )
-        plt.fill_between(
-            [0, 1e12],  # Arbitrary large x-range
-            mean_probe_auroc - std_probe_auroc,
-            mean_probe_auroc + std_probe_auroc,
-            color="gray",
-            alpha=0.1,
-        )
-
     # Plot each group
     for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
@@ -1033,18 +1044,18 @@ def plot_cascade_results(
         # Compute means and standard deviations for each fraction
         mean_aurocs = []
         std_aurocs = []
-        mean_flops = []
-        std_flops = []
+        mean_flops_per_sample = []
+        std_flops_per_sample = []
 
         for fraction in fractions:
             results = fraction_results[fraction]
             aurocs = [r["auroc"] for r in results]
-            flops = [r["flops"] for r in results]
+            flops = [r["avg_flops_per_sample"] for r in results]
 
             mean_aurocs.append(float(np.mean(aurocs)))
             std_aurocs.append(float(np.std(aurocs)))
-            mean_flops.append(float(np.mean(flops)))
-            std_flops.append(float(np.std(flops)))
+            mean_flops_per_sample.append(float(np.mean(flops)))
+            std_flops_per_sample.append(float(np.std(flops)))
 
         # Create label
         if cascade_type == "baseline":
@@ -1073,7 +1084,7 @@ def plot_cascade_results(
 
         # Plot line with shaded region
         plt.plot(
-            mean_flops,
+            mean_flops_per_sample,
             mean_aurocs,
             "o-",
             color=color,
@@ -1084,7 +1095,7 @@ def plot_cascade_results(
 
         # Add shaded region for uncertainty
         plt.fill_between(
-            mean_flops,
+            mean_flops_per_sample,
             np.array(mean_aurocs) - np.array(std_aurocs),
             np.array(mean_aurocs) + np.array(std_aurocs),
             color=color,
@@ -1093,7 +1104,7 @@ def plot_cascade_results(
 
         # Add fraction labels if enabled
         if show_fraction_labels:
-            for x, y, f in zip(mean_flops, mean_aurocs, fractions):
+            for x, y, f in zip(mean_flops_per_sample, mean_aurocs, fractions):
                 plt.annotate(
                     f"{f:.2f}",
                     (x, y),
@@ -1102,9 +1113,46 @@ def plot_cascade_results(
                     fontsize=8,
                 )
 
+    # Plot probe performance line after all other data
+    if show_difference_from_probe:
+        # For difference plot, show zero line as probe performance
+        plt.axhline(
+            y=0, color="gray", linestyle="--", label="Probe Performance", alpha=0.5
+        )
+    elif probe_aurocs:
+        # For absolute plot, show actual probe performance
+        mean_probe_auroc = float(
+            np.mean([auroc for aurocs in probe_aurocs.values() for auroc in aurocs])
+        )
+        std_probe_auroc = float(
+            np.std([auroc for aurocs in probe_aurocs.values() for auroc in aurocs])
+        )
+
+        # Get the x-axis limits after plotting all the data
+        x_min, x_max = plt.xlim()
+
+        plt.axhline(
+            y=mean_probe_auroc,
+            color="gray",
+            linestyle="--",
+            label="Probe Performance",
+            alpha=0.5,
+        )
+
+        plt.fill_between(
+            [x_min, x_max],  # Use actual x-axis range
+            mean_probe_auroc - std_probe_auroc,
+            mean_probe_auroc + std_probe_auroc,
+            color="gray",
+            alpha=0.1,
+        )
+
     # Customize plot
-    plt.xlabel("Total FLOPs (log scale)", fontsize=12)
-    plt.ylabel("AUROC", fontsize=12)
+    plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
+    plt.ylabel(
+        "AUROC Difference from Probe" if show_difference_from_probe else "AUROC",
+        fontsize=12,
+    )
     title = "Cascade Performance Tradeoff"
     if target_dataset:
         title += f" - {target_dataset}"
@@ -1119,15 +1167,7 @@ def plot_cascade_results(
 
     # Format x-axis ticks to be more readable
     ax = plt.gca()
-    ax.xaxis.set_major_formatter(
-        FuncFormatter(
-            lambda x, p: f"{x / 1e9:.0f}B"
-            if x >= 1e9
-            else f"{x / 1e6:.0f}M"
-            if x >= 1e6
-            else f"{x / 1e3:.0f}K"
-        )
-    )
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
 
     # Adjust layout
     plt.tight_layout()
