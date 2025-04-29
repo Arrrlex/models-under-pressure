@@ -60,7 +60,7 @@ def run_data_efficiency_experiment(
         DataEfficiencyResults containing probe performance metrics for each dataset size
     """
     print("Loading train dataset")
-    train_dataset, _ = load_train_test(
+    train_dataset, val_dataset = load_train_test(
         dataset_path=config.dataset_path,
         model_name=config.model_name,
         layer=config.layer,
@@ -84,7 +84,8 @@ def run_data_efficiency_experiment(
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
 
         for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
-            probe = ProbeFactory.build(probe=probe_spec, train_dataset=subset)
+            probe = ProbeFactory.build(probe=probe_spec, train_dataset=subset,
+             validation_dataset=val_dataset)
             metrics = evaluate_probe(probe, eval_datasets)
 
             probe_results.append(
@@ -144,41 +145,46 @@ def run_data_efficiency_finetune_baseline_with_activations(
     probe_results = []
 
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
+
+        # For each dataset size, subsample the train dataset and train the finetune baseline:
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
+        finetune_baseline = FinetunedClassifier(finetune_config)
 
-        for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
-            finetune_baseline = FinetunedClassifier(finetune_config)
+        # Train the finetune baseline:
+        finetune_baseline.train(
+            subset,
+            val_dataset=val_dataset,
+        )
 
-            # Train the finetune baseline:
-            finetune_baseline.train(
-                subset,
-                val_dataset=val_dataset,
+        eval_dataset_aurocs = []
+        eval_dataset_accuracies = []
+        eval_dataset_tpr_at_fprs = []
+
+        for eval_dataset in tqdm(eval_datasets, desc="Eval Datasets", leave=False):
+            results = finetune_baseline.get_results(eval_dataset)
+            eval_dataset_aurocs.append(results.auroc())
+            eval_dataset_accuracies.append(results.accuracy())
+            eval_dataset_tpr_at_fprs.append(results.tpr_at_fixed_fpr(fpr=0.01)[0])
+
+        # Calculate the metrics here:
+        metrics = {
+            "auroc": float(np.mean(eval_dataset_aurocs)),
+            "accuracy": float(np.mean(eval_dataset_accuracies)),
+            "tpr_at_fpr": float(np.mean(eval_dataset_tpr_at_fprs)),
+        }
+
+        probe_results.append(
+            ProbeDataEfficiencyResults(
+                probe=probe_spec,
+                dataset_size=dataset_size,
+                metrics=metrics,
             )
-
-            eval_dataset_aurocs = []
-            eval_dataset_accuracies = []
-            eval_dataset_tpr_at_fprs = []
-
-            for eval_dataset in tqdm(eval_datasets, desc="Eval Datasets", leave=False):
-                results = finetune_baseline.get_results(eval_dataset)
-                eval_dataset_aurocs.append(results.auroc())
-                eval_dataset_accuracies.append(results.accuracy())
-                eval_dataset_tpr_at_fprs.append(results.tpr_at_fixed_fpr(fpr=0.01)[0])
-
-            # Calculate the metrics here:
-            metrics = {
-                "auroc": float(np.mean(eval_dataset_aurocs)),
-                "accuracy": float(np.mean(eval_dataset_accuracies)),
-                "tpr_at_fpr": float(np.mean(eval_dataset_tpr_at_fprs)),
-            }
-
-            probe_results.append(
-                ProbeDataEfficiencyResults(
-                    probe=probe_spec,
-                    dataset_size=dataset_size,
-                    metrics=metrics,
-                )
-            )
+        )
+        
+        # After each eval, clear the cache, delete the baseline model and dataset subset.
+        torch.cuda.empty_cache()
+        del finetune_baseline
+        del subset
 
     # Incorporate the baseline results into the config:
     results = DataEfficiencyResults(
@@ -317,7 +323,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2000],
+        dataset_sizes=[1910], #[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
         probes=[
             ProbeSpec(
                 name="sklearn_mean_agg_probe",
@@ -326,11 +332,12 @@ if __name__ == "__main__":
             ProbeSpec(
                 name="pytorch_per_token_probe",
                 hyperparams={
-                    "batch_size": 16,
-                    "epochs": 1,  # 20,
+                    "batch_size": 500,
+                    "epochs": 100,  # 20,
                     "device": "cpu",
                     "learning_rate": 1e-3,
-                    "weight_decay": 10,
+                    "weight_decay": 1.0,
+                    "gradient_accumulation_steps": 4,
                     "optimizer_args": {"lr": 1e-3, "weight_decay": 0.1},
                 },
             ),

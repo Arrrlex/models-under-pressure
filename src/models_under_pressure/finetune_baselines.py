@@ -594,6 +594,7 @@ class FinetunedClassifier:
 
         return self.get_results(dataset).probits.tolist()
 
+    @torch.no_grad()
     def get_results(self, dataset: BaseDataset) -> BaselineResults:
         """
         Using the provided dataset, test the finetuned model and return the BaselineResults

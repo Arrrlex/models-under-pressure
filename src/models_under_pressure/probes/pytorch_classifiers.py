@@ -43,7 +43,6 @@ class PytorchLinearClassifier:
         """
         self.model = self.create_model(activations.embed_dim, **model_kwargs)
         self.model = self.model.to(self.device).to(self.dtype)
-        activations = activations.to(self.device, self.dtype)
         return self.model, activations
 
     def train(
@@ -62,6 +61,7 @@ class PytorchLinearClassifier:
             y: The labels to train on.
             validation_activations: Optional validation activations.
             validation_labels: Optional validation labels.
+            print_gradient_norm: Whether to print gradient norm during training.
 
         Returns:
             Self - The trained classifier.
@@ -87,19 +87,31 @@ class PytorchLinearClassifier:
         best_val_loss = float("inf")
         best_model_state = None
 
+        # Get gradient accumulation steps from training args, default to 1
+        gradient_accumulation_steps = self.training_args.get("gradient_accumulation_steps", 1)
+
         # Training loop
         for epoch in range(self.training_args["epochs"]):
             self.model.train()
             running_loss = 0.0
+            optimizer.zero_grad()  # Zero gradients at the start of each epoch
+            
             pbar = tqdm(
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
+            
             for batch_idx, batch in enumerate(pbar):
                 batch_acts, _, _, batch_y = batch
 
-                optimizer.zero_grad()
+                if batch_acts.shape[0] == 1:
+                    print(f"Skipping batch {batch_idx} because it has only 1 token")
+                    continue
+
                 outputs = self.model(batch_acts)
                 loss = criterion(outputs.squeeze(), batch_y)
+                
+                # Scale loss by gradient accumulation steps
+                loss = loss / gradient_accumulation_steps
                 loss.backward()
 
                 if print_gradient_norm:
@@ -112,11 +124,13 @@ class PytorchLinearClassifier:
                     total_norm = total_norm**0.5
                     print(f"gradient norm: {total_norm}")
 
-                optimizer.step()
-                loss = loss.item()
+                # Only step optimizer and zero gradients after accumulating enough steps
+                if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                # Update running loss and progress bar
-                running_loss += loss
+                # Update running loss (multiply by gradient_accumulation_steps to get actual loss)
+                running_loss += loss.item() * gradient_accumulation_steps
                 avg_loss = running_loss / (batch_idx + 1)
                 pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
 
@@ -344,22 +358,30 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         best_val_loss = float("inf")
         best_model_state = None
 
+        # Get gradient accumulation steps from training args, default to 1
+        gradient_accumulation_steps = self.training_args.get("gradient_accumulation_steps", 1)
+
         # Training loop
         self.model.train()
         for epoch in range(self.training_args["epochs"]):
             running_loss = 0.0
+            optimizer.zero_grad()  # Zero gradients at the start of each epoch
+            
             pbar = tqdm(
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
+            
             for batch_idx, batch in enumerate(pbar):
                 batch_acts, batch_mask, _, batch_y = batch
 
                 mean_acts = masked_mean(batch_acts, batch_mask)
 
-                # Standard training step for AdamW
-                optimizer.zero_grad()
+                # Forward pass
                 outputs = self.model(mean_acts)
                 loss = criterion(outputs.squeeze(), batch_y)
+                
+                # Scale loss by gradient accumulation steps
+                loss = loss / gradient_accumulation_steps
                 loss.backward()
 
                 if print_gradient_norm:
@@ -372,11 +394,13 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                     total_norm = total_norm**0.5
                     print(f"gradient norm: {total_norm}")
 
-                optimizer.step()
-                loss = loss.item()
+                # Only step optimizer and zero gradients after accumulating enough steps
+                if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                # Update running loss and progress bar
-                running_loss += loss
+                # Update running loss (multiply by gradient_accumulation_steps to get actual loss)
+                running_loss += loss.item() * gradient_accumulation_steps
                 avg_loss = running_loss / (batch_idx + 1)
                 pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
 
