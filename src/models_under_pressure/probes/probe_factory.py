@@ -87,6 +87,11 @@ class ProbeFactory:
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
             ).fit(train_dataset, validation_dataset=validation_dataset)
+        elif probe.name == "sklearn_gp_per_entry_probe":
+            return SklearnProbe(
+                probe_type="GaussianProcessClassifier",
+                hyper_params=probe.hyperparams,
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 
