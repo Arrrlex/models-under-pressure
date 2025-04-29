@@ -21,6 +21,7 @@ from typing import (
 import datasets
 import numpy as np
 import pandas as pd
+import plotext as plt
 import torch
 from jaxtyping import Float
 from pydantic import BaseModel, Field, model_validator
@@ -471,6 +472,7 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
     def print_label_distribution(self) -> Dict[str, float]:
         """
         Calculates and prints the distribution of labels in the dataset.
+        If scale_labels are available, also prints a terminal-based bar chart.
 
         Returns:
             A dictionary mapping label names to their percentage in the dataset
@@ -496,6 +498,27 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
         for label, percentage in sorted(label_percentages.items()):
             count = label_counts[label]
             print(f"  {label}: {count} examples ({percentage:.2f}%)")
+
+        # If scale_labels are available, print bar chart
+        if "scale_labels" in self.other_fields:
+            print("\nScale labels distribution:")
+            # Convert scale_labels (strings) to integers
+            scale_labels = np.array(
+                [int(s) for s in self.other_fields["scale_labels"]], dtype=int
+            )
+            # Count occurrences of each scale label
+            scale_counts = np.bincount(scale_labels, minlength=10)[
+                1:
+            ]  # Skip 0, use 1-9
+            # Set terminal-friendly style
+            plt.clear_figure()
+            plt.theme("matrix")  # Use matrix theme for dark background
+            plt.bar(range(1, 10), scale_counts, color="blue")
+            plt.title("Scale Labels Distribution")
+            plt.xlabel("Scale Label")
+            plt.ylabel("Count")
+            plt.xticks(range(1, 10))  # Set x-axis ticks to 1-9
+            plt.show()
 
         return label_percentages
 
