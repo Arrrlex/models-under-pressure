@@ -167,9 +167,9 @@ def run_data_efficiency_finetune_baseline_with_activations(
 
             # Calculate the metrics here:
             metrics = {
-                "auroc": np.mean(eval_dataset_aurocs),
-                "accuracy": np.mean(eval_dataset_accuracies),
-                "tpr_at_fpr": np.mean(eval_dataset_tpr_at_fprs),
+                "auroc": float(np.mean(eval_dataset_aurocs)),
+                "accuracy": float(np.mean(eval_dataset_accuracies)),
+                "tpr_at_fpr": float(np.mean(eval_dataset_tpr_at_fprs)),
             }
 
             probe_results.append(
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         num_classes=2,
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
-            "weight_decay": 0.0,
+            "weight_decay": 1.0,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
@@ -358,7 +358,7 @@ if __name__ == "__main__":
             "project": "models-under-pressure",
         },
         Trainer={
-            "max_epochs": 20,  # 20,
+            "max_epochs": 1,  # 20,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
@@ -367,7 +367,7 @@ if __name__ == "__main__":
         },
     )
 
-    # results = run_data_efficiency_experiment(config)
+    results = run_data_efficiency_experiment(config)
     baseline_results = run_data_efficiency_finetune_baseline_with_activations(
         config, finetune_config
     )

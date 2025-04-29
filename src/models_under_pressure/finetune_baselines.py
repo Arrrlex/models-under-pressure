@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
 from transformers import (
@@ -72,17 +73,17 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing accuracy"
-        )
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing accuracy"
         return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing AUROC"
-        )
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing AUROC"
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -96,9 +97,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert self._labels is not None and self._logits is not None, (
-            "Labels and logits must be set before computing TPR at FPR"
-        )
+        assert (
+            self._labels is not None and self._logits is not None
+        ), "Labels and logits must be set before computing TPR at FPR"
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -305,6 +306,12 @@ class ClassifierModule(pl.LightningModule):
     def reset_test_results(self):
         self.test_results = BaselineResults()
 
+    def on_before_optimizer_step(self, optimizer: torch.optim.Optimizer):
+        # Compute the 2-norm for each layer
+        # If using mixed precision, the gradients are already unscaled here
+        norms = grad_norm(self.model, norm_type=2)
+        self.log_dict(norms)
+
 
 class LLMModel(nn.Module):
     """
@@ -346,6 +353,7 @@ class LLMModel(nn.Module):
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
+        # TODO: Is this memory efficient? Implement like Gemma-Shield with specific tokens used as classifier tokens.
         outputs = self.model(input_ids, attention_mask, output_hidden_states=True)
         outputs.hidden_states[-1]  # Get the last layer's hidden states
         # Put the last sequence token through a classifier layer:
@@ -422,23 +430,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert self._tokenizer is not None, (
-            "Tokenizer must be trained before it can be accessed"
-        )
+        assert (
+            self._tokenizer is not None
+        ), "Tokenizer must be trained before it can be accessed"
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert self._classifier is not None, (
-            "Classifier must be trained before it can be accessed"
-        )
+        assert (
+            self._classifier is not None
+        ), "Classifier must be trained before it can be accessed"
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert self._model is not None, (
-            "Model must be trained before it can be accessed"
-        )
+        assert (
+            self._model is not None
+        ), "Model must be trained before it can be accessed"
         return self._model
 
     def process_model_configs(self):
@@ -486,7 +494,7 @@ class FinetunedClassifier:
         )
 
         # Create the pytorch lightning module:
-        self._classifier = ClassifierModule(
+        self._classifier = ClassifierModule(  # TODO: Have I accounted for the attention mask in this code!
             model=self.model,
             num_classes=num_classes,
             **self.finetune_config.get("ClassifierModule", {}),
@@ -496,23 +504,20 @@ class FinetunedClassifier:
         collate_fn = create_collate_fn(self.tokenizer)
 
         # Remove pre-existing activations from the dataset:
-        try:
+        try:  # TODO: Use drop cols as consistent method...
             print("Try removing pre-existing activations from the dataset")
             dataset.remove_field("activations")
             dataset.remove_field("input_ids")
             dataset.remove_field("attention_mask")
-
             if val_dataset is not None:
                 val_dataset.remove_field("activations")
                 val_dataset.remove_field("input_ids")
                 val_dataset.remove_field("attention_mask")
-
         except ValueError:
             print("No pre-existing activations to remove")
             pass
 
         train_dataset = StakesDataset(dataset.to_pandas())
-
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=self.finetune_config.get("batch_size", 12),
@@ -546,8 +551,6 @@ class FinetunedClassifier:
             )
         else:
             logger = None
-
-        print("logger.name=", logger.name)
 
         # Setup the pytorch lightning trainer:
         self._trainer = pl.Trainer(
