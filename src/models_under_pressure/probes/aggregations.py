@@ -1,7 +1,7 @@
 import einops
 import torch
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from jaxtyping import Float
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
 class Last:

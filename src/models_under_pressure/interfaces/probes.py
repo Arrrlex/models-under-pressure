@@ -1,6 +1,6 @@
 from enum import Enum
-from pydantic import BaseModel
-from pydantic import JsonValue
+
+from pydantic import BaseModel, JsonValue
 
 
 class ProbeType(str, Enum):
@@ -10,6 +10,7 @@ class ProbeType(str, Enum):
     lda = "lda"
     per_token = "per_token"
     attention = "attention"
+    simple_attention = "simple_attention"
 
 
 class ProbeSpec(BaseModel):

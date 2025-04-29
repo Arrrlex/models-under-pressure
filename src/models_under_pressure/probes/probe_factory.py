@@ -1,26 +1,28 @@
+from transformers.models.auto.tokenization_auto import AutoTokenizer
+
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
+from models_under_pressure.probes.aggregations import (
+    Last,
+    Max,
+    MaxOfRollingMean,
+    MaxOfSentenceMeans,
+    Mean,
+    MeanOfTopK,
+)
+from models_under_pressure.probes.base import Aggregation
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
     PytorchLinearClassifier,
     PytorchPerEntryLinearClassifier,
-)
-from models_under_pressure.probes.base import Aggregation
-from models_under_pressure.probes.aggregations import (
-    Last,
-    Max,
-    MaxOfRollingMean,
-    Mean,
-    MeanOfTopK,
-    MaxOfSentenceMeans,
+    PytorchSimpleAttentionClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
     SklearnProbe,
 )
-from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 
 class ProbeFactory:
@@ -72,6 +74,11 @@ class ProbeFactory:
                 )
             case ProbeType.attention:
                 classifier = PytorchAttentionClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
+                )
+            case ProbeType.simple_attention:
+                classifier = PytorchSimpleAttentionClassifier(
                     training_args=probe_spec.hyperparams,
                     aggregation=aggregation,
                 )

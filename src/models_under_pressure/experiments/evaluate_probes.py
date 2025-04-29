@@ -25,14 +25,18 @@ from models_under_pressure.probes.pytorch_classifiers import (
     AttentionProbeAttnWeightLogits,
     PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
+    PytorchSimpleAttentionClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config
 
 
-def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
-    return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
+def inv_softmax(x: list[np.ndarray] | np.ndarray) -> list[list[float]]:
+    if isinstance(x, np.ndarray):
+        return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
+    else:
+        return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
 
 
 def calculate_metrics(
@@ -153,18 +157,23 @@ def get_coefs(probe: Probe) -> list[float]:
     elif isinstance(probe, PytorchProbe):
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
-            coefs = list(
-                probe._classifier.model.weight.data.cpu().float().numpy().flatten()
-            )  # type: ignore
+            if probe._classifier.model is None:
+                raise ValueError("Classifier model is None")
+            else:
+                coefs = list(
+                    probe._classifier.model.weight.data.cpu().float().numpy().flatten()  # type: ignore
+                )
         elif isinstance(probe._classifier, PytorchAttentionClassifier):
             # For attention probe, get the weights from the final linear layer
             model = probe._classifier.model
             if isinstance(model, AttentionProbeAttnThenLinear):
                 coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
             elif isinstance(model, AttentionProbeAttnWeightLogits):
-                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())
             else:
                 raise ValueError(f"Unknown attention probe model type: {type(model)}")
+        elif isinstance(probe._classifier, PytorchSimpleAttentionClassifier):
+            coefs = list([])  # type: ignore
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
             coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
@@ -274,20 +283,20 @@ def run_evaluation(
     print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
     for result in results_list:
         result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
-    coefs_dict = {
-        "id": config.id,
-        "coefs": coefs[0].tolist(),  # type: ignore
-    }
-    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-        json.dump(coefs_dict, f)
+    if len(coefs) > 0:
+        coefs_dict = {
+            "id": config.id,
+            "coefs": coefs[0].tolist(),  # type: ignore
+        }
+        with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+            json.dump(coefs_dict, f)
 
     return results_list, coefs
 
 
 if __name__ == "__main__":
     # Set random seed for reproducibility
-    RANDOM_SEED = 0
+    RANDOM_SEED = 42
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
