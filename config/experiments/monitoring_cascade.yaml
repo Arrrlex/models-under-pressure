@@ -2,6 +2,12 @@
 defaults:
   - /probe: pytorch_per_entry_probe_mean  # or any other probe type
 
+#TODO Would make sense to split this experiment into computing results
+# and creating cascade+plot, as you otherwise end up changing this config
+# a lot.
+
+# NOTE: You might want to run this one mode at a time,
+# as memory apparently isn't cleared properly.
 model_names:
   - llama-70b
   - gemma-27b
@@ -9,7 +15,7 @@ model_names:
   - llama-8b
   - llama-1b
   - gemma-1b
-first_baseline_model_name: llama-1b
+first_baseline_model_name: gemma-12b
 #probe_model_name: llama-70b
 probe_model_name: null
 probe_layer: null
@@ -17,8 +23,9 @@ eval_datasets: ["toolace", "mt", "mts", "mask"]
 train_dataset_path: training/original_doubled_unconfounded/train.jsonl
 max_samples: null
 batch_size: 4
-compute_activations: true
-compute_results: true
-compute_cascade: false
-plot_results: false
+compute_activations: true  # If false, activations will be read from the store
+compute_results: false
+compute_cascade: true
+plot_results: true
 output_dir: data/results/monitoring_cascade
+target_dataset: null  # If specified, only compute/plot results for this dataset

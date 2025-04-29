@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -260,15 +261,17 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             if results_file.exists():
                 results_file.unlink()
             compute_cascade_results(
-                baseline_results,
-                probe_results,
-                results_file,
-                cfg.first_baseline_model_name,
+                baseline_results_by_dataset=baseline_results,
+                probe_results_by_dataset=probe_results,
+                results_file=results_file,
+                first_baseline_model_name=cfg.first_baseline_model_name,
+                target_dataset=cfg.target_dataset,
             )
         if cfg.plot_results:
             plot_cascade_results(
                 results_file,
                 output_file=output_dir / "cascade_plot.pdf",
+                target_dataset=cfg.target_dataset,
             )
 
 
@@ -683,6 +686,7 @@ def write_cascade_results_to_file(
     selection_strategy: Optional[str] = None,
     remaining_strategy: Optional[str] = None,
     merge_strategy: Optional[str] = None,
+    dataset_name: Optional[str] = None,
 ) -> None:
     """Write cascade results to a JSONL file.
 
@@ -695,6 +699,7 @@ def write_cascade_results_to_file(
         fraction_of_samples: Fraction of samples used
         selection_strategy: Strategy used for selecting samples (if applicable)
         remaining_strategy: Strategy used for remaining samples (if applicable)
+        dataset_name: Name of the dataset (if applicable)
     """
     result_dict = {
         "cascade_type": cascade_type,
@@ -707,6 +712,7 @@ def write_cascade_results_to_file(
         "remaining_strategy": remaining_strategy,
         "merge_strategy": merge_strategy,
         "timestamp": datetime.now().isoformat(),
+        "dataset_name": dataset_name,
     }
 
     with open(output_file, "a") as f:
@@ -714,146 +720,181 @@ def write_cascade_results_to_file(
 
 
 def compute_cascade_results(
-    baseline_results: List[LikelihoodBaselineResults],
-    probe_results: EvaluationResult,
+    baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
+    probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
     first_baseline_model_name: Optional[str] = None,
+    target_dataset: Optional[str] = None,
 ):
+    """Compute cascade results for all datasets or a specific dataset.
+
+    Args:
+        baseline_results_by_dataset: Dictionary mapping dataset names to baseline results
+        probe_results_by_dataset: Dictionary mapping dataset names to probe results
+        results_file: Path to save results to
+        first_baseline_model_name: Name of the first baseline model for two-step cascades
+        target_dataset: If specified, only compute results for this dataset
+    """
     fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
-    # Evaluate baseline cascades
-    print("\nBaseline Results:")
-    for result in baseline_results:
-        for fraction_of_samples in fraction_of_sample_options + (
-            [1.0] if 1.0 not in fraction_of_sample_options else []
-        ):
-            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
-            cascade_results = evaluate_single_baseline_cascade(
-                result, fraction_of_samples=fraction_of_samples
-            )
+    # Get datasets to process
+    datasets = (
+        [target_dataset] if target_dataset else baseline_results_by_dataset.keys()
+    )
+
+    for dataset_name in datasets:
+        baseline_results = baseline_results_by_dataset.get(dataset_name, [])
+        probe_results = probe_results_by_dataset.get(dataset_name)
+
+        if not baseline_results:
+            print(f"No baseline results found for dataset {dataset_name}")
+            continue
+
+        # Evaluate baseline cascades
+        print(f"\nBaseline Results for {dataset_name}:")
+        for result in baseline_results:
+            for fraction_of_samples in fraction_of_sample_options + (
+                [1.0] if 1.0 not in fraction_of_sample_options else []
+            ):
+                print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+                cascade_results = evaluate_single_baseline_cascade(
+                    result, fraction_of_samples=fraction_of_samples
+                )
+                print(f"- AUROC: {cascade_results.auroc:.3f}")
+                print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+
+                # Write results to file
+                write_cascade_results_to_file(
+                    results=cascade_results,
+                    output_file=results_file,
+                    cascade_type="baseline",
+                    model_name=result.model_name,
+                    probe_model_name=None,
+                    fraction_of_samples=fraction_of_samples,
+                    dataset_name=dataset_name,
+                )
+
+        if probe_results:
+            # Evaluate probe cascade
+            print(f"\nProbe Results for {dataset_name}:")
+            cascade_results = evaluate_single_probe_cascade(probe_results)
             print(f"- AUROC: {cascade_results.auroc:.3f}")
             print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
-            # Write results to file
+            # Write probe results to file
             write_cascade_results_to_file(
                 results=cascade_results,
                 output_file=results_file,
-                cascade_type="baseline",
-                model_name=result.model_name,
-                probe_model_name=None,
-                fraction_of_samples=fraction_of_samples,
+                cascade_type="probe",
+                model_name=None,
+                probe_model_name=probe_results.config.model_name,
+                fraction_of_samples=1.0,
+                dataset_name=dataset_name,
             )
 
-    # Evaluate probe cascade
-    print("\nProbe Results:")
-    cascade_results = evaluate_single_probe_cascade(probe_results)
-    print(f"- AUROC: {cascade_results.auroc:.3f}")
-    print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+            # Evaluate probe baseline cascade for all models
+            selection_strategies = ["mid"]  # , "top", "bottom"]
+            merge_strategies = ["mean"]  # , "max", "baseline"]
+            remaining_strategies = ["first"]
+            strategies = []
+            for selection_strategy in selection_strategies:
+                for merge_strategy in merge_strategies:
+                    for remaining_strategy in remaining_strategies:
+                        strategies.append(
+                            {
+                                "selection_strategy": selection_strategy,
+                                "remaining_strategy": remaining_strategy,
+                                "merge_strategy": merge_strategy,
+                            }
+                        )
 
-    # Write probe results to file
-    write_cascade_results_to_file(
-        results=cascade_results,
-        output_file=results_file,
-        cascade_type="probe",
-        model_name=None,
-        probe_model_name=probe_results.config.model_name,
-        fraction_of_samples=1.0,
-    )
-
-    # Evaluate probe baseline cascade for all models
-    selection_strategies = ["mid"]  # , "top", "bottom"]
-    merge_strategies = ["mean"]  # , "max", "baseline"]
-    remaining_strategies = ["first"]
-    strategies = []
-    for selection_strategy in selection_strategies:
-        for merge_strategy in merge_strategies:
-            for remaining_strategy in remaining_strategies:
-                strategies.append(
-                    {
-                        "selection_strategy": selection_strategy,
-                        "remaining_strategy": remaining_strategy,
-                        "merge_strategy": merge_strategy,
-                    }
-                )
-
-    print("\nProbe+Baseline Cascade Results:")
-    for baseline_result in baseline_results:
-        for fraction_of_samples in fraction_of_sample_options:
-            for strategy in strategies:
-                print(
-                    f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
-                )
-                print(f"Strategy: {strategy}")
-                probe_baseline_cascade_results = evaluate_probe_baseline_cascade(
-                    baseline_results=baseline_result,
-                    probe_results=probe_results,
-                    fraction_of_samples=fraction_of_samples,
-                    **strategy,
-                )
-                print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
-                print(f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}")
-
-                # Write probe baseline cascade results to file
-                write_cascade_results_to_file(
-                    results=probe_baseline_cascade_results,
-                    output_file=results_file,
-                    cascade_type="probe_baseline",
-                    model_name=baseline_result.model_name,
-                    probe_model_name=probe_results.config.model_name,
-                    fraction_of_samples=fraction_of_samples,
-                    **strategy,
-                )
-
-    # Evaluate two-step baseline cascades if first_baseline_model_name is provided
-    if first_baseline_model_name:
-        print("\nTwo-Step Baseline Cascade Results:")
-        # Find the first baseline results
-        first_baseline_result = next(
-            (
-                r
-                for r in baseline_results
-                if get_abbreviated_model_name(r.model_name) == first_baseline_model_name
-            ),
-            None,
-        )
-        if first_baseline_result:
-            # For each other baseline, create a two-step cascade
-            for second_baseline_result in baseline_results:
-                if (
-                    get_abbreviated_model_name(second_baseline_result.model_name)
-                    != first_baseline_model_name
-                ):
-                    for fraction_of_samples in fraction_of_sample_options:
-                        strategy = {
-                            "selection_strategy": "mid",
-                            "remaining_strategy": "first",
-                            "merge_strategy": "mean",
-                        }
+            print(f"\nProbe+Baseline Cascade Results for {dataset_name}:")
+            for baseline_result in baseline_results:
+                for fraction_of_samples in fraction_of_sample_options:
+                    for strategy in strategies:
                         print(
-                            f"\nTwo-step cascade with fraction of samples: {fraction_of_samples}"
+                            f"\nCascade with fraction of samples: {fraction_of_samples} (baseline model: {baseline_result.model_name})"
                         )
+                        print(f"Strategy: {strategy}")
+                        probe_baseline_cascade_results = (
+                            evaluate_probe_baseline_cascade(
+                                baseline_results=baseline_result,
+                                probe_results=probe_results,
+                                fraction_of_samples=fraction_of_samples,
+                                **strategy,
+                            )
+                        )
+                        print(f"- AUROC: {probe_baseline_cascade_results.auroc:.3f}")
                         print(
-                            f"First baseline: {first_baseline_model_name}, Second baseline: {second_baseline_result.model_name}"
+                            f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}"
                         )
-                        two_step_cascade_results = evaluate_two_baselines_cascade(
-                            first_baseline_results=first_baseline_result,
-                            second_baseline_results=second_baseline_result,
-                            fraction_of_samples=fraction_of_samples,
-                            **strategy,
-                        )
-                        print(f"- AUROC: {two_step_cascade_results.auroc:.3f}")
-                        print(f"- Total FLOPs: {sum(two_step_cascade_results.flops)}")
 
-                        # Write two-step baseline cascade results to file
+                        # Write probe baseline cascade results to file
                         write_cascade_results_to_file(
-                            results=two_step_cascade_results,
+                            results=probe_baseline_cascade_results,
                             output_file=results_file,
-                            cascade_type="two_step_baseline",
-                            model_name=second_baseline_result.model_name,  # Use second baseline for color matching
-                            probe_model_name=first_baseline_model_name,  # Use first baseline as probe_model_name
+                            cascade_type="probe_baseline",
+                            model_name=baseline_result.model_name,
+                            probe_model_name=probe_results.config.model_name,
                             fraction_of_samples=fraction_of_samples,
+                            dataset_name=dataset_name,
                             **strategy,
                         )
+
+        # Evaluate two-step baseline cascades if first_baseline_model_name is provided
+        if first_baseline_model_name:
+            print(f"\nTwo-Step Baseline Cascade Results for {dataset_name}:")
+            # Find the first baseline results
+            first_baseline_result = next(
+                (
+                    r
+                    for r in baseline_results
+                    if get_abbreviated_model_name(r.model_name)
+                    == first_baseline_model_name
+                ),
+                None,
+            )
+            if first_baseline_result:
+                # For each other baseline, create a two-step cascade
+                for second_baseline_result in baseline_results:
+                    if (
+                        get_abbreviated_model_name(second_baseline_result.model_name)
+                        != first_baseline_model_name
+                    ):
+                        for fraction_of_samples in fraction_of_sample_options:
+                            strategy = {
+                                "selection_strategy": "mid",
+                                "remaining_strategy": "first",
+                                "merge_strategy": "mean",
+                            }
+                            print(
+                                f"\nTwo-step cascade with fraction of samples: {fraction_of_samples}"
+                            )
+                            print(
+                                f"First baseline: {first_baseline_model_name}, Second baseline: {second_baseline_result.model_name}"
+                            )
+                            two_step_cascade_results = evaluate_two_baselines_cascade(
+                                first_baseline_results=first_baseline_result,
+                                second_baseline_results=second_baseline_result,
+                                fraction_of_samples=fraction_of_samples,
+                                **strategy,
+                            )
+                            print(f"- AUROC: {two_step_cascade_results.auroc:.3f}")
+                            print(
+                                f"- Total FLOPs: {sum(two_step_cascade_results.flops)}"
+                            )
+
+                            # Write two-step baseline cascade results to file
+                            write_cascade_results_to_file(
+                                results=two_step_cascade_results,
+                                output_file=results_file,
+                                cascade_type="two_step_baseline",
+                                model_name=second_baseline_result.model_name,  # Use second baseline for color matching
+                                probe_model_name=first_baseline_model_name,  # Use first baseline as probe_model_name
+                                fraction_of_samples=fraction_of_samples,
+                                dataset_name=dataset_name,
+                                **strategy,
+                            )
 
 
 def get_abbreviated_model_name(full_name: str) -> str:
@@ -870,6 +911,7 @@ def plot_cascade_results(
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (10, 6),
     show_fraction_labels: bool = False,
+    target_dataset: Optional[str] = None,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -878,11 +920,13 @@ def plot_cascade_results(
         output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
+        target_dataset: If specified, only plot results for this dataset
     """
     import json
     from collections import defaultdict
 
     import matplotlib.pyplot as plt
+    import numpy as np
     import seaborn as sns
     from matplotlib.ticker import FuncFormatter
 
@@ -891,19 +935,25 @@ def plot_cascade_results(
     with open(results_file) as f:
         for line in f:
             if line.strip():
-                results.append(json.loads(line))
+                result = json.loads(line)
+                if (
+                    target_dataset is None
+                    or result.get("dataset_name") == target_dataset
+                ):
+                    results.append(result)
 
-    # Group results by baseline model first, then by cascade type and strategies
-    grouped_results = defaultdict(list)
-    probe_auroc = None
+    # Group results by method and fraction
+    grouped_results = defaultdict(lambda: defaultdict(list))
+    probe_aurocs = []
+
     for result in results:
         if result["cascade_type"] == "probe":
-            probe_auroc = result["auroc"]
+            probe_aurocs.append(result["auroc"])
             continue
 
         baseline_model = result.get("baseline_model_name")
         if baseline_model:
-            # For probe_baseline and two_step_baseline, include strategies in the key
+            # Create a unique key for each method
             if result["cascade_type"] in ["probe_baseline", "two_step_baseline"]:
                 key = (
                     baseline_model,
@@ -914,7 +964,12 @@ def plot_cascade_results(
                 )
             else:  # baseline
                 key = (baseline_model, result["cascade_type"])
-            grouped_results[key].append(result)
+
+            # Group by fraction_of_samples
+            fraction = result["fraction_of_samples"]
+            grouped_results[key][fraction].append(
+                {"auroc": result["auroc"], "flops": result["total_flops"]}
+            )
 
     # Set up the plot
     plt.figure(figsize=figsize)
@@ -941,17 +996,26 @@ def plot_cascade_results(
     }
 
     # Plot probe performance as a horizontal line if available
-    if probe_auroc is not None:
+    if probe_aurocs:
+        mean_probe_auroc = float(np.mean(probe_aurocs))
+        std_probe_auroc = float(np.std(probe_aurocs))
         plt.axhline(
-            y=probe_auroc,
+            y=mean_probe_auroc,
             color="gray",
             linestyle="--",
             label="Probe Performance",
             alpha=0.5,
         )
+        plt.fill_between(
+            [0, 1e12],  # Arbitrary large x-range
+            mean_probe_auroc - std_probe_auroc,
+            mean_probe_auroc + std_probe_auroc,
+            color="gray",
+            alpha=0.1,
+        )
 
     # Plot each group
-    for key, group_results in grouped_results.items():
+    for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
         cascade_type = key[1]
         color = model_to_color[baseline_model]
@@ -963,13 +1027,24 @@ def plot_cascade_results(
             selection_strategy = key[2]
             linestyle = line_styles[cascade_type][selection_strategy]
 
-        # Sort by fraction_of_samples
-        group_results.sort(key=lambda x: x["fraction_of_samples"])
+        # Sort fractions
+        fractions = sorted(fraction_results.keys())
 
-        # Extract data
-        flops = [r["total_flops"] for r in group_results]
-        aurocs = [r["auroc"] for r in group_results]
-        fractions = [r["fraction_of_samples"] for r in group_results]
+        # Compute means and standard deviations for each fraction
+        mean_aurocs = []
+        std_aurocs = []
+        mean_flops = []
+        std_flops = []
+
+        for fraction in fractions:
+            results = fraction_results[fraction]
+            aurocs = [r["auroc"] for r in results]
+            flops = [r["flops"] for r in results]
+
+            mean_aurocs.append(float(np.mean(aurocs)))
+            std_aurocs.append(float(np.std(aurocs)))
+            mean_flops.append(float(np.mean(flops)))
+            std_flops.append(float(np.std(flops)))
 
         # Create label
         if cascade_type == "baseline":
@@ -988,7 +1063,7 @@ def plot_cascade_results(
             selection_strategy = key[2]
             remaining_strategy = key[3]
             merge_strategy = key[4]
-            first_baseline = group_results[0].get("probe_model_name", "unknown")
+            first_baseline = key[4]  # probe_model_name is stored here
             remaining_strategy_display = (
                 remaining_strategy.replace("fixed_", "fixed=")
                 if remaining_strategy
@@ -996,20 +1071,29 @@ def plot_cascade_results(
             )
             label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
 
-        # Plot points and connecting lines
+        # Plot line with shaded region
         plt.plot(
-            flops,
-            aurocs,
-            "o",
+            mean_flops,
+            mean_aurocs,
+            "o-",
             color=color,
             linestyle=linestyle,
             label=label,
             markersize=3,
         )
 
+        # Add shaded region for uncertainty
+        plt.fill_between(
+            mean_flops,
+            np.array(mean_aurocs) - np.array(std_aurocs),
+            np.array(mean_aurocs) + np.array(std_aurocs),
+            color=color,
+            alpha=0.1,
+        )
+
         # Add fraction labels if enabled
         if show_fraction_labels:
-            for x, y, f in zip(flops, aurocs, fractions):
+            for x, y, f in zip(mean_flops, mean_aurocs, fractions):
                 plt.annotate(
                     f"{f:.2f}",
                     (x, y),
@@ -1021,7 +1105,12 @@ def plot_cascade_results(
     # Customize plot
     plt.xlabel("Total FLOPs (log scale)", fontsize=12)
     plt.ylabel("AUROC", fontsize=12)
-    plt.title("Cascade Performance Tradeoff", fontsize=14, pad=20)
+    title = "Cascade Performance Tradeoff"
+    if target_dataset:
+        title += f" - {target_dataset}"
+    else:
+        title += " (Averaged across datasets)"
+    plt.title(title, fontsize=14, pad=20)
     plt.legend(title="Method", bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.grid(True, alpha=0.3)
 
@@ -1046,38 +1135,42 @@ def plot_cascade_results(
     # Save plot
     if output_file is None:
         output_file = results_file.parent / "cascade_plot.pdf"
+        if target_dataset:
+            output_file = results_file.parent / f"cascade_plot_{target_dataset}.pdf"
     plt.savefig(output_file, bbox_inches="tight")
     plt.close()
 
 
 def load_existing_results(
     output_dir: Path,
-) -> tuple[List[LikelihoodBaselineResults], EvaluationResult]:
+) -> tuple[dict[str, List[LikelihoodBaselineResults]], dict[str, EvaluationResult]]:
     """Load existing results from a previous run.
 
     Args:
         output_dir: Directory containing the results files
 
     Returns:
-        Tuple of (baseline_results, probe_results)
+        Tuple of (baseline_results_by_dataset, probe_results_by_dataset)
     """
-    baseline_results = []
+    baseline_results_by_dataset = defaultdict(list)
+    probe_results_by_dataset = {}
+
     # Read all baseline files
     for baseline_file in output_dir.glob("baseline_*.jsonl"):
         with open(baseline_file) as f:
             for line in f:
                 if line.strip():  # Skip empty lines
-                    baseline_results.append(
-                        LikelihoodBaselineResults.model_validate_json(line.strip())
-                    )
+                    result = LikelihoodBaselineResults.model_validate_json(line.strip())
+                    baseline_results_by_dataset[result.dataset_name].append(result)
 
+    # Read probe results
     with open(output_dir / "probe_results.jsonl") as f:
         for line in f:
             if line.strip():  # Skip empty lines
-                probe_results = EvaluationResult.model_validate_json(line.strip())
-                break  # Assuming we only need the first result
+                result = EvaluationResult.model_validate_json(line.strip())
+                probe_results_by_dataset[result.dataset_name] = result
 
-    return baseline_results, probe_results
+    return baseline_results_by_dataset, probe_results_by_dataset
 
 
 def evaluate_two_baselines_cascade(
