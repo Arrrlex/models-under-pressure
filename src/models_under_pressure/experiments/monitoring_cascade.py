@@ -252,28 +252,27 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
                 compute_activations=cfg.compute_activations,
             )
 
-    if cfg.compute_cascade or cfg.plot_results:
+    if cfg.analyze_cascade:
         results_file = output_dir / "cascade_results.jsonl"
-        if cfg.compute_cascade:
-            # Load existing results if needed
-            baseline_results, probe_results = load_existing_results(output_dir)
-            # Remove existing results file if it exists
-            if results_file.exists():
-                results_file.unlink()
-            compute_cascade_results(
-                baseline_results_by_dataset=baseline_results,
-                probe_results_by_dataset=probe_results,
-                results_file=results_file,
-                first_baseline_model_name=cfg.first_baseline_model_name,
-                target_dataset=cfg.target_dataset,
-            )
-        if cfg.plot_results:
-            plot_cascade_results(
-                results_file,
-                output_file=output_dir / "cascade_plot.pdf",
-                target_dataset=cfg.target_dataset,
-                show_difference_from_probe=cfg.show_difference_from_probe,
-            )
+        # Load existing results if needed
+        baseline_results, probe_results = load_existing_results(output_dir)
+        # Remove existing results file if it exists
+        if results_file.exists():
+            results_file.unlink()
+        compute_cascade_results(
+            baseline_results_by_dataset=baseline_results,
+            probe_results_by_dataset=probe_results,
+            results_file=results_file,
+            first_baseline_model_name=cfg.first_baseline_model_name,
+            target_dataset=cfg.target_dataset,
+        )
+        # Always generate plot after analyzing cascade results
+        plot_cascade_results(
+            results_file,
+            output_file=output_dir / "cascade_plot.pdf",
+            target_dataset=cfg.target_dataset,
+            show_difference_from_probe=cfg.show_difference_from_probe,
+        )
 
 
 class CascadeResults(BaseModel):

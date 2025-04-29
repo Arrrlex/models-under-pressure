@@ -1,32 +1,14 @@
 # @package _global_
 defaults:
-  - /probe: pytorch_per_entry_probe_mean  # or any other probe type
+  - _self_
+  - monitoring_cascade/compute
+  - monitoring_cascade/analyze
 
-#TODO Would make sense to split this experiment into computing results
-# and creating cascade+plot, as you otherwise end up changing this config
-# a lot.
+# This is a combined configuration that includes both compute and analyze settings
+# For more granular control, use the individual configuration files:
+# - monitoring_cascade/compute/config.yaml for computing results
+# - monitoring_cascade/analyze/config.yaml for cascade analysis and plotting
 
-# NOTE: You might want to run this one mode at a time,
-# as memory apparently isn't cleared properly.
-model_names:
-  - llama-70b
-  - gemma-27b
-  - gemma-12b
-  - llama-8b
-  - llama-1b
-  - gemma-1b
-first_baseline_model_name: null
-#probe_model_name: llama-70b
-probe_model_name: null
-probe_layer: null
-eval_datasets: ["toolace", "mt", "mts", "mask"]
-train_dataset_path: training/original_doubled_unconfounded/train.jsonl
-max_samples: null
-batch_size: 4
-compute_activations: true  # If false, activations will be read from the store
+# Whether to run compute and/or analyze steps
 compute_results: false
-compute_cascade: true
-plot_results: true
-output_dir: data/results/monitoring_cascade
-target_dataset: null  # If specified, only compute/plot results for this dataset
-show_difference_from_probe: false  # If true, shows AUROC difference from probe performance
+analyze_cascade: true
