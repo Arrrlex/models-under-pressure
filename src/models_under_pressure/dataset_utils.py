@@ -136,6 +136,7 @@ def load_dataset(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> LabelledDataset:
     """Load the train-test split for the generated dataset.
 
@@ -157,6 +158,7 @@ def load_dataset(
             path=dataset_path,
             model_name=model_name,
             layer=layer,
+            mmap=mmap,
         )
 
     if variation_type is not None and variation_value is not None:
@@ -214,6 +216,7 @@ def load_splits_lazy(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> LazyLoader:
     common_kwargs = {
         "dataset_filters": dataset_filters,
@@ -223,6 +226,7 @@ def load_splits_lazy(
         "variation_type": variation_type,
         "variation_value": variation_value,
         "n_per_class": n_per_class,
+        "mmap": mmap,
     }
 
     if dataset_path.is_dir():
@@ -255,6 +259,7 @@ def load_train_test(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     splits = load_splits_lazy(
         dataset_path,
@@ -264,6 +269,7 @@ def load_train_test(
         variation_type=variation_type,
         variation_value=variation_value,
         n_per_class=n_per_class,
+        mmap=mmap,
     )
     train_dataset = splits["train"]
     test_dataset = splits["test"]
