@@ -10,7 +10,7 @@ import seaborn as sns
 from sklearn.metrics import roc_auc_score
 from transformers import AutoTokenizer
 
-from models_under_pressure.config import EVALUATE_PROBES_DIR, RESULTS_DIR
+from models_under_pressure.config import EVAL_DATASETS, EVALUATE_PROBES_DIR, RESULTS_DIR
 
 
 def load_file(file_path: Path) -> pd.DataFrame:
@@ -71,6 +71,7 @@ def prepare_dataset(
     return full_df
 
 
+# Group and sort
 def plot_stakes_accuracy(
     full_df: pd.DataFrame,
     suffixes: list[str],
@@ -80,9 +81,11 @@ def plot_stakes_accuracy(
     bin_labels = []
     totals = {suffix: [] for suffix in suffixes}
     corrects = {suffix: [] for suffix in suffixes}
+    lower_ranges = []
 
     for bin_range, group in grouped:
         bin_labels.append(str(bin_range))
+        lower_ranges.append(float(bin_range.left))  # type: ignore
         if stakes_type == "all":
             stakes = group
         else:
@@ -94,6 +97,12 @@ def plot_stakes_accuracy(
             corrects[suffix].append(
                 roc_auc_score(suffix_data["ground_truth"], suffix_data["prediction"])
             )
+        # sort lower ranges and accordingly sort bin labels and corrects[suffix]
+    sorted_idx = np.argsort(lower_ranges)
+    bin_labels = [bin_labels[i] for i in sorted_idx]
+    corrects = {
+        suffix: [corrects[suffix][i] for i in sorted_idx] for suffix in suffixes
+    }
 
     x = np.arange(len(bin_labels))  # label locations
 
@@ -141,6 +150,7 @@ def plot_stakes_accuracy(
     ax.set_title("AUROC w.r.t Input Length")
     ax.set_xticks(x)
     ax.set_xticklabels(bin_labels, rotation=45)
+    ax.set_ylim(0.4, 1.0)
     ax.legend()
 
     plt.tight_layout()
@@ -161,11 +171,11 @@ suffixes = [
     "per_token_last",
     "per_entry",
 ]
-# full_df = prepare_dataset(
-#     list(EVAL_DATASETS.values()),
-#     suffixes,
-#     tokenizer_name="meta-llama/Llama-3.2-1B-Instruct",
-# )
-# full_df.to_csv(RESULTS_DIR / "stakes_token_length_bins.csv", index=False)
-full_df = pd.read_csv(RESULTS_DIR / "stakes_token_length_bins.csv")
+full_df = prepare_dataset(
+    list(EVAL_DATASETS.values()),
+    suffixes,
+    tokenizer_name="meta-llama/Llama-3.2-1B-Instruct",
+)
+full_df.to_csv(RESULTS_DIR / "stakes_token_length_bins.csv", index=False)
+# full_df = pd.read_csv(RESULTS_DIR / "stakes_token_length_bins.csv")
 plot_stakes_accuracy(full_df, suffixes, stakes_type="all")
