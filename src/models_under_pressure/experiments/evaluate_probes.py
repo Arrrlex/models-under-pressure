@@ -32,11 +32,8 @@ from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config
 
 
-def inv_softmax(x: list[np.ndarray] | np.ndarray) -> list[list[float]]:
-    if isinstance(x, np.ndarray):
-        return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
-    else:
-        return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
+def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
+    return [np.log(x_i / (1 - x_i + 1e-7)).tolist() for x_i in x]
 
 
 def calculate_metrics(
