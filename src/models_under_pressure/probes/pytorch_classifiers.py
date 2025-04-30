@@ -525,7 +525,7 @@ class AttentionLayer(nn.Module):
     def forward(
         self,
         activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
-    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+    ) -> Float[torch.Tensor, "batch_size seq_len attn_hidden_dim"]:
         query, key, value = (
             self.query_linear(activations),
             self.key_linear(activations),
@@ -534,7 +534,27 @@ class AttentionLayer(nn.Module):
 
         attn_output, _ = self.attn(query, key, value, need_weights=False)
 
-        return attn_output.mean(dim=-1, keepdim=True)
+        return attn_output  # .mean(dim=-1, keepdim=True)
+
+
+class AttentionProbeAttnOnly(nn.Module):
+    def __init__(self, embed_dim: int, attn_hidden_dim: int):
+        super().__init__()
+
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
+        self.attention_layer = AttentionLayer(embed_dim, attn_hidden_dim)
+
+    def forward(
+        self,
+        activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "batch_size seq_len"]:
+        """
+        The forward pass of the attention probe.
+        """
+
+        attn_output = self.attention_layer(activations)
+
+        return attn_output.mean(dim=-1, keepdim=False)
 
 
 class AttentionProbeAttnWeightLogits(nn.Module):
@@ -566,7 +586,7 @@ class AttentionProbeAttnWeightLogits(nn.Module):
         #    activations, "(b s) e -> b s e", b=batch_size, s=seq_len
         # )
 
-        attn_output = self.attention_layer(activations)
+        attn_output = self.attention_layer(activations).mean(dim=-1, keepdim=True)
 
         # Normalize the attention output using min-max normalization
         # This ensures values are in [0,1] range without the exponential scaling of softmax
@@ -594,14 +614,7 @@ class AttentionProbeAttnThenLinear(nn.Module):
         super().__init__()
 
         self.batch_norm = nn.BatchNorm1d(embed_dim)
-
-        self.query_linear = nn.Linear(embed_dim, attn_hidden_dim)
-        self.key_linear = nn.Linear(embed_dim, attn_hidden_dim)
-        self.value_linear = nn.Linear(embed_dim, attn_hidden_dim)
-        self.attn = nn.MultiheadAttention(
-            embed_dim=attn_hidden_dim, num_heads=1, batch_first=True
-        )
-
+        self.attention_layer = AttentionLayer(embed_dim, attn_hidden_dim)
         self.linear = nn.Linear(attn_hidden_dim, 1, bias=False)
 
     def forward(
@@ -612,14 +625,7 @@ class AttentionProbeAttnThenLinear(nn.Module):
         activations = self.batch_norm(activations)
         activations = activations.permute(0, 2, 1)
 
-        keys, queries, values = (
-            self.key_linear(activations),
-            self.query_linear(activations),
-            self.value_linear(activations),
-        )
-
-        attn_output, _ = self.attn(queries, keys, values, need_weights=False)
-
+        attn_output = self.attention_layer(activations)
         linear_output = self.linear(attn_output).squeeze(dim=-1)
 
         return linear_output
@@ -860,6 +866,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             model = AttentionProbeAttnWeightLogits(embedding_dim, attn_hidden_dim)
         elif probe_architecture == "attention_then_linear":
             model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim)
+        elif probe_architecture == "attention_only":
+            model = AttentionProbeAttnOnly(embedding_dim, attn_hidden_dim)
         else:
             raise NotImplementedError(
                 f"Probe architecture {probe_architecture} not implemented"
