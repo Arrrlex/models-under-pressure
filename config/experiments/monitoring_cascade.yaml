@@ -12,3 +12,6 @@ defaults:
 # Whether to run compute and/or analyze steps
 compute_results: true
 analyze_cascade: false
+
+# Whether to use test datasets instead of dev datasets
+use_test: true

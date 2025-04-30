@@ -19,6 +19,7 @@ from models_under_pressure.config import (
     CONFIG_DIR,
     DATA_DIR,
     EVAL_DATASETS,
+    TEST_DATASETS,
     LOCAL_MODELS,
 )
 from models_under_pressure.dataset_utils import load_dataset
@@ -56,6 +57,7 @@ def _run_monitoring_cascade(
     dataset_names: List[str],
     train_dataset_path: Path,
     probe_spec: ProbeSpec,
+    use_test: bool,
     max_samples: Optional[int] = None,
     batch_size: int = 4,
     output_dir: Optional[Path] = None,
@@ -107,7 +109,10 @@ def _run_monitoring_cascade(
                 )
 
                 # Get dataset paths
-                eval_dataset_path = EVAL_DATASETS[dataset_name]
+                if use_test:
+                    eval_dataset_path = TEST_DATASETS[dataset_name]
+                else:
+                    eval_dataset_path = EVAL_DATASETS[dataset_name]
 
                 # We don't need any activations in this case!
                 eval_dataset = LabelledDataset.load_from(eval_dataset_path)
@@ -259,13 +264,19 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Convert train_dataset_path to Path object and resolve relative to DATA_DIR
         train_dataset_path = DATA_DIR / cfg.train_dataset_path
 
+        if cfg.use_test:
+            default_eval_datasets = list(TEST_DATASETS.keys())
+        else:
+            default_eval_datasets = list(EVAL_DATASETS.keys())
+
         baseline_results, probe_results, output_dir = _run_monitoring_cascade(
             model_names=cfg.model_names,
             probe_model_name=cfg.probe_model_name,
             probe_layer=cfg.probe_layer,
             dataset_names=cfg.eval_datasets
             if cfg.eval_datasets
-            else EVAL_DATASETS.keys(),
+            else default_eval_datasets,
+            use_test=cfg.use_test,
             train_dataset_path=train_dataset_path,
             probe_spec=probe_spec,
             max_samples=cfg.max_samples,
@@ -276,7 +287,9 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
     if cfg.analyze_cascade:
         results_file = output_dir / "cascade_results.jsonl"
         # Load existing results if needed
-        baseline_results, probe_results = load_existing_results(output_dir)
+        baseline_results, probe_results = load_existing_results(
+            output_dir, cfg.use_test
+        )
         # Remove existing results file if it exists
         if results_file.exists():
             results_file.unlink()
@@ -360,19 +373,27 @@ class CascadeResults(BaseModel):
 
 def get_per_token_flops(full_model_name: str) -> int:
     model_name = next(k for k, v in LOCAL_MODELS.items() if v == full_model_name)
-    # TODO These are from GPT-4.5 and should be verified
+    # NOTE: Based on asking GPT-o3, for sequence length s:
+    # Llama-3.3-70B: 1.4e11 * s + 1310720 * s^2
+    # Llama-3.1-8B: 1.6e10 * s + 262144 * s^2
+    # LLama-3.2-1B: 2e9 + 65536 * s^2
+    # Gemma-3-1B: 2.03e9 + 9984 * s^2
+    # Gemma-3-12B: 2.43e10 + 61440 * s^2
+    # Gemma-3-27B: 5.46e10 + 111104 * s^2
+    # (Ignoring second terms because they only matter for very long sequences
+    #  which we don't have in our datasets.)
     if model_name == "llama-1b":
-        per_token_flops = 1.3 * 10**9
+        per_token_flops = 2.0 * 10**9
     elif model_name == "llama-8b":
-        per_token_flops = 9.6 * 10**9
+        per_token_flops = 1.6 * 10**10
     elif model_name == "llama-70b":
-        per_token_flops = 85.9 * 10**9
+        per_token_flops = 1.4 * 10**11
     elif model_name == "gemma-1b":
-        per_token_flops = 4.8 * 10**9
+        per_token_flops = 2.03 * 10**9
     elif model_name == "gemma-12b":
-        per_token_flops = 10.9 * 10**9
+        per_token_flops = 2.43 * 10**10
     elif model_name == "gemma-27b":
-        per_token_flops = 32.6 * 10**9
+        per_token_flops = 5.46 * 10**10
     else:
         raise ValueError(f"Unknown model: {model_name}")
     return int(per_token_flops)
@@ -1203,11 +1224,13 @@ def plot_cascade_results(
 
 def load_existing_results(
     output_dir: Path,
+    use_test: bool = False,
 ) -> tuple[dict[str, List[LikelihoodBaselineResults]], dict[str, EvaluationResult]]:
     """Load existing results from a previous run.
 
     Args:
         output_dir: Directory containing the results files
+        use_test: Whether test datasets were used. If True, asserts that dataset paths include "/evals/test/"
 
     Returns:
         Tuple of (baseline_results_by_dataset, probe_results_by_dataset)
@@ -1221,6 +1244,10 @@ def load_existing_results(
             for line in f:
                 if line.strip():  # Skip empty lines
                     result = LikelihoodBaselineResults.model_validate_json(line.strip())
+                    if use_test:
+                        assert (
+                            "/evals/test/" in str(result.dataset_path)
+                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
                     baseline_results_by_dataset[result.dataset_name].append(result)
 
     # Read probe results
@@ -1228,6 +1255,10 @@ def load_existing_results(
         for line in f:
             if line.strip():  # Skip empty lines
                 result = EvaluationResult.model_validate_json(line.strip())
+                if use_test:
+                    assert (
+                        "/evals/test/" in str(result.dataset_path)
+                    ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
                 probe_results_by_dataset[result.dataset_name] = result
 
     return baseline_results_by_dataset, probe_results_by_dataset
