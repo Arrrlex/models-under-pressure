@@ -11,6 +11,7 @@ from models_under_pressure.probes.aggregations import (
     MeanOfTopK,
 )
 from models_under_pressure.probes.base import Aggregation
+from models_under_pressure.probes.probe_store import FullProbeSpec, ProbeStore
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
@@ -32,8 +33,22 @@ class ProbeFactory:
         probe_spec: ProbeSpec,
         train_dataset: LabelledDataset,
         model_name: str,
+        layer: int,
         validation_dataset: LabelledDataset | None = None,
+        use_store: bool = False,
     ) -> Probe:
+        if use_store:
+            store = ProbeStore()
+            full_spec = FullProbeSpec.from_spec(
+                probe_spec,
+                model_name=model_name,
+                layer=layer,
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
+            )
+            if store.exists(full_spec):
+                return store.load(full_spec)
+
         if not has_activations(train_dataset):
             raise ValueError(
                 "Train dataset must contain activations, attention_mask, and input_ids"
@@ -96,6 +111,8 @@ class ProbeFactory:
         )
 
         probe.fit(train_dataset, validation_dataset)
+        if use_store:
+            store.save(probe, full_spec)
 
         return probe
 
