@@ -85,8 +85,13 @@ def run_data_efficiency_experiment(
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
 
         for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
-            probe = ProbeFactory.build(probe_spec=probe_spec, train_dataset=subset,
-             validation_dataset=val_dataset, model_name=config.model_name, layer=config.layer)
+            probe = ProbeFactory.build(
+                probe_spec=probe_spec,
+                train_dataset=subset,
+                validation_dataset=val_dataset,
+                model_name=config.model_name,
+                layer=config.layer,
+            )
             metrics = evaluate_probe(probe, eval_datasets)
 
             probe_results.append(
@@ -146,7 +151,6 @@ def run_data_efficiency_finetune_baseline_with_activations(
     probe_results = []
 
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
-
         # For each dataset size, subsample the train dataset and train the finetune baseline:
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
         finetune_baseline = FinetunedClassifier(finetune_config)
@@ -181,7 +185,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
                 metrics=metrics,
             )
         )
-        
+
         # After each eval, clear the cache, delete the baseline model and dataset subset.
         torch.cuda.empty_cache()
         del finetune_baseline

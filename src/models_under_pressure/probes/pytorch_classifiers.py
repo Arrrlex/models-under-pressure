@@ -90,18 +90,20 @@ class PytorchLinearClassifier:
         best_model_state = None
 
         # Get gradient accumulation steps from training args, default to 1
-        gradient_accumulation_steps = self.training_args.get("gradient_accumulation_steps", 1)
+        gradient_accumulation_steps = self.training_args.get(
+            "gradient_accumulation_steps", 1
+        )
 
         # Training loop
         for epoch in range(self.training_args["epochs"]):
             self.model.train()
             running_loss = 0.0
             optimizer.zero_grad()  # Zero gradients at the start of each epoch
-            
+
             pbar = tqdm(
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
-            
+
             for batch_idx, batch in enumerate(pbar):
                 batch_acts, _, _, batch_y = batch
 
@@ -111,7 +113,7 @@ class PytorchLinearClassifier:
 
                 outputs = self.model(batch_acts)
                 loss = criterion(outputs.squeeze(), batch_y)
-                
+
                 # Scale loss by gradient accumulation steps
                 loss = loss / gradient_accumulation_steps
                 loss.backward()
@@ -285,7 +287,7 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
     ) -> Self:
         self.model, activations = self.setup_for_training(activations)
 
-        #TODO: Ensure that masking is actually applied here.
+        # TODO: Ensure that masking is actually applied here.
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
 
         # Separate positive and negative examples
@@ -370,18 +372,20 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
         best_model_state = None
 
         # Get gradient accumulation steps from training args, default to 1
-        gradient_accumulation_steps = self.training_args.get("gradient_accumulation_steps", 1)
+        gradient_accumulation_steps = self.training_args.get(
+            "gradient_accumulation_steps", 1
+        )
 
         # Training loop
         self.model.train()
         for epoch in range(self.training_args["epochs"]):
             running_loss = 0.0
             optimizer.zero_grad()  # Zero gradients at the start of each epoch
-            
+
             pbar = tqdm(
                 dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
             )
-            
+
             for batch_idx, batch in enumerate(pbar):
                 batch_acts, batch_mask, _, batch_y = batch
 
@@ -391,7 +395,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
                 # Forward pass
                 outputs = self.model(mean_acts)
                 loss = criterion(outputs.squeeze(), batch_y)
-                
+
                 # Scale loss by gradient accumulation steps
                 loss = loss / gradient_accumulation_steps
                 loss.backward()

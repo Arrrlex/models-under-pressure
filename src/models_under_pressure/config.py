@@ -10,7 +10,10 @@ from pydantic import BaseModel, Field, JsonValue, ValidationInfo, field_validato
 from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.utils import generate_short_id, generate_short_id_with_timestamp
+from models_under_pressure.utils import (
+    generate_short_id,
+    generate_short_id_with_timestamp,
+)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
