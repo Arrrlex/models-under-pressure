@@ -360,7 +360,7 @@ def double_check_config(config: Any, double_check: bool = True) -> None:
     print(indent(pretty_format_config(config), "  "))
     if double_check:
         is_ok = input("Do you really want to run this config? (y/n) ")
-        if is_ok != "y":
+        if is_ok != "y" and is_ok != "Y":
             raise ValueError("Config not confirmed")
 
 

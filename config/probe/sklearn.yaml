@@ -1,4 +1,4 @@
-name: sklearn_mean_agg_probe
+name: sklearn
 hyperparams:
   C: 1e-3
   random_state: 42

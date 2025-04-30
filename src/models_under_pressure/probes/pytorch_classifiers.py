@@ -11,6 +11,8 @@ from tqdm import tqdm
 
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.probes import aggregations as agg
+from models_under_pressure.probes.base import Aggregation
 
 
 def masked_mean(acts: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -30,6 +32,7 @@ class PytorchLinearClassifier:
     """
 
     training_args: dict
+    aggregation: Aggregation
     model: nn.Module | None = None
     best_epoch: int | None = None
     device: str = global_settings.DEVICE
@@ -147,7 +150,9 @@ class PytorchLinearClassifier:
                         self.logits(validation_activations).clamp(-10.0, 10.0).view(-1)
                     )
 
-                    val_loss = criterion(val_logits, validation_y).item()
+                    val_loss = criterion(
+                        val_logits.to(self.device), validation_y
+                    ).item()
 
                     # Check for NaN loss - if it's NaN, set loss to +inf to avoid selecting this model
                     if np.isnan(val_loss):
@@ -246,8 +251,11 @@ class PytorchLinearClassifier:
         if per_token:
             return logits
         else:
-            attn_mask = activations.attention_mask.to(self.device)
-            return logits.sum(dim=1) / attn_mask.sum(dim=1).clamp(min=1)
+            return self.aggregation(
+                logits,
+                activations.attention_mask.to(self.device),
+                activations.input_ids,
+            )
 
     def create_model(self, embed_dim: int) -> nn.Module:
         """
@@ -271,7 +279,9 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
     def train(
         self,
         activations: Activation,
-        y: Float[np.ndarray, " batch_size"],
+        y: Float[torch.Tensor, " batch_size"],
+        validation_activations: Activation | None = None,
+        validation_y: Float[torch.Tensor, " batch_size"] | None = None,
     ) -> Self:
         self.model, activations = self.setup_for_training(activations)
 
@@ -440,11 +450,17 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
 
         return self
 
-    def probs(self, activations: Activation) -> torch.Tensor:
-        return self.logits(activations).sigmoid()
+    def probs(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
+        return self.logits(activations, per_token=per_token).sigmoid()
 
     @torch.no_grad()
-    def logits(self, activations: Activation) -> torch.Tensor:
+    def logits(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
+        if per_token:
+            raise ValueError("Per-token logits not possible for this classifier")
+
+        if self.model is None:
+            raise ValueError("Model not trained")
+
         self.model.eval()
 
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
@@ -612,6 +628,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
 
     training_args: dict
     model: nn.Module | None = None
+    aggregation: Aggregation = agg.Mean()
 
     def train(
         self,
@@ -737,7 +754,6 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                             val_logits = torch.nan_to_num(val_logits, nan=0.0)
 
                         val_loss = criterion(val_logits.squeeze(), validation_y).item()
-
                         # Check for NaN loss - if found, set loss to +inf to avoid selecting this model
                         if np.isnan(val_loss):
                             print("Warning: NaN validation loss detected")
@@ -805,8 +821,11 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         if per_token:
             return logits
         else:
-            attn_mask = activations.attention_mask.to(self.device)
-            return logits.sum(dim=1) / attn_mask.sum(dim=1).clamp(min=1)
+            return self.aggregation(
+                logits,
+                activations.attention_mask.to(self.device),
+                activations.input_ids,
+            )
 
     def create_model(
         self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
@@ -842,12 +861,21 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 f"Probe architecture {probe_architecture} not implemented"
             )
 
+        # Set random seed for reproducible initialization
+        random_seed = 42
+        generator = torch.Generator().manual_seed(random_seed)
         for layer in model.modules():
             if isinstance(layer, nn.Linear):
-                torch.nn.init.xavier_uniform_(layer.weight)
+                torch.nn.init.xavier_uniform_(layer.weight, generator=generator)
             elif isinstance(layer, AttentionLayer):
-                torch.nn.init.xavier_uniform_(layer.query_linear.weight)
-                torch.nn.init.xavier_uniform_(layer.key_linear.weight)
-                torch.nn.init.xavier_uniform_(layer.value_linear.weight)
+                torch.nn.init.xavier_uniform_(
+                    layer.query_linear.weight, generator=generator
+                )
+                torch.nn.init.xavier_uniform_(
+                    layer.key_linear.weight, generator=generator
+                )
+                torch.nn.init.xavier_uniform_(
+                    layer.value_linear.weight, generator=generator
+                )
 
         return model

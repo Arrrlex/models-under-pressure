@@ -1,4 +1,3 @@
 name: lda
 hyperparams:
   batch_size: 16384
-  epochs: 3
