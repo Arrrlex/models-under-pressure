@@ -15,7 +15,7 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
@@ -302,7 +302,7 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="attention",
+            name=ProbeType.attention,
             hyperparams={
                 "batch_size": 16,
                 "epochs": 50,
@@ -311,8 +311,9 @@ if __name__ == "__main__":
                     "weight_decay": 0.0004,
                 },
                 "attn_hidden_dim": 27,
-                "probe_architecture": "attention_then_linear",
+                "probe_architecture": "simple_attention",
                 "scheduler_decay": 0.62,
+                "gradient_accumulation_steps": 4,
             },
         ),
         compute_activations=False,
