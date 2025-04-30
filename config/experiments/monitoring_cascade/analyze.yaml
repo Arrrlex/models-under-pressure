@@ -4,9 +4,12 @@
 input_dir: data/results/monitoring_cascade  # Directory containing computed results
 first_baseline_model_name: null  # If specified, enables two-step baseline cascades
 
+analysis:
+  model_names: ["gemma-12b", "gemma-27b", "llama-70b"]  # If specified, only include these baseline models
+  target_dataset: null  # If specified, only analyze results for this dataset
+
 # Analysis settings
 analyze_cascade: true  # If true, analyzes cascade results and generates plot
-target_dataset: null  # If specified, only analyze results for this dataset
 show_difference_from_probe: false  # If true, shows AUROC difference from probe performance
 
 # Output configuration
