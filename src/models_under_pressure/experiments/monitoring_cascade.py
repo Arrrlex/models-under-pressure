@@ -297,6 +297,8 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             baseline_results_by_dataset=baseline_results,
             probe_results_by_dataset=probe_results,
             results_file=results_file,
+            probe_strategy=cfg.analysis.probe_strategy,
+            two_step_baseline_strategy=cfg.analysis.two_step_baseline_strategy,
             first_baseline_model_name=cfg.first_baseline_model_name,
             target_dataset=cfg.analysis.target_dataset,
             model_names=cfg.analysis.model_names,
@@ -307,6 +309,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             output_file=output_dir / "cascade_plot.pdf",
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
+            show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
         )
 
 
@@ -769,6 +772,8 @@ def compute_cascade_results(
     baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
     probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
+    probe_strategy: dict[str, str],
+    two_step_baseline_strategy: dict[str, str] = None,
     first_baseline_model_name: Optional[str] = None,
     target_dataset: Optional[str] = None,
     model_names: Optional[List[str]] = None,
@@ -854,20 +859,7 @@ def compute_cascade_results(
             )
 
             # Evaluate probe baseline cascade for all models
-            selection_strategies = ["mid"]  # , "top", "bottom"]
-            merge_strategies = ["mean"]  # , "max", "baseline"]
-            remaining_strategies = ["first"]
-            strategies = []
-            for selection_strategy in selection_strategies:
-                for merge_strategy in merge_strategies:
-                    for remaining_strategy in remaining_strategies:
-                        strategies.append(
-                            {
-                                "selection_strategy": selection_strategy,
-                                "remaining_strategy": remaining_strategy,
-                                "merge_strategy": merge_strategy,
-                            }
-                        )
+            strategies = [probe_strategy]
 
             print(f"\nProbe+Baseline Cascade Results for {dataset_name}:")
             for baseline_result in baseline_results:
@@ -904,6 +896,8 @@ def compute_cascade_results(
 
         # Evaluate two-step baseline cascades if first_baseline_model_name is provided
         if first_baseline_model_name:
+            assert two_step_baseline_strategy is not None
+
             print(f"\nTwo-Step Baseline Cascade Results for {dataset_name}:")
             # Find the first baseline results
             first_baseline_result = next(
@@ -923,11 +917,7 @@ def compute_cascade_results(
                         != first_baseline_model_name
                     ):
                         for fraction_of_samples in fraction_of_sample_options:
-                            strategy = {
-                                "selection_strategy": "mid",
-                                "remaining_strategy": "first",
-                                "merge_strategy": "mean",
-                            }
+                            strategy = two_step_baseline_strategy
                             print(
                                 f"\nTwo-step cascade with fraction of samples: {fraction_of_samples}"
                             )
@@ -974,6 +964,7 @@ def plot_cascade_results(
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
     show_difference_from_probe: bool = False,
+    show_strategy_in_legend: bool = True,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -984,6 +975,7 @@ def plot_cascade_results(
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
         show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
+        show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
     """
     import json
     from collections import defaultdict
@@ -1126,7 +1118,10 @@ def plot_cascade_results(
                 if remaining_strategy
                 else "fixed_0"
             )
-            label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+            if show_strategy_in_legend:
+                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+            else:
+                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)})"
         else:  # two_step_baseline
             selection_strategy = key[2]
             remaining_strategy = key[3]
@@ -1137,7 +1132,10 @@ def plot_cascade_results(
                 if remaining_strategy
                 else "fixed_0"
             )
-            label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+            if show_strategy_in_legend:
+                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+            else:
+                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)})"
 
         # Plot line with shaded region
         plt.plot(
