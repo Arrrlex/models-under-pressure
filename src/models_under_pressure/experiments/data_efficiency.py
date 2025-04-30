@@ -22,6 +22,7 @@ from models_under_pressure.interfaces.results import (
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.interfaces.probes import ProbeType
 
 
 def evaluate_probe(
@@ -84,8 +85,8 @@ def run_data_efficiency_experiment(
         subset = subsample_balanced_subset(train_dataset, n_per_class=dataset_size // 2)
 
         for probe_spec in tqdm(config.probes, desc="Probes", leave=False):
-            probe = ProbeFactory.build(probe=probe_spec, train_dataset=subset,
-             validation_dataset=val_dataset)
+            probe = ProbeFactory.build(probe_spec=probe_spec, train_dataset=subset,
+             validation_dataset=val_dataset, model_name=config.model_name, layer=config.layer)
             metrics = evaluate_probe(probe, eval_datasets)
 
             probe_results.append(
@@ -326,11 +327,11 @@ if __name__ == "__main__":
         dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
         probes=[
             ProbeSpec(
-                name="sklearn_mean_agg_probe",
+                name=ProbeType.sklearn,
                 hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
             ),
             ProbeSpec(
-                name="pytorch_per_token_probe",
+                name=ProbeType.per_token,
                 hyperparams={
                     "batch_size": 500,
                     "epochs": 1000,  # 20,
