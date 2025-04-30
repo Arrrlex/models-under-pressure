@@ -329,7 +329,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
+        dataset_sizes=[1910],  # [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
         probes=[
             ProbeSpec(
                 name=ProbeType.sklearn,
@@ -339,7 +339,7 @@ if __name__ == "__main__":
                 name=ProbeType.per_token,
                 hyperparams={
                     "batch_size": 500,
-                    "epochs": 1000,  # 20,
+                    "epochs": 1,  # 20,
                     "device": "cpu",
                     "learning_rate": 1e-4,
                     "weight_decay": 1.0,
@@ -359,7 +359,7 @@ if __name__ == "__main__":
         num_classes=2,
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
-            "weight_decay": 1.0,
+            "weight_decay": 10.0,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
@@ -371,7 +371,7 @@ if __name__ == "__main__":
             "project": "models-under-pressure",
         },
         Trainer={
-            "max_epochs": 20,  # 20,
+            "max_epochs": 30,  # 20,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
@@ -386,7 +386,7 @@ if __name__ == "__main__":
     )
 
     # # Reload the results as a test:
-    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
+    # with open(r"data/results/data_efficiency/results_cftSeEPD.jsonl", "r") as f:
     #     results_dict = json.loads(f.readlines()[-1])
 
     # results = DataEfficiencyResults.model_validate(results_dict)

@@ -677,7 +677,7 @@ class SimpleAttentionPoolingProbe(nn.Module):
 
         # Weighted sum over the sequence (batch_size, embed_dim)
         weighted_sum = einops.einsum(
-            attn_weights, # masked elements are 0 after softmax
+            attn_weights,  # masked elements are 0 after softmax
             activations,
             "batch seq, batch seq hidden_dim -> batch hidden_dim",
         )  # (batch_size, embed_dim)
@@ -744,7 +744,6 @@ class PytorchSimpleAttentionClassifier(PytorchLinearClassifier):
                     dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
                 )
                 for batch_idx, (batch_acts, batch_mask, _, batch_y) in enumerate(pbar):
-                    
                     optimizer.zero_grad()
                     outputs = self.model(batch_acts, batch_mask)
 
@@ -811,7 +810,9 @@ class PytorchSimpleAttentionClassifier(PytorchLinearClassifier):
 
         return self
 
-    def create_model(self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str) -> nn.Module:
+    def create_model(
+        self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
+    ) -> nn.Module:
         return SimpleAttentionPoolingProbe(embedding_dim)
 
     @torch.no_grad()
@@ -942,7 +943,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     # Standard training step for AdamW
                     outputs = self.model(batch_acts, batch_mask)  # batch_size, seq_len
 
-                    if self.training_args["probe_architecture"] not in ["simple_attention"]:
+                    if self.training_args["probe_architecture"] not in [
+                        "simple_attention"
+                    ]:
                         # Multiply by the attention mask here, to avoid learning from padded tokens
                         outputs *= batch_mask
 
@@ -1039,7 +1042,7 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             raise ValueError("Model not trained")
 
         if self.training_args["probe_architecture"] in ["simple_attention"]:
-            assert not per_token, 'Per token is not supported for simple attention'
+            assert not per_token, "Per token is not supported for simple attention"
 
         self.model.eval()
         batch_size, seq_len, _ = activations.shape
@@ -1065,7 +1068,6 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 device=self.device,
                 dtype=self.dtype,
             )
-
 
         # Process in batches
         start_idx = 0
@@ -1093,7 +1095,6 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                 activations.attention_mask.to(self.device),
                 activations.input_ids,
             )
-
 
     def create_model(
         self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
