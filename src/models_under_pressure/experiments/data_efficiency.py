@@ -8,9 +8,10 @@ from tqdm import tqdm
 from models_under_pressure.config import (
     DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
-from models_under_pressure.finetune_baselines import FinetunedClassifier
+from models_under_pressure.baselines.finetune import FinetunedClassifier
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
@@ -374,7 +375,7 @@ if __name__ == "__main__":
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
-            "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
+            "default_root_dir": global_settings.PL_DEFAULT_ROOT_DIR,
             "accumulate_grad_batches": 4,
         },
     )

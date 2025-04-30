@@ -12,7 +12,6 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.interfaces.activations import Activation
 
 
 @dataclass
@@ -30,7 +29,7 @@ class Probe(ABC):
     @abstractmethod
     def predict_proba(
         self, dataset: BaseDataset
-    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]: ...
+    ) -> tuple[Float[np.ndarray, " batch_size"]]: ...
 
     @abstractmethod
     def per_token_predictions(

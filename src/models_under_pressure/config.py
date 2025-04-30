@@ -32,6 +32,7 @@ class GlobalSettings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
+    PL_DEFAULT_ROOT_DIR: str | None = None
 
 
 global_settings = GlobalSettings()
