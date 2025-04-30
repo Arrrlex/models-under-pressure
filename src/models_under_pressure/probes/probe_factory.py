@@ -17,6 +17,7 @@ from models_under_pressure.probes.pytorch_classifiers import (
     PytorchDifferenceOfMeansClassifier,
     PytorchLinearClassifier,
     PytorchPerEntryLinearClassifier,
+    PytorchSimpleAttentionClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
@@ -88,6 +89,11 @@ class ProbeFactory:
                 )
             case ProbeType.attention:
                 classifier = PytorchAttentionClassifier(
+                    training_args=probe_spec.hyperparams,
+                    aggregation=aggregation,
+                )
+            case ProbeType.simple_attention:
+                classifier = PytorchSimpleAttentionClassifier(
                     training_args=probe_spec.hyperparams,
                     aggregation=aggregation,
                 )

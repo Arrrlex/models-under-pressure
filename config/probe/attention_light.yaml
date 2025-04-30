@@ -1,0 +1,12 @@
+name: simple_attention
+hyperparams:
+  aggregation:
+    name: mean
+  batch_size: 16
+  epochs: 50
+  optimizer_args:
+    lr: 0.001
+    weight_decay: 0.0001
+  attn_hidden_dim: 27
+  probe_architecture: simple_attention_pooling
+  scheduler_decay: 0.2

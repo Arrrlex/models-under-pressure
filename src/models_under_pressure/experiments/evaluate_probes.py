@@ -25,6 +25,7 @@ from models_under_pressure.probes.pytorch_classifiers import (
     AttentionProbeAttnWeightLogits,
     PytorchAttentionClassifier,
     PytorchDifferenceOfMeansClassifier,
+    PytorchSimpleAttentionClassifier,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import SklearnProbe
@@ -153,18 +154,23 @@ def get_coefs(probe: Probe) -> list[float]:
     elif isinstance(probe, PytorchProbe):
         if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
             # For difference of means classifier, weights are directly in the linear layer
-            coefs = list(
-                probe._classifier.model.weight.data.cpu().float().numpy().flatten()
-            )  # type: ignore
+            if probe._classifier.model is None:
+                raise ValueError("Classifier model is None")
+            else:
+                coefs = list(
+                    probe._classifier.model.weight.data.cpu().float().numpy().flatten()  # type: ignore
+                )
         elif isinstance(probe._classifier, PytorchAttentionClassifier):
             # For attention probe, get the weights from the final linear layer
             model = probe._classifier.model
             if isinstance(model, AttentionProbeAttnThenLinear):
                 coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
             elif isinstance(model, AttentionProbeAttnWeightLogits):
-                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
+                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())
             else:
                 raise ValueError(f"Unknown attention probe model type: {type(model)}")
+        elif isinstance(probe._classifier, PytorchSimpleAttentionClassifier):
+            coefs = list()  # type: ignore
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
             coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
@@ -201,6 +207,7 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
+        layer=config.layer,
         probe_spec=config.probe_spec,
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
@@ -274,13 +281,13 @@ def run_evaluation(
     print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
     for result in results_list:
         result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-
-    coefs_dict = {
-        "id": config.id,
-        "coefs": coefs[0].tolist(),  # type: ignore
-    }
-    with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-        json.dump(coefs_dict, f)
+    if len(coefs) > 0:
+        coefs_dict = {
+            "id": config.id,
+            "coefs": coefs[0].tolist(),  # type: ignore
+        }
+        with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
+            json.dump(coefs_dict, f)
 
     return results_list, coefs
 
