@@ -170,7 +170,7 @@ def get_coefs(probe: Probe) -> list[float]:
             else:
                 raise ValueError(f"Unknown attention probe model type: {type(model)}")
         elif isinstance(probe._classifier, PytorchSimpleAttentionClassifier):
-            coefs = list([])  # type: ignore
+            coefs = list()  # type: ignore
         else:
             # For regular PyTorch probe, weights are in the second layer of Sequential
             coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
@@ -207,6 +207,7 @@ def run_evaluation(
     # Create the probe:
     print("Creating probe ...")
     probe = ProbeFactory.build(
+        layer=config.layer,
         probe_spec=config.probe_spec,
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
@@ -293,7 +294,7 @@ def run_evaluation(
 
 if __name__ == "__main__":
     # Set random seed for reproducibility
-    RANDOM_SEED = 42
+    RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(

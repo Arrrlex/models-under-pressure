@@ -631,8 +631,10 @@ class SimpleAttentionPoolingProbe(nn.Module):
         attn_weights = torch.softmax(attn_scores, dim=1)
 
         # Weighted sum over the sequence
-        weighted_sum = torch.einsum(
-            "bs,bsd->bd", attn_weights, activations
+        weighted_sum = einops.einsum(
+            attn_weights,
+            activations,
+            "batch seq, batch seq hidden_dim -> batch hidden_dim",
         )  # (batch_size, embed_dim)
         logits = (weighted_sum @ output_vector) + bias  # (batch_size,)
 
@@ -762,13 +764,8 @@ class PytorchSimpleAttentionClassifier(PytorchLinearClassifier):
 
         return self
 
-    def create_model(
-        self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
-    ) -> nn.Module:
-        if probe_architecture == "simple_attention_pooling":
-            return SimpleAttentionPoolingProbe(embedding_dim)
-        else:
-            raise ValueError(f"Unknown probe architecture: {probe_architecture}")
+    def create_model(self, embedding_dim: int) -> nn.Module:
+        return SimpleAttentionPoolingProbe(embedding_dim)
 
     @torch.no_grad()
     def logits(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
