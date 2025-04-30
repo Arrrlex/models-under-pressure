@@ -75,7 +75,6 @@ class PytorchLinearClassifier:
         )
 
         criterion = nn.BCEWithLogitsLoss()
-
         per_token_dataset = activations.per_token().to_dataset(y)
 
         dataloader = DataLoader(
@@ -275,6 +274,8 @@ class PytorchDifferenceOfMeansClassifier(PytorchLinearClassifier):
         y: Float[np.ndarray, " batch_size"],
     ) -> Self:
         self.model, activations = self.setup_for_training(activations)
+
+        #TODO: Ensure that masking is actually applied here.
         mean_acts = masked_mean(activations.activations, activations.attention_mask)
 
         # Separate positive and negative examples
@@ -374,6 +375,7 @@ class PytorchPerEntryLinearClassifier(PytorchLinearClassifier):
             for batch_idx, batch in enumerate(pbar):
                 batch_acts, batch_mask, _, batch_y = batch
 
+                # Masking is happening in the activation interface, this is rescaling using the mask.
                 mean_acts = masked_mean(batch_acts, batch_mask)
 
                 # Forward pass

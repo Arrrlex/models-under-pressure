@@ -175,7 +175,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
 
         probe_results.append(
             ProbeDataEfficiencyResults(
-                probe=probe_spec,
+                probe=config.probes[0],
                 dataset_size=dataset_size,
                 metrics=metrics,
             )
@@ -323,7 +323,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         dataset_path=SYNTHETIC_DATASET_PATH,
-        dataset_sizes=[1910], #[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
+        dataset_sizes=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
         probes=[
             ProbeSpec(
                 name="sklearn_mean_agg_probe",
@@ -333,12 +333,12 @@ if __name__ == "__main__":
                 name="pytorch_per_token_probe",
                 hyperparams={
                     "batch_size": 500,
-                    "epochs": 100,  # 20,
+                    "epochs": 1000,  # 20,
                     "device": "cpu",
-                    "learning_rate": 1e-3,
+                    "learning_rate": 1e-4,
                     "weight_decay": 1.0,
                     "gradient_accumulation_steps": 4,
-                    "optimizer_args": {"lr": 1e-3, "weight_decay": 0.1},
+                    "optimizer_args": {"lr": 1e-4, "weight_decay": 1.0},
                 },
             ),
         ],
@@ -365,7 +365,7 @@ if __name__ == "__main__":
             "project": "models-under-pressure",
         },
         Trainer={
-            "max_epochs": 1,  # 20,
+            "max_epochs": 20,  # 20,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
