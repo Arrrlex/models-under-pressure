@@ -79,10 +79,10 @@ class PytorchLinearClassifier:
         )
 
         criterion = nn.BCEWithLogitsLoss()
-        per_token_dataset = activations.per_token().to_dataset(y)
+        dataset = activations.to_dataset(y)
 
         dataloader = DataLoader(
-            per_token_dataset,
+            dataset,
             batch_size=self.training_args["batch_size"],
         )
 
@@ -94,7 +94,6 @@ class PytorchLinearClassifier:
         gradient_accumulation_steps = self.training_args.get(
             "gradient_accumulation_steps", 1
         )
-
         # Training loop
         for epoch in range(self.training_args["epochs"]):
             self.model.train()
@@ -106,14 +105,30 @@ class PytorchLinearClassifier:
             )
 
             for batch_idx, batch in enumerate(pbar):
-                batch_acts, _, _, batch_y = batch
+                batch_acts, batch_mask, batch_input_ids, batch_y = batch
 
                 if batch_acts.shape[0] == 1:
                     print(f"Skipping batch {batch_idx} because it has only 1 token")
                     continue
+                acts = batch_acts.view(-1, batch_acts.shape[-1])
 
-                outputs = self.model(batch_acts)
-                loss = criterion(outputs.squeeze(), batch_y)
+                outputs = self.model(acts).squeeze()
+                seq_len = activations.shape[1]
+
+                # Get batch size from batch_y or batch_acts
+                batch_size = batch_y.shape[0]
+
+                # Recover shape: (batch_size, seq_len)
+                reshaped_logits = einops.rearrange(
+                    outputs, "(b s) -> b s", b=batch_size, s=seq_len
+                )
+
+                # Apply aggregation (mean, max, etc.) to get (batch_size,) logits
+                aggregated_logits = self.aggregation(
+                    reshaped_logits, batch_mask, batch_input_ids
+                )
+
+                loss = criterion(aggregated_logits, batch_y)
 
                 # Scale loss by gradient accumulation steps
                 loss = loss / gradient_accumulation_steps

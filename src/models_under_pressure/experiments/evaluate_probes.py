@@ -298,21 +298,20 @@ if __name__ == "__main__":
     np.random.seed(RANDOM_SEED)
 
     config = EvalRunConfig(
+        id="training_with_aggregation-per_token-mean",
         layer=31,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name="attention",
+            name="per_token",
             hyperparams={
-                "batch_size": 16,
-                "epochs": 50,
+                "batch_size": 32,
+                "epochs": 200,
+                "aggregation": {"name": "mean"},
                 "optimizer_args": {
-                    "lr": 1e-3,
-                    "weight_decay": 0.0004,
+                    "lr": 1e-4,
+                    "weight_decay": 0.01,
                 },
-                "attn_hidden_dim": 27,
-                "probe_architecture": "attention_then_linear",
-                "scheduler_decay": 0.62,
             },
         ),
         compute_activations=False,
