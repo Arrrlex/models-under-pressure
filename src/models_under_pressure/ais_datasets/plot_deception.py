@@ -30,7 +30,6 @@ def line_plot_deception_by_label(datasets: dict[str, LabelledDataset]):
         )
 
         count = np.array([np.sum(scale_labels == scale) for scale in unique_labels])
-        print()
         print(name)
 
         for scale, mean_score, count in zip(unique_labels, mean_scores, count):
@@ -42,7 +41,8 @@ def line_plot_deception_by_label(datasets: dict[str, LabelledDataset]):
                     "count": count,
                 }
             )
-            print(f"{scale=} {mean_score=} {count=}")
+            print(f"{scale=} {mean_score=:.2f} {count=}")
+        print()
 
     plot_data = pd.DataFrame(plot_data)
 
@@ -61,6 +61,8 @@ def line_plot_deception_by_label(datasets: dict[str, LabelledDataset]):
     # Save the figure
     plt.savefig(PLOTS_DIR / "deception_by_scale_line.png", bbox_inches="tight", dpi=300)
 
+    plt.close()
+
 
 def plot_deception_by_label(
     dataset_name: str, dataset: LabelledDataset, plot_type: str = "stripplot"
@@ -72,7 +74,7 @@ def plot_deception_by_label(
     Args:
         dataset_name: Name of the dataset
         dataset: LabelledDataset instance to plot
-        plot_type: Type of plot to generate. Options: "stripplot", "swarmplot", "violinplot"
+        plot_type: Type of plot to generate. Options: "stripplot", "swarmplot", "violinplot", "heatscatter"
     """
     deception_scores = np.array(dataset.other_fields["deception_scores"])
     scale_labels = np.array(
@@ -84,21 +86,38 @@ def plot_deception_by_label(
         {"Stakes Level": scale_labels, "Deception Score": deception_scores}
     )
 
-    # Create the plot with the regression line first
-    g = sns.lmplot(
-        data=df,
-        x="Stakes Level",
-        y="Deception Score",
-        robust=True,
-        scatter=False,
-        color="red",
-        line_kws={"linestyle": "--"},
-        height=6,
-        aspect=1.67,  # This gives us roughly 10x6 figure
-    )
+    sns.set_theme(style="whitegrid")
 
-    # Add the specified plot type on top
-    if plot_type == "stripplot":
+    if plot_type == "heatscatter":
+        # Create a grid of points for the heatmap-like scatter using only actual values
+        unique_stakes = sorted(df["Stakes Level"].unique())
+        unique_scores = sorted(df["Deception Score"].unique())
+
+        grid = []
+        for stake in unique_stakes:
+            for score in unique_scores:
+                count = np.sum(
+                    (df["Stakes Level"] == stake) & (df["Deception Score"] == score)
+                )
+                grid.append(
+                    {"Stakes Level": stake, "Deception Score": score, "Count": count}
+                )
+        grid_df = pd.DataFrame(grid)
+
+        # Create the plot
+        sns.relplot(
+            data=grid_df,
+            x="Stakes Level",
+            y="Deception Score",
+            hue="Count",
+            size="Count",
+            palette="coolwarm",
+            sizes=(50, 250),
+            height=6,
+            aspect=1.67,
+        )
+
+    elif plot_type == "stripplot":
         sns.stripplot(
             data=df,
             x="Stakes Level",
@@ -106,7 +125,6 @@ def plot_deception_by_label(
             jitter=0.2,
             alpha=0.5,
             size=5,
-            ax=g.ax,
         )
     elif plot_type == "swarmplot":
         sns.swarmplot(
@@ -115,37 +133,33 @@ def plot_deception_by_label(
             y="Deception Score",
             size=3,
             alpha=0.7,
-            ax=g.ax,
         )
     elif plot_type == "violinplot":
-        sns.violinplot(data=df, x="Stakes Level", y="Deception Score", ax=g.ax)
-        sns.stripplot(
-            data=df,
-            x="Stakes Level",
-            y="Deception Score",
-            jitter=0.2,
-            alpha=0.3,
-            size=4,
-            color="black",
-            ax=g.ax,
-        )
+        sns.violinplot(data=df, x="Stakes Level", y="Deception Score")
+        # sns.stripplot(
+        #     data=df,
+        #     x="Stakes Level",
+        #     y="Deception Score",
+        #     # jitter=0.2,
+        #     # alpha=0.3,
+        #     size=4,
+        #     color="black",
+        # )
     else:
         raise ValueError(f"Unknown plot type: {plot_type}")
 
     # Customize the plot
-    g.ax.set_xlabel("Stakes Level (1-10)")
-    g.ax.set_ylabel("Deception Score")
-    g.ax.set_title(f"Deception Score by Stakes Level - {dataset_name} ({plot_type})")
-    g.ax.grid(True, alpha=0.3)
-    g.ax.legend(["Line of best fit", "Data points"])
+    plt.xlabel("Stakes Level (1-10)")
+    plt.ylabel("Deception Score")
+    plt.title(f"Deception Score by Stakes Level - {dataset_name} ({plot_type})")
+    plt.grid(True, alpha=0.3)
+    plt.ylim(-0.05, 1.05)  # Add small margins to account for point sizes
 
     # Save the figure and close it
-    plt.savefig(
-        PLOTS_DIR / f"deception_by_scale_{plot_type}_{dataset_name}.png",
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close(g.fig)  # Close the figure to free memory
+    plot_path = PLOTS_DIR / f"deception_by_scale_{plot_type}_{dataset_name}.png"
+    print(f"Saving plot to {plot_path}")
+    plt.savefig(plot_path, bbox_inches="tight", dpi=300)
+    plt.close()
 
 
 def load_ais_datasets() -> dict[str, LabelledDataset]:
@@ -169,8 +183,8 @@ if __name__ == "__main__":
     datasets = load_ais_datasets()
     line_plot_deception_by_label(datasets)
 
-    # Generate all plot variants for each dataset
-    plot_types = ["stripplot", "swarmplot", "violinplot"]
     for name, dataset in datasets.items():
-        for plot_type in plot_types:
-            plot_deception_by_label(name, dataset, plot_type)
+        # plot_deception_by_label(name, dataset, plot_type="heatscatter")
+        # plot_deception_by_label(name, dataset, plot_type="stripplot")
+        # plot_deception_by_label(name, dataset, plot_type="swarmplot")
+        plot_deception_by_label(name, dataset, plot_type="violinplot")
