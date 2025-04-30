@@ -138,18 +138,41 @@ def load_dataset(
     n_per_class: int | None = None,
     mmap: bool = True,
 ) -> LabelledDataset:
-    """Load the train-test split for the generated dataset.
+    """Load the dataset.
 
     If model_name and layer are provided, the activations are loaded and added to the dataset.
+    If compute_activations is True, the activations are computed; if False,
+    the activations are loaded from the activation store.
+
+    If variation_type and variation_value are provided, the dataset is filtered to only
+    include examples where variation_type has the given variation value.
+
+    If n_per_class is provided, the dataset is subsampled to contain only n_per_class
+    examples per class.
 
     Args:
-        dataset_path: Path to the generated dataset
+        dataset_path: Path to the dataset
         model_name: Name of the model to load activations for
         layer: Layer to load activations for
-
-    Returns:
-        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
+        compute_activations: Whether to compute activations
+        variation_type: Type of variation to filter on
+        variation_value: Value of variation to filter on
+        n_per_class: Number of samples per class to load
     """
+    dataset = LabelledDataset.load_from(dataset_path)
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
+        )
+
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
+
     dataset = LabelledDataset.load_from(dataset_path)
 
     if model_name is not None and layer is not None and not compute_activations:

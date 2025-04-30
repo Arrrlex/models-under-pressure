@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Self, Sequence
+from typing import Literal, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
+from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -15,13 +16,15 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.config import global_settings
 from models_under_pressure.probes.base import Classifier, Probe
 from models_under_pressure.utils import as_numpy
 
 
 @dataclass
 class SklearnProbe(Probe):
+    probe_type: Literal["logistic_regression", "GaussianProcessClassifier"] = (
+        "logistic_regression"
+    )
     hyper_params: dict = field(
         default_factory=lambda: {
             "C": 1e-3,
@@ -32,12 +35,22 @@ class SklearnProbe(Probe):
     _classifier: Classifier | None = None
 
     def __post_init__(self):
+        """
+        Create the sklearn classifier model to be optimized.
+        """
         if self._classifier is None:
-            self.device = global_settings.DEVICE
-            self._classifier = make_pipeline(
-                StandardScaler(),
-                LogisticRegression(**self.hyper_params),
-            )  # type: ignore
+            if self.probe_type == "logistic_regression":
+                self._classifier = make_pipeline(
+                    StandardScaler(),
+                    LogisticRegression(**self.hyper_params),
+                )  # type: ignore
+            elif self.probe_type == "GaussianProcessClassifier":
+                self._classifier = make_pipeline(
+                    StandardScaler(),
+                    GaussianProcessClassifier(**self.hyper_params),
+                )  # type: ignore
+            else:
+                raise ValueError(f"Invalid probe type: {self.probe_type}")
 
     def fit(
         self,

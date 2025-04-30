@@ -2,15 +2,18 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import yaml
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, JsonValue, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.utils import generate_short_id
+from models_under_pressure.utils import (
+    generate_short_id,
+    generate_short_id_with_timestamp,
+)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
@@ -29,6 +32,7 @@ class GlobalSettings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
+    PL_DEFAULT_ROOT_DIR: str | None = None
 
 
 global_settings = GlobalSettings()
@@ -282,7 +286,7 @@ class ChooseLayerConfig(BaseModel):
 
 
 class EvalRunConfig(BaseModel):
-    id: str = Field(default_factory=generate_short_id)
+    id: str = Field(default_factory=generate_short_id_with_timestamp)
     layer: int
     probe_spec: ProbeSpec
     max_samples: int | None
@@ -332,3 +336,35 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+
+
+class DataEfficiencyConfig(BaseModel):
+    id: str = Field(default_factory=generate_short_id)
+    model_name: str
+    layer: int
+    dataset_path: Path
+    probes: list[ProbeSpec]
+    dataset_sizes: list[int]
+    eval_dataset_paths: list[Path]
+    compute_activations: bool = False
+
+    @property
+    def output_path(self) -> Path:
+        return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"
+
+
+# TODO: Maybe rename this and keep it experiment agnostic
+class DataEfficiencyBaselineConfig(BaseModel):
+    model_name_or_path: str
+    num_classes: int
+    ClassifierModule: dict[str, JsonValue]
+    batch_size: int
+    shuffle: bool
+    logger: Any | None
+    Trainer: dict[str, JsonValue]
+
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        try:
+            return self.model_dump()[key]
+        except KeyError:
+            return default

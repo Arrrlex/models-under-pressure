@@ -29,7 +29,7 @@ class Probe(ABC):
     @abstractmethod
     def predict_proba(
         self, dataset: BaseDataset
-    ) -> Float[np.ndarray, " batch_size"]: ...
+    ) -> tuple[Float[np.ndarray, " batch_size"]]: ...
 
     @abstractmethod
     def per_token_predictions(
