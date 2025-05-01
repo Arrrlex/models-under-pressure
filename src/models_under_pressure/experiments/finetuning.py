@@ -65,7 +65,7 @@ def get_finetuned_baseline_results(
             else [],
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),
-            dataset_name=eval_dataset_path.stem,
+            dataset_name=eval_dataset_path.stem,  # TODO This isn't good, as it is hard to extract the short dataset name from this!
             dataset_path=eval_dataset_path,
             model_name=finetune_config.model_name_or_path,
             max_samples=max_samples,
