@@ -7,14 +7,17 @@ from models_under_pressure.config import (
     DataEfficiencyBaselineConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
-from models_under_pressure.finetune_baselines import FinetunedClassifier
+from models_under_pressure.finetune_baselines import (
+    FinetunedClassifier,
+    create_collate_fn,
+)
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 
 
 def get_finetuned_baseline_results(
     finetune_config: DataEfficiencyBaselineConfig,
     train_dataset_path: Path,
-    eval_dataset_paths: List[Path],
+    eval_datasets: dict[str, Path],
     max_samples: Optional[int] = None,
     compute_activations: bool = True,
 ) -> List[FinetunedBaselineResults]:
@@ -38,7 +41,7 @@ def get_finetuned_baseline_results(
     print("\nLoading eval datasets")
     # We'll use the first eval dataset for the BaselineResults
     eval_results = []
-    for eval_dataset_path in eval_dataset_paths:
+    for dataset_name, eval_dataset_path in eval_datasets.items():
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=None,
@@ -55,6 +58,17 @@ def get_finetuned_baseline_results(
         )
         ground_truth = eval_dataset.labels_numpy().tolist()
 
+        # Get the token counts (It isn't very clean to do this here, but well, why not)
+        collate_fn = create_collate_fn(finetune_baseline.tokenizer)
+        token_counts = [
+            len(
+                collate_fn([{"text": record.input, "label": record.label.to_int()}])[
+                    "input_ids"
+                ][0]
+            )
+            for record in eval_dataset.to_records()
+        ]
+
         # Create BaselineResults instance
         baseline_results = FinetunedBaselineResults(
             ids=list(eval_dataset.ids),
@@ -64,13 +78,15 @@ def get_finetuned_baseline_results(
             if results.logits is not None
             else [],
             ground_truth=ground_truth,
-            ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),
-            dataset_name=eval_dataset_path.stem,  # TODO This isn't good, as it is hard to extract the short dataset name from this!
+            ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])
+            if "scale_labels" in eval_dataset.other_fields
+            else None,
+            dataset_name=dataset_name,
             dataset_path=eval_dataset_path,
             model_name=finetune_config.model_name_or_path,
             max_samples=max_samples,
+            token_counts=token_counts,
         )
-
         eval_results.append(baseline_results)
 
     return eval_results
@@ -105,7 +121,7 @@ if __name__ == "__main__":
     baseline_results = get_finetuned_baseline_results(
         finetune_config,
         train_dataset_path=SYNTHETIC_DATASET_PATH,
-        eval_dataset_paths=list(EVAL_DATASETS.values())[:2],
+        eval_datasets=EVAL_DATASETS,
         max_samples=10,
         compute_activations=True,
     )

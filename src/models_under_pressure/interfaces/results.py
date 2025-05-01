@@ -171,6 +171,7 @@ class LikelihoodBaselineResults(BaselineResults):
 
 class FinetunedBaselineResults(BaselineResults):
     scores: list[float]
+    token_counts: list[int] | None = None
 
 
 class HeatmapCellResult(BaseModel):

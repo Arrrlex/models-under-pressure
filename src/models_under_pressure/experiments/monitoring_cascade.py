@@ -1431,9 +1431,10 @@ def evaluate_probe_baseline_cascade(
         ]
         scores = baseline_results.high_stakes_scores
     else:  # FinetunedBaselineResults
+        assert baseline_results.token_counts is not None
         # For finetuned baselines, we don't have token counts, so use a fixed value
         baseline_flops = [
-            int(per_token_flops) * 1 for _ in range(len(baseline_results.scores))
+            int(per_token_flops) * count for count in baseline_results.token_counts
         ]
         scores = baseline_results.scores
 
