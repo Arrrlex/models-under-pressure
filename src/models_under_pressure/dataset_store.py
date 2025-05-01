@@ -1,6 +1,6 @@
 import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import PosixPath
 from typing import Self
 
 from pydantic import BaseModel
@@ -16,11 +16,11 @@ from models_under_pressure.r2 import (
 
 
 class DatasetManifest(BaseModel):
-    path: Path
+    path: PosixPath
     md5: str
 
     @classmethod
-    def from_path(cls, path: Path) -> Self:
+    def from_path(cls, path: PosixPath) -> Self:
         return cls(path=path, md5=md5(path))
 
 
@@ -28,7 +28,7 @@ class DatasetRegistry(BaseModel):
     datasets: list[DatasetManifest]
 
     @property
-    def paths(self) -> list[Path]:
+    def paths(self) -> list[PosixPath]:
         return [dataset.path for dataset in self.datasets]
 
 
@@ -42,7 +42,9 @@ class DatasetStore:
             return DatasetRegistry.model_validate_json(f.read())
 
     @property
-    def registry_path(self) -> Path:
+    def registry_path(self) -> PosixPath:
+        if not isinstance(PROJECT_ROOT, PosixPath):
+            raise RuntimeError("PROJECT_ROOT must be a PosixPath")
         return PROJECT_ROOT / "data/registry.json"
 
     def save_registry(self, registry: DatasetRegistry):
@@ -51,7 +53,7 @@ class DatasetStore:
 
         upload_file(self.bucket, "registry.json", self.registry_path)
 
-    def upload(self, paths: list[Path]):
+    def upload(self, paths: list[PosixPath]):
         for path in tqdm(paths, desc="Uploading datasets"):
             path = path.resolve().relative_to(PROJECT_ROOT)
             registry = self.load_registry()
@@ -67,6 +69,8 @@ class DatasetStore:
 
     def download_all(self):
         registry = self.load_registry()
+        if not isinstance(PROJECT_ROOT, PosixPath):
+            raise RuntimeError("PROJECT_ROOT must be a PosixPath")
         to_download = []
         for dataset in registry.datasets:
             if (PROJECT_ROOT / dataset.path).exists():
@@ -84,7 +88,7 @@ class DatasetStore:
                 local_path=PROJECT_ROOT / dataset.path,
             )
 
-    def delete(self, path: Path):
+    def delete(self, path: PosixPath):
         path = path.resolve().relative_to(PROJECT_ROOT)
         registry = self.load_registry()
         if path not in registry.paths:
@@ -96,5 +100,5 @@ class DatasetStore:
             self.save_registry(registry)
 
 
-def md5(path: Path) -> str:
+def md5(path: PosixPath) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
