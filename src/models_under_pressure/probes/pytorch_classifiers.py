@@ -548,6 +548,7 @@ class AttentionProbeAttnOnly(nn.Module):
     def forward(
         self,
         activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+        mask: Float[torch.Tensor, "batch_size seq_len"] | None = None,
     ) -> Float[torch.Tensor, "batch_size seq_len"]:
         """
         The forward pass of the attention probe.
@@ -569,6 +570,7 @@ class AttentionProbeAttnWeightLogits(nn.Module):
     def forward(
         self,
         activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+        mask: Float[torch.Tensor, "batch_size seq_len"] | None = None,
     ) -> Float[torch.Tensor, "batch_size seq_len"]:
         """
         The forward pass of the attention probe.
@@ -621,6 +623,7 @@ class AttentionProbeAttnThenLinear(nn.Module):
     def forward(
         self,
         activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+        mask: Float[torch.Tensor, "batch_size seq_len"] | None = None,
     ) -> Float[torch.Tensor, "batch_size seq_len"]:
         activations = activations.permute(0, 2, 1)
         activations = self.batch_norm(activations)
@@ -640,6 +643,8 @@ class SimpleAttentionPoolingProbe(nn.Module):
 
     def __init__(self, embed_dim: int):
         super().__init__()
+
+        #
         self.attn_vector = nn.Parameter(torch.randn(embed_dim) * 0.001)
         self.output_vector = nn.Parameter(torch.randn(embed_dim) * 0.001)
         self.bias = nn.Parameter(torch.zeros(1))
@@ -649,6 +654,9 @@ class SimpleAttentionPoolingProbe(nn.Module):
         activations: Float[torch.Tensor, "batch_size seq_len embed_dim"],
         mask: Float[torch.Tensor, "batch_size seq_len"] | None = None,
     ) -> Float[torch.Tensor, " batch_size"]:
+        """
+        The forward pass of the simple attention pooling probe.
+        """
         device = activations.device
         dtype = activations.dtype
         attn_vector = self.attn_vector.to(device).to(dtype)
@@ -657,22 +665,25 @@ class SimpleAttentionPoolingProbe(nn.Module):
 
         batch_size, seq_len, embed_dim = activations.shape
 
-        attn_scores = activations @ attn_vector  # (batch_size, seq_len)
+        # batch_size, seq_len
+        attn_scores = activations @ attn_vector
 
         if mask is not None:
             mask = mask.bool().to(device)
             attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
 
+        # batch_size, seq_len
         attn_weights = torch.softmax(attn_scores, dim=1)
 
-        # Weighted sum over the sequence
+        # Weighted sum over the sequence (batch_size, embed_dim)
         weighted_sum = einops.einsum(
-            attn_weights,
+            attn_weights,  # masked elements are 0 after softmax
             activations,
             "batch seq, batch seq hidden_dim -> batch hidden_dim",
         )  # (batch_size, embed_dim)
         logits = (weighted_sum @ output_vector) + bias  # (batch_size,)
 
+        # batch_size
         return logits
 
 
@@ -734,8 +745,8 @@ class PytorchSimpleAttentionClassifier(PytorchLinearClassifier):
                 )
                 for batch_idx, (batch_acts, batch_mask, _, batch_y) in enumerate(pbar):
                     optimizer.zero_grad()
-
                     outputs = self.model(batch_acts, batch_mask)
+
                     outputs = outputs.view(-1)
                     batch_y = batch_y.view(-1)
 
@@ -799,7 +810,9 @@ class PytorchSimpleAttentionClassifier(PytorchLinearClassifier):
 
         return self
 
-    def create_model(self, embedding_dim: int) -> nn.Module:
+    def create_model(
+        self, embedding_dim: int, attn_hidden_dim: int, probe_architecture: str
+    ) -> nn.Module:
         return SimpleAttentionPoolingProbe(embedding_dim)
 
     @torch.no_grad()
@@ -911,38 +924,48 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         best_model_state = None
         self.best_epoch = None
 
+        # Get gradient accumulation steps from training args, default to 1
+        gradient_accumulation_steps = self.training_args.get(
+            "gradient_accumulation_steps", 1
+        )
+
         # Training loop
         # Enable gradient computation
         with torch.set_grad_enabled(True):
             self.model.train()
             for epoch in range(self.training_args["epochs"]):
                 running_loss = 0.0
+                optimizer.zero_grad()  # Zero gradients at the start of each epoch
                 pbar = tqdm(
                     dataloader, desc=f"Epoch {epoch + 1}/{self.training_args['epochs']}"
                 )
                 for batch_idx, (batch_acts, batch_mask, _, batch_y) in enumerate(pbar):
                     # Standard training step for AdamW
-                    optimizer.zero_grad()
-                    outputs = self.model(batch_acts)  # batch_size, seq_len
+                    outputs = self.model(batch_acts, batch_mask)  # batch_size, seq_len
 
-                    # Multiply by the attention mask here, to avoid learning from padded tokens
-                    outputs *= batch_mask
+                    if self.training_args["probe_architecture"] not in [
+                        "simple_attention"
+                    ]:
+                        # Multiply by the attention mask here, to avoid learning from padded tokens
+                        outputs *= batch_mask
 
-                    # Aggregate the attention weighted logits
-                    outputs = outputs.mean(dim=-1)
+                        # Aggregate the attention weighted logits across the sequence
+                        outputs = outputs.mean(dim=-1)
 
-                    # Ensure outputs and y have compatible shapes
-                    outputs = outputs.view(-1)
-                    batch_y = batch_y.view(-1)
+                        # Ensure outputs and y have compatible shapes
+                        outputs = outputs.view(-1)
+                        batch_y = batch_y.view(-1)
 
                     loss = criterion(outputs, batch_y)
+
+                    # Scale loss by gradient accumulation steps
+                    loss = loss / gradient_accumulation_steps
+                    loss.backward()
 
                     if print_gradient_norm:
                         print("loss", loss)
 
                     assert not loss.isnan().any(), "Loss is NaN"
-
-                    loss.backward()
 
                     # Calculate and print gradient norm before clipping
                     grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -951,11 +974,13 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
                     if print_gradient_norm:
                         print(f"gradient norm: {grad_norm.item()}")
 
-                    optimizer.step()
-                    loss = loss.item()
+                    # Only step optimizer and zero gradients after accumulating enough steps
+                    if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                        optimizer.step()
+                        optimizer.zero_grad()
 
-                    # Update running loss and progress bar
-                    running_loss += loss
+                    # Update running loss (multiply by gradient_accumulation_steps to get actual loss)
+                    running_loss += loss.item() * gradient_accumulation_steps
                     avg_loss = running_loss / (batch_idx + 1)
                     pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
 
@@ -1016,6 +1041,9 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
         if self.model is None:
             raise ValueError("Model not trained")
 
+        if self.training_args["probe_architecture"] in ["simple_attention"]:
+            assert not per_token, "Per token is not supported for simple attention"
+
         self.model.eval()
         batch_size, seq_len, _ = activations.shape
 
@@ -1028,11 +1056,18 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             shuffle=False,
         )
 
-        logits = torch.zeros(
-            (batch_size, seq_len),
-            device=self.device,
-            dtype=self.dtype,
-        )
+        if self.training_args["probe_architecture"] in ["simple_attention"]:
+            logits = torch.zeros(
+                (batch_size),
+                device=self.device,
+                dtype=self.dtype,
+            )
+        else:
+            logits = torch.zeros(
+                (batch_size, seq_len),
+                device=self.device,
+                dtype=self.dtype,
+            )
 
         # Process in batches
         start_idx = 0
@@ -1040,13 +1075,19 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             mb_size = len(batch_acts)
 
             # Get logits for this batch
-            batch_logits = self.model(batch_acts) * batch_mask
+            if self.training_args["probe_architecture"] not in ["simple_attention"]:
+                batch_logits = self.model(batch_acts) * batch_mask
+            else:
+                batch_logits = self.model(batch_acts, batch_mask)
 
             # Store in output tensor
             logits[start_idx : start_idx + mb_size] = batch_logits
             start_idx += mb_size
 
         if per_token:
+            return logits
+        elif self.training_args["probe_architecture"] in ["simple_attention"]:
+            # assertion prevents per token = true for simple attention
             return logits
         else:
             return self.aggregation(
@@ -1086,6 +1127,8 @@ class PytorchAttentionClassifier(PytorchLinearClassifier):
             model = AttentionProbeAttnThenLinear(embedding_dim, attn_hidden_dim)
         elif probe_architecture == "attention_only":
             model = AttentionProbeAttnOnly(embedding_dim, attn_hidden_dim)
+        elif probe_architecture == "simple_attention":
+            model = SimpleAttentionPoolingProbe(embedding_dim)
         else:
             raise NotImplementedError(
                 f"Probe architecture {probe_architecture} not implemented"
