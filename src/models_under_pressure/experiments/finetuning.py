@@ -8,82 +8,75 @@ from models_under_pressure.config import (
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.finetune_baselines import FinetunedClassifier
+from models_under_pressure.interfaces.results import FinetunedBaselineResults
 
 
-def run_data_efficiency_finetune_baseline_with_activations(
+def get_finetuned_baseline_results(
     finetune_config: DataEfficiencyBaselineConfig,
     train_dataset_path: Path,
     eval_dataset_paths: List[Path],
     max_samples: Optional[int] = None,
-) -> dict[Path, dict[str, float]]:
+    compute_activations: bool = True,
+) -> List[FinetunedBaselineResults]:
     print("Loading train dataset")
     train_dataset, val_dataset = load_train_test(
         dataset_path=train_dataset_path,
         model_name=None,
         layer=None,
-        compute_activations=True,
+        compute_activations=compute_activations,
         n_per_class=max_samples // 2 if max_samples else None,
     )
-    print("Loading eval datasets")
-    finetune_results = {}
+    print("Training finetuned baseline...")
+    finetune_baseline = FinetunedClassifier(finetune_config)
+
+    # Train the finetune baseline:
+    finetune_baseline.train(
+        train_dataset,
+        val_dataset=val_dataset,
+    )
+
+    print("\nLoading eval datasets")
+    # We'll use the first eval dataset for the BaselineResults
+    eval_results = []
     for eval_dataset_path in eval_dataset_paths:
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=None,
             layer=None,
-            compute_activations=True,
+            compute_activations=compute_activations,
             n_per_class=max_samples // 2 if max_samples else None,
-        )
-
-        finetune_baseline = FinetunedClassifier(finetune_config)
-
-        # Train the finetune baseline:
-        finetune_baseline.train(
-            train_dataset,
-            val_dataset=val_dataset,
         )
 
         results = finetune_baseline.get_results(eval_dataset)
 
-        # Calculate the metrics here:
-        metrics = {
-            "auroc": results.auroc(),
-            "accuracy": results.accuracy(),
-            "tpr_at_fpr": results.tpr_at_fixed_fpr(fpr=0.01)[0],
-        }
+        # Convert tensors to lists for BaselineResults
+        labels = (
+            results.labels.cpu().numpy().tolist() if results.labels is not None else []
+        )
+        ground_truth = eval_dataset.labels_numpy().tolist()
 
-        finetune_results[eval_dataset_path] = metrics
+        # Create BaselineResults instance
+        baseline_results = FinetunedBaselineResults(
+            ids=list(eval_dataset.ids),
+            accuracy=results.accuracy(),
+            labels=labels,
+            scores=results.logits.cpu().numpy().tolist()
+            if results.logits is not None
+            else [],
+            ground_truth=ground_truth,
+            ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"]),
+            dataset_name=eval_dataset_path.stem,
+            dataset_path=eval_dataset_path,
+            model_name=finetune_config.model_name_or_path,
+            max_samples=max_samples,
+        )
 
-    # Incorporate the baseline results into the config:
-    # results = DataEfficiencyResults(
-    #    config=config,
-    #    baseline_config=finetune_config,
-    # )
+        eval_results.append(baseline_results)
 
-    # return results
-    return finetune_results
-
-
-def ensure_wandb_login():
-    """
-    Ensures wandb is logged in by checking login status and prompting if needed.
-    """
-    import wandb
-
-    try:
-        # Check if already logged in
-        wandb.ensure_configured()
-        if wandb.api.api_key is None:
-            print("WandB not logged in. Please enter your API key to log in.")
-            wandb.login()
-    except Exception as e:
-        print(f"Error checking wandb login status: {e}")
-        print("Please run 'wandb login' manually if you want to use wandb logging")
+    return eval_results
 
 
 if __name__ == "__main__":
-    ensure_wandb_login()
-
     # Should be defined via a hydra run config file:
     finetune_config = DataEfficiencyBaselineConfig(
         model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
@@ -97,27 +90,26 @@ if __name__ == "__main__":
         },
         batch_size=4,
         shuffle=True,
-        logger={
-            "_target_": "pytorch_lightning.loggers.WandbLogger",
-            "project": "models-under-pressure",
-        },
+        logger=None,
         Trainer={
             "max_epochs": 1,  # 20,
             "accelerator": "gpu",
             "devices": [0],
-            "precision": "bf16-true",
+            "precision": "16-true",
             # "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
             "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
             "accumulate_grad_batches": 4,
         },
     )
 
-    baseline_results = run_data_efficiency_finetune_baseline_with_activations(
+    baseline_results = get_finetuned_baseline_results(
         finetune_config,
         train_dataset_path=SYNTHETIC_DATASET_PATH,
         eval_dataset_paths=list(EVAL_DATASETS.values())[:2],
         max_samples=10,
+        compute_activations=True,
     )
+    print(baseline_results)
 
     # # Reload the results as a test:
     # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:

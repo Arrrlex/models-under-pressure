@@ -169,6 +169,10 @@ class LikelihoodBaselineResults(BaselineResults):
     token_counts: list[int] | None = None
 
 
+class FinetunedBaselineResults(BaselineResults):
+    scores: list[float]
+
+
 class HeatmapCellResult(BaseModel):
     variation_type: str
     train_variation_value: str
