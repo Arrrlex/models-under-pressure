@@ -24,7 +24,7 @@ from models_under_pressure.interfaces.dataset import (
     Record,
     subsample_balanced_subset,
 )
-from models_under_pressure.utils import call_llm_async, parse_mapping_str
+from models_under_pressure.utils import call_llm_async
 
 # Load the rubric once at module level
 LABELING_RUBRIC = LABELING_RUBRIC_PATH.read_text()
@@ -243,7 +243,7 @@ def label_dataset(
     dataset: Dataset,
     *,
     model: str = global_settings.DEFAULT_MODEL,
-    max_concurrent: int = 50,
+    max_concurrent: int = 400,
     labelling_method: str = "scale",
     force_override: bool = False,
     use_rubric: bool = False,
@@ -272,7 +272,7 @@ def relabel_eval_datasets(
     *,
     dataset_names: list[str] | None = None,
     model: str = global_settings.DEFAULT_MODEL,
-    max_concurrent: int = 50,
+    max_concurrent: int = 200,
     use_rubric: bool = False,
 ) -> None:
     """Create scale labels for all eval datasets"""
@@ -423,8 +423,12 @@ def create_test_dataset(
 
 
 def main(
-    path: Path = typer.Argument(..., help="Path to the dataset file"),
-    save_path: Path = typer.Option(..., help="Path to save the labelled dataset"),
+    path: Path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/results/debug/prompts_30_04_25_gpt-4o.jsonl"
+    ),
+    save_path: Path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/results/debug/prompts_30_04_25_gpt-4o_labelled.jsonl"
+    ),
     field_mapping: str = typer.Option(
         "",
         help="Comma-separated list of key:value pairs for field mapping (e.g., 'input:text,id:example_id')",
@@ -443,7 +447,8 @@ def main(
     Example: 'input:text,id:example_id' maps the 'text' field to 'input' and 'example_id' to 'id'.
     """
     # Parse field_mapping string into a dictionary
-    mapping_dict = parse_mapping_str(field_mapping)
+    # mapping_dict = parse_mapping_str(field_mapping)
+    mapping_dict = {"prompt": "inputs", "id": "ids"}
 
     print(f"Loading dataset from {path}")
     dataset = Dataset.load_from(path, field_mapping=mapping_dict)

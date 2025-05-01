@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Dict, Protocol, Sequence, Tuple, runtime_checkable
 
 import numpy as np
+import pandas as pd
 import torch
 from pydantic import BaseModel
 from sklearn.feature_extraction.text import CountVectorizer
@@ -320,15 +321,57 @@ def filter_dataset(
 
 
 if __name__ == "__main__":
+    train_original_path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
+    )
+    test_original_path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/original_doubled_unconfounded/test.jsonl"
+    )
+    train_new_path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_30_04_filtered_unconfounded/train.jsonl"
+    )
+    test_new_path = Path(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_30_04_filtered_unconfounded/test.jsonl"
+    )
+    print(len(LabelledDataset.load_from(train_original_path)))
+    print(len(LabelledDataset.load_from(test_original_path)))
+    print(len(LabelledDataset.load_from(train_new_path)))
+    print(len(LabelledDataset.load_from(test_new_path)))
+    merged_train = pd.concat(
+        [
+            LabelledDataset.load_from(train_original_path).to_pandas(),
+            LabelledDataset.load_from(train_new_path).to_pandas(),
+        ]
+    )
+    merged_test = pd.concat(
+        [
+            LabelledDataset.load_from(test_original_path).to_pandas(),
+            LabelledDataset.load_from(test_new_path).to_pandas(),
+        ]
+    )
+    print(len(merged_train))
+    print(len(merged_test))
+    merged_train.to_json(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_7x/train.jsonl",
+        orient="records",
+        lines=True,
+    )
+    merged_test.to_json(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_7x/test.jsonl",
+        orient="records",
+        lines=True,
+    )
+    exit()
+
     # Load datasets
     input_path = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_original_doubled.jsonl"
+        "/home/ubuntu/urja/urja/models-under-pressure/data/results/debug/prompts_30_04_25_gpt-4o_balanced.jsonl"
     )
     output_path_train = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_30_04_filtered_unconfounded/train.jsonl"
     )
     output_path_test = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/test.jsonl"
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/prompts_30_04_filtered_unconfounded/test.jsonl"
     )
     dataset = LabelledDataset.load_from(input_path)
     # eval_datasets = {
@@ -337,11 +380,15 @@ if __name__ == "__main__":
 
     # Run analysis on original dataset
     print("Original Dataset Results:")
+    dataset_df = dataset.to_pandas()
     bow_results = analyse_confounders(dataset, {}, classifier_type="bow")
+    print(len(dataset))
+    print("High stakes:", len(dataset_df[dataset_df["labels"] == "high-stakes"]))
+    print("Low stakes:", len(dataset_df[dataset_df["labels"] == "low-stakes"]))
     print(f"Cross-validation accuracy: {bow_results.cv_accuracy:.3f}")
     print("\nEvaluation accuracies:")
     for name, acc in bow_results.eval_accuracies.items():
-        print(f"  {name}: {acc:.3f}")
+        print(f"{name}: {acc:.3f}")
     print("\nMost predictive words for high stakes:")
     print(bow_results.high_stakes_words)
     print("\nMost predictive words for low stakes:")
@@ -361,6 +408,10 @@ if __name__ == "__main__":
         len(filtered_df[filtered_df["split"] == "test"]),
         len(filtered_df[filtered_df["split"] == "train"]),
     )
+    print("High stakes in train:")
+    print(filtered_df[filtered_df["split"] == "train"]["labels"].value_counts())
+    print("High stakes in test:")
+    print(filtered_df[filtered_df["split"] == "test"]["labels"].value_counts())
 
     filtered_results = analyse_confounders(filtered_dataset, {}, classifier_type="bow")
     print(f"Cross-validation accuracy: {filtered_results.cv_accuracy:.3f}")

@@ -306,7 +306,7 @@ if __name__ == "__main__":
             name="per_token",
             hyperparams={
                 "batch_size": 32,
-                "epochs": 200,
+                "epochs": 1000,
                 "aggregation": {"name": "mean"},
                 "optimizer_args": {
                     "lr": 1e-4,
