@@ -22,6 +22,9 @@ from transformers import (
 
 from models_under_pressure.config import DataEfficiencyBaselineConfig, global_settings
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
+from models_under_pressure.utils import hf_login
+
+hf_login()
 
 
 class BaselineResults(BaseModel):
