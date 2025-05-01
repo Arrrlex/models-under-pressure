@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
+    RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
     DataEfficiencyBaselineConfig,
 )
@@ -74,9 +75,7 @@ def get_finetuned_baseline_results(
             ids=list(eval_dataset.ids),
             accuracy=results.accuracy(),
             labels=labels,
-            scores=results.logits.cpu().numpy().tolist()
-            if results.logits is not None
-            else [],
+            scores=results.probits.tolist() if results.logits is not None else [],
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])
             if "scale_labels" in eval_dataset.other_fields
@@ -95,25 +94,28 @@ def get_finetuned_baseline_results(
 if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = DataEfficiencyBaselineConfig(
-        model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
+        # model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
+        # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
+        # model_name_or_path="google/gemma-3-12b-it",
+        model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
-            "weight_decay": 1.0,
+            "weight_decay": 0.01,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=4,
+        batch_size=128,
         shuffle=True,
         logger=None,
         Trainer={
-            "max_epochs": 1,  # 20,
+            "max_epochs": 20,  # 20,
             "accelerator": "gpu",
-            "devices": [0],
-            "precision": "16-true",
-            # "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
+            "devices": [0, 1, 2, 3],
+            "precision": "bf16-true",
+            "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
+            # "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
             "accumulate_grad_batches": 4,
         },
     )
@@ -127,8 +129,9 @@ if __name__ == "__main__":
     )
     print(baseline_results)
 
-    # # Reload the results as a test:
-    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
-    #     results_dict = json.loads(f.readlines()[-1])
+    # Save the results:
+    with open(RESULTS_DIR / "finetuning.jsonl", "a") as f:
+        for result in baseline_results:
+            f.write(result.model_dump_json() + "\n")
 
     # results = DataEfficiencyResults.model_validate(results_dict)
