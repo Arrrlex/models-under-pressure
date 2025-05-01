@@ -2,11 +2,11 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import yaml
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, JsonValue, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
@@ -332,3 +332,35 @@ class SafetyRunConfig:
     @property
     def output_filename(self) -> str:
         return f"{self.dataset_path.stem}_{self.model_name.split('/')[-1]}_{self.variation_type}_fig1.json"
+
+
+class DataEfficiencyConfig(BaseModel):
+    id: str = Field(default_factory=generate_short_id)
+    model_name: str
+    layer: int
+    dataset_path: Path
+    probes: list[ProbeSpec]
+    dataset_sizes: list[int]
+    eval_dataset_paths: list[Path]
+    compute_activations: bool = False
+
+    @property
+    def output_path(self) -> Path:
+        return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"
+
+
+# TODO: Maybe rename this and keep it experiment agnostic
+class DataEfficiencyBaselineConfig(BaseModel):
+    model_name_or_path: str
+    num_classes: int
+    ClassifierModule: dict[str, JsonValue]
+    batch_size: int
+    shuffle: bool
+    logger: Any | None
+    Trainer: dict[str, JsonValue]
+
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        try:
+            return self.model_dump()[key]
+        except KeyError:
+            return default

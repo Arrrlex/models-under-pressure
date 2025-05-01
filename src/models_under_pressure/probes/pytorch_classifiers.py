@@ -154,7 +154,6 @@ class PytorchLinearClassifier:
         # Load best model if validation was used
         if best_model_state is not None:
             self.model.load_state_dict(best_model_state)
-
         return self
 
     def probs(self, activations: Activation, per_token: bool = False) -> torch.Tensor:

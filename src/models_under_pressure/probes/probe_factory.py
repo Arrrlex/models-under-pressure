@@ -47,7 +47,6 @@ class ProbeFactory:
             print(
                 f"Warning: Validation dataset is not used for probe of type {probe.name}."
             )
-
         if probe.name == "sklearn_mean_agg_probe":
             return SklearnProbe(hyper_params=probe.hyperparams).fit(train_dataset)
         elif probe.name == "difference_of_means":
@@ -71,6 +70,7 @@ class ProbeFactory:
             return PytorchProbe(
                 hyper_params=probe.hyperparams,
             ).fit(train_dataset, validation_dataset=validation_dataset)
+
         elif probe.name == "pytorch_per_entry_probe_mean":
             assert probe.hyperparams is not None
             return PytorchProbe(
@@ -87,6 +87,11 @@ class ProbeFactory:
                 hyper_params=probe.hyperparams,
                 _classifier=PytorchAttentionClassifier(training_args=probe.hyperparams),
             ).fit(train_dataset, validation_dataset=validation_dataset)
+        elif probe.name == "sklearn_gp_per_entry_probe":
+            return SklearnProbe(
+                probe_type="GaussianProcessClassifier",
+                hyper_params=probe.hyperparams,
+            ).fit(train_dataset)
         else:
             raise NotImplementedError(f"Probe type {probe} not supported")
 
