@@ -339,19 +339,25 @@ class LLMModel(nn.Module):
             cache_dir=cache_dir,  # torch_dtype=torch.bfloat16
         )
 
-        last_linear_dim = None
-        # Get hidden size from model config
-        last_linear_dim = self.model.config.hidden_size
-
-        if last_linear_dim is None:
-            raise ValueError("Could not find any Linear layers in the model")
-
         self.num_classes = num_classes
-        self.hidden_dim = last_linear_dim
         self.classifier_layer = nn.Sequential(
             nn.Linear(self.hidden_dim, num_classes),
             nn.Softmax(),
         )
+
+    @property
+    def hidden_dim(self) -> int:
+        if hasattr(self.model.config, "hidden_size"):
+            return self.model.config.hidden_size  # type: ignore
+        elif hasattr(self.model.config, "text_config") and hasattr(
+            self.model.config.text_config,  # type: ignore
+            "hidden_size",
+        ):
+            return self.model.config.text_config.hidden_size  # type: ignore
+        else:
+            raise ValueError(
+                f"Don't know how to get the hidden dimension for model {self.model.name_or_path}."
+            )
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor

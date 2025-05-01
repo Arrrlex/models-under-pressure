@@ -4,6 +4,7 @@ from typing import List, Optional
 from models_under_pressure.config import (
     TRAIN_DIR,
     EVAL_DATASETS,
+    RESULTS_DIR,
     DataEfficiencyBaselineConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
@@ -79,22 +80,25 @@ def get_finetuned_baseline_results(
 if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = DataEfficiencyBaselineConfig(
-        model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
+        # model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
+        # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
+        # model_name_or_path="google/gemma-3-12b-it",
+        model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
-            "weight_decay": 1.0,
+            "weight_decay": 0.01,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=4,
+        batch_size=128,
         shuffle=True,
         logger=None,
         Trainer={
-            "max_epochs": 1,  # 20,
+            "max_epochs": 20,  # 20,
             "accelerator": "gpu",
-            "devices": [0],
+            "devices": [0, 1, 2, 3],
             "precision": "bf16-true",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
             # "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
@@ -106,14 +110,15 @@ if __name__ == "__main__":
         finetune_config,
         # train_dataset_path=SYNTHETIC_DATASET_PATH,
         train_dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o.jsonl",
-        eval_dataset_paths=list(EVAL_DATASETS.values())[:2],
-        max_samples=10,
-        compute_activations=True,
+        eval_dataset_paths=list(EVAL_DATASETS.values()),
+        max_samples=None,
+        compute_activations=False,
     )
     print(baseline_results)
 
-    # # Reload the results as a test:
-    # with open(RESULTS_DIR / f"data_efficiency/results_{config.id}.jsonl", "r") as f:
-    #     results_dict = json.loads(f.readlines()[-1])
+    # Save the results:
+    with open(RESULTS_DIR / "finetuning.jsonl", "a") as f:
+        for result in baseline_results:
+            f.write(result.model_dump_json() + "\n")
 
     # results = DataEfficiencyResults.model_validate(results_dict)
