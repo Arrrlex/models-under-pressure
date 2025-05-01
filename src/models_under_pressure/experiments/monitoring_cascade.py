@@ -1287,9 +1287,7 @@ def load_existing_results(
                         raise ValueError(
                             f"Not implemented for dataset name: {dataset_name}"
                         )
-                    finetuned_baseline_results_by_dataset[result.dataset_name].append(
-                        result
-                    )
+                    finetuned_baseline_results_by_dataset[dataset_name].append(result)
 
     # Read probe results
     with open(output_dir / "probe_results.jsonl") as f:
