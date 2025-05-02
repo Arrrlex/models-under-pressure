@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
 import hydra
@@ -20,8 +21,13 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
-from models_under_pressure.config import DataEfficiencyBaselineConfig, global_settings
+from models_under_pressure.config import (
+    DataEfficiencyBaselineConfig,
+    global_settings,
+)
+from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
+from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
 
 hf_login()
@@ -643,3 +649,95 @@ class FinetunedClassifier:
         # Test the model, evaluating on the test set:
         self._trainer.test(self.classifier, test_dataloader)
         return self.classifier.test_results
+
+    def get_full_results(
+        self,
+        eval_dataset: LabelledDataset,
+        dataset_name: str,
+        eval_dataset_path: Path,
+        max_samples: Optional[int] = None,
+    ) -> FinetunedBaselineResults:
+        results = self.get_results(eval_dataset)
+
+        # Convert tensors to lists for BaselineResults
+        labels = (
+            results.labels.cpu().numpy().tolist() if results.labels is not None else []
+        )
+        ground_truth = eval_dataset.labels_numpy().tolist()
+
+        # Get the token counts using StakesDataset
+        stakes_dataset = StakesDataset(eval_dataset.to_pandas())
+        collate_fn = create_collate_fn(self.tokenizer)
+        token_counts = [
+            len(
+                collate_fn([{"text": sample["text"], "label": sample["label"]}])[
+                    "input_ids"
+                ][0]
+            )
+            for sample in stakes_dataset
+        ]
+
+        # Create BaselineResults instance
+        baseline_results = FinetunedBaselineResults(
+            ids=list(eval_dataset.ids),
+            accuracy=results.accuracy(),
+            labels=labels,
+            scores=results.probits.tolist() if results.logits is not None else [],
+            ground_truth=ground_truth,
+            ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])  # type: ignore
+            if "scale_labels" in eval_dataset.other_fields
+            else None,
+            dataset_name=dataset_name,
+            dataset_path=eval_dataset_path,
+            model_name=self.finetune_config.model_name_or_path,
+            max_samples=max_samples,
+            token_counts=token_counts,
+        )
+        return baseline_results
+
+
+def get_finetuned_baseline_results(
+    finetune_config: DataEfficiencyBaselineConfig,
+    train_dataset_path: Path,
+    eval_datasets: dict[str, Path],
+    max_samples: Optional[int] = None,
+    compute_activations: bool = True,
+    use_validation_set: bool = True,
+) -> List[FinetunedBaselineResults]:
+    print("Loading train dataset")
+    train_dataset, val_dataset = load_train_test(
+        dataset_path=train_dataset_path,
+        model_name=None,
+        layer=None,
+        compute_activations=compute_activations,
+        n_per_class=max_samples // 2 if max_samples else None,
+    )
+    print("Training finetuned baseline...")
+    finetune_baseline = FinetunedClassifier(finetune_config)
+
+    # Train the finetune baseline:
+    finetune_baseline.train(
+        train_dataset,
+        val_dataset=val_dataset if use_validation_set else None,
+    )
+
+    print("\nLoading eval datasets")
+    # We'll use the first eval dataset for the BaselineResults
+    eval_results = []
+    for dataset_name, eval_dataset_path in eval_datasets.items():
+        eval_dataset = load_dataset(
+            dataset_path=eval_dataset_path,
+            model_name=None,
+            layer=None,
+            compute_activations=compute_activations,
+            n_per_class=max_samples // 2 if max_samples else None,
+        )
+        eval_results.append(
+            finetune_baseline.get_full_results(
+                eval_dataset=eval_dataset,
+                dataset_name=dataset_name,
+                eval_dataset_path=eval_dataset_path,
+                max_samples=max_samples,
+            )
+        )
+    return eval_results
