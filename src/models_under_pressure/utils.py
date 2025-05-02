@@ -2,13 +2,13 @@ import asyncio
 import functools
 import json
 import os
-from pathlib import Path
 import random
 import string
-from textwrap import indent
 import time
 from contextlib import contextmanager
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
+from pathlib import Path
+from textwrap import indent
 from typing import (
     Any,
     Awaitable,
@@ -26,14 +26,15 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
-from pydantic import BaseModel
+import requests
 import torch
+import yaml
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-import yaml
 
 load_dotenv()
 
@@ -394,4 +395,9 @@ def hf_login():
     HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")
-    huggingface_hub.login(token=HF_TOKEN)
+    try:
+        huggingface_hub.login(token=HF_TOKEN)
+    except requests.exceptions.HTTPError as e:
+        print(
+            f"Error logging in to HuggingFace: {e} (Might be fine in case of rate limit error.)"
+        )
