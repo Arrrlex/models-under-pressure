@@ -700,6 +700,7 @@ class FinetunedClassifier:
             max_samples=max_samples,
             token_counts=token_counts,
             best_epoch=self.best_epoch,
+            finetune_config=self.finetune_config,
         )
         return baseline_results
 
