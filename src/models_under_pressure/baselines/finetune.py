@@ -544,7 +544,9 @@ class FinetunedClassifier:
             monitor="val_loss",
             mode="min",
             dirpath=cache_dir,
-            filename=best_model_path_template + "-{val_loss:.2f}-{epoch:02d}",
+            # Removing val_loss part for now as it caused issues due to rounding
+            # filename=best_model_path_template + "-{val_loss:.2f}-{epoch:02d}",
+            filename=best_model_path_template + "-{epoch:02d}",
         )
 
         # Create logger:
@@ -711,6 +713,10 @@ def get_finetuned_baseline_results(
         val_dataset=val_dataset if use_validation_set else None,
     )
 
+    torch.cuda.empty_cache()
+    del train_dataset
+    del val_dataset
+
     print("\nLoading eval datasets")
     # We'll use the first eval dataset for the BaselineResults
     eval_results = []
@@ -730,4 +736,9 @@ def get_finetuned_baseline_results(
                 max_samples=max_samples,
             )
         )
+
+        # After each eval, clear the cache, delete the baseline model and dataset subset.
+        torch.cuda.empty_cache()
+        del eval_dataset
+
     return eval_results

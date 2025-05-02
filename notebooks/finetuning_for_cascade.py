@@ -5,15 +5,15 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
-    DataEfficiencyBaselineConfig,
+    FinetuneBaselineConfig,
 )
 
 if __name__ == "__main__":
     # Should be defined via a hydra run config file:
-    finetune_config = DataEfficiencyBaselineConfig(
+    finetune_config = FinetuneBaselineConfig(
         model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
         # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
-        # model_name_or_path="google/gemma-3-12b-it",
+        # model_name_or_path="google/gemma-3-1b-it",
         # model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
@@ -29,8 +29,9 @@ if __name__ == "__main__":
         Trainer={
             "max_epochs": 1,  # 20,
             "accelerator": "gpu",
-            "devices": 1,
+            "devices": 8,
             "precision": "bf16-true",
+            "strategy": "fsdp",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
             # "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
             "accumulate_grad_batches": 4,
@@ -41,7 +42,7 @@ if __name__ == "__main__":
         finetune_config,
         train_dataset_path=SYNTHETIC_DATASET_PATH,
         eval_datasets=EVAL_DATASETS,
-        max_samples=10,
+        max_samples=50,
         compute_activations=True,
     )
     print(baseline_results)
