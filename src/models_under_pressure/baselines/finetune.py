@@ -344,24 +344,31 @@ class LLMModel(nn.Module):
             cache_dir=cache_dir,
         )
 
+        def _get_hidden_size(model):
+            cfg = model.config
+            # most models (Llama, GPT-NeoX, Gemma-1B-text, …)
+            if hasattr(cfg, "hidden_size"):
+                return cfg.hidden_size
+            # multimodal wrappers (Gemma-3-4B/12B/27B, Idefics, etc.)
+            if hasattr(cfg, "text_config") and hasattr(cfg.text_config, "hidden_size"):
+                return cfg.text_config.hidden_size
+            # always works: read it from the output-embedding matrix
+            return model.get_output_embeddings().weight.shape[-1]
+
         # Get hidden size from model config
-        last_linear_dim = None
-        last_linear_dim = self.model.lm_head.in_features
+        hidden_size = _get_hidden_size(self.model)
 
-        if last_linear_dim is None:
-            raise ValueError("Could not find any Linear layers in the model")
+        new_head = nn.Linear(hidden_size, num_classes)
+        self.model.set_output_embeddings(new_head)
 
+        self.model.config.vocab_size = num_classes
         self.num_classes = num_classes
-        self.hidden_dim = last_linear_dim
-
-        self.model.lm_head = nn.Sequential(
-            nn.Linear(self.hidden_dim, num_classes),
-        )
+        self.hidden_dim = hidden_size
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        return self.model(input_ids, attention_mask).logits[:, -1, :]
+        return self.model(input_ids, attention_mask=attention_mask).logits[:, -1, :]
 
 
 class StakesDataset(torch.utils.data.Dataset):

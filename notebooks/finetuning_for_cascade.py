@@ -11,9 +11,9 @@ from models_under_pressure.config import (
 if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = FinetuneBaselineConfig(
-        model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
-        # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
-        # model_name_or_path="google/gemma-3-1b-it",
+        # model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
+        model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
+        # model_name_or_path="google/gemma-3-12b-it",
         # model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
@@ -23,15 +23,16 @@ if __name__ == "__main__":
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=4,
+        batch_size=1,
         shuffle=True,
         logger=None,
         Trainer={
             "max_epochs": 1,  # 20,
-            "accelerator": "gpu",
-            "devices": 8,
+            # "accelerator": "gpu",
+            "accelerator": "auto",
+            "devices": -1,
             "precision": "bf16-true",
-            "strategy": "fsdp",
+            # "strategy": "fsdp",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
             # "default_root_dir": "/Users/john/code/models-under-pressure/.cache",
             "accumulate_grad_batches": 4,
