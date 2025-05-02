@@ -1,0 +1,26 @@
+# @package _global_
+defaults:
+  - /probe: sklearn_mean_agg_probe  # or any other probe type
+
+# Model configuration
+model_names:
+  #- llama-70b
+  #- gemma-27b
+  #- gemma-12b
+  #- llama-8b
+  - llama-1b
+  #- gemma-1b
+
+# Probe configuration
+probe_model_name: null
+probe_layer: null
+
+# Dataset configuration
+eval_datasets: ["toolace", "mt", "mts", "mask"]
+train_dataset_path: training/original_doubled_unconfounded/train.jsonl
+max_samples: 10
+batch_size: 4
+
+# Computation settings
+compute_activations: true  # If false, activations will be read from the store
+output_dir: data/results/monitoring_cascade

@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
     ChooseLayerConfig,
-    DevSplitFineTuningConfig,
     DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
+    DevSplitFineTuningConfig,
     EvalRunConfig,
     HeatmapRunConfig,
 )
@@ -167,6 +167,11 @@ class LikelihoodBaselineResults(BaselineResults):
     high_stakes_log_likelihoods: list[float]
     low_stakes_log_likelihoods: list[float]
     prompt_config: ContinuationPrompt
+    token_counts: list[int] | None = None
+
+
+class FinetunedBaselineResults(BaselineResults):
+    scores: list[float]
     token_counts: list[int] | None = None
 
 
