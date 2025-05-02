@@ -339,8 +339,8 @@ class RunBaselinesConfig(BaseModel):
         return PROBES_DIR / "continuation_baseline_results.jsonl"
 
 
-class KShotFineTuningConfig(BaseModel):
-    """Configuration for k-shot fine-tuning experiment."""
+class DevSplitFineTuningConfig(BaseModel):
+    """Configuration for dev-split fine-tuning experiment."""
 
     layer: int
     probe_spec: ProbeSpec

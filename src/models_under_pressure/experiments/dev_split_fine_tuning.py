@@ -1,11 +1,3 @@
-"""
-This script evaluates k-shot fine-tuning performance of probes.
-
-It first trains a probe on the training dataset, then splits the eval dataset into
-30% training and 70% test. For k=2,4,8,16,... up to the training split size,
-the probe is fine-tuned on k many samples and evaluated on the test split.
-"""
-
 from typing import List
 
 import numpy as np
@@ -17,7 +9,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
-    KShotFineTuningConfig,
+    DevSplitFineTuningConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
@@ -48,8 +40,7 @@ def evaluate_probe(
     )
 
 
-def run_k_shot_fine_tuning(config: KShotFineTuningConfig) -> List[KShotResult]:
-    """Run k-shot fine-tuning experiment."""
+def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotResult]:
     # Load and split the training dataset
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
@@ -224,7 +215,7 @@ if __name__ == "__main__":
     # Set random seed for reproducibility
     np.random.seed(42)
 
-    config = KShotFineTuningConfig(
+    config = DevSplitFineTuningConfig(
         layer=31,
         max_samples=None,
         # fine_tune_epochs=10,
@@ -255,7 +246,7 @@ if __name__ == "__main__":
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_k_shot_fine_tuning(config)
+        results = run_dev_split_fine_tuning(config)
         for result in results:
             print("-" * 100)
             print(result.dataset_name)
