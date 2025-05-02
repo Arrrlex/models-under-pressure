@@ -51,6 +51,8 @@ Apr 22 versions (all based on calling parts of `modify_dataset.py`)
 
 Apr 23 version of Anthropic (dev and test): Remove the duplicate system prompt, relabelling again just in case.
 
+Apr 30 version of MT (dev and test): Moved 350 samples from test raw to dev raw and resampled the balanced versions.
+
 
 ## Deployment Context Datasets
 

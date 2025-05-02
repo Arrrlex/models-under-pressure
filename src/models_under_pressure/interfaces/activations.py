@@ -79,7 +79,7 @@ class Activation:
 
     @property
     def shape(self) -> tuple[int, int, int]:
-        return self.activations.shape
+        return self.activations.shape  # type: ignore
 
     @property
     def batch_size(self) -> int:

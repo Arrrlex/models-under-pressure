@@ -45,15 +45,9 @@ def download_all_datasets():
         print("All datasets are already downloaded")
         return
     for local_path in tqdm(to_download, desc="Downloading datasets"):
-        if local_path.is_dir():
-            for file in local_path.iterdir():
-                download_file(
-                    bucket_name=DATASETS_BUCKET, key=str(file), local_path=file
-                )
-        else:
-            download_file(
-                bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
-            )
+        download_file(
+            bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
+        )
 
 
 def upload_datasets():
@@ -70,17 +64,14 @@ def upload_datasets():
         print("All datasets are already uploaded")
         return
     for local_path in tqdm(to_upload, desc="Uploading datasets"):
-        if local_path.is_dir():
-            for file in local_path.iterdir():
-                upload_file(bucket_name=DATASETS_BUCKET, key=str(file), local_path=file)
-        else:
-            upload_file(
-                bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
-            )
+        upload_file(
+            bucket_name=DATASETS_BUCKET, key=str(local_path), local_path=local_path
+        )
 
 
 def sync_all_datasets():
     """Sync all datasets between R2 storage and local storage."""
+    # breakpoint()
     download_all_datasets()
     upload_datasets()
 

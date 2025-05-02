@@ -136,19 +136,43 @@ def load_dataset(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> LabelledDataset:
-    """Load the train-test split for the generated dataset.
+    """Load the dataset.
 
     If model_name and layer are provided, the activations are loaded and added to the dataset.
+    If compute_activations is True, the activations are computed; if False,
+    the activations are loaded from the activation store.
+
+    If variation_type and variation_value are provided, the dataset is filtered to only
+    include examples where variation_type has the given variation value.
+
+    If n_per_class is provided, the dataset is subsampled to contain only n_per_class
+    examples per class.
 
     Args:
-        dataset_path: Path to the generated dataset
+        dataset_path: Path to the dataset
         model_name: Name of the model to load activations for
         layer: Layer to load activations for
-
-    Returns:
-        tuple[LabelledDataset, LabelledDataset]: Train and test datasets
+        compute_activations: Whether to compute activations
+        variation_type: Type of variation to filter on
+        variation_value: Value of variation to filter on
+        n_per_class: Number of samples per class to load
     """
+    dataset = LabelledDataset.load_from(dataset_path)
+    if model_name is not None and layer is not None and not compute_activations:
+        dataset = ActivationStore().enrich(
+            dataset,
+            path=dataset_path,
+            model_name=model_name,
+            layer=layer,
+        )
+
+    if variation_type is not None and variation_value is not None:
+        dataset = dataset.filter(
+            lambda x: x.other_fields[variation_type] == variation_value
+        )
+
     dataset = LabelledDataset.load_from(dataset_path)
 
     if model_name is not None and layer is not None and not compute_activations:
@@ -157,6 +181,7 @@ def load_dataset(
             path=dataset_path,
             model_name=model_name,
             layer=layer,
+            mmap=mmap,
         )
 
     if variation_type is not None and variation_value is not None:
@@ -187,14 +212,22 @@ def load_dataset(
 
 class LazyLoader:
     def __init__(
-        self, loaders: dict[str, Callable[..., LabelledDataset]], **kwargs: Any
+        self,
+        loader: Callable[..., LabelledDataset],
+        kwargs: dict[str, dict[str, Any]],
+        **common_kwargs: Any,
     ):
-        self.loaders = loaders
+        self.loader = loader
         self.kwargs = kwargs
+        self.common_kwargs = common_kwargs
 
     def __getitem__(self, key: str) -> LabelledDataset:
-        loader = self.loaders[key]
-        return loader(**self.kwargs)
+        kwargs = self.kwargs[key] | self.common_kwargs
+        return self.loader(**kwargs)
+
+
+def get_split(dataset: LabelledDataset, split_name: str) -> LabelledDataset:
+    return dataset.filter(lambda x: x.split == split_name)
 
 
 def load_splits_lazy(
@@ -206,46 +239,39 @@ def load_splits_lazy(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> LazyLoader:
+    common_kwargs = {
+        "dataset_filters": dataset_filters,
+        "model_name": model_name,
+        "layer": layer,
+        "compute_activations": compute_activations,
+        "variation_type": variation_type,
+        "variation_value": variation_value,
+        "n_per_class": n_per_class,
+        "mmap": mmap,
+    }
+
     if dataset_path.is_dir():
         split_names = [p.stem for p in dataset_path.glob("*.jsonl")]
-        loaders = {
-            split_name: lambda: load_dataset(
-                dataset_path / f"{split_name}.jsonl",
-                dataset_filters=dataset_filters,
-                model_name=model_name,
-                layer=layer,
-                compute_activations=compute_activations,
-                variation_type=variation_type,
-                variation_value=variation_value,
-                n_per_class=n_per_class,
-            )
+        loader_kwargs = {
+            split_name: {"dataset_path": dataset_path / f"{split_name}.jsonl"}
             for split_name in split_names
         }
-        return LazyLoader(loaders=loaders)
+        return LazyLoader(loader=load_dataset, kwargs=loader_kwargs, **common_kwargs)
     else:
-        dataset = load_dataset(
-            dataset_path,
-            dataset_filters=dataset_filters,
-            model_name=model_name,
-            layer=layer,
-            compute_activations=compute_activations,
-            variation_type=variation_type,
-            variation_value=variation_value,
-            n_per_class=n_per_class,
-        )
-        if "split" in dataset.other_fields:
-            split_names = {str(s) for s in dataset.other_fields["split"]}
-            loaders = {
-                split_name: lambda dataset: dataset.filter(
-                    lambda x: x.split == split_name
-                )
-                for split_name in split_names
-            }
-        else:
-            loaders = {"train": lambda dataset: dataset}
+        dataset = load_dataset(dataset_path, **common_kwargs)
 
-        return LazyLoader(loaders=loaders, dataset=dataset)
+        if "split" in dataset.other_fields:
+            kwargs = {
+                str(s): {"dataset": dataset, "split_name": str(s)}
+                for s in set(dataset.other_fields["split"])
+            }
+            return LazyLoader(loader=get_split, kwargs=kwargs)
+        else:
+            return LazyLoader(
+                loader=lambda x: x, kwargs={"train": {"dataset": dataset}}
+            )
 
 
 def load_train_test(
@@ -256,6 +282,7 @@ def load_train_test(
     variation_type: str | None = None,
     variation_value: str | None = None,
     n_per_class: int | None = None,
+    mmap: bool = True,
 ) -> tuple[LabelledDataset, LabelledDataset]:
     splits = load_splits_lazy(
         dataset_path,
@@ -265,6 +292,7 @@ def load_train_test(
         variation_type=variation_type,
         variation_value=variation_value,
         n_per_class=n_per_class,
+        mmap=mmap,
     )
     train_dataset = splits["train"]
     test_dataset = splits["test"]

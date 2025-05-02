@@ -62,9 +62,7 @@ dev = [
 ]
 
 [project.scripts]
-dashboard = "models_under_pressure.cli:dashboard_command"
-acts = "models_under_pressure.cli:activation_store_cli"
-run-exp = "models_under_pressure.scripts.run_experiment:run_experiment"
+mup = "models_under_pressure.cli:app"
 
 [tool.ruff]
 line-length = 88
