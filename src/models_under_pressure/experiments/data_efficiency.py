@@ -5,17 +5,18 @@ import torch
 from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
+from models_under_pressure.baselines.finetune import FinetunedClassifier
 from models_under_pressure.config import (
-    DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
+    FinetuneBaselineConfig,
     global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
-from models_under_pressure.baselines.finetune import FinetunedClassifier
 from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
 )
+from models_under_pressure.interfaces.probes import ProbeType
 from models_under_pressure.interfaces.results import (
     DataEfficiencyResults,
     ProbeDataEfficiencyResults,
@@ -23,7 +24,6 @@ from models_under_pressure.interfaces.results import (
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
-from models_under_pressure.interfaces.probes import ProbeType
 
 
 def evaluate_probe(
@@ -94,12 +94,17 @@ def run_data_efficiency_experiment(
                 layer=config.layer,
             )
             metrics = evaluate_probe(probe, eval_datasets)
+            try:
+                best_epoch = probe._classifier.best_epoch
+            except AttributeError:
+                best_epoch = None
 
             probe_results.append(
                 ProbeDataEfficiencyResults(
                     probe=probe_spec,
                     dataset_size=dataset_size,
                     metrics=metrics,
+                    best_epoch=best_epoch,
                 )
             )
             del probe
@@ -118,7 +123,7 @@ def run_data_efficiency_experiment(
 
 def run_data_efficiency_finetune_baseline_with_activations(
     config: DataEfficiencyConfig,
-    finetune_config: DataEfficiencyBaselineConfig,
+    finetune_config: FinetuneBaselineConfig,
 ) -> DataEfficiencyResults:
     """Run data efficiency experiment by training probes on different sized subsets of the dataset.
 
@@ -184,6 +189,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
                 probe=config.probes[0],
                 dataset_size=dataset_size,
                 metrics=metrics,
+                best_epoch=None,
             )
         )
 
@@ -306,7 +312,7 @@ def ensure_wandb_login():
 
     try:
         # Check if already logged in
-        wandb.ensure_configured()
+        wandb.ensure_configured()  # type: ignore
         if wandb.api.api_key is None:
             print("WandB not logged in. Please enter your API key to log in.")
             wandb.login()
@@ -320,6 +326,7 @@ if __name__ == "__main__":
         EVAL_DATASETS_BALANCED,
         LOCAL_MODELS,
         SYNTHETIC_DATASET_PATH,
+        FinetuneBaselineConfig,
     )
     from models_under_pressure.interfaces.probes import ProbeSpec
 
@@ -354,7 +361,7 @@ if __name__ == "__main__":
     )
 
     # Should be defined via a hydra run config file:
-    finetune_config = DataEfficiencyBaselineConfig(
+    finetune_config = FinetuneBaselineConfig(
         model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values

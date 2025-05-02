@@ -21,10 +21,7 @@ from transformers import (
     PreTrainedTokenizerFast,
 )
 
-from models_under_pressure.config import (
-    DataEfficiencyBaselineConfig,
-    global_settings,
-)
+from models_under_pressure.config import FinetuneBaselineConfig, global_settings
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
@@ -428,7 +425,7 @@ def create_collate_fn(
 
 
 class FinetunedClassifier:
-    def __init__(self, finetune_config: DataEfficiencyBaselineConfig):
+    def __init__(self, finetune_config: FinetuneBaselineConfig):
         self.finetune_config = finetune_config
         self._classifier = None
         self._model = None
@@ -690,7 +687,7 @@ class FinetunedClassifier:
 
 
 def get_finetuned_baseline_results(
-    finetune_config: DataEfficiencyBaselineConfig,
+    finetune_config: FinetuneBaselineConfig,
     train_dataset_path: Path,
     eval_datasets: dict[str, Path],
     max_samples: Optional[int] = None,
