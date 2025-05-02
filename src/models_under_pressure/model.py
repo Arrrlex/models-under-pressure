@@ -31,6 +31,8 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import batched_range, hf_login
 
+hf_login()
+
 
 # type: ignore
 class ModelArchitecture(ABC):
@@ -214,8 +216,6 @@ class LLMModel:
         Returns:
             Initialized LLMModel instance
         """
-        hf_login()
-
         model_kwargs = {
             "pretrained_model_name_or_path": model_name,
             "device_map": llm_device,

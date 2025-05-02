@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from sklearn.model_selection import train_test_split
@@ -233,15 +234,23 @@ def run_dev_split_fine_tuning(
             results_list.append(fine_tuned_result)
 
     # Save results
-    print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
+    output_filename = config.output_filename
+    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
+        "_test"
+    ):
+        # Split the filename and extension
+        name, ext = os.path.splitext(output_filename)
+        output_filename = f"{name}_test{ext}"
+
+    print(f"Saving results to {EVALUATE_PROBES_DIR / output_filename}")
     for result in results_list:
-        result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
+        result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
     return results_list
 
 
 if __name__ == "__main__":
-    evaluate_on_test = False
+    evaluate_on_test = True
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
@@ -249,7 +258,7 @@ if __name__ == "__main__":
         model_name=LOCAL_MODELS["llama-1b"],
         layer=11,
         max_samples=100,
-        compute_activations=False,
+        compute_activations=True,
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
             hyperparams={"C": 1e-3, "fit_intercept": False},
