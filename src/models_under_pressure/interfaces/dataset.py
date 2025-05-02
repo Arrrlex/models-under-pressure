@@ -1,3 +1,5 @@
+from functools import cached_property
+import hashlib
 import json
 import pickle
 import random
@@ -539,6 +541,11 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
             print(f"  {label}: {count} examples ({percentage:.2f}%)")
 
         return label_percentages
+
+    @cached_property
+    def hash(self) -> str:
+        fields = [self.inputs, self.ids, self.other_fields["labels"]]
+        return hashlib.sha256(str(fields).encode()).hexdigest()
 
 
 def subsample_balanced_subset(

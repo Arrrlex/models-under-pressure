@@ -327,6 +327,8 @@ class LLMModel(nn.Module):
     An LLM model with a classifier layer on top of the last hidden state. Used for the finetuning
     baselines.
 
+    Returns the unnormalized logits for the last token in the sequence.
+
     Args:
         model_name_or_path: The name or path of the pretrained model to use.
         num_classes: The number of classes for the classification task.
@@ -342,31 +344,27 @@ class LLMModel(nn.Module):
         super().__init__()
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path,
-            cache_dir=cache_dir,  # torch_dtype=torch.bfloat16
+            cache_dir=cache_dir,
         )
 
-        last_linear_dim = None
         # Get hidden size from model config
-        last_linear_dim = self.model.config.hidden_size
+        last_linear_dim = None
+        last_linear_dim = self.model.lm_head.in_features
 
         if last_linear_dim is None:
             raise ValueError("Could not find any Linear layers in the model")
 
         self.num_classes = num_classes
         self.hidden_dim = last_linear_dim
-        self.classifier_layer = nn.Sequential(
+
+        self.model.lm_head = nn.Sequential(
             nn.Linear(self.hidden_dim, num_classes),
-            nn.Softmax(),
         )
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        # TODO: Is this memory efficient? Implement like Gemma-Shield with specific tokens used as classifier tokens.
-        outputs = self.model(input_ids, attention_mask, output_hidden_states=True)
-        outputs.hidden_states[-1]  # Get the last layer's hidden states
-        # Put the last sequence token through a classifier layer:
-        return self.classifier_layer(outputs.hidden_states[-1][:, -1, :])
+        return self.model(input_ids, attention_mask).logits[:, -1, :]
 
 
 class StakesDataset(torch.utils.data.Dataset):
@@ -603,6 +601,7 @@ class FinetunedClassifier:
 
         return self.get_results(dataset).probits.tolist()
 
+    @torch.no_grad()
     def get_results(self, dataset: BaseDataset) -> BaselineResults:
         """
         Using the provided dataset, test the finetuned model and return the BaselineResults

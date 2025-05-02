@@ -2,13 +2,13 @@ import asyncio
 import functools
 import json
 import os
-from pathlib import Path
 import random
 import string
-from textwrap import indent
 import time
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
+from pathlib import Path
+from textwrap import indent
 from typing import (
     Any,
     Awaitable,
@@ -26,14 +26,15 @@ import huggingface_hub
 import hydra
 import numpy as np
 import openai
-from pydantic import BaseModel
+import requests
 import torch
+import yaml
 from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
-import yaml
 
 load_dotenv()
 
@@ -316,6 +317,14 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
+def generate_short_id_with_timestamp(length: int = 8) -> str:
+    """Generate a short, random ID using base62 encoding."""
+    characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
+    with unset_random_seeds():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return "".join(random.choices(characters, k=length)) + "_" + timestamp
+
+
 def convert_paths(config: Any) -> Any:
     if isinstance(config, Path):
         return (
@@ -353,7 +362,7 @@ def double_check_config(config: Any, double_check: bool = True) -> None:
     print(indent(pretty_format_config(config), "  "))
     if double_check:
         is_ok = input("Do you really want to run this config? (y/n) ")
-        if is_ok != "y":
+        if is_ok != "y" and is_ok != "Y":
             raise ValueError("Config not confirmed")
 
 
@@ -386,4 +395,9 @@ def hf_login():
     HF_TOKEN = os.getenv("HF_TOKEN", os.getenv("HUGGINGFACE_TOKEN"))
     if not HF_TOKEN:
         raise ValueError("No HuggingFace token found")
-    huggingface_hub.login(token=HF_TOKEN)
+    try:
+        huggingface_hub.login(token=HF_TOKEN)
+    except requests.exceptions.HTTPError as e:
+        print(
+            f"Error logging in to HuggingFace: {e} (Might be fine in case of rate limit error.)"
+        )

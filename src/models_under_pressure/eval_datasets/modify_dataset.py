@@ -20,6 +20,7 @@ from models_under_pressure.eval_datasets.mts_dataset import (
 )
 from models_under_pressure.interfaces.dataset import Dataset, Message
 from models_under_pressure.utils import async_map, call_llm_async
+from models_under_pressure.dataset_utils import subsample_balanced_subset
 
 
 class PromptModification(NamedTuple):
@@ -379,8 +380,94 @@ DESCRIPTION: {description.strip()}""",
     )
 
 
+def move_samples_between_splits(
+    dataset_name: str,
+    k: int,
+    date_str: str = "apr_16",
+) -> None:
+    """
+    Move the last k samples from test to dev split and recompute balanced versions.
+    Creates new files with the date string suffix instead of overwriting existing files.
+
+    Args:
+        dataset_name: Name of the dataset to modify
+        k: Number of samples to move
+        date_str: Date string for the output files
+    """
+    # Load the source and target datasets
+    source_path = TEST_DATASETS_RAW[dataset_name]
+    target_path = EVAL_DATASETS_RAW[dataset_name]
+
+    source_dataset = LabelledDataset.load_from(source_path)
+    target_dataset = (
+        LabelledDataset.load_from(target_path) if target_path.exists() else None
+    )
+
+    # Take the last k samples from source dataset
+    selected_indices = list(range(len(source_dataset) - k, len(source_dataset)))
+    selected_samples = source_dataset[selected_indices]
+
+    # Remove selected samples from source dataset
+    remaining_indices = list(range(len(source_dataset) - k))
+    source_dataset = source_dataset[remaining_indices]
+
+    # Add selected samples to target dataset
+    if target_dataset is None:
+        target_dataset = selected_samples
+    else:
+        target_records = list(target_dataset.to_records())
+        selected_records = list(selected_samples.to_records())
+        combined_records = target_records + selected_records
+        target_dataset = LabelledDataset.from_records(combined_records)
+
+    # Create new file paths with date string suffix
+    source_dir = source_path.parent
+    target_dir = target_path.parent
+
+    # Remove any existing date string from the filename
+    source_base = (
+        source_path.stem.split("_raw_")[0]
+        if "_raw_" in source_path.stem
+        else source_path.stem
+    )
+    target_base = (
+        target_path.stem.split("_raw_")[0]
+        if "_raw_" in target_path.stem
+        else target_path.stem
+    )
+
+    new_source_path = source_dir / f"{source_base}_raw_{date_str}.jsonl"
+    new_target_path = target_dir / f"{target_base}_raw_{date_str}.jsonl"
+
+    # Create new balanced file paths
+    new_source_balanced_path = source_dir / f"{source_base}_balanced_{date_str}.jsonl"
+    new_target_balanced_path = target_dir / f"{target_base}_balanced_{date_str}.jsonl"
+
+    # Save the modified datasets
+    source_dataset.save_to(new_source_path, overwrite=True)
+    target_dataset.save_to(new_target_path, overwrite=True)
+
+    # Recompute balanced versions
+    # Recompute dev balanced dataset
+    balanced_dev = subsample_balanced_subset(target_dataset)
+    balanced_dev.save_to(new_target_balanced_path, overwrite=True)
+
+    # Recompute test balanced dataset
+    balanced_test = subsample_balanced_subset(source_dataset)
+    balanced_test.save_to(new_source_balanced_path, overwrite=True)
+
+    print(f"Moved {k} samples from test to dev for dataset {dataset_name}")
+    print(f"New sizes: dev={len(target_dataset)}, test={len(source_dataset)}")
+    print(f"New balanced sizes: dev={len(balanced_dev)}, test={len(balanced_test)}")
+    print("New files created:")
+    print(f"- Test raw: {new_source_path}")
+    print(f"- Test balanced: {new_source_balanced_path}")
+    print(f"- Dev raw: {new_target_path}")
+    print(f"- Dev balanced: {new_target_balanced_path}")
+
+
 if __name__ == "__main__":
-    dataset_name = "anthropic"
+    dataset_name = "mt_resampling"
 
     if dataset_name == "mt":
         system_prompt = "You are an LLM as part of a medical assistant system, interacting with medical practitioners to improve efficiency."
@@ -392,6 +479,9 @@ if __name__ == "__main__":
         # test datasets
         dataset = Dataset.load_from(TEST_DATASETS_RAW["mt"])
         modify_mt_dataset(dataset, system_prompt, test=True, date_str="apr_16")
+
+    if dataset_name == "mt_resampling":
+        move_samples_between_splits("mt", k=350, date_str="apr_30")
 
     if dataset_name == "anthropic":
         system_prompt = """You are an LLM as part of a general purpose chatbot."""

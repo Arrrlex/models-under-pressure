@@ -4,6 +4,7 @@ from typing import Protocol, Self, Sequence
 
 import numpy as np
 from jaxtyping import Float
+import torch
 
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -11,13 +12,16 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.interfaces.activations import Activation
 
 
 @dataclass
 class Probe(ABC):
     @abstractmethod
-    def fit(self, dataset: LabelledDataset) -> Self: ...
+    def fit(
+        self,
+        dataset: LabelledDataset,
+        validation_dataset: LabelledDataset | None = None,
+    ) -> Self: ...
 
     @abstractmethod
     def predict(self, dataset: BaseDataset) -> list[Label]: ...
@@ -25,7 +29,7 @@ class Probe(ABC):
     @abstractmethod
     def predict_proba(
         self, dataset: BaseDataset
-    ) -> tuple[Activation, Float[np.ndarray, " batch_size"]]: ...
+    ) -> tuple[Float[np.ndarray, " batch_size"]]: ...
 
     @abstractmethod
     def per_token_predictions(
@@ -48,3 +52,12 @@ class Classifier(Protocol):
     def predict_proba(
         self, X: Float[np.ndarray, "batch_size ..."]
     ) -> Float[np.ndarray, "batch_size n_classes"]: ...
+
+
+class Aggregation(Protocol):
+    def __call__(
+        self,
+        logits: Float[torch.Tensor, "batch_size seq_len"],
+        attention_mask: Float[torch.Tensor, "batch_size seq_len"],
+        input_ids: Float[torch.Tensor, "batch_size seq_len"],
+    ) -> Float[torch.Tensor, " batch_size"]: ...

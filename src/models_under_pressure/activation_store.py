@@ -274,7 +274,7 @@ class ActivationStore:
             self.sync(add_specs=[spec], remove_specs=[])
 
     def load(
-        self, spec: ActivationsSpec
+        self, spec: ActivationsSpec, mmap: bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Load stored activations from storage.
 
@@ -299,9 +299,9 @@ class ActivationStore:
                 download_file(self.bucket, key, local_path)
 
         # Load and decompress each file
-        activations = load_compressed(self.path / manifest_row.activations)
-        input_ids = load_compressed(self.path / manifest_row.input_ids)
-        attn_mask = load_compressed(self.path / manifest_row.attention_mask)
+        activations = load_compressed(self.path / manifest_row.activations, mmap)
+        input_ids = load_compressed(self.path / manifest_row.input_ids, mmap=False)
+        attn_mask = load_compressed(self.path / manifest_row.attention_mask, mmap=False)
 
         return activations, input_ids, attn_mask
 
@@ -317,10 +317,15 @@ class ActivationStore:
         return spec in self.manifest.to_lookup()
 
     def enrich(
-        self, dataset: LabelledDataset, path: Path, model_name: str, layer: int
+        self,
+        dataset: LabelledDataset,
+        path: Path,
+        model_name: str,
+        layer: int,
+        mmap: bool = True,
     ) -> LabelledDataset:
         spec = ActivationsSpec(model_name=model_name, dataset_path=path, layer=layer)
-        activations, input_ids, attn_mask = self.load(spec)
+        activations, input_ids, attn_mask = self.load(spec, mmap=mmap)
         return dataset.assign(
             activations=activations,
             attention_mask=attn_mask,
@@ -328,7 +333,7 @@ class ActivationStore:
         )
 
 
-def load_compressed(path: Path) -> torch.Tensor:
+def load_compressed(path: Path, mmap: bool) -> torch.Tensor:
     """Load and decompress a tensor from a compressed file.
 
     Args:
@@ -349,7 +354,7 @@ def load_compressed(path: Path) -> torch.Tensor:
                     f_out.write(chunk)
                     pbar.update(f_in.tell() - pbar.n)
 
-    return torch.load(tmp_path, map_location="cpu", mmap=True)
+    return torch.load(tmp_path, map_location="cpu", mmap=mmap)
 
 
 def save_compressed(path: Path, tensor: torch.Tensor):

@@ -10,7 +10,10 @@ from pydantic import BaseModel, Field, JsonValue, ValidationInfo, field_validato
 from pydantic_settings import BaseSettings
 
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.utils import generate_short_id
+from models_under_pressure.utils import (
+    generate_short_id,
+    generate_short_id_with_timestamp,
+)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
@@ -29,6 +32,7 @@ class GlobalSettings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o"
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
+    PL_DEFAULT_ROOT_DIR: str | None = None
 
 
 global_settings = GlobalSettings()
@@ -282,7 +286,7 @@ class ChooseLayerConfig(BaseModel):
 
 
 class EvalRunConfig(BaseModel):
-    id: str = Field(default_factory=generate_short_id)
+    id: str = Field(default_factory=generate_short_id_with_timestamp)
     layer: int
     probe_spec: ProbeSpec
     max_samples: int | None
@@ -318,6 +322,28 @@ class RunBaselinesConfig(BaseModel):
     @property
     def output_path(self) -> Path:
         return PROBES_DIR / "continuation_baseline_results.jsonl"
+
+
+class DevSplitFineTuningConfig(BaseModel):
+    """Configuration for dev-split fine-tuning experiment."""
+
+    layer: int
+    probe_spec: ProbeSpec
+    eval_data_usage: str  # "fine-tune", "only", "combine"
+    max_samples: int | None = None
+    fine_tune_epochs: int = 5
+    sample_repeats: int = 5  # only relevant for eval_data_usage == "combine"
+    model_name: str = LOCAL_MODELS["llama-70b"]
+    compute_activations: bool = False
+    dataset_path: Path = SYNTHETIC_DATASET_PATH
+    validation_dataset: bool = True
+    eval_dataset_names: list[str] | None = None  # If None, all eval datasets are used
+    evaluate_on_test: bool = False
+    train_split_ratio: float = 0.3  # Only relevant if evaluate_on_test is False
+    k_values: list[int] = [2, 4, 8, 16, 32, 64, 128, 256, 512]
+    output_filename: str = "dev_split_training_results.jsonl"
+
+    model_config = {"arbitrary_types_allowed": True}
 
 
 @dataclass(frozen=True)
