@@ -354,7 +354,7 @@ class DataEfficiencyConfig(BaseModel):
 
 
 # TODO: Maybe rename this and keep it experiment agnostic
-class DataEfficiencyBaselineConfig(BaseModel):
+class FinetuneBaselineConfig(BaseModel):
     model_name_or_path: str
     num_classes: int
     ClassifierModule: dict[str, JsonValue]
