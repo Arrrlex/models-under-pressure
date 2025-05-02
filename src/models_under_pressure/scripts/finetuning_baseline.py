@@ -12,17 +12,17 @@ from transformers import (
     AutoTokenizer,
 )
 
+from models_under_pressure.baselines.finetune import (
+    ClassifierModule,
+    LLMModel,
+    StakesDataset,
+    create_collate_fn,
+)
 from models_under_pressure.config import (
     EVAL_DATASETS_BALANCED,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
     TEST_DATASETS_BALANCED,
-)
-from models_under_pressure.finetune_baselines import (
-    ClassifierModule,
-    LLMModel,
-    StakesDataset,
-    create_collate_fn,
 )
 from models_under_pressure.interfaces.dataset import LabelledDataset
 

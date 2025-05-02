@@ -1,10 +1,12 @@
+from models_under_pressure.baselines.finetune import (
+    get_finetuned_baseline_results,
+)
 from models_under_pressure.config import (
     EVAL_DATASETS,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
     DataEfficiencyBaselineConfig,
 )
-from models_under_pressure.finetune_baselines import get_finetuned_baseline_results
 
 if __name__ == "__main__":
     # Should be defined via a hydra run config file:
