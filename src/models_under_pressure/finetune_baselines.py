@@ -353,8 +353,9 @@ class LLMModel(nn.Module):
             raise ValueError("Could not find any Linear layers in the model")
 
         self.num_classes = num_classes
+        self.hidden_dim = last_linear_dim
         self.classifier_layer = nn.Sequential(
-            nn.Linear(last_linear_dim, num_classes),
+            nn.Linear(self.hidden_dim, num_classes),
             nn.Softmax(),
         )
 
