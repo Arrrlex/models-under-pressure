@@ -94,12 +94,17 @@ def run_data_efficiency_experiment(
                 layer=config.layer,
             )
             metrics = evaluate_probe(probe, eval_datasets)
+            try:
+                best_epoch = probe._classifier.best_epoch
+            except AttributeError:
+                best_epoch = None
 
             probe_results.append(
                 ProbeDataEfficiencyResults(
                     probe=probe_spec,
                     dataset_size=dataset_size,
                     metrics=metrics,
+                    best_epoch=best_epoch,
                 )
             )
             del probe
@@ -184,6 +189,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
                 probe=config.probes[0],
                 dataset_size=dataset_size,
                 metrics=metrics,
+                best_epoch=None,
             )
         )
 

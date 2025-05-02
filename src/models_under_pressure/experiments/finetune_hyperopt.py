@@ -338,7 +338,7 @@ if __name__ == "__main__":
 
     # Define the parameter grid
     param_grid = {
-        "batch_size": [8, 16, 32],
+        "accumulate_grad_batches": [4, 8, 16],
         "ClassifierModule.learning_rate": [1e-6, 1e-5, 1e-4],
         "ClassifierModule.weight_decay": [0.01, 1.0, 10.0],
     }

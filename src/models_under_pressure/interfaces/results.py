@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
     ChooseLayerConfig,
-    DevSplitFineTuningConfig,
-    DataEfficiencyBaselineConfig,
     DataEfficiencyConfig,
+    DevSplitFineTuningConfig,
     EvalRunConfig,
+    FinetuneBaselineConfig,
     HeatmapRunConfig,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
@@ -240,11 +240,12 @@ class ProbeDataEfficiencyResults(BaseModel):
     probe: ProbeSpec
     dataset_size: int
     metrics: dict[str, float]
+    best_epoch: Optional[int]
 
 
 class DataEfficiencyResults(BaseModel):
     config: DataEfficiencyConfig
-    baseline_config: Optional[DataEfficiencyBaselineConfig] = None
+    baseline_config: Optional[FinetuneBaselineConfig] = None
     probe_results: list[ProbeDataEfficiencyResults]
     timestamp: datetime = Field(default_factory=datetime.now)
 
