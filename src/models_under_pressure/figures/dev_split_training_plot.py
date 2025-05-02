@@ -6,7 +6,7 @@ import pandas as pd
 import seaborn as sns
 
 from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR
-from models_under_pressure.interfaces.results import KShotResult
+from models_under_pressure.interfaces.results import DevSplitResult
 
 # Set style parameters
 plt.rcParams.update(
@@ -45,7 +45,7 @@ def plot_k_shot_results(
     with open(results_file) as f:
         for line in f:
             if line.strip():
-                results.append(KShotResult.model_validate_json(line))
+                results.append(DevSplitResult.model_validate_json(line))
 
     eval_usage_mapping = {
         "only": "Evaluation samples only",
@@ -171,7 +171,9 @@ def plot_k_shot_results(
 
     # Customize plot
     plt.xlabel("Number of evaluation samples for training")
-    plt.ylabel(metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
+    plt.ylabel(
+        "Mean " + (metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
+    )
     # plt.title(
     #   "Performance when training on evaluation data"
     #    + (f" - {dataset_name}" if dataset_name else "")
@@ -192,13 +194,12 @@ def plot_k_shot_results(
     if output_file is None:
         output_file = (
             PLOTS_DIR
-            / f"k_shot_results_{metric}{f'_{dataset_name}' if dataset_name else ''}.pdf"
+            / f"dev_split_training_results_{metric}{f'_{dataset_name}' if dataset_name else ''}.pdf"
         )
     plt.savefig(output_file)
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
-    # Example usage
-    results_file = EVALUATE_PROBES_DIR / "k_shot_fine_tuning_results.jsonl"
+    results_file = EVALUATE_PROBES_DIR / "dev_split_debugging.jsonl"
     plot_k_shot_results(results_file, metric="auroc")  # , dataset_name="anthropic")
