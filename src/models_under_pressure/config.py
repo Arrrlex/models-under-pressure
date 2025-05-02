@@ -352,10 +352,11 @@ class DevSplitFineTuningConfig(BaseModel):
     compute_activations: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
     validation_dataset: bool = True
-    eval_datasets: list[Path] = list(EVAL_DATASETS.values())
-    train_split_ratio: float = 0.3
+    eval_dataset_names: list[str] | None = None  # If None, all eval datasets are used
+    evaluate_on_test: bool = False
+    train_split_ratio: float = 0.3  # Only relevant if evaluate_on_test is False
     k_values: list[int] = [2, 4, 8, 16, 32, 64, 128, 256, 512]
-    output_filename: str = "k_shot_fine_tuning_results.jsonl"
+    output_filename: str = "dev_split_training_results.jsonl"
 
     model_config = {"arbitrary_types_allowed": True}
 

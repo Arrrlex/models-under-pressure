@@ -1,6 +1,5 @@
 from typing import List
 
-import numpy as np
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -9,6 +8,7 @@ from models_under_pressure.config import (
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
+    TEST_DATASETS,
     DevSplitFineTuningConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
@@ -18,7 +18,7 @@ from models_under_pressure.interfaces.dataset import (
     subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.probes import ProbeSpec
-from models_under_pressure.interfaces.results import DatasetResults, KShotResult
+from models_under_pressure.interfaces.results import DatasetResults, DevSplitResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import double_check_config
@@ -40,7 +40,9 @@ def evaluate_probe(
     )
 
 
-def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotResult]:
+def run_dev_split_fine_tuning(
+    config: DevSplitFineTuningConfig,
+) -> List[DevSplitResult]:
     # Load and split the training dataset
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
@@ -60,17 +62,22 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
     )
 
     # Save the initial probe state
-    if hasattr(probe, "_classifier") and hasattr(probe._classifier, "model"):
-        initial_state = probe._classifier.model.state_dict().copy()
+    if hasattr(probe, "_classifier") and hasattr(probe._classifier, "model"):  # type: ignore
+        initial_state = probe._classifier.model.state_dict().copy()  # type: ignore
     else:
         initial_state = None
 
     results_list = []
 
-    for eval_dataset_path in tqdm(
-        config.eval_datasets, desc="Evaluating on eval datasets"
+    if config.evaluate_on_test:
+        eval_dataset_names = list(set(EVAL_DATASETS.keys()) & set(TEST_DATASETS.keys()))
+    else:
+        eval_dataset_names = list(EVAL_DATASETS.keys())
+
+    for eval_dataset_name in tqdm(
+        eval_dataset_names, desc="Evaluating on eval datasets"
     ):
-        eval_dataset_name = eval_dataset_path.stem
+        eval_dataset_path = EVAL_DATASETS[eval_dataset_name]
         print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
@@ -79,21 +86,42 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
             compute_activations=config.compute_activations,
             n_per_class=config.max_samples // 2 if config.max_samples else None,
         )
+        if "scale_labels" not in eval_dataset.other_fields:
+            print(
+                f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
+            )
+            continue
+        if config.evaluate_on_test:
+            test_dataset_path = TEST_DATASETS[eval_dataset_name]
+            print(f"Loading test dataset {eval_dataset_name} from {test_dataset_path}")
+            test_dataset = load_dataset(
+                dataset_path=test_dataset_path,
+                model_name=config.model_name,
+                layer=config.layer,
+                compute_activations=config.compute_activations,
+                n_per_class=config.max_samples // 2 if config.max_samples else None,
+            )
+            if "scale_labels" not in test_dataset.other_fields:
+                print(
+                    f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
+                )
+                continue
+            train_split = eval_dataset
+            test_split = test_dataset
+        else:
+            # Split eval dataset into train and test
+            train_indices, test_indices = train_test_split(
+                range(len(eval_dataset)),
+                train_size=config.train_split_ratio,
+                stratify=eval_dataset.labels_numpy(),
+            )
 
-        # Split eval dataset into train and test
-        train_indices, test_indices = train_test_split(
-            range(len(eval_dataset)),
-            train_size=config.train_split_ratio,
-            random_state=42,
-            stratify=eval_dataset.labels_numpy(),
-        )
-
-        train_split = eval_dataset[train_indices]
-        test_split = eval_dataset[test_indices]
+            train_split = eval_dataset[train_indices]
+            test_split = eval_dataset[test_indices]
 
         # Load initial probe state
         if initial_state is not None:
-            probe._classifier.model.load_state_dict(initial_state)
+            probe._classifier.model.load_state_dict(initial_state)  # type: ignore
         else:
             probe = ProbeFactory.build(
                 probe=config.probe_spec,
@@ -105,13 +133,13 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
 
         # Evaluate initial probe on test split
         initial_scores, initial_metrics = evaluate_probe(probe, test_split)
-        initial_result = KShotResult(
+        initial_result = DevSplitResult(
             config=config,
             k=0,
             metrics=initial_metrics.metrics,
             probe_scores=initial_scores,
             ground_truth_labels=test_split.labels_numpy().tolist(),
-            ground_truth_scale_labels=test_split.other_fields.get("scale_labels"),
+            ground_truth_scale_labels=test_split.other_fields["scale_labels"],  # type: ignore
             dataset_name=f"{eval_dataset_name}_k0",
             dataset_path=eval_dataset_path,
             method="initial_probe",
@@ -168,9 +196,9 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
                 if (
                     initial_state is not None
                     and hasattr(probe, "_classifier")
-                    and hasattr(probe._classifier, "model")
+                    and hasattr(probe._classifier, "model")  # type: ignore
                 ):
-                    probe._classifier.model.load_state_dict(initial_state)
+                    probe._classifier.model.load_state_dict(initial_state)  # type: ignore
                 else:
                     raise NotImplementedError(
                         "Cannot restore initial probe state for this probe type"
@@ -179,9 +207,10 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
                 # Fine-tune probe
                 print(f"Fine-tuning probe on {k} examples...")
                 if hasattr(probe, "_classifier") and hasattr(
-                    probe._classifier, "training_args"
+                    probe._classifier,  # type: ignore
+                    "training_args",
                 ):
-                    probe._classifier.training_args["epochs"] = config.fine_tune_epochs
+                    probe._classifier.training_args["epochs"] = config.fine_tune_epochs  # type: ignore
                 probe.fit(k_split)
             else:
                 raise ValueError(
@@ -190,13 +219,13 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
 
             # Evaluate fine-tuned probe
             fine_tuned_scores, fine_tuned_metrics = evaluate_probe(probe, test_split)
-            fine_tuned_result = KShotResult(
+            fine_tuned_result = DevSplitResult(
                 config=config,
                 k=k,
                 metrics=fine_tuned_metrics.metrics,
                 probe_scores=fine_tuned_scores,
                 ground_truth_labels=test_split.labels_numpy().tolist(),
-                ground_truth_scale_labels=test_split.other_fields.get("scale_labels"),
+                ground_truth_scale_labels=test_split.other_fields["scale_labels"],  # type: ignore
                 dataset_name=f"{eval_dataset_name}_k{k}",
                 dataset_path=eval_dataset_path,
                 method="fine_tuned_probe",
@@ -212,15 +241,15 @@ def run_dev_split_fine_tuning(config: DevSplitFineTuningConfig) -> List[KShotRes
 
 
 if __name__ == "__main__":
-    # Set random seed for reproducibility
-    np.random.seed(42)
+    evaluate_on_test = False
 
     config = DevSplitFineTuningConfig(
-        layer=31,
-        max_samples=None,
         # fine_tune_epochs=10,
         eval_data_usage="only",
-        model_name=LOCAL_MODELS["llama-70b"],
+        model_name=LOCAL_MODELS["llama-1b"],
+        layer=11,
+        max_samples=100,
+        compute_activations=False,
         probe_spec=ProbeSpec(
             name="sklearn_mean_agg_probe",
             hyperparams={"C": 1e-3, "fit_intercept": False},
@@ -232,17 +261,18 @@ if __name__ == "__main__":
             #     "optimizer_args": {"lr": 0.001, "weight_decay": 0.01},
             # },
         ),
-        compute_activations=False,
         dataset_path=SYNTHETIC_DATASET_PATH,
         validation_dataset=False,
+        evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
-        eval_datasets=list(EVAL_DATASETS.values()),
+        eval_dataset_names=None,
+        output_filename="dev_split_debugging.jsonl",
     )
 
     double_check_config(config)
 
-    for k in range(4):
-        print("Running k-shot fine-tuning experiment")
+    for k in range(5):
+        print("Running dev split training experiment")
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )

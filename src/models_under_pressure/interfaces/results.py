@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 
 from models_under_pressure.config import (
     ChooseLayerConfig,
+    DevSplitFineTuningConfig,
     EvalRunConfig,
     HeatmapRunConfig,
-    KShotFineTuningConfig,
 )
 
 
@@ -167,10 +167,10 @@ class LikelihoodBaselineResults(BaselineResults):
     token_counts: list[int] | None = None
 
 
-class KShotResult(BaseModel):
-    """Results for a single k-shot fine-tuning run."""
+class DevSplitResult(BaseModel):
+    """Results for a single dev split fine-tuning run."""
 
-    config: KShotFineTuningConfig
+    config: DevSplitFineTuningConfig
     """Configuration used for the k-shot fine-tuning run"""
 
     k: int
