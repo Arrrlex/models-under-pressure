@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
 import hydra
+import os
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
@@ -432,6 +433,8 @@ def create_collate_fn(
 
 
 class FinetunedClassifier:
+    best_epoch: int | None = None
+
     def __init__(self, finetune_config: FinetuneBaselineConfig):
         self.finetune_config = finetune_config
         self._classifier = None
@@ -588,6 +591,11 @@ class FinetunedClassifier:
                 num_classes=num_classes,
                 **self.finetune_config.get("ClassifierModule", {}),
             )
+            self.best_epoch = int(
+                os.path.splitext(os.path.basename(checkpoint_callback.best_model_path))[
+                    0
+                ].split("epoch=")[-1]
+            )
         self._classifier.eval()
 
         return self
@@ -691,6 +699,7 @@ class FinetunedClassifier:
             model_name=self.finetune_config.model_name_or_path,
             max_samples=max_samples,
             token_counts=token_counts,
+            best_epoch=self.best_epoch,
         )
         return baseline_results
 

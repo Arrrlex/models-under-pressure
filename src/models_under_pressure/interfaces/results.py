@@ -173,6 +173,7 @@ class LikelihoodBaselineResults(BaselineResults):
 class FinetunedBaselineResults(BaselineResults):
     scores: list[float]
     token_counts: list[int] | None = None
+    best_epoch: int | None = None
 
 
 class DevSplitResult(BaseModel):
