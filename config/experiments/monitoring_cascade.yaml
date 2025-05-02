@@ -1,23 +1,17 @@
+# @package _global_
 defaults:
-  - /probe: pytorch_per_entry_probe_mean  # or any other probe type
+  - _self_
+  - monitoring_cascade/compute
+  - monitoring_cascade/analyze
 
-model_names:
-  - llama-1b
-  - llama-8b
-  - llama-70b
-  - gemma-1b
-  - gemma-12b
-  - gemma-27b
-first_baseline_model_name: llama-1b
-#probe_model_name: llama-70b
-probe_model_name: null
-probe_layer: null
-dataset_name: anthropic
-train_dataset_path: training/original_doubled_unconfounded/train.jsonl
-max_samples: null
-batch_size: 4
-compute_activations: true
+# This is a combined configuration that includes both compute and analyze settings
+# For more granular control, use the individual configuration files:
+# - monitoring_cascade/compute/config.yaml for computing results
+# - monitoring_cascade/analyze/config.yaml for cascade analysis and plotting
+
+# Whether to run compute and/or analyze steps
 compute_results: false
-compute_cascade: true
-plot_results: true
-output_dir: data/results/monitoring_cascade
+analyze_cascade: true
+
+# Whether to use test datasets instead of dev datasets
+use_test: false

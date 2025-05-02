@@ -170,6 +170,11 @@ class LikelihoodBaselineResults(BaselineResults):
     token_counts: list[int] | None = None
 
 
+class FinetunedBaselineResults(BaselineResults):
+    scores: list[float]
+    token_counts: list[int] | None = None
+
+
 class DevSplitResult(BaseModel):
     """Results for a single dev split fine-tuning run."""
 
