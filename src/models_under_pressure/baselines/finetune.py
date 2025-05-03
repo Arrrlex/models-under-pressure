@@ -177,6 +177,7 @@ class ClassifierModule(pl.LightningModule):
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
         self.test_results = BaselineResults()
+        self.test_outputs = []
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -205,10 +206,10 @@ class ClassifierModule(pl.LightningModule):
     ) -> torch.Tensor:
         """Training step."""
 
-        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
-            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
-            f"got {batch.keys()}"
-        )
+        expected_keys = {"input_ids", "attention_mask", "labels"}
+        assert expected_keys.issubset(
+            batch.keys()
+        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -234,10 +235,10 @@ class ClassifierModule(pl.LightningModule):
     ) -> Dict[str, torch.Tensor]:
         """Validation step."""
 
-        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
-            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
-            f"got {batch.keys()}"
-        )
+        expected_keys = {"input_ids", "attention_mask", "labels"}
+        assert expected_keys.issubset(
+            batch.keys()
+        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -262,10 +263,10 @@ class ClassifierModule(pl.LightningModule):
         self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> Dict[str, torch.Tensor]:
         """Test step."""
-        assert set(batch.keys()) == {"input_ids", "attention_mask", "labels"}, (
-            f"batch must contain keys 'input_ids', 'attention_mask', 'labels', "
-            f"got {batch.keys()}"
-        )
+        expected_keys = {"input_ids", "attention_mask", "labels"}
+        assert expected_keys.issubset(
+            batch.keys()
+        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -284,10 +285,11 @@ class ClassifierModule(pl.LightningModule):
         acc = (preds == y).float().mean()
         self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
 
-        self.test_results.logits = logits
-        self.test_results.labels = y
-
-        return {"test_loss": loss, "test_acc": acc}
+        # Add an index to the batch if possible
+        idx = batch.get("idx", batch_idx)
+        # Store outputs in a list
+        self.test_outputs.append({"logits": logits, "labels": y, "idx": idx})
+        return
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -318,6 +320,31 @@ class ClassifierModule(pl.LightningModule):
         # If using mixed precision, the gradients are already unscaled here
         norms = grad_norm(self.model, norm_type=2)
         self.log_dict(norms)
+
+    def on_test_epoch_start(self):
+        # Clear outputs at the start of each test epoch
+        self.test_outputs = []
+
+    def on_test_epoch_end(self):
+        # Aggregate outputs
+        logits = torch.cat([x["logits"] for x in self.test_outputs])
+        labels = torch.cat([x["labels"] for x in self.test_outputs])
+        indices = torch.tensor([x["idx"] for x in self.test_outputs])
+
+        # Gather across all processes (returns [world_size, batch, ...])
+        logits = self.all_gather(logits)
+        labels = self.all_gather(labels)
+        indices = self.all_gather(indices)
+
+        # Flatten the first two dims (world_size * batch)
+        logits = logits.reshape(-1, logits.shape[-1]).cpu()
+        labels = labels.reshape(-1).cpu()
+        indices = indices.reshape(-1).cpu().numpy()
+
+        # Sort by indices
+        sort_idx = indices.argsort()
+        self.test_results._logits = logits[sort_idx]
+        self.test_results._labels = labels[sort_idx]
 
 
 class LLMModel(nn.Module):
@@ -671,6 +698,10 @@ class FinetunedClassifier:
             results.labels.cpu().numpy().tolist() if results.labels is not None else []
         )
         ground_truth = eval_dataset.labels_numpy().tolist()
+        assert (
+            labels == ground_truth
+        ), f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
+        # TODO! I think labels and ground truth are supposed to be the same, but they aren't!
 
         # Get the token counts using StakesDataset
         stakes_dataset = StakesDataset(eval_dataset.to_pandas())
@@ -685,11 +716,11 @@ class FinetunedClassifier:
         ]
 
         # Create BaselineResults instance
+        scores = results.probits.tolist() if results.logits is not None else []
         baseline_results = FinetunedBaselineResults(
             ids=list(eval_dataset.ids),
-            accuracy=results.accuracy(),
-            labels=labels,
-            scores=results.probits.tolist() if results.logits is not None else [],
+            labels=[score > 0.5 for score in scores],
+            scores=scores,
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])  # type: ignore
             if "scale_labels" in eval_dataset.other_fields
