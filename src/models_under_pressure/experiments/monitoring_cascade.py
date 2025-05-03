@@ -303,7 +303,8 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             two_step_baseline_strategy=cfg.analysis.two_step_baseline_strategy,
             first_baseline_model_name=cfg.first_baseline_model_name,
             target_dataset=cfg.analysis.target_dataset,
-            model_names=cfg.analysis.model_names,
+            baseline_models=cfg.analysis.baseline_models,
+            finetuned_baseline_models=cfg.analysis.finetuned_baseline_models,
         )
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
@@ -737,7 +738,8 @@ def compute_cascade_results(
     two_step_baseline_strategy: dict[str, str] | None = None,
     first_baseline_model_name: Optional[str] = None,
     target_dataset: Optional[str] = None,
-    model_names: Optional[List[str]] = None,
+    baseline_models: Optional[List[str]] = None,
+    finetuned_baseline_models: Optional[List[str]] = None,
 ):
     """Compute cascade results for all datasets or a specific dataset.
 
@@ -748,7 +750,8 @@ def compute_cascade_results(
         results_file: Path to save results to
         first_baseline_model_name: Name of the first baseline model for two-step cascades
         target_dataset: If specified, only compute results for this dataset
-        model_names: If specified, only include baseline results and cascades involving these models
+        baseline_models: If specified, only include baseline results and cascades involving these models
+        finetuned_baseline_models: If specified, only include finetuned baseline results and cascades involving these models
     """
     fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
@@ -769,22 +772,25 @@ def compute_cascade_results(
             continue
 
         # Filter baseline results if model_names is specified
-        if model_names is not None:
+        if baseline_models is not None:
             baseline_results = [
                 result
                 for result in baseline_results
-                if get_abbreviated_model_name(result.model_name) in model_names
+                if get_abbreviated_model_name(result.model_name) in baseline_models
             ]
+
+        if finetuned_baseline_models is not None:
             finetuned_baseline_results = [
                 result
                 for result in finetuned_baseline_results
-                if get_abbreviated_model_name(result.model_name) in model_names
+                if get_abbreviated_model_name(result.model_name)
+                in finetuned_baseline_models
             ]
-            if not baseline_results and not finetuned_baseline_results:
-                print(
-                    f"No baseline results found for specified models in dataset {dataset_name}"
-                )
-                continue
+        if not baseline_results and not finetuned_baseline_results:
+            print(
+                f"No baseline results found for specified models in dataset {dataset_name}"
+            )
+            continue
 
         # Evaluate baseline cascades
         print(f"\nBaseline Results for {dataset_name}:")
