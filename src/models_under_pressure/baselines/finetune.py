@@ -294,18 +294,16 @@ class ClassifierModule(pl.LightningModule):
         acc = (preds == y).float().mean()
         self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
 
-        # Always store id as a list (for string IDs)
-        ids = batch["id"]
-        if isinstance(ids, list) and isinstance(ids[0], str):
-            ids = torch.tensor([int(i) for i in ids], device=self.device)
-        elif isinstance(ids, list):
-            ids = torch.tensor(ids, device=self.device)
-        # Now ids is a tensor
+        # Always store id as a list of strings
+        ids = batch["id"]  # already a list of strings
         self.test_outputs.append({"logits": logits, "labels": y, "id": ids})
         return
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
+        # optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
+        #    self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+        # )
         optimizer = torch.optim.Adam(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
@@ -339,23 +337,14 @@ class ClassifierModule(pl.LightningModule):
         self.test_outputs = []
 
     def on_test_epoch_end(self):
-        # Aggregate outputs
+        # Aggregate outputs for this process
         logits = torch.cat([x["logits"] for x in self.test_outputs])
         labels = torch.cat([x["labels"] for x in self.test_outputs])
-        ids = torch.cat([x["id"] for x in self.test_outputs])
+        ids = [id_ for x in self.test_outputs for id_ in x["id"]]
 
-        # Gather across all processes (returns [world_size, batch, ...])
-        logits = self.all_gather(logits)
-        labels = self.all_gather(labels)
-        ids = self.all_gather(ids)
-
-        # Flatten the first two dims (world_size * batch)
-        logits = logits.reshape(-1, logits.shape[-1]).cpu()
-        labels = labels.reshape(-1).cpu()
-        ids = ids.reshape(-1).cpu().numpy().tolist()
-
-        self.test_results._logits = logits
-        self.test_results._labels = labels
+        # No all_gather, just store local results
+        self.test_results._logits = logits.cpu()
+        self.test_results._labels = labels.cpu()
         self.test_results._ids = ids
 
 
@@ -422,7 +411,8 @@ class StakesDataset(torch.utils.data.Dataset):
     def __init__(self, df: pd.DataFrame):
         self.inputs = df["inputs"].values
         self.labels = (df["labels"] == "high-stakes").astype(int).values
-        self.ids = df["ids"].values
+        print("DATASET:", df[["labels", "inputs"]], self.labels)  # TODO: Remove
+        self.ids = [str(i) for i in df["ids"].values]
 
     def __len__(self):
         return len(self.inputs)
@@ -454,7 +444,7 @@ def create_collate_fn(
         # Extract texts, labels, and ids from batch
         texts = [item["text"] for item in batch]
         labels = [item["label"] for item in batch]
-        ids = [item["id"] for item in batch]
+        ids = [str(item["id"]) for item in batch]
 
         # Tokenize the texts
         encoded = tokenizer(
@@ -473,7 +463,7 @@ def create_collate_fn(
             "input_ids": encoded["input_ids"],
             "attention_mask": encoded["attention_mask"],
             "labels": labels,
-            "id": ids,  # always a list
+            "id": ids,  # always a list of strings
         }
 
     return collate_fn
@@ -691,13 +681,11 @@ class FinetunedClassifier:
             print("No pre-existing activations to remove")
             pass
         # Create a test dataloader:
-        test_dataloader = (
-            DataLoader(
-                StakesDataset(dataset.to_pandas()),
-                batch_size=1,
-                shuffle=False,
-                collate_fn=collate_fn,
-            ),
+        test_dataloader = DataLoader(
+            StakesDataset(dataset.to_pandas()),
+            batch_size=1,
+            shuffle=False,
+            collate_fn=collate_fn,
         )
 
         # Test the model, evaluating on the test set:
@@ -711,12 +699,20 @@ class FinetunedClassifier:
         eval_dataset_path: Path,
         max_samples: Optional[int] = None,
     ) -> FinetunedBaselineResults:
-        # Change the IDs to integers, so that all_gather works
-        original_ids = list(eval_dataset.ids)
-        eval_dataset.ids = list(range(len(eval_dataset.ids)))
-
-        # Get the results:
+        # Get the results (only rank 0 will have them)
         results = self.get_results(eval_dataset)
+        if results.logits is None or results.labels is None or results.ids is None:
+            # Not rank 0, skip aggregation
+            import warnings
+
+            warnings.warn(
+                "get_full_results called on non-rank-0 process; returning None."
+            )
+            return None
+
+        print(
+            "EVAL DATASET:", eval_dataset.to_pandas()[["ids", "labels", "inputs"]]
+        )  # TODO: Remove
 
         # Convert tensors to lists for BaselineResults
         result_ids = list(results.ids) if results.ids is not None else []
@@ -728,6 +724,7 @@ class FinetunedClassifier:
         # Sort results according to the order of eval_dataset.ids
         eval_ids = list(eval_dataset.ids)
         if set(result_ids) == set(eval_ids):
+            # Map result_ids to their indices
             id_to_index = {id_: i for i, id_ in enumerate(result_ids)}
             sort_indices = [id_to_index[id_] for id_ in eval_ids]
             labels = [labels[i] for i in sort_indices]
@@ -736,9 +733,6 @@ class FinetunedClassifier:
             raise ValueError(
                 f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
             )
-
-        # Restore the original IDs:
-        eval_dataset.ids = original_ids
 
         ground_truth = eval_dataset.labels_numpy().tolist()
         assert (
@@ -764,12 +758,14 @@ class FinetunedClassifier:
         ]
 
         # Create BaselineResults instance
-        labels = [score > 0.5 for score in scores]
+        predicted_labels = [score > 0.5 for score in scores]
         baseline_results = FinetunedBaselineResults(
-            ids=original_ids,
-            labels=labels,
-            accuracy=sum([label == gt for label, gt in zip(labels, ground_truth)])
-            / len(labels),
+            ids=eval_dataset.ids,
+            labels=predicted_labels,
+            accuracy=sum(
+                [label == gt for label, gt in zip(predicted_labels, ground_truth)]
+            )
+            / len(predicted_labels),
             scores=scores,
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])  # type: ignore
@@ -819,6 +815,9 @@ def get_finetuned_baseline_results(
     # We'll use the first eval dataset for the BaselineResults
     eval_results = []
     for dataset_name, eval_dataset_path in eval_datasets.items():
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            if torch.distributed.get_rank() != 0:
+                continue
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=None,
@@ -826,6 +825,9 @@ def get_finetuned_baseline_results(
             compute_activations=compute_activations,
             n_per_class=max_samples // 2 if max_samples else None,
         )
+        print(
+            "IN EVAL DATASET:", eval_dataset.to_pandas()[["ids", "labels", "inputs"]]
+        )  # TODO: Remove
         eval_results.append(
             finetune_baseline.get_full_results(
                 eval_dataset=eval_dataset,
