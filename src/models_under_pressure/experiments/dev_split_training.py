@@ -44,6 +44,14 @@ def evaluate_probe(
 def run_dev_split_fine_tuning(
     config: DevSplitFineTuningConfig,
 ) -> List[DevSplitResult]:
+    output_filename = config.output_filename
+    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
+        "_test"
+    ):
+        # Split the filename and extension
+        name, ext = os.path.splitext(output_filename)
+        output_filename = f"{name}_test{ext}"
+
     # Load and split the training dataset
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
@@ -150,6 +158,8 @@ def run_dev_split_fine_tuning(
             method="initial_probe",
         )
         results_list.append(initial_result)
+        print(f"Saving initial results to {EVALUATE_PROBES_DIR / output_filename}")
+        initial_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
         # Fine-tune and evaluate for each k
         for k in tqdm(config.k_values, desc=f"Fine-tuning on {eval_dataset_name}"):
@@ -241,18 +251,10 @@ def run_dev_split_fine_tuning(
             )
             results_list.append(fine_tuned_result)
 
-    # Save results
-    output_filename = config.output_filename
-    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
-        "_test"
-    ):
-        # Split the filename and extension
-        name, ext = os.path.splitext(output_filename)
-        output_filename = f"{name}_test{ext}"
-
-    print(f"Saving results to {EVALUATE_PROBES_DIR / output_filename}")
-    for result in results_list:
-        result.save_to(EVALUATE_PROBES_DIR / output_filename)
+            print(
+                f"Saving finetuned results to {EVALUATE_PROBES_DIR / output_filename}"
+            )
+            fine_tuned_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
     return results_list
 
