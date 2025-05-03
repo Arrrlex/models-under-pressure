@@ -21,6 +21,7 @@ from transformers import (
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
 )
+from tqdm import tqdm
 
 from models_under_pressure.config import FinetuneBaselineConfig, global_settings
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
@@ -660,6 +661,9 @@ class FinetunedClassifier:
         self.classifier.eval()  # ← inference mode
         self.classifier.reset_test_results()
 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.classifier.to(device).eval()  # inference mode
+
         device = next(self.classifier.parameters()).device
         collate_fn = create_collate_fn(self.tokenizer)
 
@@ -693,6 +697,8 @@ class FinetunedClassifier:
         eval_dataset_path: Path,
         max_samples: Optional[int] = None,
     ) -> FinetunedBaselineResults:
+        print(f"Getting full results for {dataset_name} ...")
+
         # Get the results (only rank 0 will have them)
         results = self.get_results(eval_dataset)
         if results.logits is None or results.labels is None or results.ids is None:
@@ -808,7 +814,7 @@ def get_finetuned_baseline_results(
     print("\nLoading eval datasets")
     # We'll use the first eval dataset for the BaselineResults
     eval_results = []
-    for dataset_name, eval_dataset_path in eval_datasets.items():
+    for dataset_name, eval_dataset_path in tqdm(eval_datasets.items()):
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=None,
