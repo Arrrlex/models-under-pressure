@@ -113,10 +113,13 @@ class LinearThenMax(LinearThenAgg):
         super().__init__(embed_dim, agg, **kwargs)
 
 
-class LinearThenTopK(LinearThenAgg):
-    def __init__(self, embed_dim: int, k: int, **kwargs: Any):
+class LinearThenSoftmax(LinearThenAgg):
+    def __init__(self, embed_dim: int, temperature: float, **kwargs: Any):
         def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            return x.topk(k, dim=1).values.mean(dim=1)
+            # For softmax, mask with -inf
+            x_for_softmax = x.masked_fill(~mask, float("-inf"))
+            weights = torch.softmax(x_for_softmax / temperature, dim=1)
+            return (x * weights).sum(dim=1)
 
         super().__init__(embed_dim, agg, **kwargs)
 

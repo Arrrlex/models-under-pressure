@@ -255,8 +255,9 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name=ProbeType.linear_then_mean,
+            name=ProbeType.linear_then_softmax,
             hyperparams={
+                "temperature": 1.0,
                 "batch_size": 16,
                 "epochs": 50,
                 "optimizer_args": {

@@ -11,7 +11,7 @@ class ProbeType(str, Enum):
     attention = "attention"
     linear_then_mean = "linear_then_mean"
     linear_then_max = "linear_then_max"
-    linear_then_topk = "linear_then_topk"
+    linear_then_softmax = "linear_then_softmax"
     linear_then_rolling_max = "linear_then_rolling_max"
 
 

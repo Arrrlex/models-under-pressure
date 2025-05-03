@@ -11,7 +11,7 @@ from models_under_pressure.probes.pytorch_modules import (
     LinearThenMax,
     LinearThenMean,
     LinearThenRollingMax,
-    LinearThenTopK,
+    LinearThenSoftmax,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
@@ -88,10 +88,10 @@ class ProbeFactory:
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenMax,
                 )
-            case ProbeType.linear_then_topk:
+            case ProbeType.linear_then_softmax:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture=LinearThenTopK,
+                    probe_architecture=LinearThenSoftmax,
                 )
             case ProbeType.linear_then_rolling_max:
                 classifier = PytorchClassifier(
