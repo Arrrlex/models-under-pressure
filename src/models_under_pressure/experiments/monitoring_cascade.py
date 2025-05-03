@@ -390,6 +390,8 @@ def get_per_token_flops(full_model_name: str) -> int:
     #  which we don't have in our datasets.)
     if model_name == "llama-1b":
         per_token_flops = 2.0 * 10**9
+    elif model_name == "llama-3b":
+        per_token_flops = 6.0 * 10**9  # TODO Update this
     elif model_name == "llama-8b":
         per_token_flops = 1.6 * 10**10
     elif model_name == "llama-70b":
@@ -566,7 +568,10 @@ def evaluate_single_baseline_cascade(
         scores = [baseline_results.high_stakes_scores[i] for i in sampled_indices]
     else:  # FinetunedBaselineResults
         # For finetuned baselines, we don't have token counts, so use a fixed value
-        sampled_flops = [int(per_token_flops) * 1 for _ in sampled_indices]
+        sampled_flops = [
+            int(per_token_flops) * baseline_results.token_counts[i]
+            for i in sampled_indices
+        ]
         scores = [baseline_results.scores[i] for i in sampled_indices]
 
     sampled_results = CascadeResults(
@@ -601,15 +606,15 @@ def get_activation_dim(full_model_name: str) -> int:
     if model_name == "llama-1b":
         activation_dim = 2048
     elif model_name == "gemma-1b":
-        activation_dim = 2048
+        activation_dim = 1152
     elif model_name == "llama-8b":
         activation_dim = 4096
     elif model_name == "llama-70b":
         activation_dim = 8192
     elif model_name == "gemma-12b":
-        activation_dim = 4096
+        activation_dim = 3840
     elif model_name == "gemma-27b":
-        activation_dim = 4096
+        activation_dim = 5376
     else:
         raise ValueError(f"Unknown activation dimension for model: {model_name}")
     return int(activation_dim)
@@ -729,7 +734,7 @@ def compute_cascade_results(
     probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
     probe_strategy: dict[str, str],
-    two_step_baseline_strategy: dict[str, str] = None,
+    two_step_baseline_strategy: dict[str, str] | None = None,
     first_baseline_model_name: Optional[str] = None,
     target_dataset: Optional[str] = None,
     model_names: Optional[List[str]] = None,
@@ -1331,22 +1336,15 @@ def evaluate_two_baselines_cascade(
         remaining_strategy: How to handle remaining samples
             Options: "fixed_X" where X is the fixed score, or "baseline"
     """
-    # Handle token counts for both types of baseline results
-    if isinstance(first_baseline_results, LikelihoodBaselineResults):
-        assert first_baseline_results.token_counts is not None
-        first_token_counts = first_baseline_results.token_counts
-    else:  # FinetunedBaselineResults
-        first_token_counts = [1] * len(
-            first_baseline_results.scores
-        )  # Use fixed token count of 1
+    assert first_baseline_results.ground_truth_scale_labels is not None
+    assert second_baseline_results.ground_truth_scale_labels is not None
 
-    if isinstance(second_baseline_results, LikelihoodBaselineResults):
-        assert second_baseline_results.token_counts is not None
-        second_token_counts = second_baseline_results.token_counts
-    else:  # FinetunedBaselineResults
-        second_token_counts = [1] * len(
-            second_baseline_results.scores
-        )  # Use fixed token count of 1
+    # Handle token counts for both types of baseline results
+    assert first_baseline_results.token_counts is not None
+    first_token_counts = first_baseline_results.token_counts
+
+    assert second_baseline_results.token_counts is not None
+    second_token_counts = second_baseline_results.token_counts
 
     assert first_baseline_results.ids == second_baseline_results.ids
 
@@ -1406,7 +1404,8 @@ def evaluate_probe_baseline_cascade(
     assert probe_results.ground_truth_labels is not None
     assert probe_results.ground_truth_scale_labels is not None
     assert probe_results.token_counts is not None
-
+    assert baseline_results.token_counts is not None
+    assert baseline_results.ground_truth_scale_labels is not None
     assert probe_results.ids == baseline_results.ids
 
     # Get model-specific per_token_flops
@@ -1424,18 +1423,12 @@ def evaluate_probe_baseline_cascade(
     )
 
     # Create baseline cascade results for all samples (second step)
+    baseline_flops = [
+        int(per_token_flops) * count for count in baseline_results.token_counts
+    ]
     if isinstance(baseline_results, LikelihoodBaselineResults):
-        assert baseline_results.token_counts is not None
-        baseline_flops = [
-            int(per_token_flops) * count for count in baseline_results.token_counts
-        ]
         scores = baseline_results.high_stakes_scores
     else:  # FinetunedBaselineResults
-        assert baseline_results.token_counts is not None
-        # For finetuned baselines, we don't have token counts, so use a fixed value
-        baseline_flops = [
-            int(per_token_flops) * count for count in baseline_results.token_counts
-        ]
         scores = baseline_results.scores
 
     baseline_cascade = CascadeResults(
