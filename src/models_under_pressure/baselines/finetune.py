@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
+from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
@@ -607,10 +608,11 @@ class FinetunedClassifier:
             logger = None
 
         # Setup the pytorch lightning trainer:
+        trainer_args = self.finetune_config.get("Trainer", {})
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
             logger=logger,
-            **self.finetune_config.get("Trainer", {}),
+            **trainer_args,
         )
 
         # Train the finetuned model:
@@ -623,12 +625,22 @@ class FinetunedClassifier:
         if val_dataset is not None:
             self._classifier_checkpoint = checkpoint_callback.best_model_path
             print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
-            self._classifier = ClassifierModule.load_from_checkpoint(
-                self._classifier_checkpoint,
-                model=self.model,
-                num_classes=num_classes,
-                **self.finetune_config.get("ClassifierModule", {}),
-            )
+            if trainer_args.get("strategy", "") == "deepspeed_stage_2_offload":
+                ckpt_dir = checkpoint_callback.best_model_path  # directory
+                state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
+                self._classifier = ClassifierModule(
+                    model=self.model,
+                    num_classes=num_classes,
+                    **self.finetune_config.get("ClassifierModule", {}),
+                )
+                self._classifier.load_state_dict(state_dict, strict=False)
+            else:
+                self._classifier = ClassifierModule.load_from_checkpoint(
+                    self._classifier_checkpoint,
+                    model=self.model,
+                    num_classes=num_classes,
+                    **self.finetune_config.get("ClassifierModule", {}),
+                )
             self.best_epoch = int(
                 os.path.splitext(os.path.basename(checkpoint_callback.best_model_path))[
                     0
@@ -687,7 +699,10 @@ class FinetunedClassifier:
             # accumulate
             self.classifier.test_results.logits = logits.cpu()
             self.classifier.test_results.labels = labels.cpu()
-            self.classifier.test_results.ids = batch["id"]
+            if self.classifier.test_results._ids is None:
+                self.classifier.test_results._ids = batch["id"]
+            else:
+                self.classifier.test_results._ids.extend(batch["id"])
 
         return self.classifier.test_results
 
