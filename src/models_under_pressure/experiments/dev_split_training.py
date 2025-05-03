@@ -263,10 +263,10 @@ if __name__ == "__main__":
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
         dev_sample_usage="only",
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
-        max_samples=100,
-        compute_activations=True,
+        model_name=LOCAL_MODELS["llama-70b"],
+        layer=31,
+        max_samples=None,
+        compute_activations=False,
         probe_spec=ProbeSpec(
             name=ProbeType.sklearn,
             hyperparams={"C": 1e-3, "fit_intercept": False},
@@ -283,7 +283,7 @@ if __name__ == "__main__":
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
         eval_dataset_names=None,
-        output_filename="dev_split_debugging.jsonl",
+        output_filename="dev_split_training.jsonl",
     )
 
     double_check_config(config)
