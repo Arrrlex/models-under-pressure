@@ -743,17 +743,26 @@ class FinetunedClassifier:
         collate_fn = create_collate_fn(self.tokenizer)
         token_counts = [
             len(
-                collate_fn([{"text": sample["text"], "label": sample["label"]}])[
-                    "input_ids"
-                ][0]
+                collate_fn(
+                    [
+                        {
+                            "text": sample["text"],
+                            "label": sample["label"],
+                            "id": sample["id"],
+                        }
+                    ]
+                )["input_ids"][0]
             )
             for sample in stakes_dataset
         ]
 
         # Create BaselineResults instance
+        labels = [score > 0.5 for score in scores]
         baseline_results = FinetunedBaselineResults(
             ids=eval_ids,
-            labels=[score > 0.5 for score in scores],
+            labels=labels,
+            accuracy=sum([label == gt for label, gt in zip(labels, ground_truth)])
+            / len(labels),
             scores=scores,
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])  # type: ignore
