@@ -296,8 +296,11 @@ class ClassifierModule(pl.LightningModule):
 
         # Always store id as a list (for string IDs)
         ids = batch["id"]
-        if isinstance(ids, torch.Tensor):
-            ids = ids.tolist()
+        if isinstance(ids, list) and isinstance(ids[0], str):
+            ids = torch.tensor([int(i) for i in ids], device=self.device)
+        elif isinstance(ids, list):
+            ids = torch.tensor(ids, device=self.device)
+        # Now ids is a tensor
         self.test_outputs.append({"logits": logits, "labels": y, "id": ids})
         return
 
@@ -339,20 +342,17 @@ class ClassifierModule(pl.LightningModule):
         # Aggregate outputs
         logits = torch.cat([x["logits"] for x in self.test_outputs])
         labels = torch.cat([x["labels"] for x in self.test_outputs])
-        # Flatten the list of lists of string IDs
-        ids_list = [x["id"] for x in self.test_outputs]
-        ids = [item for sublist in ids_list for item in sublist]
-        ids = np.array(ids)
+        ids = torch.cat([x["id"] for x in self.test_outputs])
 
         # Gather across all processes (returns [world_size, batch, ...])
         logits = self.all_gather(logits)
         labels = self.all_gather(labels)
-        # Do NOT all_gather ids (not supported for strings)
+        ids = self.all_gather(ids)
 
         # Flatten the first two dims (world_size * batch)
         logits = logits.reshape(-1, logits.shape[-1]).cpu()
         labels = labels.reshape(-1).cpu()
-        # ids is already a flat numpy array of strings
+        ids = ids.reshape(-1).cpu().numpy().tolist()
 
         self.test_results._logits = logits
         self.test_results._labels = labels
@@ -711,6 +711,11 @@ class FinetunedClassifier:
         eval_dataset_path: Path,
         max_samples: Optional[int] = None,
     ) -> FinetunedBaselineResults:
+        # Change the IDs to integers, so that all_gather works
+        original_ids = list(eval_dataset.ids)
+        eval_dataset.ids = list(range(len(eval_dataset.ids)))
+
+        # Get the results:
         results = self.get_results(eval_dataset)
 
         # Convert tensors to lists for BaselineResults
@@ -732,11 +737,13 @@ class FinetunedClassifier:
                 f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
             )
 
+        # Restore the original IDs:
+        eval_dataset.ids = original_ids
+
         ground_truth = eval_dataset.labels_numpy().tolist()
         assert (
             labels == ground_truth
         ), f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
-        # TODO! I think labels and ground truth are supposed to be the same, but they aren't!
 
         # Get the token counts using StakesDataset
         stakes_dataset = StakesDataset(eval_dataset.to_pandas())
@@ -759,7 +766,7 @@ class FinetunedClassifier:
         # Create BaselineResults instance
         labels = [score > 0.5 for score in scores]
         baseline_results = FinetunedBaselineResults(
-            ids=eval_ids,
+            ids=original_ids,
             labels=labels,
             accuracy=sum([label == gt for label, gt in zip(labels, ground_truth)])
             / len(labels),
