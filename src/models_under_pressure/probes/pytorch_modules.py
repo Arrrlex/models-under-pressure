@@ -1,12 +1,10 @@
 import math
-from typing import Callable
+from typing import Any, Callable
 
 import einops
 import torch
 import torch.nn as nn
 from jaxtyping import Float
-
-from models_under_pressure.config import global_settings
 
 
 class BatchNorm(nn.Module):
@@ -17,11 +15,7 @@ class BatchNorm(nn.Module):
     def __init__(self, embed_dim: int):
         super().__init__()
 
-        self.batch_norm = (
-            nn.BatchNorm1d(embed_dim)
-            .to(global_settings.DEVICE)
-            .to(global_settings.DTYPE)
-        )
+        self.batch_norm = nn.BatchNorm1d(embed_dim)
 
     def forward(
         self, activations: Float[torch.Tensor, "batch_size seq_len embed_dim"]
@@ -36,11 +30,7 @@ class Linear(nn.Module):
     def __init__(self, embed_dim: int):
         super().__init__()
 
-        self.linear = (
-            nn.Linear(embed_dim, 1, bias=False)
-            .to(global_settings.DEVICE)
-            .to(global_settings.DTYPE)
-        )
+        self.linear = nn.Linear(embed_dim, 1, bias=False)
 
     def forward(
         self, activations: Float[torch.Tensor, "batch_size seq_len embed_dim"]
@@ -49,7 +39,7 @@ class Linear(nn.Module):
 
 
 class AttnLite(nn.Module):
-    def __init__(self, embed_dim: int, dropout: float = 0.1):
+    def __init__(self, embed_dim: int, dropout: float = 0.1, **kwargs: Any):
         super().__init__()
         self.embed_dim = embed_dim
         self.context_query = Linear(embed_dim)
@@ -73,46 +63,69 @@ class AttnLite(nn.Module):
 
 
 class LinearMeanPool(nn.Module):
-    def __init__(self, embed_dim: int):
+    def __init__(self, embed_dim: int, **kwargs: Any):
         super().__init__()
         self.batch_norm = BatchNorm(embed_dim)
         self.linear = Linear(embed_dim)
 
     def forward(
-        self, x: Float[torch.Tensor, "batch_size seq_len embed_dim"]
+        self,
+        x: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+        mask: Float[torch.Tensor, "batch_size seq_len"],
     ) -> Float[torch.Tensor, " batch_size"]:
         x = self.batch_norm(x)
-        x = x.mean(dim=1)
+        x = x.sum(dim=1) / mask.sum(dim=1, keepdims=True).clamp(min=1)
         return self.linear(x)
 
 
 class LinearThenAgg(nn.Module):
-    def __init__(self, embed_dim: int, agg: Callable):
+    def __init__(self, embed_dim: int, agg: Callable, **kwargs: Any):
         super().__init__()
         self.batch_norm = BatchNorm(embed_dim)
         self.linear = Linear(embed_dim)
         self.agg = agg
 
     def forward(
-        self, x: Float[torch.Tensor, "batch_size seq_len embed_dim"]
+        self,
+        x: Float[torch.Tensor, "batch_size seq_len embed_dim"],
+        mask: Float[torch.Tensor, "batch_size seq_len"],
     ) -> Float[torch.Tensor, " batch_size"]:
         x = self.batch_norm(x)
         x = self.linear(x)
-        x = self.agg(x)
+        x = x.masked_fill(~mask, 0)
+        x = self.agg(x, mask)
         return x
 
 
-def mean_agg(x: torch.Tensor) -> torch.Tensor:
-    return x.mean(dim=1)
+class LinearThenMean(LinearThenAgg):
+    def __init__(self, embed_dim: int, **kwargs: Any):
+        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return x.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+
+        super().__init__(embed_dim, agg, **kwargs)
 
 
-def max_agg(x: torch.Tensor) -> torch.Tensor:
-    return x.max(dim=1).values
+class LinearThenMax(LinearThenAgg):
+    def __init__(self, embed_dim: int, **kwargs: Any):
+        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return x.max(dim=1).values
+
+        super().__init__(embed_dim, agg, **kwargs)
 
 
-def mean_of_top_k(k: int) -> Callable:
-    return lambda x: x.topk(k, dim=1).values.mean(dim=1)
+class LinearThenTopK(LinearThenAgg):
+    def __init__(self, embed_dim: int, k: int, **kwargs: Any):
+        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return x.topk(k, dim=1).values.mean(dim=1)
+
+        super().__init__(embed_dim, agg, **kwargs)
 
 
-def max_of_rolling_window(window_size: int) -> Callable:
-    return lambda x: x.unfold(1, window_size, 1).max(dim=2).values
+class LinearThenRollingMax(LinearThenAgg):
+    def __init__(self, embed_dim: int, window_size: int, **kwargs: Any):
+        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            windows = x.unfold(1, window_size, 1)
+            window_means = windows.mean(dim=2)
+            return window_means.max(dim=1).values
+
+        super().__init__(embed_dim, agg, **kwargs)

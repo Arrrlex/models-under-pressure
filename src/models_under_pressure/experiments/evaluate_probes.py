@@ -255,7 +255,7 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name=ProbeType.attention,
+            name=ProbeType.linear_then_mean,
             hyperparams={
                 "batch_size": 16,
                 "epochs": 50,

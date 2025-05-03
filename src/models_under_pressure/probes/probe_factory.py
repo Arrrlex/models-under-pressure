@@ -5,6 +5,14 @@ from models_under_pressure.probes.pytorch_classifiers import (
     PytorchClassifier,
     PytorchDifferenceOfMeansClassifier,
 )
+from models_under_pressure.probes.pytorch_modules import (
+    AttnLite,
+    LinearMeanPool,
+    LinearThenMax,
+    LinearThenMean,
+    LinearThenRollingMax,
+    LinearThenTopK,
+)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
     Probe,
@@ -60,35 +68,35 @@ class ProbeFactory:
                     use_lda=True,
                     training_args=probe_spec.hyperparams,
                 )
-            case ProbeType.per_entry:
+            case ProbeType.pre_mean:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="pre-mean",
+                    probe_architecture=LinearMeanPool,
                 )
             case ProbeType.attention:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="attention",
+                    probe_architecture=AttnLite,
                 )
             case ProbeType.linear_then_mean:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="linear-then-mean",
+                    probe_architecture=LinearThenMean,
                 )
             case ProbeType.linear_then_max:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="linear-then-max",
+                    probe_architecture=LinearThenMax,
                 )
             case ProbeType.linear_then_topk:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="linear-then-topk",
+                    probe_architecture=LinearThenTopK,
                 )
             case ProbeType.linear_then_rolling_max:
                 classifier = PytorchClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture="linear-then-rolling-max",
+                    probe_architecture=LinearThenRollingMax,
                 )
         probe = PytorchProbe(
             hyper_params=probe_spec.hyperparams,

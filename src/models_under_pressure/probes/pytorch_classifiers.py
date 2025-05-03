@@ -12,15 +12,8 @@ from tqdm import tqdm
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.probes.pytorch_modules import (
-    AttnLite,
     BatchNorm,
     Linear,
-    LinearMeanPool,
-    LinearThenAgg,
-    max_agg,
-    max_of_rolling_window,
-    mean_agg,
-    mean_of_top_k,
 )
 
 
@@ -338,7 +331,7 @@ class PytorchClassifier:
     best_epoch: int | None = None
     device: str = global_settings.DEVICE
     dtype: torch.dtype = global_settings.DTYPE
-    probe_architecture: str
+    probe_architecture: type[nn.Module]
 
     def train(
         self,
@@ -361,11 +354,10 @@ class PytorchClassifier:
         Returns:
             Self
         """
-        self.model = self.create_model(
-            embed_dim=activations.embed_dim,
-            probe_architecture=self.probe_architecture,
-            **self.training_args,
+        self.model = self.probe_architecture(
+            activations.embed_dim, **self.training_args
         )
+        self.model = self.model.to(self.device).to(self.dtype)
 
         dataset = activations.to_dataset(y)
 
@@ -513,25 +505,25 @@ class PytorchClassifier:
 
         return torch.cat(logits, dim=0)
 
-    def create_model(
-        self, embed_dim: int, probe_architecture: str, **training_args: Any
-    ) -> nn.Module:
-        match probe_architecture:
-            case "attention":
-                return AttnLite(embed_dim)
-            case "pre-mean":
-                return LinearMeanPool(embed_dim)
-            case "linear-then-mean":
-                return LinearThenAgg(embed_dim, mean_agg)
-            case "linear-then-max":
-                return LinearThenAgg(embed_dim, max_agg)
-            case "linear-then-topk":
-                k = training_args["k"]
-                return LinearThenAgg(embed_dim, mean_of_top_k(k))
-            case "linear-then-rolling-max":
-                window_size = training_args["window_size"]
-                return LinearThenAgg(embed_dim, max_of_rolling_window(window_size))
-            case _:
-                raise NotImplementedError(
-                    f"Probe architecture {probe_architecture} not implemented"
-                )
+    # def create_model(
+    #     self, embed_dim: int, **training_args: Any
+    # ) -> nn.Module:
+    #     match probe_architecture:
+    #         case "attention":
+    #             return AttnLite(embed_dim)
+    #         case "pre-mean":
+    #             return LinearMeanPool(embed_dim)
+    #         case "linear-then-mean":
+    #             return LinearThenAgg(embed_dim, mean_agg)
+    #         case "linear-then-max":
+    #             return LinearThenAgg(embed_dim, max_agg)
+    #         case "linear-then-topk":
+    #             k = training_args["k"]
+    #             return LinearThenAgg(embed_dim, mean_of_top_k(k))
+    #         case "linear-then-rolling-max":
+    #             window_size = training_args["window_size"]
+    #             return LinearThenAgg(embed_dim, max_of_rolling_window(window_size))
+    #         case _:
+    #             raise NotImplementedError(
+    #                 f"Probe architecture {probe_architecture} not implemented"
+    #             )
