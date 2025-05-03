@@ -8,9 +8,11 @@ class ProbeType(str, Enum):
     per_entry = "per_entry"
     difference_of_means = "difference_of_means"
     lda = "lda"
-    per_token = "per_token"
     attention = "attention"
-    simple_attention = "simple_attention"
+    linear_then_mean = "linear-then-mean"
+    linear_then_max = "linear-then-max"
+    linear_then_topk = "linear-then-topk"
+    linear_then_rolling_max = "linear-then-rolling-max"
 
 
 class ProbeSpec(BaseModel):

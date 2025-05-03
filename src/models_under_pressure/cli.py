@@ -216,8 +216,11 @@ def dashboard():
 
 
 @app.command()
-def exp():
+def exp(
+    experiment_args: list[str] = typer.Argument(
+        None, help="Arguments to pass to the experiment script"
+    ),
+):
     """Run an experiment."""
     run_experiments_path = Path(__file__).parent / "scripts/run_experiment.py"
-    args = sys.argv[1:]
-    subprocess.run(["python", str(run_experiments_path)] + args)
+    subprocess.run(["python", str(run_experiments_path)] + experiment_args)

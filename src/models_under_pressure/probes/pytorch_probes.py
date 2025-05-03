@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Self, Sequence
 
 import numpy as np
@@ -19,7 +19,10 @@ from models_under_pressure.interfaces.dataset import (
     Label,
     LabelledDataset,
 )
-from models_under_pressure.probes.pytorch_classifiers import PytorchLinearClassifier
+from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchClassifier,
+    PytorchLinearClassifier,
+)
 from models_under_pressure.probes.sklearn_probes import Probe
 from models_under_pressure.utils import as_numpy
 
@@ -27,9 +30,7 @@ from models_under_pressure.utils import as_numpy
 @dataclass
 class PytorchProbe(Probe):
     hyper_params: dict
-    _classifier: PytorchLinearClassifier = field(
-        default_factory=lambda: PytorchLinearClassifier(training_args={})
-    )
+    _classifier: PytorchLinearClassifier | PytorchClassifier
 
     def __post_init__(self):
         self._classifier.training_args = self.hyper_params
