@@ -411,7 +411,6 @@ class StakesDataset(torch.utils.data.Dataset):
     def __init__(self, df: pd.DataFrame):
         self.inputs = df["inputs"].values
         self.labels = (df["labels"] == "high-stakes").astype(int).values
-        print("DATASET:", df[["labels", "inputs"]], self.labels)  # TODO: Remove
         self.ids = [str(i) for i in df["ids"].values]
 
     def __len__(self):
@@ -655,41 +654,36 @@ class FinetunedClassifier:
     @torch.no_grad()
     def get_results(self, dataset: BaseDataset) -> BaselineResults:
         """
-        Using the provided dataset, test the finetuned model and return the BaselineResults
-        object.
-
-        Args:
-            dataset: The dataset to test the model on.
-
-        Returns:
-            The BaselineResults object.
+        Run a plain forward pass (no PL test‑loop) to avoid the
+        dead‑lock that occurs when re‑using a Trainer after ``fit()``.
         """
-        # Get the classifier, will throw an error if it is not trained:
-        classifier = self.classifier
-        classifier.reset_test_results()
+        self.classifier.eval()  # ← inference mode
+        self.classifier.reset_test_results()
 
-        # Create a collate function:
+        device = next(self.classifier.parameters()).device
         collate_fn = create_collate_fn(self.tokenizer)
 
-        # Remove pre-existing activations from the dataset:
-        try:
-            print("Try removing pre-existing activations from the dataset")
-            dataset.remove_field("activations")
-            dataset.remove_field("input_ids")
-            dataset.remove_field("attention_mask")
-        except ValueError:
-            print("No pre-existing activations to remove")
-            pass
-        # Create a test dataloader:
-        test_dataloader = DataLoader(
+        # A single‑worker DataLoader → no inter‑process barriers
+        loader = DataLoader(
             StakesDataset(dataset.to_pandas()),
-            batch_size=1,
+            batch_size=32,
             shuffle=False,
             collate_fn=collate_fn,
+            num_workers=0,
         )
 
-        # Test the model, evaluating on the test set:
-        self._trainer.test(self.classifier, test_dataloader)
+        for batch in loader:
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
+
+            logits = self.classifier(input_ids, attention_mask)
+
+            # accumulate
+            self.classifier.test_results.logits = logits.cpu()
+            self.classifier.test_results.labels = labels.cpu()
+            self.classifier.test_results.ids = batch["id"]
+
         return self.classifier.test_results
 
     def get_full_results(
@@ -709,10 +703,6 @@ class FinetunedClassifier:
                 "get_full_results called on non-rank-0 process; returning None."
             )
             return None
-
-        print(
-            "EVAL DATASET:", eval_dataset.to_pandas()[["ids", "labels", "inputs"]]
-        )  # TODO: Remove
 
         # Convert tensors to lists for BaselineResults
         result_ids = list(results.ids) if results.ids is not None else []
@@ -811,13 +801,14 @@ def get_finetuned_baseline_results(
     del train_dataset
     del val_dataset
 
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        if torch.distributed.get_rank() != 0:
+            return []
+
     print("\nLoading eval datasets")
     # We'll use the first eval dataset for the BaselineResults
     eval_results = []
     for dataset_name, eval_dataset_path in eval_datasets.items():
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            if torch.distributed.get_rank() != 0:
-                continue
         eval_dataset = load_dataset(
             dataset_path=eval_dataset_path,
             model_name=None,
@@ -825,9 +816,6 @@ def get_finetuned_baseline_results(
             compute_activations=compute_activations,
             n_per_class=max_samples // 2 if max_samples else None,
         )
-        print(
-            "IN EVAL DATASET:", eval_dataset.to_pandas()[["ids", "labels", "inputs"]]
-        )  # TODO: Remove
         eval_results.append(
             finetune_baseline.get_full_results(
                 eval_dataset=eval_dataset,
