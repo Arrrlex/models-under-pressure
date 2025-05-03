@@ -34,6 +34,7 @@ hf_login()
 class BaselineResults(BaseModel):
     _logits: Optional[torch.Tensor] = None
     _labels: Optional[torch.Tensor] = None
+    _ids: Optional[List[str]] = None
 
     """
     An interface for working with the logits and labels collected at test time from the
@@ -53,11 +54,19 @@ class BaselineResults(BaseModel):
         return self._labels
 
     @property
+    def ids(self) -> List[str] | None:
+        return self._ids
+
+    @property
     def probits(self) -> torch.Tensor:
         if self._logits is None:
             raise ValueError("Logits must be set before accessing probits")
         sigmoid = torch.nn.Sigmoid()
         return sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()
+
+    @ids.setter
+    def ids(self, value: List[str]):
+        self._ids = value
 
     @logits.setter
     def logits(self, value: torch.Tensor):
@@ -285,10 +294,11 @@ class ClassifierModule(pl.LightningModule):
         acc = (preds == y).float().mean()
         self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
 
-        # Add an index to the batch if possible
-        idx = batch.get("idx", batch_idx)
-        # Store outputs in a list
-        self.test_outputs.append({"logits": logits, "labels": y, "idx": idx})
+        # Always store id as a list (for string IDs)
+        ids = batch["id"]
+        if isinstance(ids, torch.Tensor):
+            ids = ids.tolist()
+        self.test_outputs.append({"logits": logits, "labels": y, "id": ids})
         return
 
     def configure_optimizers(self):
@@ -329,22 +339,24 @@ class ClassifierModule(pl.LightningModule):
         # Aggregate outputs
         logits = torch.cat([x["logits"] for x in self.test_outputs])
         labels = torch.cat([x["labels"] for x in self.test_outputs])
-        indices = torch.tensor([x["idx"] for x in self.test_outputs])
+        # Flatten the list of lists of string IDs
+        ids_list = [x["id"] for x in self.test_outputs]
+        ids = [item for sublist in ids_list for item in sublist]
+        ids = np.array(ids)
 
         # Gather across all processes (returns [world_size, batch, ...])
         logits = self.all_gather(logits)
         labels = self.all_gather(labels)
-        indices = self.all_gather(indices)
+        # Do NOT all_gather ids (not supported for strings)
 
         # Flatten the first two dims (world_size * batch)
         logits = logits.reshape(-1, logits.shape[-1]).cpu()
         labels = labels.reshape(-1).cpu()
-        indices = indices.reshape(-1).cpu().numpy()
+        # ids is already a flat numpy array of strings
 
-        # Sort by indices
-        sort_idx = indices.argsort()
-        self.test_results._logits = logits[sort_idx]
-        self.test_results._labels = labels[sort_idx]
+        self.test_results._logits = logits
+        self.test_results._labels = labels
+        self.test_results._ids = ids
 
 
 class LLMModel(nn.Module):
@@ -410,12 +422,17 @@ class StakesDataset(torch.utils.data.Dataset):
     def __init__(self, df: pd.DataFrame):
         self.inputs = df["inputs"].values
         self.labels = (df["labels"] == "high-stakes").astype(int).values
+        self.ids = df["ids"].values
 
     def __len__(self):
         return len(self.inputs)
 
     def __getitem__(self, idx: Union[int, slice]):
-        return {"text": self.inputs[idx], "label": self.labels[idx]}
+        return {
+            "text": self.inputs[idx],
+            "label": self.labels[idx],
+            "id": self.ids[idx],
+        }
 
 
 def create_collate_fn(
@@ -434,9 +451,10 @@ def create_collate_fn(
         Collate function for a pytorch dataloader.
         """
 
-        # Extract texts and labels from batch
+        # Extract texts, labels, and ids from batch
         texts = [item["text"] for item in batch]
         labels = [item["label"] for item in batch]
+        ids = [item["id"] for item in batch]
 
         # Tokenize the texts
         encoded = tokenizer(
@@ -449,11 +467,13 @@ def create_collate_fn(
 
         # Convert labels to tensor
         labels = torch.tensor(labels)
+        # Keep ids as list (for string IDs)
 
         return {
             "input_ids": encoded["input_ids"],
             "attention_mask": encoded["attention_mask"],
             "labels": labels,
+            "id": ids,  # always a list
         }
 
     return collate_fn
@@ -694,9 +714,24 @@ class FinetunedClassifier:
         results = self.get_results(eval_dataset)
 
         # Convert tensors to lists for BaselineResults
+        result_ids = list(results.ids) if results.ids is not None else []
         labels = (
             results.labels.cpu().numpy().tolist() if results.labels is not None else []
         )
+        scores = results.probits.tolist() if results.logits is not None else []
+
+        # Sort results according to the order of eval_dataset.ids
+        eval_ids = list(eval_dataset.ids)
+        if set(result_ids) == set(eval_ids):
+            id_to_index = {id_: i for i, id_ in enumerate(result_ids)}
+            sort_indices = [id_to_index[id_] for id_ in eval_ids]
+            labels = [labels[i] for i in sort_indices]
+            scores = [scores[i] for i in sort_indices]
+        else:
+            raise ValueError(
+                f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
+            )
+
         ground_truth = eval_dataset.labels_numpy().tolist()
         assert (
             labels == ground_truth
@@ -716,9 +751,8 @@ class FinetunedClassifier:
         ]
 
         # Create BaselineResults instance
-        scores = results.probits.tolist() if results.logits is not None else []
         baseline_results = FinetunedBaselineResults(
-            ids=list(eval_dataset.ids),
+            ids=eval_ids,
             labels=[score > 0.5 for score in scores],
             scores=scores,
             ground_truth=ground_truth,
