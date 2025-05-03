@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
+import deepspeed
 import torch.nn as nn
 import torch.nn.functional as F
 from pydantic import BaseModel
@@ -302,12 +303,12 @@ class ClassifierModule(pl.LightningModule):
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
-        # optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
-        #    self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
-        # )
-        optimizer = torch.optim.Adam(
+        optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
+        # optimizer = torch.optim.Adam(
+        #    self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+        # )
 
         return optimizer
 
@@ -670,7 +671,7 @@ class FinetunedClassifier:
         # A single‑worker DataLoader → no inter‑process barriers
         loader = DataLoader(
             StakesDataset(dataset.to_pandas()),
-            batch_size=32,
+            batch_size=12,
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=0,
