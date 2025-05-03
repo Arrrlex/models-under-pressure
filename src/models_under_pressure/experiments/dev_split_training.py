@@ -52,6 +52,10 @@ def run_dev_split_fine_tuning(
         name, ext = os.path.splitext(output_filename)
         output_filename = f"{name}_test{ext}"
 
+    # Ensure output directory exists (inferred from output path)
+    output_path = EVALUATE_PROBES_DIR / output_filename
+    os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
+
     # Load and split the training dataset
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
