@@ -856,7 +856,11 @@ def compute_cascade_results(
             strategies = [probe_strategy]
 
             print(f"\nProbe+Baseline Cascade Results for {dataset_name}:")
-            for baseline_result in baseline_results + finetuned_baseline_results:
+            for is_finetuned, baseline_result in zip(
+                [False] * len(baseline_results)
+                + [True] * len(finetuned_baseline_results),
+                baseline_results + finetuned_baseline_results,
+            ):
                 for fraction_of_samples in fraction_of_sample_options:
                     for strategy in strategies:
                         print(
@@ -880,7 +884,9 @@ def compute_cascade_results(
                         write_cascade_results_to_file(
                             results=probe_baseline_cascade_results,
                             output_file=results_file,
-                            cascade_type="probe_baseline",
+                            cascade_type="probe_baseline"
+                            if not is_finetuned
+                            else "probe_finetuned_baseline",
                             model_name=baseline_result.model_name,
                             probe_model_name=probe_results.config.model_name,
                             fraction_of_samples=fraction_of_samples,
@@ -1016,7 +1022,11 @@ def plot_cascade_results(
         baseline_model = result.get("baseline_model_name")
         if baseline_model:
             # Create a unique key for each method
-            if result["cascade_type"] in ["probe_baseline", "two_step_baseline"]:
+            if result["cascade_type"] in [
+                "probe_baseline",
+                "two_step_baseline",
+                "probe_finetuned_baseline",
+            ]:
                 key = (
                     baseline_model,
                     result["cascade_type"],
@@ -1064,6 +1074,11 @@ def plot_cascade_results(
             "bottom": ":",
             "mid": "-.",
         },
+        "probe_finetuned_baseline": {
+            "top": "-.",
+            "bottom": ":",
+            "mid": "--",
+        },
         "two_step_baseline": {
             "top": "--",
             "bottom": ":",
@@ -1082,9 +1097,17 @@ def plot_cascade_results(
             linestyle = line_styles["baseline"]
         elif cascade_type == "finetuned_baseline":
             linestyle = line_styles["finetuned_baseline"]
-        else:  # probe_baseline or two_step_baseline
+        elif cascade_type in [
+            "probe_baseline",
+            "probe_finetuned_baseline",
+            "two_step_baseline",
+        ]:
             selection_strategy = key[2]
+            remaining_strategy = key[3]
+            merge_strategy = key[4]
             linestyle = line_styles[cascade_type][selection_strategy]
+        else:
+            raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Sort fractions
         fractions = sorted(fraction_results.keys())
@@ -1110,7 +1133,11 @@ def plot_cascade_results(
             label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "finetuned_baseline":
             label = f"Finetuned Baseline ({get_abbreviated_model_name(baseline_model)})"
-        elif cascade_type == "probe_baseline":
+        elif cascade_type in [
+            "probe_baseline",
+            "probe_finetuned_baseline",
+            "two_step_baseline",
+        ]:
             selection_strategy = key[2]
             remaining_strategy = key[3]
             merge_strategy = key[4]
@@ -1120,23 +1147,11 @@ def plot_cascade_results(
                 else "fixed_0"
             )
             if show_strategy_in_legend:
-                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
             else:
-                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)})"
-        else:  # two_step_baseline
-            selection_strategy = key[2]
-            remaining_strategy = key[3]
-            merge_strategy = key[4]
-            first_baseline = key[4]  # probe_model_name is stored here
-            remaining_strategy_display = (
-                remaining_strategy.replace("fixed_", "fixed=")
-                if remaining_strategy
-                else "fixed_0"
-            )
-            if show_strategy_in_legend:
-                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
-            else:
-                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)})"
+                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+        else:
+            raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Plot line with shaded region
         plt.plot(
