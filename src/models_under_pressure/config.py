@@ -329,7 +329,7 @@ class DevSplitFineTuningConfig(BaseModel):
 
     layer: int
     probe_spec: ProbeSpec
-    eval_data_usage: str  # "fine-tune", "only", "combine"
+    dev_sample_usage: str  # "fine-tune", "only", "combine"
     max_samples: int | None = None
     fine_tune_epochs: int = 5
     sample_repeats: int = 5  # only relevant for eval_data_usage == "combine"

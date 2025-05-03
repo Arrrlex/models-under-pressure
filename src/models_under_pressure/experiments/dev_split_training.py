@@ -18,7 +18,7 @@ from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
 )
-from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, DevSplitResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probe_factory import ProbeFactory
@@ -36,8 +36,8 @@ def evaluate_probe(
     y_pred = per_entry_probe_scores
 
     return (
-        per_entry_probe_scores.tolist(),
-        DatasetResults(layer=0, metrics=calculate_metrics(y_true, y_pred, fpr)),
+        per_entry_probe_scores.tolist(),  # type: ignore
+        DatasetResults(layer=0, metrics=calculate_metrics(y_true, y_pred, fpr)),  # type: ignore
     )
 
 
@@ -57,7 +57,9 @@ def run_dev_split_fine_tuning(
     # Create initial probe
     print("Creating initial probe...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
+        probe_spec=config.probe_spec,
+        model_name=config.model_name,
+        layer=config.layer,
         train_dataset=splits["train"],
         validation_dataset=splits["test"] if config.validation_dataset else None,
     )
@@ -125,7 +127,9 @@ def run_dev_split_fine_tuning(
             probe._classifier.model.load_state_dict(initial_state)  # type: ignore
         else:
             probe = ProbeFactory.build(
-                probe=config.probe_spec,
+                probe_spec=config.probe_spec,
+                model_name=config.model_name,
+                layer=config.layer,
                 train_dataset=splits["train"],
                 validation_dataset=splits["test"]
                 if config.validation_dataset
@@ -158,7 +162,7 @@ def run_dev_split_fine_tuning(
             # Sample k examples from train split
             k_split = subsample_balanced_subset(train_split, n_per_class=k // 2)
 
-            if config.eval_data_usage == "combine":
+            if config.dev_sample_usage == "combine":
                 # Combine train split and k_split
                 # Get common fields between train_split and k_split
                 train_fields = set(train_split.other_fields.keys())
@@ -182,17 +186,21 @@ def run_dev_split_fine_tuning(
                     [train_split_filtered] + [k_split_filtered] * config.sample_repeats
                 )
                 probe = ProbeFactory.build(
-                    probe=config.probe_spec,
+                    probe_spec=config.probe_spec,
+                    model_name=config.model_name,
+                    layer=config.layer,
                     train_dataset=combined_split,
                     validation_dataset=None,
                 )
-            elif config.eval_data_usage == "only":
+            elif config.dev_sample_usage == "only":
                 probe = ProbeFactory.build(
-                    probe=config.probe_spec,
+                    probe_spec=config.probe_spec,
+                    model_name=config.model_name,
+                    layer=config.layer,
                     train_dataset=k_split,
                     validation_dataset=None,
                 )
-            elif config.eval_data_usage == "fine-tune":
+            elif config.dev_sample_usage == "fine-tune":
                 # Restore initial probe state before fine-tuning
                 if (
                     initial_state is not None
@@ -215,7 +223,7 @@ def run_dev_split_fine_tuning(
                 probe.fit(k_split)
             else:
                 raise ValueError(
-                    f"Invalid eval_data_usage: {config.eval_data_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
+                    f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
                 )
 
             # Evaluate fine-tuned probe
@@ -254,13 +262,13 @@ if __name__ == "__main__":
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        eval_data_usage="only",
+        dev_sample_usage="only",
         model_name=LOCAL_MODELS["llama-1b"],
         layer=11,
         max_samples=100,
         compute_activations=True,
         probe_spec=ProbeSpec(
-            name="sklearn_mean_agg_probe",
+            name=ProbeType.sklearn,
             hyperparams={"C": 1e-3, "fit_intercept": False},
             # name="pytorch_per_entry_probe_mean",
             # hyperparams={
