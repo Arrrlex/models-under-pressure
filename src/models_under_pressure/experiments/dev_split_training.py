@@ -60,19 +60,19 @@ def run_dev_split_fine_tuning(
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
         dataset_filters=None,
-        n_per_class=config.max_samples,
+        n_per_class=config.max_samples // 2 if config.max_samples else None,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
-
+    train_split = splits["train"]
     # Create initial probe
     print("Creating initial probe...")
     probe = ProbeFactory.build(
         probe_spec=config.probe_spec,
         model_name=config.model_name,
         layer=config.layer,
-        train_dataset=splits["train"],
+        train_dataset=train_split,
         validation_dataset=splits["test"] if config.validation_dataset else None,
     )
 
@@ -126,7 +126,7 @@ def run_dev_split_fine_tuning(
                     f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
                 )
                 continue
-            train_split = eval_dataset
+            dev_split = eval_dataset
             test_split = test_dataset
         else:
             # Split eval dataset into train and test
@@ -136,7 +136,7 @@ def run_dev_split_fine_tuning(
                 stratify=eval_dataset.labels_numpy(),
             )
 
-            train_split = eval_dataset[train_indices]
+            dev_split = eval_dataset[train_indices]
             test_split = eval_dataset[test_indices]
 
         # Load initial probe state
@@ -172,29 +172,28 @@ def run_dev_split_fine_tuning(
 
         # Fine-tune and evaluate for each k
         for k in tqdm(config.k_values, desc=f"Fine-tuning on {eval_dataset_name}"):
-            if k > len(train_split):
+            if k > len(dev_split):
                 print(
-                    f"Skipping k={k} as it's larger than train split size {len(train_split)}"
+                    f"Skipping k={k} as it's larger than train split size {len(dev_split)}"
                 )
                 continue
 
             # Sample k examples from train split
-            k_split = subsample_balanced_subset(train_split, n_per_class=k // 2)
+            k_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
 
             if config.dev_sample_usage == "combine":
                 # Combine train split and k_split
                 # Get common fields between train_split and k_split
-                train_fields = set(splits["train"].other_fields.keys())
+                train_fields = set(train_split.other_fields.keys())
                 k_fields = set(k_split.other_fields.keys())
                 common_fields = train_fields.intersection(k_fields)
 
                 # Create new datasets with only common fields
                 train_split_filtered = LabelledDataset(
-                    inputs=splits["train"].inputs,
-                    ids=splits["train"].ids,
+                    inputs=train_split.inputs,
+                    ids=train_split.ids,
                     other_fields={
-                        name: splits["train"].other_fields[name]
-                        for name in common_fields
+                        name: train_split.other_fields[name] for name in common_fields
                     },
                 )
                 k_split_filtered = LabelledDataset(

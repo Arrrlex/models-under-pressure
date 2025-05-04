@@ -369,6 +369,57 @@ class BaseDataset(BaseModel, Generic[R]):
                         "All datasets must have the same fields to concatenate"
                     )
 
+        # --- Begin: Pad activations, attention_mask, input_ids to max seq_len ---
+        pad_fields = ["activations", "attention_mask", "input_ids"]
+        # Find max seq_len over all fields
+        max_len = 0
+        for field in pad_fields:
+            for dataset in datasets:
+                if field in dataset.other_fields:
+                    arr = dataset.other_fields[field]
+                    if isinstance(arr, (torch.Tensor, np.ndarray)) and arr.ndim >= 2:
+                        seq_len = arr.shape[1]
+                        if seq_len > max_len:
+                            max_len = seq_len
+        # Pad each dataset's field to max_len
+        for field in pad_fields:
+            for dataset in datasets:
+                if field in dataset.other_fields:
+                    arr = dataset.other_fields[field]
+                    if isinstance(arr, torch.Tensor):
+                        pad_width = max_len - arr.shape[1]
+                        if pad_width > 0:
+                            if field == "activations" and arr.ndim == 3:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_tensor = torch.zeros(
+                                    *pad_shape, dtype=arr.dtype, device=arr.device
+                                )
+                                arr = torch.cat([arr, pad_tensor], dim=1)
+                            elif arr.ndim == 2:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_tensor = torch.zeros(
+                                    *pad_shape, dtype=arr.dtype, device=arr.device
+                                )
+                                arr = torch.cat([arr, pad_tensor], dim=1)
+                            dataset.other_fields[field] = arr
+                    elif isinstance(arr, np.ndarray):
+                        pad_width = max_len - arr.shape[1]
+                        if pad_width > 0:
+                            if field == "activations" and arr.ndim == 3:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                arr = np.concatenate([arr, pad_array], axis=1)
+                            elif arr.ndim == 2:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                arr = np.concatenate([arr, pad_array], axis=1)
+                            dataset.other_fields[field] = arr
+        # --- End: Pad activations, attention_mask, input_ids to max seq_len ---
+
         ids = [id_ for dataset in datasets for id_ in dataset.ids]
         inputs = [input_ for dataset in datasets for input_ in dataset.inputs]
 
