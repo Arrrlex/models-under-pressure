@@ -59,7 +59,7 @@ def plot_dev_split_results(
         if dataset_name is not None:
             # Extract base dataset name by removing _k{num} suffix
             base_dataset = result.dataset_name.rsplit("_k", 1)[0]
-            if not base_dataset.startswith(dataset_name + "_"):
+            if base_dataset != dataset_name:
                 continue
         if result.method == "initial_probe" or result.k == 0:
             k0_metrics[result.dataset_name] = result.metrics[metric]
@@ -201,5 +201,5 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
-    plot_dev_split_results(results_file, metric="auroc")  # , dataset_name="anthropic")
+    results_file = EVALUATE_PROBES_DIR / "dev_split_training_test_combined.jsonl"
+    plot_dev_split_results(results_file, metric="auroc", dataset_name="anthropic")
