@@ -49,8 +49,8 @@ def plot_dev_split_results(
                 results.append(DevSplitResult.model_validate_json(line))
 
     eval_usage_mapping = {
-        "only": "Evaluation samples only",
-        "combine": "Synthetic + evaluation samples",
+        "only": "Dev samples only",
+        "combine": "Synthetic + dev samples",
     }
 
     # Create DataFrame for plotting
@@ -217,7 +217,7 @@ def plot_dev_split_results(
             )
 
     # Customize plot
-    plt.xlabel("Number of evaluation samples for training")
+    plt.xlabel("Number of dev split samples for training")
     plt.ylabel(
         "Mean " + (metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
     )
