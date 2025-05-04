@@ -179,22 +179,25 @@ def run_dev_split_fine_tuning(
             if config.dev_sample_usage == "combine":
                 # Combine train split and k_split
                 # Get common fields between train_split and k_split
-                train_fields = set(train_split.other_fields.keys())
+                train_fields = set(splits["train"].other_fields.keys())
                 k_fields = set(k_split.other_fields.keys())
                 common_fields = train_fields.intersection(k_fields)
 
                 # Create new datasets with only common fields
                 train_split_filtered = LabelledDataset(
-                    inputs=train_split.inputs,
-                    ids=train_split.ids,
+                    inputs=splits["train"].inputs,
+                    ids=splits["train"].ids,
                     other_fields={
-                        k: train_split.other_fields[k] for k in common_fields
+                        name: splits["train"].other_fields[name]
+                        for name in common_fields
                     },
                 )
                 k_split_filtered = LabelledDataset(
                     inputs=k_split.inputs,
                     ids=k_split.ids,
-                    other_fields={k: k_split.other_fields[k] for k in common_fields},
+                    other_fields={
+                        name: k_split.other_fields[name] for name in common_fields
+                    },
                 )
                 combined_split = LabelledDataset.concatenate(
                     [train_split_filtered] + [k_split_filtered] * config.sample_repeats
