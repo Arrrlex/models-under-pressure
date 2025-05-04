@@ -84,10 +84,13 @@ def run_dev_split_fine_tuning(
 
     results_list = []
 
-    if config.evaluate_on_test:
-        eval_dataset_names = list(set(EVAL_DATASETS.keys()) & set(TEST_DATASETS.keys()))
-    else:
-        eval_dataset_names = list(EVAL_DATASETS.keys())
+    if config.eval_dataset_names is None:
+        if config.evaluate_on_test:
+            eval_dataset_names = list(
+                set(EVAL_DATASETS.keys()) & set(TEST_DATASETS.keys())
+            )
+        else:
+            eval_dataset_names = list(EVAL_DATASETS.keys())
 
     for eval_dataset_name in tqdm(
         eval_dataset_names, desc="Evaluating on eval datasets"
