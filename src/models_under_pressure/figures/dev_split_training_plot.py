@@ -4,6 +4,7 @@ from typing import Literal
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+import numpy as np
 
 from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR
 from models_under_pressure.interfaces.results import DevSplitResult
@@ -107,12 +108,32 @@ def plot_dev_split_results(
         usage_data = df[df["dev_sample_usage"] == usage]
 
         if dataset_name is None:
-            # When using all datasets, compute mean and std across datasets for each k
-            # First group by k and dataset to get mean per dataset
-            dataset_means = usage_data.groupby(["k", "dataset"])["metric"].mean()
-            # Then group by k to get mean and std of dataset means
-            mean_metric = dataset_means.groupby("k").mean()
-            std_metric = dataset_means.groupby("k").std()
+            # For each k, align runs by order for each dataset, then compute mean/std over run means (mean across datasets for each run)
+            mean_metric = {}
+            std_metric = {}
+            for k in sorted(usage_data["k"].unique()):
+                k_data = usage_data[usage_data["k"] == k]
+                # Get list of datasets
+                datasets = sorted(k_data["dataset"].unique())
+                # For each dataset, get the list of runs (in order)
+                run_lists = []
+                for dataset in datasets:
+                    runs = k_data[k_data["dataset"] == dataset]["metric"].values
+                    run_lists.append(runs)
+                # Stack into 2D array (datasets x runs), then transpose to (runs x datasets)
+                run_matrix = np.array([runs for runs in run_lists])
+                # Only keep columns (runs) where all datasets have a value (align by shortest)
+                min_runs = min(len(runs) for runs in run_lists)
+                if min_runs == 0:
+                    continue  # skip if no runs for this k
+                run_matrix = run_matrix[:, :min_runs]
+                # Now, for each run index, compute mean across datasets
+                run_means = run_matrix.mean(axis=0)  # shape: (min_runs,)
+                # Compute mean and std over these run means
+                mean_metric[k] = run_means.mean()
+                std_metric[k] = run_means.std()
+            mean_metric = pd.Series(mean_metric)
+            std_metric = pd.Series(std_metric)
         else:
             # When using a single dataset, compute mean and std across runs for each k
             mean_metric = usage_data.groupby("k")["metric"].mean()
@@ -202,4 +223,4 @@ def plot_dev_split_results(
 
 if __name__ == "__main__":
     results_file = EVALUATE_PROBES_DIR / "dev_split_training_test_combined.jsonl"
-    plot_dev_split_results(results_file, metric="auroc", dataset_name="anthropic")
+    plot_dev_split_results(results_file, metric="auroc")
