@@ -24,14 +24,14 @@ plt.rcParams.update(
 sns.set_style("whitegrid")
 
 
-def plot_k_shot_results(
+def plot_dev_split_results(
     results_file: Path,
     metric: Literal["auroc", "tpr_at_fpr", "accuracy"] = "auroc",
     output_file: Path | None = None,
     figsize: tuple[int, int] = (10, 6),
     dataset_name: str | None = None,
 ) -> None:
-    """Plot k-shot fine-tuning results showing performance vs k for different eval_data_usage settings.
+    """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
     Args:
         results_file: Path to the JSONL file containing k-shot results
@@ -68,8 +68,8 @@ def plot_k_shot_results(
                 {
                     "k": result.k,
                     "metric": result.metrics[metric],
-                    "eval_data_usage": eval_usage_mapping[
-                        result.config.eval_data_usage
+                    "dev_sample_usage": eval_usage_mapping[
+                        result.config.dev_sample_usage
                     ],
                     "dataset": result.dataset_name.rsplit("_k", 1)[0],
                 }
@@ -91,7 +91,7 @@ def plot_k_shot_results(
         # Get k value counts
         k_counts = dataset_data["k"].value_counts().sort_index()
         k_str = ", ".join([f"k={k}: {v}" for k, v in k_counts.items()])
-        usage_counts = dataset_data["eval_data_usage"].value_counts().to_dict()
+        usage_counts = dataset_data["dev_sample_usage"].value_counts().to_dict()
         usage_str = ", ".join([f"{k}: {v}" for k, v in usage_counts.items()])
         print(f"{dataset}: {count} results")
         print(f"  k values: {k_str}")
@@ -102,9 +102,9 @@ def plot_k_shot_results(
     # Create the plot
     plt.figure(figsize=figsize)
 
-    # Plot lines for each eval_data_usage setting
-    for usage in df["eval_data_usage"].unique():
-        usage_data = df[df["eval_data_usage"] == usage]
+    # Plot lines for each dev_sample_usage setting
+    for usage in df["dev_sample_usage"].unique():
+        usage_data = df[df["dev_sample_usage"] == usage]
 
         if dataset_name is None:
             # When using all datasets, compute mean and std across datasets for each k
@@ -128,7 +128,7 @@ def plot_k_shot_results(
             k0_mean = 0.5 if metric == "auroc" else 0.0
             k0_std = 0.0  # No variance for these fixed values
         else:
-            raise NotImplementedError(f"Didn't implement eval_data_usage: {usage}")
+            raise NotImplementedError(f"Didn't implement dev_sample_usage: {usage}")
 
         # Plot line with error bars, including k=0 point
         k_0_point = 1
@@ -201,5 +201,5 @@ def plot_k_shot_results(
 
 
 if __name__ == "__main__":
-    results_file = EVALUATE_PROBES_DIR / "dev_split_debugging.jsonl"
-    plot_k_shot_results(results_file, metric="auroc")  # , dataset_name="anthropic")
+    results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
+    plot_dev_split_results(results_file, metric="auroc")  # , dataset_name="anthropic")

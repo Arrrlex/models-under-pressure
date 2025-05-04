@@ -268,7 +268,7 @@ if __name__ == "__main__":
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        dev_sample_usage="only",
+        dev_sample_usage="combine",
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         max_samples=None,

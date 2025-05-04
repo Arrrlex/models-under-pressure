@@ -332,7 +332,7 @@ class DevSplitFineTuningConfig(BaseModel):
     dev_sample_usage: str  # "fine-tune", "only", "combine"
     max_samples: int | None = None
     fine_tune_epochs: int = 5
-    sample_repeats: int = 5  # only relevant for eval_data_usage == "combine"
+    sample_repeats: int = 5  # only relevant for dev_sample_usage == "combine"
     model_name: str = LOCAL_MODELS["llama-70b"]
     compute_activations: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
