@@ -66,6 +66,8 @@ def run_dev_split_fine_tuning(
         compute_activations=config.compute_activations,
     )
     train_split = splits["train"]
+    test_split = splits["test"] if config.validation_dataset else None
+
     # Create initial probe
     print("Creating initial probe...")
     probe = ProbeFactory.build(
@@ -73,7 +75,7 @@ def run_dev_split_fine_tuning(
         model_name=config.model_name,
         layer=config.layer,
         train_dataset=train_split,
-        validation_dataset=splits["test"] if config.validation_dataset else None,
+        validation_dataset=test_split,
     )
 
     # Save the initial probe state
@@ -138,6 +140,7 @@ def run_dev_split_fine_tuning(
 
             dev_split = eval_dataset[train_indices]
             test_split = eval_dataset[test_indices]
+        del eval_dataset
 
         # Load initial probe state
         if initial_state is not None:
@@ -147,10 +150,8 @@ def run_dev_split_fine_tuning(
                 probe_spec=config.probe_spec,
                 model_name=config.model_name,
                 layer=config.layer,
-                train_dataset=splits["train"],
-                validation_dataset=splits["test"]
-                if config.validation_dataset
-                else None,
+                train_dataset=train_split,
+                validation_dataset=test_split,
             )
 
         # Evaluate initial probe on test split
@@ -182,29 +183,11 @@ def run_dev_split_fine_tuning(
             k_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
 
             if config.dev_sample_usage == "combine":
-                # Combine train split and k_split
-                # Get common fields between train_split and k_split
-                train_fields = set(train_split.other_fields.keys())
-                k_fields = set(k_split.other_fields.keys())
-                common_fields = train_fields.intersection(k_fields)
-
-                # Create new datasets with only common fields
-                train_split_filtered = LabelledDataset(
-                    inputs=train_split.inputs,
-                    ids=train_split.ids,
-                    other_fields={
-                        name: train_split.other_fields[name] for name in common_fields
-                    },
-                )
-                k_split_filtered = LabelledDataset(
-                    inputs=k_split.inputs,
-                    ids=k_split.ids,
-                    other_fields={
-                        name: k_split.other_fields[name] for name in common_fields
-                    },
-                )
+                # Combine train split and k_split using LabelledDataset.concatenate
+                # This will automatically handle field intersection and padding
                 combined_split = LabelledDataset.concatenate(
-                    [train_split_filtered] + [k_split_filtered] * config.sample_repeats
+                    [train_split] + [k_split] * config.sample_repeats,
+                    col_conflict="intersection",
                 )
                 probe = ProbeFactory.build(
                     probe_spec=config.probe_spec,
@@ -213,6 +196,7 @@ def run_dev_split_fine_tuning(
                     train_dataset=combined_split,
                     validation_dataset=None,
                 )
+                del combined_split
             elif config.dev_sample_usage == "only":
                 probe = ProbeFactory.build(
                     probe_spec=config.probe_spec,
@@ -271,7 +255,7 @@ def run_dev_split_fine_tuning(
 
 
 if __name__ == "__main__":
-    evaluate_on_test = True
+    evaluate_on_test = False
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
@@ -292,6 +276,7 @@ if __name__ == "__main__":
             # },
         ),
         dataset_path=SYNTHETIC_DATASET_PATH,
+        sample_repeats=5,
         validation_dataset=False,
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
