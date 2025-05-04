@@ -142,8 +142,21 @@ def plot_dev_split_results(
         # Get k=0 point
         if usage == eval_usage_mapping["combine"]:
             # For combine, use the training dataset only baseline
-            k0_mean = sum(k0_metrics.values()) / len(k0_metrics)
-            k0_std = pd.Series(list(k0_metrics.values())).std()
+            # Align runs by order across datasets for k=0
+            k0_run_lists = []
+            for dataset in sorted(k0_metrics.keys()):
+                val = k0_metrics[dataset]
+                if isinstance(val, (list, np.ndarray)):
+                    runs = np.array(val)
+                else:
+                    runs = np.array([val])
+                k0_run_lists.append(runs)
+            min_k0_runs = min(len(runs) for runs in k0_run_lists)
+            if min_k0_runs > 0:
+                k0_matrix = np.array([runs[:min_k0_runs] for runs in k0_run_lists])
+                k0_run_means = k0_matrix.mean(axis=0)
+                k0_mean = k0_run_means.mean()
+                k0_std = k0_run_means.std()
         elif usage == eval_usage_mapping["only"]:  # usage == "only"
             # For only, use 0.5 for auroc and 0 for tpr_at_fpr
             k0_mean = 0.5 if metric == "auroc" else 0.0
@@ -170,25 +183,38 @@ def plot_dev_split_results(
 
     # Add horizontal line for k=0 results
     if k0_metrics:
-        k0_mean = sum(k0_metrics.values()) / len(k0_metrics)
-        k0_std = pd.Series(list(k0_metrics.values())).std()
-        plt.axhline(
-            y=k0_mean,
-            color="gray",
-            linestyle="--",
-            label="Synthetic dataset only",
-            alpha=0.7,
-        )
-        # Add error band for k=0
-        x_min = 0  # Match the k=0 point position
-        x_max = max(df["k"].unique())
-        plt.fill_between(
-            [x_min, x_max],
-            [k0_mean - k0_std, k0_mean - k0_std],
-            [k0_mean + k0_std, k0_mean + k0_std],
-            color="gray",
-            alpha=0.1,
-        )
+        # Align runs by order across datasets for k=0
+        k0_run_lists = []
+        for dataset in sorted(k0_metrics.keys()):
+            val = k0_metrics[dataset]
+            if isinstance(val, (list, np.ndarray)):
+                runs = np.array(val)
+            else:
+                runs = np.array([val])
+            k0_run_lists.append(runs)
+        min_k0_runs = min(len(runs) for runs in k0_run_lists)
+        if min_k0_runs > 0:
+            k0_matrix = np.array([runs[:min_k0_runs] for runs in k0_run_lists])
+            k0_run_means = k0_matrix.mean(axis=0)
+            k0_mean = k0_run_means.mean()
+            k0_std = k0_run_means.std()
+            plt.axhline(
+                y=k0_mean,
+                color="gray",
+                linestyle="--",
+                label="Synthetic dataset only",
+                alpha=0.7,
+            )
+            # Add error band for k=0
+            x_min = 0  # Match the k=0 point position
+            x_max = max(df["k"].unique())
+            plt.fill_between(
+                [x_min, x_max],
+                [k0_mean - k0_std, k0_mean - k0_std],
+                [k0_mean + k0_std, k0_mean + k0_std],
+                color="gray",
+                alpha=0.1,
+            )
 
     # Customize plot
     plt.xlabel("Number of evaluation samples for training")
