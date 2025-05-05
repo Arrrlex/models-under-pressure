@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import torch
 from matplotlib import pyplot as plt
@@ -34,7 +35,7 @@ def get_dataset_ids_and_token_lengths(
     Returns a datafame where each row is an entry in a dataset.
     """
 
-    print("Loading dataset and calculating token lengths")
+    print("Loading dataset and calculating token lengths ...")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
     data_frames = []
 
@@ -75,6 +76,7 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
     - ids -> ids for each datapoint within it's dataset
 
     """
+    print("Loading probe results ... ")
     data_frames = []
 
     for probe_name, probe_result_path in probe_result_paths.items():
@@ -84,8 +86,8 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
             data = {
                 "ids": result["ids"],
                 "probe_name": probe_name,
-                "preds": result["output_scores"],
-                "labels": result["output_labels"],
+                "preds": result["output_labels"],
+                "labels": result["ground_truth_labels"],
                 "dataset_name": result["dataset_name"],
             }
 
@@ -94,7 +96,7 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
 
             data_frames.append(df)
 
-    return pd.concat(data_frames, ignore_index=True)
+    return pd.concat(data_frames, ignore_index=False)
 
 
 def process_data(
@@ -175,32 +177,51 @@ def process_data(
 
 def plot_token_length_bins(df: pd.DataFrame, suffixes: list[str]) -> None:
     """
-    For each probe and token length bin, plot the mean AUROC across datasets.
+    For each probe and token length bin, plot the mean AUROC across datasets as a bar chart.
     """
+    plt.figure(figsize=(12, 7))
 
-    # Set up the plot style
-    plt.style.use("seaborn")
-    plt.figure(figsize=(10, 6))
+    # Get unique bins and probes
+    unique_bins = [str(bin) for bin in df["token_length_bin"].unique()]
+    unique_probes = df["probe_name"].unique()
 
-    # Plot each probe's results
-    for probe_name in df["probe_name"].unique():
+    # Calculate bar positions
+    n_bins = len(unique_bins)
+    n_probes = len(unique_probes)
+    bar_width = 0.8 / n_probes  # Adjust width to fit all bars
+
+    # Plot bars for each probe
+    for i, probe_name in enumerate(unique_probes):
         probe_data = df[df["probe_name"] == probe_name]
 
-        # Plot mean AUROC with error bars
-        plt.errorbar(
-            probe_data["token_length_bin"],
+        # Calculate x positions for this probe's bars
+        x_positions = np.arange(n_bins) + (i - (n_probes - 1) / 2) * bar_width
+
+        # Plot bars with error bars
+        plt.bar(
+            x_positions,
             probe_data["auroc_mean"],
             yerr=probe_data["auroc_std"],
+            width=bar_width,
             label=probe_name,
-            marker="o",
             capsize=5,
+            alpha=0.8,
         )
+
+    # Set x-axis ticks and labels
+    plt.xticks(range(n_bins), unique_bins, rotation=45, ha="right")
 
     plt.xlabel("Token Length Bin")
     plt.ylabel("Mean AUROC")
     plt.title("AUROC by Token Length Bin")
-    plt.legend()
-    plt.grid(True)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True, linestyle="--", alpha=0.7, axis="y")
+
+    # Set y-axis limits to start from 0.5 (typical AUROC range)
+    plt.ylim(0.5, 1.0)
+
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
 
     # Save the plot
     plt.savefig(RESULTS_DIR / "token_length_bins.png", dpi=300, bbox_inches="tight")
@@ -209,7 +230,10 @@ def plot_token_length_bins(df: pd.DataFrame, suffixes: list[str]) -> None:
 
 if __name__ == "__main__":
     # Check the probe results:
-    suffixes = ["sklearn_prompts_4x", "sklearn_prompts_2x"]
+    suffixes = [
+        "wOgjTcLk_20250505_094202",
+        "WYerRCIg_20250505_095716",
+    ]
     results_files = {
         suffix: EVALUATE_PROBES_DIR / f"results_{suffix}.jsonl" for suffix in suffixes
     }
