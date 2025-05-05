@@ -28,10 +28,10 @@ class BatchNorm(nn.Module):
 
 
 class Linear(nn.Module):
-    def __init__(self, embed_dim: int):
+    def __init__(self, embed_dim: int, bias: bool = False):
         super().__init__()
 
-        self.linear = nn.Linear(embed_dim, 1, bias=False)
+        self.linear = nn.Linear(embed_dim, 1, bias=bias)
 
     def forward(
         self, activations: Float[torch.Tensor, "batch_size seq_len embed_dim"]
@@ -40,13 +40,12 @@ class Linear(nn.Module):
 
 
 class AttnLite(nn.Module):
-    def __init__(self, embed_dim: int, dropout: float = 0.1, **kwargs: Any):
+    def __init__(self, embed_dim: int, **kwargs: Any):
         super().__init__()
         self.embed_dim = embed_dim
         self.context_query = Linear(embed_dim)
 
         self.classifier = Linear(embed_dim)
-        self.dropout = nn.Dropout(dropout)
 
     def forward(
         self,
@@ -59,7 +58,6 @@ class AttnLite(nn.Module):
         context = einops.einsum(
             attn_weights, x, "batch seq, batch seq embed -> batch embed"
         )
-        context = self.dropout(context)
         return self.classifier(context)
 
 
@@ -80,10 +78,17 @@ class LinearMeanPool(nn.Module):
 
 
 class LinearThenAgg(nn.Module):
-    def __init__(self, embed_dim: int, agg: Callable, **kwargs: Any):
+    def __init__(
+        self,
+        embed_dim: int,
+        agg: Callable,
+        bias: bool = False,
+        norm: bool = True,
+        **kwargs: Any,
+    ):
         super().__init__()
-        self.batch_norm = BatchNorm(embed_dim)
-        self.linear = Linear(embed_dim)
+        self.batch_norm = BatchNorm(embed_dim) if norm else nn.Identity()
+        self.linear = Linear(embed_dim, bias=bias)
         self.agg = agg
 
     def forward(
