@@ -1,4 +1,4 @@
-name: max
+name: linear_then_max
 hyperparams:
   batch_size: 16
   epochs: 200
