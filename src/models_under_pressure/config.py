@@ -33,7 +33,7 @@ class GlobalSettings(BaseSettings):
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
     PL_DEFAULT_ROOT_DIR: str | None = None
-    WANDB_PROJECT: str = "models-under-pressure"  # Default W&B project name
+    WANDB_PROJECT: str | None = "models-under-pressure"  # Default W&B project name
     WANDB_API_KEY: str | None = None
 
 

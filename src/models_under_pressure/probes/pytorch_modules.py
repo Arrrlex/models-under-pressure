@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import math
 from typing import Any, Callable
 
@@ -99,44 +100,59 @@ class LinearThenAgg(nn.Module):
 
 class LinearThenMean(LinearThenAgg):
     def __init__(self, embed_dim: int, **kwargs: Any):
-        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            return x.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
-
-        super().__init__(embed_dim, agg, **kwargs)
+        super().__init__(embed_dim, mean_agg, **kwargs)
 
 
 class LinearThenMax(LinearThenAgg):
     def __init__(self, embed_dim: int, **kwargs: Any):
-        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            return x.max(dim=1).values
-
-        super().__init__(embed_dim, agg, **kwargs)
+        super().__init__(embed_dim, max_agg, **kwargs)
 
 
 class LinearThenSoftmax(LinearThenAgg):
     def __init__(self, embed_dim: int, temperature: float, **kwargs: Any):
-        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            # For softmax, mask with -inf
-            x_for_softmax = x.masked_fill(~mask, float("-inf"))
-            weights = torch.softmax(x_for_softmax / temperature, dim=1)
-            return (x * weights).sum(dim=1)
-
+        agg = SoftmaxAgg(temperature)
         super().__init__(embed_dim, agg, **kwargs)
 
 
 class LinearThenRollingMax(LinearThenAgg):
     def __init__(self, embed_dim: int, window_size: int, **kwargs: Any):
-        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            windows = x.unfold(1, window_size, 1)
-            window_means = windows.mean(dim=2)
-            return window_means.max(dim=1).values
-
+        agg = RollingMaxAgg(window_size)
         super().__init__(embed_dim, agg, **kwargs)
 
 
 class LinearThenLast(LinearThenAgg):
     def __init__(self, embed_dim: int, **kwargs: Any):
-        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-            return x[:, -1]
+        super().__init__(embed_dim, last_agg, **kwargs)
 
-        super().__init__(embed_dim, agg, **kwargs)
+
+def mean_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    return x.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+
+
+def max_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    return x.max(dim=1).values
+
+
+@dataclass
+class SoftmaxAgg:
+    temperature: float
+
+    def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # For softmax, mask with -inf
+        x_for_softmax = x.masked_fill(~mask, float("-inf"))
+        weights = torch.softmax(x_for_softmax / self.temperature, dim=1)
+        return (x * weights).sum(dim=1)
+
+
+@dataclass
+class RollingMaxAgg:
+    window_size: int
+
+    def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        windows = x.unfold(1, self.window_size, 1)
+        window_means = windows.mean(dim=2)
+        return window_means.max(dim=1).values
+
+
+def last_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    return x[:, -1]
