@@ -1,6 +1,5 @@
 import math
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import einops
 import torch
@@ -11,9 +10,8 @@ from jaxtyping import Float
 class AttnLite(nn.Module):
     def __init__(self, embed_dim: int, **kwargs: Any):
         super().__init__()
-        self.embed_dim = embed_dim
+        self.scale = math.sqrt(embed_dim)
         self.context_query = nn.Linear(embed_dim, 1)
-
         self.classifier = nn.Linear(embed_dim, 1)
 
     def forward(
@@ -21,8 +19,7 @@ class AttnLite(nn.Module):
         x: Float[torch.Tensor, "batch_size seq_len embed_dim"],
         mask: Float[torch.Tensor, "batch_size seq_len"],
     ) -> Float[torch.Tensor, " batch_size"]:
-        attn_scores = self.context_query(x) / math.sqrt(self.embed_dim)
-        attn_scores = attn_scores.squeeze(-1)
+        attn_scores = self.context_query(x).squeeze(-1) / self.scale
         attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
         attn_weights = torch.softmax(attn_scores, dim=-1)
         context = einops.einsum(
@@ -49,12 +46,11 @@ class LinearThenAgg(nn.Module):
     def __init__(
         self,
         embed_dim: int,
-        agg: Callable,
         **kwargs: Any,
     ):
         super().__init__()
         self.linear = nn.Linear(embed_dim, 1)
-        self.agg = agg
+        self.kwargs = kwargs
 
     def forward(
         self,
@@ -68,60 +64,31 @@ class LinearThenAgg(nn.Module):
 
 
 class LinearThenMean(LinearThenAgg):
-    def __init__(self, embed_dim: int, **kwargs: Any):
-        super().__init__(embed_dim, mean_agg, **kwargs)
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        return x.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
 
 
 class LinearThenMax(LinearThenAgg):
-    def __init__(self, embed_dim: int, **kwargs: Any):
-        super().__init__(embed_dim, max_agg, **kwargs)
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        return x.max(dim=1).values
 
 
 class LinearThenSoftmax(LinearThenAgg):
-    def __init__(self, embed_dim: int, temperature: float, **kwargs: Any):
-        agg = SoftmaxAgg(temperature)
-        super().__init__(embed_dim, agg, **kwargs)
-
-
-class LinearThenRollingMax(LinearThenAgg):
-    def __init__(self, embed_dim: int, window_size: int, **kwargs: Any):
-        agg = RollingMaxAgg(window_size)
-        super().__init__(embed_dim, agg, **kwargs)
-
-
-class LinearThenLast(LinearThenAgg):
-    def __init__(self, embed_dim: int, **kwargs: Any):
-        super().__init__(embed_dim, last_agg, **kwargs)
-
-
-def mean_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    return x.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
-
-
-def max_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    return x.max(dim=1).values
-
-
-@dataclass
-class SoftmaxAgg:
-    temperature: float
-
-    def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        # For softmax, mask with -inf
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        temperature = self.kwargs["temperature"]
         x_for_softmax = x.masked_fill(~mask, float("-inf"))
-        weights = torch.softmax(x_for_softmax / self.temperature, dim=1)
+        weights = torch.softmax(x_for_softmax / temperature, dim=1)
         return (x * weights).sum(dim=1)
 
 
-@dataclass
-class RollingMaxAgg:
-    window_size: int
-
-    def __call__(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        windows = x.unfold(1, self.window_size, 1)
+class LinearThenRollingMax(LinearThenAgg):
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        window_size = self.kwargs["window_size"]
+        windows = x.unfold(1, window_size, 1)
         window_means = windows.mean(dim=2)
         return window_means.max(dim=1).values
 
 
-def last_agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    return x[:, -1]
+class LinearThenLast(LinearThenAgg):
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        return x[:, -1]
