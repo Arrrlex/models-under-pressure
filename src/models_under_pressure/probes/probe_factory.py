@@ -2,7 +2,7 @@ from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.probes.probe_store import FullProbeSpec, ProbeStore
 from models_under_pressure.probes.pytorch_classifiers import (
-    PytorchClassifier,
+    PytorchAdamClassifier,
     PytorchDifferenceOfMeansClassifier,
 )
 from models_under_pressure.probes.pytorch_modules import (
@@ -69,32 +69,32 @@ class ProbeFactory:
                     training_args=probe_spec.hyperparams,
                 )
             case ProbeType.pre_mean:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearMeanPool,
                 )
             case ProbeType.attention:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=AttnLite,
                 )
             case ProbeType.linear_then_mean:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenMean,
                 )
             case ProbeType.linear_then_max:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenMax,
                 )
             case ProbeType.linear_then_softmax:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenSoftmax,
                 )
             case ProbeType.linear_then_rolling_max:
-                classifier = PytorchClassifier(
+                classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenRollingMax,
                 )

@@ -1,23 +1,47 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Protocol, Self
 
 import einops
-import numpy as np
 import torch
 import torch.nn as nn
+import wandb
 from jaxtyping import Float
+from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
+from models_under_pressure.utils import as_numpy
+
+
+class PytorchClassifier(Protocol):
+    training_args: dict
+    model: nn.Module | None
+    device: str
+    dtype: torch.dtype
+
+    def train(
+        self,
+        activations: Activation,
+        y: Float[torch.Tensor, " batch_size"],
+        validation_activations: Activation | None = None,
+        validation_y: Float[torch.Tensor, " batch_size"] | None = None,
+    ) -> Self: ...
+
+    def probs(
+        self, activations: Activation, per_token: bool = False
+    ) -> torch.Tensor: ...
+
+    def logits(
+        self, activations: Activation, per_token: bool = False
+    ) -> torch.Tensor: ...
 
 
 @dataclass
 class PytorchDifferenceOfMeansClassifier:
     training_args: dict
     model: nn.Module | None = None
-    best_epoch: int | None = None
     device: str = global_settings.DEVICE
     dtype: torch.dtype = global_settings.DTYPE
     use_lda: bool = False
@@ -142,13 +166,15 @@ class PytorchDifferenceOfMeansClassifier:
 
 
 @dataclass(kw_only=True)
-class PytorchClassifier:
+class PytorchAdamClassifier:
     training_args: dict
     model: nn.Module | None = None
     best_epoch: int | None = None
     device: str = global_settings.DEVICE
     dtype: torch.dtype = global_settings.DTYPE
     probe_architecture: type[nn.Module]
+    wandb_project: str | None = global_settings.WANDB_PROJECT
+    wandb_api_key: str | None = None
 
     def train(
         self,
@@ -176,6 +202,17 @@ class PytorchClassifier:
         )
         self.model = self.model.to(self.device).to(self.dtype)
 
+        # Initialize wandb if project name is provided
+        if self.wandb_project is not None:
+            if self.wandb_api_key is not None:
+                wandb.login(key=self.wandb_api_key)
+            wandb.init(
+                project=self.wandb_project,
+                config=self.training_args,
+            )
+            # Log model architecture
+            wandb.watch(self.model, log="all")
+
         dataset = activations.to_dataset(y)
 
         optimizer = torch.optim.AdamW(
@@ -196,11 +233,14 @@ class PytorchClassifier:
             batch_size=self.training_args["batch_size"],
             shuffle=True,
         )
+        if validation_y is not None:
+            val_y_numpy = as_numpy(validation_y)
 
         # Initialize variables for tracking best model
-        best_val_loss = float("inf")
+        best_val_auroc = 0.0
         best_model_state = None
         self.best_epoch = None
+        epochs_without_improvement = 0
 
         # Get gradient accumulation steps from training args, default to 1
         gradient_accumulation_steps = self.training_args.get(
@@ -248,43 +288,80 @@ class PytorchClassifier:
                     avg_loss = running_loss / (batch_idx + 1)
                     pbar.set_postfix({"loss": f"{avg_loss:.4f}"})
 
+                    # Log batch metrics to wandb
+                    if self.wandb_project is not None:
+                        wandb.log(
+                            {
+                                "batch_loss": loss.item() * gradient_accumulation_steps,
+                                "learning_rate": scheduler.get_last_lr()[0],
+                                "epoch": epoch,
+                                "batch": batch_idx,
+                            }
+                        )
+
                 # Print epoch summary
                 scheduler.step()
                 print(f"Epoch {epoch + 1} - Average loss: {avg_loss:.4f}")
 
+                # Log epoch metrics to wandb
+                if self.wandb_project is not None:
+                    wandb.log(
+                        {
+                            "epoch_loss": avg_loss,
+                            "epoch": epoch,
+                        }
+                    )
+
                 # Validation step if validation data is provided
                 if validation_activations is not None and validation_y is not None:
-                    # Get probabilities for validation data
-                    # Clip extreme logit values to prevent NaN in loss computation
-                    # Using values that are safe for bfloat16
-                    val_logits = self.logits(validation_activations).clamp(-10.0, 10.0)
+                    val_probs = as_numpy(self.probs(validation_activations))
+                    auroc = roc_auc_score(val_y_numpy, val_probs)
 
-                    # Check for NaN values in logits
-                    if torch.isnan(val_logits).any():
-                        print("Warning: NaN values detected in validation logits")
-                        print("Min logit:", val_logits.min().item())
-                        print("Max logit:", val_logits.max().item())
-                        val_logits = torch.nan_to_num(val_logits, nan=0.0)
+                    print(f"Validation AUROC: {auroc:.5f}")
 
-                    val_loss = criterion(val_logits.squeeze(), validation_y).item()
-                    # Check for NaN loss - if found, set loss to +inf to avoid selecting this model
-                    if np.isnan(val_loss):
-                        print("Warning: NaN validation loss detected")
-                        print(f"{val_logits.shape=}")
-                        print(f"{validation_y.shape=}")
-                        val_loss = float("inf")
+                    # Log validation metrics to wandb
+                    if self.wandb_project is not None:
+                        wandb.log(
+                            {
+                                "validation_auroc": auroc,
+                                "epoch": epoch,
+                            }
+                        )
 
-                    print(f"Validation loss: {val_loss:.4f}")
-
-                    # Save best model
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
+                    if auroc > best_val_auroc:
+                        best_val_auroc = auroc
                         best_model_state = self.model.state_dict().copy()
                         self.best_epoch = epoch + 1  # Store 1-indexed epoch number
+                        epochs_without_improvement = 0
+
+                        # Log best model metrics to wandb
+                        if self.wandb_project is not None:
+                            wandb.log(
+                                {
+                                    "best_validation_auroc": auroc,
+                                    "best_epoch": epoch + 1,
+                                }
+                            )
+                    else:
+                        epochs_without_improvement += 1
+                        if epochs_without_improvement >= self.training_args["patience"]:
+                            print(f"Early stopping triggered after {epoch + 1} epochs")
+                            if self.wandb_project is not None:
+                                wandb.log(
+                                    {
+                                        "early_stopping_epoch": epoch + 1,
+                                        "final_validation_auroc": auroc,
+                                    }
+                                )
+                            break
 
         # Load best model if validation was used
         if best_model_state is not None:
             self.model.load_state_dict(best_model_state)
+
+        # Close wandb run
+        if self.wandb_project is not None:
+            wandb.finish()
 
         return self
 

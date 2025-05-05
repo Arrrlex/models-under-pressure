@@ -1,12 +1,10 @@
 name: attention
 hyperparams:
-  aggregation:
-    name: mean
   batch_size: 16
-  epochs: 100
+  epochs: 200
   optimizer_args:
-    lr: 1e-4
-    weight_decay: 1
-  attn_hidden_dim: 27
-  probe_architecture: simple_attention_pooling
-  scheduler_decay: 0.2
+    lr: 5e-3
+    weight_decay: 1e-3
+  final_lr: 5e-5
+  gradient_accumulation_steps: 4
+  patience: 30

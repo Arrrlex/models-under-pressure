@@ -4,11 +4,6 @@ from typing import Self, Sequence
 import numpy as np
 from jaxtyping import Float
 
-from models_under_pressure.config import (
-    LOCAL_MODELS,
-    SYNTHETIC_DATASET_PATH,
-)
-from models_under_pressure.dataset_utils import load_train_test
 from models_under_pressure.interfaces.activations import (
     Activation,
 )
@@ -21,7 +16,6 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.probes.pytorch_classifiers import (
     PytorchClassifier,
-    PytorchLinearClassifier,
 )
 from models_under_pressure.probes.sklearn_probes import Probe
 from models_under_pressure.utils import as_numpy
@@ -30,7 +24,7 @@ from models_under_pressure.utils import as_numpy
 @dataclass
 class PytorchProbe(Probe):
     hyper_params: dict
-    _classifier: PytorchLinearClassifier | PytorchClassifier
+    _classifier: PytorchClassifier
 
     def __post_init__(self):
         self._classifier.training_args = self.hyper_params
@@ -91,27 +85,3 @@ class PytorchProbe(Probe):
         probs = self._classifier.probs(activations_obj, per_token=True)
 
         return as_numpy(probs)
-
-
-if __name__ == "__main__":
-    # Train a probe
-    train_dataset, _ = load_train_test(
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
-    )
-    hyper_params = {
-        "batch_size": 16,
-        "epochs": 3,
-        "device": "cpu",
-    }
-    probe = PytorchProbe(hyper_params=hyper_params)
-    probe.fit(train_dataset[:10])
-
-    # Test the probe
-    inputs = [
-        "Hello, how are you?",
-        "What is the capital of France?",
-    ]
-    predictions = probe.per_token_predictions(inputs)
-    print(predictions)

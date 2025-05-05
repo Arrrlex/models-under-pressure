@@ -8,7 +8,7 @@ defaults:
 batch_size: 4
 max_samples: null
 random_seed: 42
-train_data: original_doubled_unconfounded
+train_data: prompts_4x
 train_filters: null
 compute_activations: false
 validation_dataset: true

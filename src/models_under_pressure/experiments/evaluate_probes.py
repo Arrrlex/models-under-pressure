@@ -255,17 +255,17 @@ if __name__ == "__main__":
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
         probe_spec=ProbeSpec(
-            name=ProbeType.linear_then_softmax,
+            name=ProbeType.attention,
             hyperparams={
-                "temperature": 1.0,
                 "batch_size": 16,
-                "epochs": 50,
+                "epochs": 200,
                 "optimizer_args": {
                     "lr": 5e-3,
-                    "weight_decay": 1,
+                    "weight_decay": 1e-3,
                 },
-                "final_lr": 1e-5,
+                "final_lr": 5e-5,
                 "gradient_accumulation_steps": 4,
+                "patience": 30,
             },
         ),
         compute_activations=False,
