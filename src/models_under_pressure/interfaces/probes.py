@@ -5,12 +5,14 @@ from pydantic import BaseModel, JsonValue
 
 class ProbeType(str, Enum):
     sklearn = "sklearn"
-    per_entry = "per_entry"
     difference_of_means = "difference_of_means"
     lda = "lda"
-    per_token = "per_token"
+    pre_mean = "pre_mean"
     attention = "attention"
-    simple_attention = "simple_attention"
+    linear_then_mean = "linear_then_mean"
+    linear_then_max = "linear_then_max"
+    linear_then_softmax = "linear_then_softmax"
+    linear_then_rolling_max = "linear_then_rolling_max"
 
 
 class ProbeSpec(BaseModel):

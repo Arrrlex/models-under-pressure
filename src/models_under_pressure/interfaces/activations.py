@@ -52,7 +52,7 @@ class ActivationDataset(TorchDataset):
     ) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
         # Get the tensors for the batch indices
         batch_acts = self.activations[indices].to(self.device).to(self.dtype)
-        batch_mask = self.attention_mask[indices].to(self.device).to(self.dtype)
+        batch_mask = self.attention_mask[indices].to(self.device)
         batch_input_ids = self.input_ids[indices].to(self.device).to(self.dtype)
         batch_y = self.y[indices].to(self.device).to(self.dtype)
 
@@ -73,7 +73,7 @@ class Activation:
     def from_dataset(cls, dataset: BaseDataset) -> "Activation":
         return cls(
             activations=dataset.other_fields["activations"],  # type: ignore
-            attention_mask=dataset.other_fields["attention_mask"],  # type: ignore
+            attention_mask=dataset.other_fields["attention_mask"].bool(),  # type: ignore
             input_ids=dataset.other_fields["input_ids"],  # type: ignore
         )
 
@@ -108,7 +108,7 @@ class Activation:
     def to(self, device: torch.device | str, dtype: torch.dtype) -> "Activation":
         return Activation(
             activations=self.activations.to(device).to(dtype),
-            attention_mask=self.attention_mask.to(device).to(dtype),
+            attention_mask=self.attention_mask.to(device),
             input_ids=self.input_ids.to(device).to(dtype),
         )
 
@@ -130,7 +130,11 @@ class Activation:
             entry_indices=entry_indices[mask_indices],
         )
 
-    def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
+    def to_dataset(
+        self, y: Float[torch.Tensor, " batch_size"] | None = None
+    ) -> ActivationDataset:
+        if y is None:
+            y = torch.empty(self.batch_size, device=global_settings.DEVICE)
         return ActivationDataset(
             activations=self.activations,
             attention_mask=self.attention_mask,
@@ -146,12 +150,16 @@ class PerTokenActivation:
     input_ids: Float[torch.Tensor, " tokens"]
     entry_indices: Float[torch.Tensor, " tokens"]  # Which entry each token came from
 
-    def to_dataset(self, y: Float[torch.Tensor, " batch_size"]) -> ActivationDataset:
-        # Count how many tokens we kept from each entry
-        entry_counts = torch.bincount(self.entry_indices, minlength=y.shape[0])
-
-        # Repeat each label the number of times its entry appears
-        y = torch.repeat_interleave(y, entry_counts.to(y.device))
+    def to_dataset(
+        self, y: Float[torch.Tensor, " batch_size"] | None = None
+    ) -> ActivationDataset:
+        if y is None:
+            num_tokens = self.entry_indices.shape[0]
+            y = torch.empty(num_tokens, device=global_settings.DEVICE)
+        else:
+            # Repeat each label the number of times its entry appears
+            entry_counts = torch.bincount(self.entry_indices, minlength=y.shape[0])
+            y = torch.repeat_interleave(y, entry_counts.to(y.device))
 
         return ActivationDataset(
             activations=self.activations,
