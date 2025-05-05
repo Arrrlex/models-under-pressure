@@ -33,6 +33,8 @@ class GlobalSettings(BaseSettings):
     ACTIVATIONS_DIR: Path = DATA_DIR / "activations"
     DOUBLE_CHECK_CONFIG: bool = True
     PL_DEFAULT_ROOT_DIR: str | None = None
+    WANDB_PROJECT: str = "models-under-pressure"  # Default W&B project name
+    WANDB_API_KEY: str | None = None
 
 
 global_settings = GlobalSettings()
@@ -70,7 +72,7 @@ EVALUATE_PROBES_DIR = RESULTS_DIR / "evaluate_probes"
 
 
 # Training datasets
-SYNTHETIC_DATASET_PATH = TRAIN_DIR / "original_doubled_unconfounded"
+SYNTHETIC_DATASET_PATH = TRAIN_DIR / "prompts_4x"
 
 # Evals files
 USE_BALANCED_DATASETS = True

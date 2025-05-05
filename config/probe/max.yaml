@@ -1,8 +1,10 @@
-name: per_token
+name: max
 hyperparams:
-  aggregation: max
-  batch_size: 16384
-  epochs: 50
+  batch_size: 16
+  epochs: 200
   optimizer_args:
-    lr: 1e-3
-    weight_decay: 0.01
+    lr: 5e-3
+    weight_decay: 1e-3
+  final_lr: 5e-5
+  gradient_accumulation_steps: 4
+  patience: 30
