@@ -94,4 +94,11 @@ class LinearThenRollingMax(LinearThenAgg):
 
 class LinearThenLast(LinearThenAgg):
     def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        return x[:, -1]
+        idxs = (
+            torch.arange(mask.size(1), device=mask.device).unsqueeze(0).expand_as(mask)
+        )
+        # Set invalid positions to -1, valid to their index
+        idxs = idxs * mask + (~mask) * -1
+        last_valid = idxs.max(dim=1).values  # (batch,)
+        batch_indices = torch.arange(x.size(0), device=x.device)
+        return x[batch_indices, last_valid]
