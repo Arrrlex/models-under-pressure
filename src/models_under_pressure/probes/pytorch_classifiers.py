@@ -4,12 +4,12 @@ from typing import Protocol, Self
 import einops
 import torch
 import torch.nn as nn
-import wandb
 from jaxtyping import Float
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+import wandb
 from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.activations import Activation
 from models_under_pressure.utils import as_numpy
@@ -174,7 +174,7 @@ class PytorchAdamClassifier:
     dtype: torch.dtype = global_settings.DTYPE
     probe_architecture: type[nn.Module]
     wandb_project: str | None = global_settings.WANDB_PROJECT
-    wandb_api_key: str | None = None
+    wandb_api_key: str | None = global_settings.WANDB_API_KEY
 
     def train(
         self,
