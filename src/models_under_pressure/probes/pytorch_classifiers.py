@@ -187,7 +187,8 @@ class PytorchDifferenceOfMeansClassifier:
         if per_token:
             return logits
         else:
-            return logits.sum(dim=1) / activations.attention_mask.sum(dim=1)
+            mask = activations.attention_mask.to(self.device)
+            return logits.sum(dim=1) / mask.sum(dim=1)
 
 
 @dataclass(kw_only=True)
@@ -233,7 +234,10 @@ class PytorchAdamClassifier:
                 wandb.login(key=self.wandb_api_key)
             wandb.init(
                 project=self.wandb_project,
-                config=self.training_args,
+                config=self.training_args
+                | {
+                    "probe_architecture": self.probe_architecture.__name__,
+                },
             )
             # Log model architecture
             wandb.watch(self.model, log="all")
