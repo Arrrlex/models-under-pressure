@@ -28,7 +28,7 @@ class AttnLite(nn.Module):
         return self.classifier(context).squeeze(-1)
 
 
-class LinearMeanPool(nn.Module):
+class MeanThenLinear(nn.Module):
     def __init__(self, embed_dim: int, **kwargs: Any):
         super().__init__()
         self.linear = nn.Linear(embed_dim, 1)
