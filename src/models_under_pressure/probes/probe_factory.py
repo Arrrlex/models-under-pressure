@@ -12,6 +12,7 @@ from models_under_pressure.probes.pytorch_modules import (
     LinearThenMean,
     LinearThenRollingMax,
     LinearThenSoftmax,
+    LinearThenLast,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
@@ -97,6 +98,11 @@ class ProbeFactory:
                 classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
                     probe_architecture=LinearThenRollingMax,
+                )
+            case ProbeType.linear_then_last:
+                classifier = PytorchAdamClassifier(
+                    training_args=probe_spec.hyperparams,
+                    probe_architecture=LinearThenLast,
                 )
         probe = PytorchProbe(
             hyper_params=probe_spec.hyperparams,

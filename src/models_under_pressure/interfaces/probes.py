@@ -13,6 +13,7 @@ class ProbeType(str, Enum):
     linear_then_max = "linear_then_max"
     linear_then_softmax = "linear_then_softmax"
     linear_then_rolling_max = "linear_then_rolling_max"
+    linear_then_last = "linear_then_last"
 
 
 class ProbeSpec(BaseModel):

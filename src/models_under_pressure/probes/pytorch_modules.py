@@ -132,3 +132,11 @@ class LinearThenRollingMax(LinearThenAgg):
             return window_means.max(dim=1).values
 
         super().__init__(embed_dim, agg, **kwargs)
+
+
+class LinearThenLast(LinearThenAgg):
+    def __init__(self, embed_dim: int, **kwargs: Any):
+        def agg(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+            return x[:, -1]
+
+        super().__init__(embed_dim, agg, **kwargs)
