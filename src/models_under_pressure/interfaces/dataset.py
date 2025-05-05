@@ -1,9 +1,9 @@
-from functools import cached_property
 import hashlib
 import json
 import pickle
 import random
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 from typing import (
     Any,
@@ -67,18 +67,20 @@ def to_dialogue(input: Input) -> Dialogue:
         return input
 
 
+def to_input_str(input: Input) -> str:
+    if isinstance(input, str):
+        return input
+    else:
+        return "\n".join(f"{message.role}: {message.content}" for message in input)
+
+
 class Record(BaseModel):
     input: Input
     id: str
     other_fields: Dict[str, Any] = Field(default_factory=dict)
 
     def input_str(self) -> str:
-        if isinstance(self.input, str):
-            return self.input
-        else:
-            return "\n".join(
-                f"{message.role}: {message.content}" for message in self.input
-            )
+        return to_input_str(self.input)
 
     def __getattr__(self, name: str) -> Any:
         """Allow accessing other_fields values as attributes."""
@@ -615,8 +617,12 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
 
     @cached_property
     def hash(self) -> str:
-        fields = [self.inputs, self.ids, self.other_fields["labels"]]
-        return hashlib.sha256(str(fields).encode()).hexdigest()
+        inputs = [to_input_str(input) for input in self.inputs]
+        ids = self.ids
+        labels = [label.value for label in self.labels]
+        fields = [inputs, ids, labels]
+        dumped = json.dumps(fields, sort_keys=True)
+        return hashlib.sha256(dumped.encode()).hexdigest()[:8]
 
 
 def subsample_balanced_subset(

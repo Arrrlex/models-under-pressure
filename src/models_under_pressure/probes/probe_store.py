@@ -1,16 +1,17 @@
+import hashlib
+import json
+import pickle
 from contextlib import contextmanager
 from dataclasses import dataclass
-import hashlib
 from pathlib import Path
-import pickle
 from typing import Self
 
 from pydantic import BaseModel
 
+from models_under_pressure.config import PROBES_DIR
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.probes.base import Probe
-from models_under_pressure.config import PROBES_DIR
 
 
 class FullProbeSpec(ProbeSpec):
@@ -40,7 +41,8 @@ class FullProbeSpec(ProbeSpec):
 
     @property
     def hash(self) -> str:
-        return hashlib.sha256(str(self.model_dump()).encode()).hexdigest()[:8]
+        dumped = json.dumps(self.model_dump(), sort_keys=True)
+        return hashlib.sha256(dumped.encode()).hexdigest()[:8]
 
 
 class Registry(BaseModel):
