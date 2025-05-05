@@ -62,6 +62,9 @@ class LinearThenAgg(nn.Module):
         x = self.agg(x, mask)
         return x
 
+    def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Subclass must implement this method")
+
 
 class LinearThenMean(LinearThenAgg):
     def agg(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
