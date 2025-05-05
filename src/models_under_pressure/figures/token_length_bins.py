@@ -1,181 +1,253 @@
 import json
-import os
-from itertools import product
 from pathlib import Path
+from typing import Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
+import torch
+from matplotlib import pyplot as plt
 from sklearn.metrics import roc_auc_score
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from models_under_pressure.config import EVAL_DATASETS, EVALUATE_PROBES_DIR, RESULTS_DIR
+from models_under_pressure.interfaces.dataset import Input, LabelledDataset, to_dialogue
 
 
-def load_file(file_path: Path) -> pd.DataFrame:
-    if file_path.suffix == ".jsonl":
-        with open(file_path, "r") as f:
-            data = [json.loads(line) for line in f]
-        return pd.DataFrame(data)
-    elif file_path.suffix == ".csv":
-        return pd.read_csv(file_path)
-    else:
-        raise ValueError(f"Unsupported file format: {file_path}")
+def tokenize(tokenizer: PreTrainedTokenizerBase, input: Input) -> torch.Tensor:
+    dialogue = to_dialogue(input)
+    input_dicts = [[d.model_dump() for d in dialogue]]
+
+    input_str = tokenizer.apply_chat_template(
+        input_dicts,
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+
+    tokens = tokenizer(input_str)  # type: ignore
+
+    return tokens["input_ids"][0]  # type: ignore
 
 
-def prepare_dataset(
-    files: list[Path],
-    result_suffixes: list[str],
-    tokenizer_name: str = "meta-llama/Llama-3.2-1B-Instruct",
-    bins: list[int] | None = None,
+def get_dataset_ids_and_token_lengths(
+    dataset_paths: list[Path], tokenizer_name: str
 ) -> pd.DataFrame:
-    if bins is None:
-        bins = [0, 50, 100, 200, 300, 400, 500, 1000, 2000]
+    """
+    Returns a datafame where each row is an entry in a dataset.
+    """
 
-    # Load tokenizer (replace with llama-70b tokenizer as needed)
+    print("Loading dataset and calculating token lengths ...")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-
     data_frames = []
 
-    for file_path, suffix in product(files, result_suffixes):
-        df = load_file(file_path)
-        result_file = os.path.join(EVALUATE_PROBES_DIR, f"results_{suffix}.jsonl")
-        results = []
-        with open(result_file, "r") as f:
-            for line in f:
-                results.append(json.loads(line))
+    for dataset_path in dataset_paths:
+        # Load dataset
+        dataset = LabelledDataset.load_from(dataset_path)
 
-        # Assuming results are in the same order, add prediction
-        predictions = [
-            r["output_labels"] for r in results if r["dataset_name"] == file_path.stem
-        ][0]
-        df["prediction"] = predictions
+        # Get token lengths for each input
+        token_lengths = [len(tokenize(tokenizer, input)) for input in dataset.inputs]
 
-        # Rename ground truth column
-        if "labels" in df.columns:
-            df["ground_truth"] = (df["labels"] == "high-stakes").astype(int)
-        # Tokenize inputs to get length
-        df["input_length"] = df["inputs"].apply(
-            lambda x: len(tokenizer.encode(x, add_special_tokens=False))
+        # Create dataframe
+        df = pd.DataFrame(
+            {
+                "dataset_name": dataset_path.stem,
+                "ids": dataset.ids,
+                "token_length": token_lengths,
+                "label": dataset.labels_numpy(),
+            }
         )
-        df["suffix"] = suffix
 
         data_frames.append(df)
 
-    full_df = pd.concat(data_frames, ignore_index=True)
+    # Combine all dataframes
+    output = pd.concat(data_frames, ignore_index=True)
+    output.set_index(["ids", "dataset_name"], inplace=True)
 
-    # Bin by input length
-    full_df["length_bin"] = pd.cut(full_df["input_length"], bins=bins)
-
-    return full_df
+    return output
 
 
-# Group and sort
-def plot_stakes_accuracy(
-    full_df: pd.DataFrame,
-    suffixes: list[str],
-    stakes_type: str = "high-stakes",
-) -> None:
-    grouped = full_df.groupby("length_bin")
-    bin_labels = []
-    totals = {suffix: [] for suffix in suffixes}
-    corrects = {suffix: [] for suffix in suffixes}
-    lower_ranges = []
+def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
+    """
+    Read the results file, return a dataframe where each row is an entry in a dataset.
+    The dataset is structured as:
+    - probe_name -> probe from which the results are generated
+    - preds -> list of predictions for each input TODO: logits or probit?
+    - dataset_name -> the name of the dataset from which the results are generated
+    - labels -> list of labels for each inputs
+    - ids -> ids for each datapoint within it's dataset
 
-    for bin_range, group in grouped:
-        bin_labels.append(str(bin_range))
-        lower_ranges.append(float(bin_range.left))  # type: ignore
-        if stakes_type == "all":
-            stakes = group
-        else:
-            stakes = group[group["ground_truth"] == stakes_type]
+    """
+    print("Loading probe results ... ")
+    data_frames = []
 
-        for suffix in suffixes:
-            suffix_data = stakes[stakes["suffix"] == suffix]
-            totals[suffix].append(len(suffix_data))
-            corrects[suffix].append(
-                roc_auc_score(suffix_data["ground_truth"], suffix_data["prediction"])
-            )
-        # sort lower ranges and accordingly sort bin labels and corrects[suffix]
-    sorted_idx = np.argsort(lower_ranges)
-    bin_labels = [bin_labels[i] for i in sorted_idx]
-    corrects = {
-        suffix: [corrects[suffix][i] for i in sorted_idx] for suffix in suffixes
-    }
+    for probe_name, probe_result_path in probe_result_paths.items():
+        json_data = [json.loads(line) for line in open(probe_result_path)]
 
-    x = np.arange(len(bin_labels))  # label locations
+        for result in json_data:
+            data = {
+                "ids": result["ids"],
+                "probe_name": probe_name,
+                "preds": result["output_labels"],
+                "labels": result["ground_truth_labels"],
+                "dataset_name": result["dataset_name"],
+            }
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    colors = [
-        "#001524",
-        "#15616D",
-        "#058C42",
-        "#FF7D00",
-        "#78290F",
-        "#A53860",
-        "#E63946",
-        "#9D4EDD",
-        "#1DD3B0",
-        "#6D597A",
-        "#433E3F",
-    ]
+            df = pd.DataFrame(data)
+            df.set_index(["ids", "dataset_name"], inplace=True)
 
-    # Plot bars for each suffix
-    # Create a DataFrame for seaborn plotting
-    plot_data = []
-    for i, suffix in enumerate(suffixes):
-        for bin_idx, bin_label in enumerate(bin_labels):
-            plot_data.append(
-                {
-                    "Input Length Bin": bin_label,
-                    "AUROC": corrects[suffix][bin_idx],
-                    "Method": suffix,
-                }
-            )
-    plot_df = pd.DataFrame(plot_data)
+            data_frames.append(df)
 
-    # Create seaborn bar plot
-    sns.barplot(
-        data=plot_df,
-        x="Input Length Bin",
-        y="AUROC",
-        hue="Method",
-        ax=ax,
-        palette=colors,
+    return pd.concat(data_frames, ignore_index=False)
+
+
+def process_data(
+    dataset_paths: list[Path],
+    probe_result_paths: dict[str, Path],
+    tokenizer_name: str,
+    bins: Optional[list[int]] = None,
+) -> pd.DataFrame:
+    """
+    Load and process the dataset and the probe results. Join the two dataframes on the
+    datapoint ids and dataset name. Then group by the probe name, dataset name and token length bins.
+    Calculate the AUROC for each probe, dataset and token length bin. Finall calculate the mean AUROC
+    over the probe and token length bins. Return this dataframe to be plotted.
+
+    """
+    # Get token lengths and ids for each dataset
+    df_token_lengths = get_dataset_ids_and_token_lengths(dataset_paths, tokenizer_name)
+
+    # Get probe results
+    df_probe_results = get_probe_results(probe_result_paths)
+
+    # Join the dataframes on index (ids and dataset_name)
+    df = df_probe_results.join(df_token_lengths, how="inner")
+
+    # Create token length bins
+    if bins is None:
+        bins = [0, 50, 100, 200, 300, 400, 500, 1000, 2000]
+
+    df["token_length_bin"] = pd.cut(df["token_length"], bins=bins)
+
+    # Group by probe, dataset and token length bin
+    grouped = df.groupby(["probe_name", "dataset_name", "token_length_bin"])
+
+    # Calculate AUROC for each group
+    results = []
+    for name, group in grouped:
+        probe_name, dataset_name, length_bin = name
+
+        # Skip if not enough samples
+        if len(group) < 2:
+            continue
+
+        # Calculate AUROC
+        auroc = roc_auc_score(group["labels"], group["preds"])
+
+        results.append(
+            {
+                "probe_name": probe_name,
+                "dataset_name": dataset_name,
+                "token_length_bin": length_bin,
+                "auroc": auroc,
+                "num_samples": len(group),
+            }
+        )
+
+    # Create results dataframe
+    results_df = pd.DataFrame(results)
+
+    # Calculate mean AUROC across datasets for each probe and bin
+    final_df = (
+        results_df.groupby(["probe_name", "token_length_bin"])
+        .agg({"auroc": ["mean", "std", "count"], "num_samples": "sum"})
+        .reset_index()
     )
 
-    ax.set_xlabel("Input Length Bins")
-    ax.set_ylabel("AUROC")
-    ax.set_title("AUROC w.r.t Input Length")
-    ax.set_xticks(x)
-    ax.set_xticklabels(bin_labels, rotation=45)
-    ax.set_ylim(0.4, 1.0)
-    ax.legend()
+    # Flatten column names
+    final_df.columns = [
+        "probe_name",
+        "token_length_bin",
+        "auroc_mean",
+        "auroc_std",
+        "num_datasets",
+        "total_samples",
+    ]
 
+    return final_df
+
+
+def plot_token_length_bins(df: pd.DataFrame, suffixes: list[str]) -> None:
+    """
+    For each probe and token length bin, plot the mean AUROC across datasets as a bar chart.
+    """
+    plt.figure(figsize=(12, 7))
+
+    # Get unique bins and probes
+    unique_bins = [str(bin) for bin in df["token_length_bin"].unique()]
+    unique_probes = df["probe_name"].unique()
+
+    # Calculate bar positions
+    n_bins = len(unique_bins)
+    n_probes = len(unique_probes)
+    bar_width = 0.8 / n_probes  # Adjust width to fit all bars
+
+    # Plot bars for each probe
+    for i, probe_name in enumerate(unique_probes):
+        probe_data = df[df["probe_name"] == probe_name]
+
+        # Calculate x positions for this probe's bars
+        x_positions = np.arange(n_bins) + (i - (n_probes - 1) / 2) * bar_width
+
+        # Plot bars with error bars
+        plt.bar(
+            x_positions,
+            probe_data["auroc_mean"],
+            yerr=probe_data["auroc_std"],
+            width=bar_width,
+            label=probe_name,
+            capsize=5,
+            alpha=0.8,
+        )
+
+    # Set x-axis ticks and labels
+    plt.xticks(range(n_bins), unique_bins, rotation=45, ha="right")
+
+    plt.xlabel("Token Length Bin")
+    plt.ylabel("Mean AUROC")
+    plt.title("AUROC by Token Length Bin")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True, linestyle="--", alpha=0.7, axis="y")
+
+    # Set y-axis limits to start from 0.5 (typical AUROC range)
+    plt.ylim(0.5, 1.0)
+
+    # Adjust layout to prevent label cutoff
     plt.tight_layout()
-    plt.savefig(RESULTS_DIR / f"{stakes_type}_token_length_bins.png")
+
+    # Save the plot
+    plt.savefig(RESULTS_DIR / "token_length_bins.png", dpi=300, bbox_inches="tight")
+    plt.close()
 
 
-# Example usage:
-suffixes = [
-    "attention_light",
-    "attention_then_linear",
-    "per_token_mean",
-    "sklearn_mean",
-    "difference_of_means",
-    "per_token_max-of-rolling-mean_40",
-    "per_token_max-of-sentence-means",
-    "per_token_mean_of_top_10",
-    "per_token_max",
-    "per_token_last",
-    "per_entry",
-]
-full_df = prepare_dataset(
-    list(EVAL_DATASETS.values()),
-    suffixes,
-    tokenizer_name="meta-llama/Llama-3.2-1B-Instruct",
-)
-full_df.to_csv(RESULTS_DIR / "stakes_token_length_bins.csv", index=False)
-# full_df = pd.read_csv(RESULTS_DIR / "stakes_token_length_bins.csv")
-plot_stakes_accuracy(full_df, suffixes, stakes_type="all")
+if __name__ == "__main__":
+    # Check the probe results:
+    suffixes = [
+        "wOgjTcLk_20250505_094202",
+        "WYerRCIg_20250505_095716",
+    ]
+    results_files = {
+        suffix: EVALUATE_PROBES_DIR / f"results_{suffix}.jsonl" for suffix in suffixes
+    }
+
+    # Create bins for token lengths
+    bins = [0, 128, 256, 512, 1024, float("inf")]
+
+    # Process results for each suffix
+    final_df = process_data(
+        list(EVAL_DATASETS.values()),
+        results_files,
+        "meta-llama/Llama-3.2-1B-Instruct",
+        bins,
+    )
+
+    # Plot the results
+    plot_token_length_bins(final_df, suffixes)

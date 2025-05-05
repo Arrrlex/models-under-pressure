@@ -82,7 +82,7 @@ def evaluate_probe_and_save_results(
 
         # calculate logits for the per token probe scores
         per_token_probe_logits = inv_softmax(per_token_probe_scores)
-        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)
+        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
 
         # Assert no NaN values in the per token probe logits
         for i, logits in enumerate(per_token_probe_logits):
@@ -131,10 +131,12 @@ def evaluate_probe_and_save_results(
             overwrite=True,
         )
 
-    return per_entry_probe_scores.tolist(), DatasetResults(
+    return per_entry_probe_scores.tolist(), DatasetResults(  # type: ignore
         layer=layer,
         metrics=calculate_metrics(
-            eval_dataset.labels_numpy(), per_entry_probe_scores, fpr
+            eval_dataset.labels_numpy(),
+            per_entry_probe_scores,  # type: ignore
+            fpr,  # type: ignore
         ),
     )
 
@@ -203,6 +205,7 @@ def run_evaluation(
         )
 
         ground_truth_labels = eval_dataset.labels_numpy().tolist()
+        ids = list(eval_dataset.ids)
 
         if "scale_labels" in eval_dataset.other_fields:
             ground_truth_scale_labels = [
@@ -230,6 +233,7 @@ def run_evaluation(
             output_labels=list(int(a > 0.5) for a in probe_scores),
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
+            ids=ids,
             dataset_path=eval_dataset_path,
             best_epoch=best_epoch,
         )
@@ -263,6 +267,9 @@ if __name__ == "__main__":
                     "lr": 5e-3,
                     "weight_decay": 1e-3,
                 },
+                "attn_hidden_dim": 27,
+                "probe_architecture": "attention_then_linear",
+                "scheduler_decay": 0.62,
                 "final_lr": 5e-5,
                 "gradient_accumulation_steps": 4,
                 "patience": 30,
