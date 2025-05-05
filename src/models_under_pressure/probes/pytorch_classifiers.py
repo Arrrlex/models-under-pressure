@@ -53,35 +53,60 @@ class PytorchDifferenceOfMeansClassifier:
         validation_activations: Activation | None = None,
         validation_y: Float[torch.Tensor, " batch_size"] | None = None,
     ) -> Self:
+        # Use DataLoader to process in batches
+        dataset = activations.to_dataset(y)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=32,
+            shuffle=False,
+        )
+
+        pos_sum = None
+        neg_sum = None
+        pos_count = 0
+        neg_count = 0
+
+        for batch_acts, batch_mask, _, batch_y in tqdm(
+            dataloader, desc="Batch mean calc"
+        ):
+            batch_acts = batch_acts.to(self.device, self.dtype)
+            batch_y = batch_y.to(self.device)
+
+            # Masked mean per sample
+            summed_acts = (batch_acts * batch_mask.unsqueeze(-1)).sum(dim=1)
+            num_tokens = batch_mask.sum(dim=1, keepdim=True).clamp(min=1)
+            mean_acts = summed_acts / num_tokens
+
+            pos_mask = batch_y == 1
+            neg_mask = batch_y == 0
+
+            if pos_mask.any():
+                pos_acts = mean_acts[pos_mask]
+                if pos_sum is None:
+                    pos_sum = pos_acts.sum(dim=0)
+                else:
+                    pos_sum += pos_acts.sum(dim=0)
+                pos_count += pos_acts.shape[0]
+
+            if neg_mask.any():
+                neg_acts = mean_acts[neg_mask]
+                if neg_sum is None:
+                    neg_sum = neg_acts.sum(dim=0)
+                else:
+                    neg_sum += neg_acts.sum(dim=0)
+                neg_count += neg_acts.shape[0]
+
+        pos_mean = pos_sum / pos_count
+        neg_mean = neg_sum / neg_count
+        direction = pos_mean - neg_mean
+
+        assert direction.shape == (activations.embed_dim,)
+
         self.model = nn.Linear(
             activations.embed_dim, 1, bias=False, device=self.device, dtype=self.dtype
         )
 
-        activations = activations.to(self.device, self.dtype)
-        summed_acts = activations.activations.sum(dim=1)
-        num_tokens = activations.attention_mask.sum(dim=1, keepdims=True).clamp(min=1)
-        mean_acts = summed_acts / num_tokens
-
-        # Separate positive and negative examples
-        pos_acts = mean_acts[y.to(mean_acts.device) == 1].cpu()
-        neg_acts = mean_acts[y.to(mean_acts.device) == 0].cpu()
-
-        pos_mean, neg_mean = pos_acts.mean(0), neg_acts.mean(0)
-        direction = pos_mean - neg_mean
-
-        if self.use_lda:
-            centered_data = torch.cat([pos_acts - pos_mean, neg_acts - neg_mean], 0)
-            covariance = centered_data.t() @ centered_data / activations.batch_size
-            inv = torch.linalg.pinv(covariance.float(), hermitian=True, atol=1e-3).to(
-                self.dtype
-            )
-            param = inv @ direction
-        else:
-            param = direction
-
-        assert param.shape == (activations.embed_dim,)
-
-        self.model.weight.data.copy_(param.reshape(1, -1))
+        self.model.weight.data.copy_(direction.reshape(1, -1))
 
         return self
 
