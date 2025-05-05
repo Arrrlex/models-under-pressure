@@ -641,7 +641,26 @@ class FinetunedClassifier:
         if val_dataset is not None:
             self._classifier_checkpoint = checkpoint_callback.best_model_path
             print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
-            if trainer_args.get("strategy", "") == "deepspeed_stage_2_offload":
+            strategy = trainer_args.get("strategy", "")
+
+            if strategy.startswith("fsdp"):
+                ckpt = torch.load(self._classifier_checkpoint, map_location="cpu")
+                full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
+
+                fresh_llm = LLMModel(
+                    model_name_or_path=model_name_or_path,
+                    num_classes=num_classes,
+                    cache_dir=cache_dir,
+                )
+
+                self._classifier = ClassifierModule(
+                    model=fresh_llm,
+                    num_classes=num_classes,
+                    trainer_args=trainer_args,
+                    **self.finetune_config.get("ClassifierModule", {}),
+                )
+                _ = self._classifier.load_state_dict(full_sd, strict=False)
+            elif strategy == "deepspeed_stage_2_offload":
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
                 state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
