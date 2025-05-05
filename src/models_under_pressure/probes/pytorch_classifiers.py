@@ -390,6 +390,7 @@ class PytorchAdamClassifier:
 
         # Close wandb run
         if self.wandb_project is not None:
+            wandb.unwatch(self.model)
             wandb.finish()
 
         return self
