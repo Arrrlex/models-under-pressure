@@ -8,11 +8,11 @@ from models_under_pressure.probes.pytorch_classifiers import (
 from models_under_pressure.probes.pytorch_modules import (
     AttnLite,
     LinearMeanPool,
+    LinearThenLast,
     LinearThenMax,
     LinearThenMean,
     LinearThenRollingMax,
     LinearThenSoftmax,
-    LinearThenLast,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
