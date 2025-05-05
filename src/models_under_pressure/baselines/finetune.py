@@ -30,6 +30,7 @@ from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 
 hf_login()
 
@@ -683,7 +684,7 @@ class FinetunedClassifier:
         # A single‑worker DataLoader → no inter‑process barriers
         loader = DataLoader(
             StakesDataset(dataset.to_pandas()),
-            batch_size=12,
+            batch_size=4,  # TODO: Might wanna pass this as argument (These batches are on a single GPU but for inference mode!)
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=0,
@@ -771,6 +772,11 @@ class FinetunedClassifier:
 
         # Create BaselineResults instance
         predicted_labels = [score > 0.5 for score in scores]
+        metrics = calculate_metrics(
+            y_true=ground_truth,
+            y_pred=predicted_labels,
+            fpr=0.01,
+        )
         baseline_results = FinetunedBaselineResults(
             ids=eval_dataset.ids,
             labels=predicted_labels,
@@ -778,6 +784,7 @@ class FinetunedClassifier:
                 [label == gt for label, gt in zip(predicted_labels, ground_truth)]
             )
             / len(predicted_labels),
+            metrics=metrics,
             scores=scores,
             ground_truth=ground_truth,
             ground_truth_scale_labels=list(eval_dataset.other_fields["scale_labels"])  # type: ignore
