@@ -681,6 +681,16 @@ class FinetunedClassifier:
         device = next(self.classifier.parameters()).device
         collate_fn = create_collate_fn(self.tokenizer)
 
+        # Remove pre-existing activations from the dataset:
+        try:  # TODO: Use drop cols as consistent method..
+            print("Try removing pre-existing activations from the dataset")
+            dataset.remove_field("activations")
+            dataset.remove_field("input_ids")
+            dataset.remove_field("attention_mask")
+        except ValueError:
+            print("No pre-existing activations to remove")
+            pass
+
         # A single‑worker DataLoader → no inter‑process barriers
         loader = DataLoader(
             StakesDataset(dataset.to_pandas()),
