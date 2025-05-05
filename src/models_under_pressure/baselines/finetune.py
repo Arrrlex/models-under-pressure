@@ -639,6 +639,7 @@ class FinetunedClassifier:
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
                 state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
+                    state_dict=state_dict,
                     model=self.model,
                     num_classes=num_classes,
                     trainer_args=trainer_args,
