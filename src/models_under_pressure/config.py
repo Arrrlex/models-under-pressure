@@ -331,10 +331,10 @@ class DevSplitFineTuningConfig(BaseModel):
 
     layer: int
     probe_spec: ProbeSpec
-    eval_data_usage: str  # "fine-tune", "only", "combine"
+    dev_sample_usage: str  # "fine-tune", "only", "combine"
     max_samples: int | None = None
     fine_tune_epochs: int = 5
-    sample_repeats: int = 5  # only relevant for eval_data_usage == "combine"
+    sample_repeats: int = 5  # only relevant for dev_sample_usage == "combine"
     model_name: str = LOCAL_MODELS["llama-70b"]
     compute_activations: bool = False
     dataset_path: Path = SYNTHETIC_DATASET_PATH
@@ -342,7 +342,7 @@ class DevSplitFineTuningConfig(BaseModel):
     eval_dataset_names: list[str] | None = None  # If None, all eval datasets are used
     evaluate_on_test: bool = False
     train_split_ratio: float = 0.3  # Only relevant if evaluate_on_test is False
-    k_values: list[int] = [2, 4, 8, 16, 32, 64, 128, 256, 512]
+    k_values: list[int] = [2, 4, 8, 16, 32, 64, 128, 256]
     output_filename: str = "dev_split_training_results.jsonl"
 
     model_config = {"arbitrary_types_allowed": True}

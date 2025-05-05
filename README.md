@@ -1,5 +1,13 @@
 # Models Under Pressure
 
+## Running Experiments
+
+Training on dev split plot:
+
+- Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
+- Run `figures/dev_split_training_plot.py` to generate the corresponding plot.
+
+
 ## Dataset
 
 We contribute 2 new datasets in this repository:

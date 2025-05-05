@@ -18,7 +18,7 @@ from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
 )
-from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, DevSplitResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probe_factory import ProbeFactory
@@ -36,30 +36,46 @@ def evaluate_probe(
     y_pred = per_entry_probe_scores
 
     return (
-        per_entry_probe_scores.tolist(),
-        DatasetResults(layer=0, metrics=calculate_metrics(y_true, y_pred, fpr)),
+        per_entry_probe_scores.tolist(),  # type: ignore
+        DatasetResults(layer=0, metrics=calculate_metrics(y_true, y_pred, fpr)),  # type: ignore
     )
 
 
 def run_dev_split_fine_tuning(
     config: DevSplitFineTuningConfig,
 ) -> List[DevSplitResult]:
+    output_filename = config.output_filename
+    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
+        "_test"
+    ):
+        # Split the filename and extension
+        name, ext = os.path.splitext(output_filename)
+        output_filename = f"{name}_test{ext}"
+
+    # Ensure output directory exists (inferred from output path)
+    output_path = EVALUATE_PROBES_DIR / output_filename
+    os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
+
     # Load and split the training dataset
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
         dataset_filters=None,
-        n_per_class=config.max_samples,
+        n_per_class=config.max_samples // 2 if config.max_samples else None,
         model_name=config.model_name,
         layer=config.layer,
         compute_activations=config.compute_activations,
     )
+    train_split = splits["train"]
+    test_split = splits["test"] if config.validation_dataset else None
 
     # Create initial probe
     print("Creating initial probe...")
     probe = ProbeFactory.build(
-        probe=config.probe_spec,
-        train_dataset=splits["train"],
-        validation_dataset=splits["test"] if config.validation_dataset else None,
+        probe_spec=config.probe_spec,
+        model_name=config.model_name,
+        layer=config.layer,
+        train_dataset=train_split,
+        validation_dataset=test_split,
     )
 
     # Save the initial probe state
@@ -70,10 +86,15 @@ def run_dev_split_fine_tuning(
 
     results_list = []
 
-    if config.evaluate_on_test:
-        eval_dataset_names = list(set(EVAL_DATASETS.keys()) & set(TEST_DATASETS.keys()))
+    if config.eval_dataset_names is None:
+        if config.evaluate_on_test:
+            eval_dataset_names = list(
+                set(EVAL_DATASETS.keys()) & set(TEST_DATASETS.keys())
+            )
+        else:
+            eval_dataset_names = list(EVAL_DATASETS.keys())
     else:
-        eval_dataset_names = list(EVAL_DATASETS.keys())
+        eval_dataset_names = config.eval_dataset_names
 
     for eval_dataset_name in tqdm(
         eval_dataset_names, desc="Evaluating on eval datasets"
@@ -107,7 +128,7 @@ def run_dev_split_fine_tuning(
                     f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
                 )
                 continue
-            train_split = eval_dataset
+            dev_split = eval_dataset
             test_split = test_dataset
         else:
             # Split eval dataset into train and test
@@ -117,19 +138,20 @@ def run_dev_split_fine_tuning(
                 stratify=eval_dataset.labels_numpy(),
             )
 
-            train_split = eval_dataset[train_indices]
+            dev_split = eval_dataset[train_indices]
             test_split = eval_dataset[test_indices]
+        del eval_dataset
 
         # Load initial probe state
         if initial_state is not None:
             probe._classifier.model.load_state_dict(initial_state)  # type: ignore
         else:
             probe = ProbeFactory.build(
-                probe=config.probe_spec,
-                train_dataset=splits["train"],
-                validation_dataset=splits["test"]
-                if config.validation_dataset
-                else None,
+                probe_spec=config.probe_spec,
+                model_name=config.model_name,
+                layer=config.layer,
+                train_dataset=train_split,
+                validation_dataset=test_split,
             )
 
         # Evaluate initial probe on test split
@@ -146,53 +168,44 @@ def run_dev_split_fine_tuning(
             method="initial_probe",
         )
         results_list.append(initial_result)
+        print(f"Saving initial results to {EVALUATE_PROBES_DIR / output_filename}")
+        initial_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
         # Fine-tune and evaluate for each k
         for k in tqdm(config.k_values, desc=f"Fine-tuning on {eval_dataset_name}"):
-            if k > len(train_split):
+            if k > len(dev_split):
                 print(
-                    f"Skipping k={k} as it's larger than train split size {len(train_split)}"
+                    f"Skipping k={k} as it's larger than train split size {len(dev_split)}"
                 )
                 continue
 
             # Sample k examples from train split
-            k_split = subsample_balanced_subset(train_split, n_per_class=k // 2)
+            k_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
 
-            if config.eval_data_usage == "combine":
-                # Combine train split and k_split
-                # Get common fields between train_split and k_split
-                train_fields = set(train_split.other_fields.keys())
-                k_fields = set(k_split.other_fields.keys())
-                common_fields = train_fields.intersection(k_fields)
-
-                # Create new datasets with only common fields
-                train_split_filtered = LabelledDataset(
-                    inputs=train_split.inputs,
-                    ids=train_split.ids,
-                    other_fields={
-                        k: train_split.other_fields[k] for k in common_fields
-                    },
-                )
-                k_split_filtered = LabelledDataset(
-                    inputs=k_split.inputs,
-                    ids=k_split.ids,
-                    other_fields={k: k_split.other_fields[k] for k in common_fields},
-                )
+            if config.dev_sample_usage == "combine":
+                # Combine train split and k_split using LabelledDataset.concatenate
+                # This will automatically handle field intersection and padding
                 combined_split = LabelledDataset.concatenate(
-                    [train_split_filtered] + [k_split_filtered] * config.sample_repeats
+                    [train_split] + [k_split] * config.sample_repeats,
+                    col_conflict="intersection",
                 )
                 probe = ProbeFactory.build(
-                    probe=config.probe_spec,
+                    probe_spec=config.probe_spec,
+                    model_name=config.model_name,
+                    layer=config.layer,
                     train_dataset=combined_split,
                     validation_dataset=None,
                 )
-            elif config.eval_data_usage == "only":
+                del combined_split
+            elif config.dev_sample_usage == "only":
                 probe = ProbeFactory.build(
-                    probe=config.probe_spec,
+                    probe_spec=config.probe_spec,
+                    model_name=config.model_name,
+                    layer=config.layer,
                     train_dataset=k_split,
                     validation_dataset=None,
                 )
-            elif config.eval_data_usage == "fine-tune":
+            elif config.dev_sample_usage == "fine-tune":
                 # Restore initial probe state before fine-tuning
                 if (
                     initial_state is not None
@@ -215,7 +228,7 @@ def run_dev_split_fine_tuning(
                 probe.fit(k_split)
             else:
                 raise ValueError(
-                    f"Invalid eval_data_usage: {config.eval_data_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
+                    f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
                 )
 
             # Evaluate fine-tuned probe
@@ -233,34 +246,26 @@ def run_dev_split_fine_tuning(
             )
             results_list.append(fine_tuned_result)
 
-    # Save results
-    output_filename = config.output_filename
-    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
-        "_test"
-    ):
-        # Split the filename and extension
-        name, ext = os.path.splitext(output_filename)
-        output_filename = f"{name}_test{ext}"
-
-    print(f"Saving results to {EVALUATE_PROBES_DIR / output_filename}")
-    for result in results_list:
-        result.save_to(EVALUATE_PROBES_DIR / output_filename)
+            print(
+                f"Saving finetuned results to {EVALUATE_PROBES_DIR / output_filename}"
+            )
+            fine_tuned_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
     return results_list
 
 
 if __name__ == "__main__":
-    evaluate_on_test = True
+    evaluate_on_test = False
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        eval_data_usage="only",
-        model_name=LOCAL_MODELS["llama-1b"],
-        layer=11,
-        max_samples=100,
-        compute_activations=True,
+        dev_sample_usage="combine",
+        model_name=LOCAL_MODELS["llama-70b"],
+        layer=31,
+        max_samples=None,
+        compute_activations=False,
         probe_spec=ProbeSpec(
-            name="sklearn_mean_agg_probe",
+            name=ProbeType.sklearn,
             hyperparams={"C": 1e-3, "fit_intercept": False},
             # name="pytorch_per_entry_probe_mean",
             # hyperparams={
@@ -271,11 +276,12 @@ if __name__ == "__main__":
             # },
         ),
         dataset_path=SYNTHETIC_DATASET_PATH,
+        sample_repeats=5,
         validation_dataset=False,
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
         eval_dataset_names=None,
-        output_filename="dev_split_debugging.jsonl",
+        output_filename="dev_split_training.jsonl",
     )
 
     double_check_config(config)
