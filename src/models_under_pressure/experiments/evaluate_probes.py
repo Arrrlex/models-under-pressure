@@ -6,6 +6,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
@@ -251,8 +252,11 @@ def run_evaluation(
 
 if __name__ == "__main__":
     # Set random seed for reproducibility
+
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
+
+    config_path = CONFIG_DIR / "probe/attention.yaml"
 
     config = EvalRunConfig(
         layer=31,
@@ -280,7 +284,6 @@ if __name__ == "__main__":
         validation_dataset=True,
         eval_datasets=list(EVAL_DATASETS.values()),
     )
-
     double_check_config(config)
 
     print(f"Running probe evaluation with ID {config.id}")

@@ -6,6 +6,6 @@ hyperparams:
   optimizer_args:
     lr: 5e-3
     weight_decay: 1e-3
-  final_lr: 5e-5
+  final_lr: 1e-4
   gradient_accumulation_steps: 4
-  patience: 30
+  patience: 10

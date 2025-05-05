@@ -317,12 +317,13 @@ def generate_short_id(length: int = 8) -> str:
         return "".join(random.choices(characters, k=length))
 
 
-def generate_short_id_with_timestamp(length: int = 8) -> str:
+def generate_short_id_with_timestamp(length: int = 4) -> str:
     """Generate a short, random ID using base62 encoding."""
     characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
     with unset_random_seeds():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return "".join(random.choices(characters, k=length)) + "_" + timestamp
+        random_id = "".join(random.choices(characters, k=length))
+        return timestamp + "_" + random_id
 
 
 def convert_paths(config: Any) -> Any:
