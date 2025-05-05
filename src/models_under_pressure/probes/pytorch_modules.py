@@ -22,8 +22,8 @@ class AttnLite(nn.Module):
         mask: Float[torch.Tensor, "batch_size seq_len"],
     ) -> Float[torch.Tensor, " batch_size"]:
         attn_scores = self.context_query(x) / math.sqrt(self.embed_dim)
-        attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
         attn_scores = attn_scores.squeeze(-1)
+        attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
         attn_weights = torch.softmax(attn_scores, dim=-1)
         context = einops.einsum(
             attn_weights, x, "batch seq, batch seq embed -> batch embed"
