@@ -6,15 +6,12 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    EVAL_DATASETS,
+    CONFIG_DIR,
     EVALUATE_PROBES_DIR,
-    LOCAL_MODELS,
-    SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
@@ -247,32 +244,14 @@ def run_evaluation(
 
 if __name__ == "__main__":
     # Set random seed for reproducibility
+    import yaml
+
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
 
-    config = EvalRunConfig(
-        layer=31,
-        max_samples=None,
-        model_name=LOCAL_MODELS["llama-70b"],
-        probe_spec=ProbeSpec(
-            name=ProbeType.attention,
-            hyperparams={
-                "batch_size": 16,
-                "epochs": 200,
-                "optimizer_args": {
-                    "lr": 5e-3,
-                    "weight_decay": 1e-3,
-                },
-                "final_lr": 5e-5,
-                "gradient_accumulation_steps": 4,
-                "patience": 30,
-            },
-        ),
-        compute_activations=False,
-        dataset_path=SYNTHETIC_DATASET_PATH,
-        validation_dataset=True,
-        eval_datasets=list(EVAL_DATASETS.values()),
-    )
+    config_path = CONFIG_DIR / "probe/attention.yaml"
+
+    config = EvalRunConfig.model_validate(yaml.safe_load(config_path.read_text()))
 
     double_check_config(config)
 

@@ -9,20 +9,12 @@ from models_under_pressure.config import (
     PROJECT_ROOT,
     TRAIN_DIR,
     ChooseLayerConfig,
-    DataEfficiencyBaselineConfig,
-    DataEfficiencyConfig,
     EvalRunConfig,
     HeatmapRunConfig,
-    ProbeSpec,
     RunBaselinesConfig,
     global_settings,
 )
 from models_under_pressure.experiments.cross_validation import choose_best_layer_via_cv
-from models_under_pressure.experiments.data_efficiency import (
-    plot_data_efficiency_results,
-    run_data_efficiency_experiment,
-    run_data_efficiency_finetune_baseline_with_activations,
-)
 from models_under_pressure.experiments.evaluate_probes import run_evaluation
 from models_under_pressure.experiments.generate_heatmaps import generate_heatmaps
 from models_under_pressure.utils import AttrDict, double_check_config
@@ -107,47 +99,48 @@ def run_experiment(config: DictConfig):
         run_baselines(run_baselines_config)
 
     if config.experiment == "data_efficiency":
+        pass
         # Create a data efficiency config.
-        data_efficiency_config = DataEfficiencyConfig(
-            model_name=config.model.name,
-            layer=config.model.layer,
-            dataset_path=train_data_path,
-            dataset_sizes=config.data_efficiency.dataset_sizes,
-            probes=[
-                ProbeSpec(
-                    name=config.probe.name,
-                    hyperparams=config.probe.hyperparams,
-                )
-            ],
-            compute_activations=config.compute_activations,
-            eval_dataset_paths=list(eval_datasets.values()),
-        )
+        # data_efficiency_config = DataEfficiencyConfig(
+        #     model_name=config.model.name,
+        #     layer=config.model.layer,
+        #     dataset_path=train_data_path,
+        #     dataset_sizes=config.data_efficiency.dataset_sizes,
+        #     probes=[
+        #         ProbeSpec(
+        #             name=config.probe.name,
+        #             hyperparams=config.probe.hyperparams,
+        #         )
+        #     ],
+        #     compute_activations=config.compute_activations,
+        #     eval_dataset_paths=list(eval_datasets.values()),
+        # )
 
-        # Should be defined via a hydra run config file:
-        data_efficiency_finetune_config = DataEfficiencyBaselineConfig(
-            model_name_or_path=config.model.name,
-            num_classes=2,
-            ClassifierModule=config.baseline.classifier_module,
-            batch_size=config.baseline.dataloader.batch_size,
-            shuffle=config.baseline.dataloader.shuffle,
-            logger=hydra.utils.instantiate(
-                config.baseline.logger
-            ),  # TODO: should this live here or have its own config?
-            Trainer=config.baseline.trainer,
-        )
+        # # Should be defined via a hydra run config file:
+        # data_efficiency_finetune_config = DataEfficiencyBaselineConfig(
+        #     model_name_or_path=config.model.name,
+        #     num_classes=2,
+        #     ClassifierModule=config.baseline.classifier_module,
+        #     batch_size=config.baseline.dataloader.batch_size,
+        #     shuffle=config.baseline.dataloader.shuffle,
+        #     logger=hydra.utils.instantiate(
+        #         config.baseline.logger
+        #     ),  # TODO: should this live here or have its own config?
+        #     Trainer=config.baseline.trainer,
+        # )
 
-        # Check the config before running:
-        if global_settings.DOUBLE_CHECK_CONFIG:
-            double_check_config(data_efficiency_config)
+        # # Check the config before running:
+        # if global_settings.DOUBLE_CHECK_CONFIG:
+        #     double_check_config(data_efficiency_config)
 
-        # Run the data efficiency experiment:
-        results = run_data_efficiency_experiment(data_efficiency_config)
-        baseline_results = run_data_efficiency_finetune_baseline_with_activations(
-            data_efficiency_config, data_efficiency_finetune_config
-        )
+        # # Run the data efficiency experiment:
+        # results = run_data_efficiency_experiment(data_efficiency_config)
+        # baseline_results = run_data_efficiency_finetune_baseline_with_activations(
+        #     data_efficiency_config, data_efficiency_finetune_config
+        # )
 
-        # Process the results and plot the outputs:
-        plot_data_efficiency_results(results, baseline_results)
+        # # Process the results and plot the outputs:
+        # plot_data_efficiency_results(results, baseline_results)
 
 
 if __name__ == "__main__":
