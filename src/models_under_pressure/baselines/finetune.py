@@ -163,6 +163,7 @@ class ClassifierModule(pl.LightningModule):
         scheduler_params: Optional[Dict[str, Any]] = None,
         num_classes: Optional[int] = None,
         class_weights: Optional[torch.Tensor] = None,
+        trainer_args: Optional[Dict[str, Any]] = None,
         label_smoothing: float = 0.0,
     ):
         """
@@ -191,6 +192,7 @@ class ClassifierModule(pl.LightningModule):
         self.label_smoothing = label_smoothing
         self.test_results = BaselineResults()
         self.test_outputs = []
+        self.trainer_args = trainer_args
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -306,9 +308,9 @@ class ClassifierModule(pl.LightningModule):
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
         # Get trainer strategy from trainer
-        strategy = self.trainer.strategy if hasattr(self, "trainer") else None
+        strategy = self.trainer_args.get("strategy", "") if self.trainer_args else ""
 
-        if strategy == "deepspeed_stage_2_offload":
+        if strategy.startswith("deepspeed") and strategy.endswith("offload"):
             optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
@@ -552,10 +554,13 @@ class FinetunedClassifier:
             cache_dir,
         )
 
+        trainer_args = self.finetune_config.get("Trainer", {})
+
         # Create the pytorch lightning module:
         self._classifier = ClassifierModule(  # TODO: Have I accounted for the attention mask in this code!
             model=self.model,
             num_classes=num_classes,
+            trainer_args=trainer_args,
             **self.finetune_config.get("ClassifierModule", {}),
         )
 
@@ -614,7 +619,6 @@ class FinetunedClassifier:
             logger = None
 
         # Setup the pytorch lightning trainer:
-        trainer_args = self.finetune_config.get("Trainer", {})
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
             logger=logger,
@@ -637,6 +641,7 @@ class FinetunedClassifier:
                 self._classifier = ClassifierModule(
                     model=self.model,
                     num_classes=num_classes,
+                    trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
                 self._classifier.load_state_dict(state_dict, strict=False)
@@ -645,6 +650,7 @@ class FinetunedClassifier:
                     self._classifier_checkpoint,
                     model=self.model,
                     num_classes=num_classes,
+                    trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
             self.best_epoch = int(
