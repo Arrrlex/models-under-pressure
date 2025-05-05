@@ -305,12 +305,17 @@ class ClassifierModule(pl.LightningModule):
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
-        optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
-            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
-        )
-        # optimizer = torch.optim.Adam(
-        #    self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
-        # )
+        # Get trainer strategy from trainer
+        strategy = self.trainer.strategy if hasattr(self, "trainer") else None
+
+        if strategy == "deepspeed_stage_2_offload":
+            optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
+                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            )
+        else:
+            optimizer = torch.optim.Adam(
+                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            )
 
         return optimizer
 
@@ -784,7 +789,7 @@ class FinetunedClassifier:
         predicted_labels = [score > 0.5 for score in scores]
         metrics = calculate_metrics(
             y_true=ground_truth,
-            y_pred=predicted_labels,
+            y_pred=np.array(predicted_labels),
             fpr=0.01,
         )
         baseline_results = FinetunedBaselineResults(
