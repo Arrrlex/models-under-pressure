@@ -165,7 +165,6 @@ class ClassifierModule(pl.LightningModule):
         class_weights: Optional[torch.Tensor] = None,
         trainer_args: Optional[Dict[str, Any]] = None,
         label_smoothing: float = 0.0,
-        state_dict: Optional[dict] = None,
     ):
         """
         Initialize the classifier module.
@@ -183,7 +182,7 @@ class ClassifierModule(pl.LightningModule):
             state_dict: Optional state_dict to load into the module
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model", "state_dict"])
+        self.save_hyperparameters(ignore=["model"])
 
         self.model = model
         self.learning_rate = learning_rate
@@ -195,10 +194,6 @@ class ClassifierModule(pl.LightningModule):
         self.test_results = BaselineResults()
         self.test_outputs = []
         self.trainer_args = trainer_args
-
-        # If a state_dict is provided, load it
-        if state_dict is not None:
-            self.model.load_state_dict(state_dict, strict=False)
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -321,7 +316,8 @@ class ClassifierModule(pl.LightningModule):
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
-            optimizer = torch.optim.Adam(
+            # optimizer = torch.optim.Adam(
+            optimizer = torch.optim.Adafactor(
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
 
@@ -664,7 +660,6 @@ class FinetunedClassifier:
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
                 state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
-                    state_dict=state_dict,
                     model=self.model,
                     num_classes=num_classes,
                     trainer_args=trainer_args,
