@@ -22,7 +22,7 @@ def prepare_data(
     """
     Load the probe and baseline results, combine the dataframes on the ids and dataset_name
     ensuring the probe and baseline results have different column names
-    
+
     """
 
     # Rename columns output_scores, and output_labels to scores and labels
