@@ -7,12 +7,12 @@ from models_under_pressure.probes.pytorch_classifiers import (
 )
 from models_under_pressure.probes.pytorch_modules import (
     AttnLite,
-    LinearMeanPool,
+    LinearThenLast,
     LinearThenMax,
     LinearThenMean,
     LinearThenRollingMax,
     LinearThenSoftmax,
-    LinearThenLast,
+    MeanThenLinear,
 )
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.probes.sklearn_probes import (
@@ -72,7 +72,7 @@ class ProbeFactory:
             case ProbeType.pre_mean:
                 classifier = PytorchAdamClassifier(
                     training_args=probe_spec.hyperparams,
-                    probe_architecture=LinearMeanPool,
+                    probe_architecture=MeanThenLinear,
                 )
             case ProbeType.attention:
                 classifier = PytorchAdamClassifier(

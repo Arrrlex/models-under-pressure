@@ -12,6 +12,7 @@ from models_under_pressure.config import (
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.interfaces.dataset import LabelledDataset
@@ -177,6 +178,7 @@ def run_evaluation(
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
         model_name=config.model_name,
+        use_store=global_settings.USE_PROBE_STORE,
     )
 
     results_list = []

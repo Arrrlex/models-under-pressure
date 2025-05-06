@@ -35,6 +35,7 @@ class GlobalSettings(BaseSettings):
     PL_DEFAULT_ROOT_DIR: str | None = None
     WANDB_PROJECT: str | None = "models-under-pressure"  # Default W&B project name
     WANDB_API_KEY: str | None = None
+    USE_PROBE_STORE: bool = True
 
 
 global_settings = GlobalSettings()

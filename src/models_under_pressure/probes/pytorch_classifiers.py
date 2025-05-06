@@ -103,10 +103,14 @@ class PytorchDifferenceOfMeansClassifier:
         assert direction.shape == (activations.embed_dim,)
 
         self.model = nn.Linear(
-            activations.embed_dim, 1, bias=False, device=self.device, dtype=self.dtype
+            activations.embed_dim, 1, bias=True, device=self.device, dtype=self.dtype
         )
 
         self.model.weight.data.copy_(direction.reshape(1, -1))
+        # Set bias so that the boundary is at the midpoint between class means
+        pos_proj = pos_mean @ direction
+        neg_proj = neg_mean @ direction
+        self.model.bias.data.fill_(-0.5 * (pos_proj + neg_proj))
 
         return self
 
