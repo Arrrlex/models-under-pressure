@@ -162,6 +162,7 @@ class ClassifierModule(pl.LightningModule):
         weight_decay: float = 0.0,
         scheduler_params: Optional[Dict[str, Any]] = None,
         num_classes: Optional[int] = None,
+        batch_size: int = 1,
         class_weights: Optional[torch.Tensor] = None,
         trainer_args: Optional[Dict[str, Any]] = None,
         label_smoothing: float = 0.0,
@@ -187,6 +188,7 @@ class ClassifierModule(pl.LightningModule):
         self.model = model
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.batch_size = batch_size
         self.scheduler_params = scheduler_params or {}
         self.num_classes = num_classes
         self.class_weights = class_weights
@@ -237,12 +239,28 @@ class ClassifierModule(pl.LightningModule):
         loss = self.criterion(logits, y)
 
         # Log metrics
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+        self.log(
+            "train_loss",
+            loss,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         # Calculate accuracy
         preds = torch.argmax(logits, dim=1)
         acc = (preds == y).float().mean()
-        self.log("train_acc", acc, prog_bar=True, on_step=True, on_epoch=True)
+        self.log(
+            "train_acc",
+            acc,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         return loss
 
@@ -266,12 +284,28 @@ class ClassifierModule(pl.LightningModule):
         loss = self.criterion(logits, y)
 
         # Log metrics
-        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log(
+            "val_loss",
+            loss,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         # Calculate accuracy
         preds = torch.argmax(logits, dim=1)
         acc = (preds == y).float().mean()
-        self.log("val_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
+        self.log(
+            "val_acc",
+            acc,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         return {"val_loss": loss, "val_acc": acc}
 
@@ -294,12 +328,28 @@ class ClassifierModule(pl.LightningModule):
         loss = self.criterion(logits, y)
 
         # Log metrics
-        self.log("test_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log(
+            "test_loss",
+            loss,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         # Calculate accuracy
         preds = torch.argmax(logits, dim=1)
         acc = (preds == y).float().mean()
-        self.log("test_acc", acc, prog_bar=True, on_step=False, on_epoch=True)
+        self.log(
+            "test_acc",
+            acc,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=self.batch_size,
+        )
 
         # Always store id as a list of strings
         ids = batch["id"]  # already a list of strings
@@ -316,9 +366,11 @@ class ClassifierModule(pl.LightningModule):
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
-            # optimizer = torch.optim.Adam(
-            optimizer = torch.optim.Adafactor(
-                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+            optimizer = torch.optim.Adam(
+                # optimizer = torch.optim.Adafactor(
+                self.parameters(),
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
             )
 
         return optimizer
@@ -552,6 +604,7 @@ class FinetunedClassifier:
         # Create the pytorch lightning module:
         self._classifier = ClassifierModule(  # TODO: Have I accounted for the attention mask in this code!
             model=self.model,
+            batch_size=self.finetune_config.get("batch_size", 1),
             num_classes=num_classes,
             trainer_args=self.finetune_config.get("Trainer", {}),
             **self.finetune_config.get("ClassifierModule", {}),
@@ -594,6 +647,7 @@ class FinetunedClassifier:
             batch_size=self.finetune_config.get("batch_size", 12),
             shuffle=self.finetune_config.get("shuffle", True),
             collate_fn=collate_fn,
+            num_workers=self.finetune_config.get("num_workers", 0),
         )
 
         if val_dataset is not None:
@@ -603,6 +657,7 @@ class FinetunedClassifier:
                 batch_size=self.finetune_config.get("batch_size", 12),
                 shuffle=False,
                 collate_fn=collate_fn,
+                num_workers=self.finetune_config.get("num_workers", 0),
             )
 
         # Create checkpoint callback:
@@ -638,6 +693,8 @@ class FinetunedClassifier:
         else:
             self._trainer.fit(self.classifier, train_dataloader)
 
+        batch_size = self.finetune_config.get("batch_size", 1)
+
         # Load the best model checkpoint:
         if val_dataset is not None:
             self._classifier_checkpoint = checkpoint_callback.best_model_path
@@ -656,6 +713,7 @@ class FinetunedClassifier:
 
                 self._classifier = ClassifierModule(
                     model=fresh_llm,
+                    batch_size=batch_size,
                     num_classes=num_classes,
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
@@ -666,6 +724,7 @@ class FinetunedClassifier:
                 state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
                     model=self.model,
+                    batch_size=batch_size,
                     num_classes=num_classes,
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
@@ -675,6 +734,7 @@ class FinetunedClassifier:
                 self._classifier = ClassifierModule.load_from_checkpoint(
                     self._classifier_checkpoint,
                     model=self.model,
+                    batch_size=batch_size,
                     num_classes=num_classes,
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
