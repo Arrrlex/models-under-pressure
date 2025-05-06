@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +27,28 @@ def tokenize(tokenizer: PreTrainedTokenizerBase, input: Input) -> torch.Tensor:
     return tokens["input_ids"][0]  # type: ignore
 
 
+def get_dataset_name(path_or_name: Path | str) -> str:
+    dataset_name = path_or_name.stem if isinstance(path_or_name, Path) else path_or_name
+    if "manual" in dataset_name:
+        return "Manual"
+    elif "anthropic" in dataset_name:
+        return "Anthropic"
+    elif "toolace" in dataset_name:
+        return "Toolace"
+    elif "mts" in dataset_name:
+        return "MTS"
+    elif "mt" in dataset_name:
+        return "MT"
+    elif "mask" in dataset_name:
+        return "Mask"
+    elif "mental_health" in dataset_name:
+        return "Mental Health"
+    elif "aya" in dataset_name or "redteaming" in dataset_name:
+        return "Aya Redteaming"
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+
+
 def get_dataset_ids_and_token_lengths(
     dataset_paths: list[Path], tokenizer_name: str
 ) -> pd.DataFrame:
@@ -46,18 +67,17 @@ def get_dataset_ids_and_token_lengths(
         )
         data += [
             {
-                "dataset_name": dataset_path.stem,
+                "dataset_name": get_dataset_name(dataset_path),
                 "id": record.id,
                 "token_length": record.token_length,
-                "label": record.label.to_int(),
             }
             for record in dataset.to_records()
         ]
 
-    return pd.DataFrame(data).set_index(["id", "dataset_name"])
+    return pd.DataFrame(data)
 
 
-def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
+def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
     """
     Read the results file, return a dataframe where each row is an entry in a dataset.
     The dataset is structured as:
@@ -71,8 +91,12 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
     print("Loading probe results ... ")
     data = []
 
-    for probe_name, probe_result_path in probe_result_paths.items():
+    for probe_result_path in probe_result_paths:
         json_data = [json.loads(line) for line in open(probe_result_path)]
+
+        probe_name = (
+            json_data[0]["config"]["probe_spec"]["name"].replace("_", " ").title()
+        )
 
         for result in json_data:
             num_samples = len(result["output_scores"])
@@ -80,20 +104,53 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
                 {
                     "id": result["ids"][i],
                     "probe_name": probe_name,
-                    "preds": result["output_scores"][i],
-                    "labels": result["ground_truth_labels"][i],
-                    "dataset_name": result["dataset_name"],
+                    "pred": result["output_scores"][i],
+                    "label": result["ground_truth_labels"][i],
+                    "dataset_name": get_dataset_name(result["dataset_name"]),
                 }
                 for i in range(num_samples)
             ]
 
-    return pd.DataFrame(data).set_index(["id", "dataset_name"])
+    return pd.DataFrame(data)
+
+
+def get_probe_results_with_token_lengths(
+    probe_result_paths: list[Path], tokenizer_name: str
+) -> pd.DataFrame:
+    """
+    Read the results file, return a dataframe where each row is an entry in a dataset.
+    Only includes data points that have results for all probes.
+    """
+    dataset_paths = [
+        PROJECT_ROOT / path
+        for path in json.loads(open(probe_result_paths[0]).readline())["config"][
+            "eval_datasets"
+        ]
+    ]
+    probe_scores = get_probe_results(probe_result_paths)
+    token_lengths = get_dataset_ids_and_token_lengths(dataset_paths, tokenizer_name)
+
+    # Get the set of (id, dataset_name) pairs that have results for all probes
+    probe_counts = probe_scores.groupby(["id", "dataset_name"]).size()
+    complete_points = probe_counts[probe_counts == len(probe_result_paths)].index
+
+    # Filter both dataframes to only include complete points
+    probe_scores = (
+        probe_scores.set_index(["id", "dataset_name"])
+        .loc[complete_points]
+        .reset_index()
+    )
+    token_lengths = (
+        token_lengths.set_index(["id", "dataset_name"])
+        .loc[complete_points]
+        .reset_index()
+    )
+
+    return probe_scores.merge(token_lengths, how="inner", on=["id", "dataset_name"])
 
 
 def process_data(
-    dataset_paths: list[Path],
-    probe_result_paths: dict[str, Path],
-    tokenizer_name: str,
+    df: pd.DataFrame,
     bins: Optional[list[int]] = None,
 ) -> pd.DataFrame:
     """
@@ -103,14 +160,8 @@ def process_data(
     over the probe and token length bins. Return this dataframe to be plotted.
 
     """
-    # Get token lengths and ids for each dataset
-    df_token_lengths = get_dataset_ids_and_token_lengths(dataset_paths, tokenizer_name)
 
-    # Get probe results
-    df_probe_results = get_probe_results(probe_result_paths)
-
-    # Join the dataframes on index (ids and dataset_name)
-    df = df_probe_results.join(df_token_lengths, how="inner").reset_index()
+    df = df.copy()
 
     # Create token length bins
     if bins is None:
@@ -119,18 +170,20 @@ def process_data(
     df["token_length_bin"] = pd.cut(df["token_length"], bins=bins)
 
     # Group by probe, dataset and token length bin
-    grouped = df.groupby(["probe_name", "dataset_name", "token_length_bin"])
+    grouped = df.groupby(
+        ["probe_name", "dataset_name", "token_length_bin"], observed=True
+    )
 
     # Calculate AUROC for each group
     results = []
     for name, group in grouped:
         probe_name, dataset_name, length_bin = name
         # Skip if not enough samples or if we don't have both labels
-        if len(group) < 2 or len(group["labels"].unique()) < 2:
+        if len(group) < 2 or len(group["label"].unique()) < 2:
             continue
 
         # Calculate AUROC
-        auroc = roc_auc_score(group["labels"], group["preds"])
+        auroc = roc_auc_score(group["label"], group["pred"])
 
         results.append(
             {
@@ -165,9 +218,7 @@ def process_data(
     return final_df
 
 
-def plot_token_length_bins(
-    df: pd.DataFrame, suffixes: list[str], plot_path: Path
-) -> None:
+def plot_token_length_bins(df: pd.DataFrame, plot_path: Path) -> None:
     """
     For each probe, plot the mean AUROC across datasets as a line plot with error bands.
     """
@@ -222,34 +273,80 @@ def plot_token_length_bins(
     plt.close()
 
 
+def plot_rolling_auroc(df: pd.DataFrame, plot_path: Path, window_size: int) -> None:
+    """
+    Plot rolling AUROC over token length by sorting inputs by token length and calculating
+    rolling AUROC over a window of samples.
+
+    Args:
+        df: DataFrame containing token lengths, predictions, and labels
+        plot_path: Path to save the plot
+        window_size: Number of samples to include in each rolling window
+    """
+    plt.figure(figsize=(12, 7))
+
+    # Get unique probes
+    unique_probes = df["probe_name"].unique()
+
+    for probe_name in unique_probes:
+        # Filter data for this probe
+        probe_data = df[df["probe_name"] == probe_name].copy()
+
+        # Sort by token length
+        probe_data = probe_data.sort_values("token_length")
+
+        # Calculate rolling AUROC
+        rolling_auroc = []
+        rolling_std = []
+        token_lengths = []
+
+        for i in range(0, len(probe_data) - window_size + 1, window_size // 2):
+            window = probe_data.iloc[i : i + window_size]
+            if len(window["label"].unique()) < 2:
+                continue
+
+            auroc = roc_auc_score(window["label"], window["pred"])
+            rolling_auroc.append(auroc)
+            rolling_std.append(window["token_length"].mean())
+            token_lengths.append(window["token_length"].mean())
+
+        # Plot line with error bands
+        plt.plot(
+            token_lengths,
+            rolling_auroc,
+            label=probe_name,
+            linewidth=2,
+        )
+
+    plt.xlabel("Token Length")
+    plt.ylabel("Rolling AUROC")
+    plt.title(f"Rolling AUROC (Window Size: {window_size})")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True, linestyle="--", alpha=0.7)
+
+    # Set y-axis limits to start from 0.5 (typical AUROC range)
+    plt.ylim(0.5, 1.0)
+
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+
+    # Save the plot
+    plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+
 def main(result_paths: list[Path], bins: list[int], plot_path: Path):
     # Use all available datasets for token length info
-    dataset_paths = [
-        PROJECT_ROOT / path
-        for path in json.loads(open(result_paths[0]).readline())["config"][
-            "eval_datasets"
-        ]
-    ]
-
-    probe_result_paths = {}
-    for path in result_paths:
-        suffix = path.stem.replace("results_", "")
-        model_name = (
-            re.search(r"[a-z]+[a-z_]+", suffix)
-            .group()
-            .removesuffix("_test")
-            .replace("_", " ")
-            .title()
-        )
-        probe_result_paths[model_name] = path
-
-    final_df = process_data(
-        dataset_paths,
-        probe_result_paths,
-        "meta-llama/Llama-3.2-1B-Instruct",
-        bins,
+    df = get_probe_results_with_token_lengths(
+        result_paths, "meta-llama/Llama-3.2-1B-Instruct"
     )
-    plot_token_length_bins(final_df, list(probe_result_paths.keys()), plot_path)
+
+    bins_df = process_data(df, bins)
+    plot_token_length_bins(bins_df, plot_path)
+
+    # Create rolling average plot
+    rolling_plot_path = plot_path.parent / f"rolling_{plot_path.name}"
+    plot_rolling_auroc(df, rolling_plot_path, window_size=200)
 
 
 if __name__ == "__main__":
