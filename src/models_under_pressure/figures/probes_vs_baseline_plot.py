@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from models_under_pressure.config import RESULTS_DIR
 from models_under_pressure.figures.utils import (
     get_baseline_results,
     get_continuation_results,
@@ -95,6 +96,138 @@ def prepare_data(
     return df_combined_results
 
 
+def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create the dataframe that will eventually be used to create the plot.
+
+    """
+
+    # Create the individual probe, continuation and baseline results:
+
+    # Aggregate by dataset_name and calculate the AUROC score for the probe_scores, baseline_scores and continuation_scores vs ground truth labels
+    from sklearn.metrics import roc_auc_score
+
+    # Define functions to calculate AUROC for each method
+    def calc_probe_auroc(group):
+        return roc_auc_score(group["probe_ground_truth_labels"], group["probe_scores"])
+
+    def calc_baseline_auroc(group):
+        return roc_auc_score(group["baseline_ground_truth"], group["baseline_scores"])
+
+    def calc_continuation_auroc(group):
+        return roc_auc_score(
+            group["continuation_ground_truth"], group["continuation_scores"]
+        )
+
+    # Calculate AUROC scores using groupby and agg
+    plot_df = (
+        df.groupby("dataset_name")
+        .agg(
+            probe_auroc=("dataset_name", lambda x: calc_probe_auroc(df.loc[x.index])),
+            baseline_auroc=(
+                "dataset_name",
+                lambda x: calc_baseline_auroc(df.loc[x.index]),
+            ),
+            continuation_auroc=(
+                "dataset_name",
+                lambda x: calc_continuation_auroc(df.loc[x.index]),
+            ),
+        )
+        .reset_index()
+    )
+
+    # Melt the dataframe to get it into the right format for plotting
+    plot_df = pd.melt(
+        plot_df,
+        id_vars=["dataset_name"],
+        value_vars=["probe_auroc", "baseline_auroc", "continuation_auroc"],
+        var_name="method",
+        value_name="auroc",
+    )
+
+    # Clean up method names by removing '_auroc' suffix
+    plot_df["method"] = plot_df["method"].str.replace("_auroc", "")
+
+    return plot_df
+
+
+def plot_results(plot_df: pd.DataFrame) -> None:
+    """
+    Plot the results
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import seaborn as sns
+
+    # Set the style
+    plt.style.use("seaborn-v0_8-whitegrid")
+    sns.set_context("paper", font_scale=1.5)
+
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Define colors for each method
+    colors = {
+        "probe": "#1f77b4",  # blue
+        "baseline": "#ff7f0e",  # orange
+        "continuation": "#2ca02c",  # green
+    }
+
+    # Create the bar plot
+    bar_width = 0.25
+    datasets = plot_df["dataset_name"].unique()
+    x = np.arange(len(datasets))
+
+    # Plot bars for each method
+    for i, method in enumerate(["probe", "baseline", "continuation"]):
+        method_data = plot_df[plot_df["method"] == method]
+        ax.bar(
+            x + (i - 1) * bar_width,
+            method_data["auroc"],
+            width=bar_width,
+            label=method.capitalize(),
+            color=colors[method],
+            alpha=0.8,
+        )
+
+    # Add labels, title and legend
+    ax.set_xlabel("Dataset")
+    ax.set_ylabel("AUROC")
+    ax.set_title("Performance Comparison: Probe vs Baseline vs Continuation")
+    ax.set_xticks(x)
+    ax.set_xticklabels(datasets, rotation=45, ha="right")
+    ax.legend()
+
+    # Add grid lines
+    ax.grid(True, linestyle="--", alpha=0.7)
+
+    # Add value labels on top of bars
+    for i, method in enumerate(["probe", "baseline", "continuation"]):
+        method_data = plot_df[plot_df["method"] == method]
+        for j, value in enumerate(method_data["auroc"]):
+            ax.text(
+                x[j] + (i - 1) * bar_width,
+                value + 0.01,
+                f"{value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                rotation=90,
+            )
+
+    # Set y-axis limits
+    ax.set_ylim(0, 1.1)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+
+    # Save the plot
+    plt.savefig(RESULTS_DIR / "probes_vs_baseline_plot.png")
+
+
 if __name__ == "__main__":
     baseline_path = "/home/ubuntu/models-under-pressure/data/results/finetune_baselines_Llama-3.1-8B-Instruct__0_2025-05-06.jsonl"
     probe_path = "/home/ubuntu/models-under-pressure/data/results/evaluate_probes/results_wOgjTcLk_20250505_094202.jsonl"
@@ -108,4 +241,5 @@ if __name__ == "__main__":
         continuation_paths=[Path(contin_path)],
     )
 
-    breakpoint()
+    df_plot = create_plot_dataframe(df_combined)
+    plot_results(df_plot)
