@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 import torch
 from matplotlib import pyplot as plt
@@ -170,45 +169,47 @@ def plot_token_length_bins(
     df: pd.DataFrame, suffixes: list[str], plot_path: Path
 ) -> None:
     """
-    For each probe and token length bin, plot the mean AUROC across datasets as a bar chart.
+    For each probe, plot the mean AUROC across datasets as a line plot with error bands.
     """
     plt.figure(figsize=(12, 7))
 
-    # Get unique bins and probes
-    unique_bins = [str(bin) for bin in df["token_length_bin"].unique()]
+    # Get unique probes
     unique_probes = df["probe_name"].unique()
 
-    # Calculate bar positions
-    n_bins = len(unique_bins)
-    n_probes = len(unique_probes)
-    bar_width = 0.8 / n_probes  # Adjust width to fit all bars
+    # Plot lines for each probe
+    for probe_name in unique_probes:
+        probe_data = df[df["probe_name"] == probe_name].sort_values("token_length_bin")
 
-    # Plot bars for each probe
-    for i, probe_name in enumerate(unique_probes):
-        probe_data = df[df["probe_name"] == probe_name]
+        # Extract bin midpoints for x-axis
+        bin_labels = [str(bin) for bin in probe_data["token_length_bin"]]
+        x_positions = range(len(bin_labels))
 
-        # Calculate x positions for this probe's bars
-        x_positions = np.arange(n_bins) + (i - (n_probes - 1) / 2) * bar_width
-
-        # Plot bars with error bars
-        plt.bar(
+        # Plot line with error bands
+        plt.plot(
             x_positions,
             probe_data["auroc_mean"],
-            yerr=probe_data["auroc_std"],
-            width=bar_width,
             label=probe_name,
-            capsize=5,
-            alpha=0.8,
+            marker="o",
+            markersize=6,
+            linewidth=2,
         )
 
+        # Add error bands
+        # plt.fill_between(
+        #     x_positions,
+        #     probe_data["auroc_mean"] - probe_data["auroc_std"],
+        #     probe_data["auroc_mean"] + probe_data["auroc_std"],
+        #     alpha=0.2,
+        # )
+
     # Set x-axis ticks and labels
-    plt.xticks(range(n_bins), unique_bins, rotation=45, ha="right")
+    plt.xticks(range(len(bin_labels)), bin_labels, rotation=45, ha="right")
 
     plt.xlabel("Token Length Bin")
     plt.ylabel("Mean AUROC")
     plt.title("AUROC by Token Length Bin")
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-    plt.grid(True, linestyle="--", alpha=0.7, axis="y")
+    plt.grid(True, linestyle="--", alpha=0.7)
 
     # Set y-axis limits to start from 0.5 (typical AUROC range)
     plt.ylim(0.5, 1.0)

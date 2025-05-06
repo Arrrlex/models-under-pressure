@@ -79,17 +79,23 @@ def plot_probe_metric(
     )
 
     # Create custom dataset order with 'Mean' as the first group
-    all_datasets = (
-        ["Mean"]
-        + sorted(
-            [
-                d
-                for d in df["Dataset"].unique()
-                if d not in ["Mental Health", "Aya Redteaming"]
-            ]
-        )
-        + ["Mental Health", "Aya Redteaming"]
+    all_datasets = ["Mean"]
+    # Add all regular datasets first
+    regular_datasets = sorted(
+        [
+            d
+            for d in df["Dataset"].unique()
+            if d not in ["Mental Health", "Aya Redteaming"]
+        ]
     )
+    all_datasets.extend(regular_datasets)
+
+    # Add Mental Health and Aya Redteaming only if they exist in the data
+    if "Mental Health" in df["Dataset"].unique():
+        all_datasets.append("Mental Health")
+    if "Aya Redteaming" in df["Dataset"].unique():
+        all_datasets.append("Aya Redteaming")
+
     combined_df["Dataset"] = pd.Categorical(
         combined_df["Dataset"], categories=all_datasets, ordered=True
     )
@@ -161,6 +167,9 @@ def plot_probe_metric(
 
     # Add legend
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    # Set y-axis limits
+    plt.ylim(0.5, 1.0)
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
