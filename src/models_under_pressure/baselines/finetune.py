@@ -15,13 +15,19 @@ from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
 from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
+    AutoModelForCausalLM,  # type: ignore
+    AutoTokenizer,  # type: ignore
+    PreTrainedTokenizer,  # type: ignore
+    PreTrainedTokenizerFast,  # type: ignore
 )
 
-from models_under_pressure.config import FinetuneBaselineConfig, global_settings
+from models_under_pressure.config import (
+    EVAL_DATASETS,
+    RESULTS_DIR,
+    SYNTHETIC_DATASET_PATH,
+    FinetuneBaselineConfig,
+    global_settings,
+)
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
@@ -79,17 +85,17 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing accuracy"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing accuracy"
+        )
         return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing AUROC"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing AUROC"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -103,9 +109,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing TPR at FPR"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing TPR at FPR"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -358,6 +364,8 @@ class LLMModel(nn.Module):
             nn.Linear(self.hidden_dim, num_classes),
         )
 
+        self.model.gradient_checkpointing_enable()
+
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
@@ -434,23 +442,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert (
-            self._tokenizer is not None
-        ), "Tokenizer must be trained before it can be accessed"
+        assert self._tokenizer is not None, (
+            "Tokenizer must be trained before it can be accessed"
+        )
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert (
-            self._classifier is not None
-        ), "Classifier must be trained before it can be accessed"
+        assert self._classifier is not None, (
+            "Classifier must be trained before it can be accessed"
+        )
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert (
-            self._model is not None
-        ), "Model must be trained before it can be accessed"
+        assert self._model is not None, (
+            "Model must be trained before it can be accessed"
+        )
         return self._model
 
     def process_model_configs(self):
@@ -731,3 +739,54 @@ def get_finetuned_baseline_results(
             )
         )
     return eval_results
+
+
+if __name__ == "__main__":
+    seeds = [0, 1, 2]
+    finetune_model = "Llama-3.1-8B-Instruct"
+
+    for seed in seeds:
+        pl.seed_everything(seed)
+
+        # Should be defined via a hydra run config file:
+        finetune_config = FinetuneBaselineConfig(
+            model_name_or_path="meta-llama/" + finetune_model,
+            num_classes=2,
+            ClassifierModule={  # set here to the default values
+                "learning_rate": 1e-4,
+                "weight_decay": 0.01,
+                "scheduler_params": None,
+                "class_weights": None,
+                "label_smoothing": 0.0,
+            },
+            batch_size=1,
+            shuffle=True,
+            logger={
+                "_target_": "pytorch_lightning.loggers.WandbLogger",
+                "project": "models-under-pressure",
+            },
+            Trainer={
+                "max_epochs": 40,  # 20,
+                "accelerator": "gpu",
+                "devices": [0],
+                "precision": "bf16-true",
+                "default_root_dir": global_settings.PL_DEFAULT_ROOT_DIR,
+                "accumulate_grad_batches": 16,
+            },
+        )
+
+        results = get_finetuned_baseline_results(
+            finetune_config,
+            SYNTHETIC_DATASET_PATH,
+            EVAL_DATASETS,
+            compute_activations=False,
+            max_samples=4000,
+        )
+
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        output_path = (
+            RESULTS_DIR
+            / f"finetune_baselines_{finetune_model}__{seed}_{timestamp}.jsonl"
+        )
+        for result in results:
+            result.save_to(output_path)
