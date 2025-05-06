@@ -353,8 +353,9 @@ class ClassifierModule(pl.LightningModule):
 
         # Always store id as a list of strings
         ids = batch["id"]  # already a list of strings
-        self.test_outputs.append({"logits": logits, "labels": y, "id": ids})
-        return
+        output = {"logits": logits, "labels": y, "id": ids}
+        self.test_outputs.append(output)
+        return output
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -482,7 +483,7 @@ class LLMModel(nn.Module):
 
         # self.model.config.vocab_size = num_classes
         self.classifier_head = nn.Linear(hidden_size, num_classes)
-        # self.num_classes = num_classes
+        self.num_classes = num_classes
         self.hidden_dim = hidden_size
 
     def forward(
@@ -497,13 +498,6 @@ class LLMModel(nn.Module):
             raise ValueError(
                 "Unknown model architecture: cannot find base transformer module (expected 'model' or 'transformer' attribute)."
             )
-
-        if hasattr(base_model, "embed_tokens"):
-            print("embed_tokens.weight shape:", base_model.embed_tokens.weight.shape)
-        elif hasattr(base_model, "wte"):
-            print("wte.weight shape:", base_model.wte.weight.shape)
-        else:
-            print("No known embedding attribute found.")
 
         outputs = base_model(
             input_ids=input_ids, attention_mask=attention_mask, return_dict=True
@@ -821,10 +815,9 @@ class FinetunedClassifier:
         self.classifier.eval()  # ← inference mode
         self.classifier.reset_test_results()
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.classifier.to(device).eval()  # inference mode
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.classifier.to(device).eval()  # inference mode
 
-        device = next(self.classifier.parameters()).device
         collate_fn = create_collate_fn(self.tokenizer)
 
         # Remove pre-existing activations from the dataset:
@@ -843,38 +836,18 @@ class FinetunedClassifier:
             batch_size=4,  # TODO: Might wanna pass this as argument (These batches are on a single GPU but for inference mode!)
             shuffle=False,
             collate_fn=collate_fn,
-            num_workers=0,
+            num_workers=self.finetune_config.get("num_workers", 0),
         )
 
-        # Option to use PyTorch Lightning test loop if trainer is available
-        if hasattr(self, "_trainer") and self._trainer is not None:
-            print("Using PyTorch Lightning test loop")
-            # Use PL test loop
-            self._trainer.test(
-                self.classifier,
-                dataloaders=loader,
-            )
-            if torch.distributed.is_available() and torch.distributed.is_initialized():
-                if torch.distributed.get_rank() != 0:
-                    return BaselineResults(_logits=None, _labels=None, _ids=None)
-            return self.classifier.test_results
+        self._trainer = pl.Trainer(**self.finetune_config.get("Trainer", {}))
 
-        # Manual forward pass fallback (legacy, avoids PL deadlock)
-        for batch in loader:
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
+        # .test(self.classifier, dataloaders=loader)
 
-            logits = self.classifier(input_ids, attention_mask)
-
-            # accumulate
-            self.classifier.test_results.logits = logits.cpu()
-            self.classifier.test_results.labels = labels.cpu()
-            if self.classifier.test_results._ids is None:
-                self.classifier.test_results._ids = batch["id"]
-            else:
-                self.classifier.test_results._ids.extend(batch["id"])
-
+        # if torch.distributed.is_available() and torch.distributed.is_initialized():
+        #    if torch.distributed.get_rank() != 0:
+        #        return BaselineResults(_logits=None, _labels=None, _ids=None)
+        # return self.classifier.test_results
+        self._trainer.test(self.classifier, dataloaders=loader)
         return self.classifier.test_results
 
     def get_full_results(
@@ -914,7 +887,7 @@ class FinetunedClassifier:
             scores = [scores[i] for i in sort_indices]
         else:
             raise ValueError(
-                f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
+                f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {sorted(result_ids)}\nEval IDs: {sorted(eval_ids)}"
             )
 
         ground_truth = eval_dataset.labels_numpy().tolist()
@@ -998,7 +971,6 @@ def get_finetuned_baseline_results(
             full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
             finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
-            print("Is it a dir?", os.path.isdir(checkpoint_path))
             state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
