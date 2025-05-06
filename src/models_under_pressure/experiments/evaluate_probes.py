@@ -177,6 +177,7 @@ def run_evaluation(
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
         model_name=config.model_name,
+        use_store=True,
     )
 
     results_list = []
@@ -218,7 +219,7 @@ def run_evaluation(
         print(f"Metrics for {eval_dataset_name}: {dataset_results.metrics}")
 
         best_epoch = (
-            probe._classifier.best_epoch
+            probe._classifier.best_epoch  # type: ignore
             if (
                 isinstance(probe, PytorchProbe)
                 and hasattr(probe._classifier, "best_epoch")
@@ -259,6 +260,7 @@ if __name__ == "__main__":
     config_path = CONFIG_DIR / "probe/attention.yaml"
 
     config = EvalRunConfig(
+        id="attention-red-team",
         layer=31,
         max_samples=None,
         model_name=LOCAL_MODELS["llama-70b"],
@@ -268,15 +270,12 @@ if __name__ == "__main__":
                 "batch_size": 16,
                 "epochs": 200,
                 "optimizer_args": {
-                    "lr": 5e-3,
-                    "weight_decay": 1e-3,
+                    "lr": 0.005,
+                    "weight_decay": 0.001,
                 },
-                "attn_hidden_dim": 27,
-                "probe_architecture": "attention_then_linear",
-                "scheduler_decay": 0.62,
-                "final_lr": 5e-5,
+                "final_lr": 0.0005,
                 "gradient_accumulation_steps": 4,
-                "patience": 30,
+                "patience": 50,
             },
         ),
         compute_activations=False,

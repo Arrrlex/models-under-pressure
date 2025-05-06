@@ -93,6 +93,17 @@ with open(CONFIG_DIR / "eval_datasets" / "test_balanced.yaml") as f:
 
 EVAL_DATASETS = EVAL_DATASETS_BALANCED if USE_BALANCED_DATASETS else EVAL_DATASETS_RAW
 TEST_DATASETS = TEST_DATASETS_BALANCED if USE_BALANCED_DATASETS else TEST_DATASETS_RAW
+RED_TEAM_DATASETS = {
+    "borderline_examples": DATA_DIR / "evals" / "red-team/borderline_requests.jsonl",
+    "task_difficulty": DATA_DIR / "evals" / "red-team/cog_heavy_requests.jsonl",
+    "confounding": DATA_DIR / "evals" / "red-team/confounding_requests.jsonl",
+    "embedded": DATA_DIR / "evals" / "red-team/embedded_requests.jsonl",
+    "honesty_confounding": DATA_DIR
+    / "evals"
+    / "red-team/honesty_confounding_requests.jsonl",
+    "humorous": DATA_DIR / "evals" / "red-team/humorous_requests.jsonl",
+    "negated": DATA_DIR / "evals" / "red-team/negated_requests.jsonl",
+}
 
 AIS_DATASETS = {
     "mmlu_sandbagging": {
