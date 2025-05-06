@@ -532,14 +532,7 @@ class FinetunedClassifier:
 
         return model_name_or_path, num_classes, cache_dir
 
-    def train(
-        self, dataset: LabelledDataset, val_dataset: Optional[LabelledDataset] = None
-    ) -> Self:
-        """
-        Setup the dataset, logger, model checkpointing and train the model using pytorch
-        lightning.
-        """
-
+    def initialize_model_and_classifier(self):
         model_name_or_path, num_classes, cache_dir = self.process_model_configs()
         print(f"Cache dir: {cache_dir}")
 
@@ -556,15 +549,27 @@ class FinetunedClassifier:
             cache_dir,
         )
 
-        trainer_args = self.finetune_config.get("Trainer", {})
-
         # Create the pytorch lightning module:
         self._classifier = ClassifierModule(  # TODO: Have I accounted for the attention mask in this code!
             model=self.model,
             num_classes=num_classes,
-            trainer_args=trainer_args,
+            trainer_args=self.finetune_config.get("Trainer", {}),
             **self.finetune_config.get("ClassifierModule", {}),
         )
+
+    def train(
+        self, dataset: LabelledDataset, val_dataset: Optional[LabelledDataset] = None
+    ) -> Self:
+        """
+        Setup the dataset, logger, model checkpointing and train the model using pytorch
+        lightning.
+        """
+        model_name_or_path, num_classes, cache_dir = self.process_model_configs()
+
+        cache_dir = self.initialize_model_and_classifier()
+        print(f"Cache dir: {cache_dir}")
+
+        trainer_args = self.finetune_config.get("Trainer", {})
 
         # Process the dataset
         collate_fn = create_collate_fn(self.tokenizer)
@@ -845,32 +850,56 @@ class FinetunedClassifier:
 
 def get_finetuned_baseline_results(
     finetune_config: FinetuneBaselineConfig,
-    train_dataset_path: Path,
     eval_datasets: dict[str, Path],
+    train_dataset_path: Path | None = None,
+    checkpoint_path: Path | None = None,
     max_samples: Optional[int] = None,
     compute_activations: bool = True,
     use_validation_set: bool = True,
 ) -> List[FinetunedBaselineResults]:
-    print("Loading train dataset")
-    train_dataset, val_dataset = load_train_test(
-        dataset_path=train_dataset_path,
-        model_name=None,
-        layer=None,
-        compute_activations=compute_activations,
-        n_per_class=max_samples // 2 if max_samples else None,
-    )
-    print("Training finetuned baseline...")
+    assert (
+        train_dataset_path is not None or checkpoint_path is not None
+    ), "Must provide either train_dataset_path or checkpoint_path"
+
     finetune_baseline = FinetunedClassifier(finetune_config)
 
-    # Train the finetune baseline:
-    finetune_baseline.train(
-        train_dataset,
-        val_dataset=val_dataset if use_validation_set else None,
-    )
+    if checkpoint_path is not None:
+        finetune_baseline.initialize_model_and_classifier()
+        # Now you can safely load the checkpoint
+        print("Loading checkpoint")
+        trainer_strategy = finetune_config.get("Trainer", {}).get("strategy", "")
 
-    torch.cuda.empty_cache()
-    del train_dataset
-    del val_dataset
+        if trainer_strategy.startswith("fsdp"):
+            ckpt = torch.load(checkpoint_path, map_location="cpu")
+            full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
+            finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+        elif trainer_strategy == "deepspeed_stage_2_offload":
+            print("Is it a dir?", os.path.isdir(checkpoint_path))
+            state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+            finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
+        else:
+            finetune_baseline.classifier.load_state_dict(torch.load(checkpoint_path))
+
+    if train_dataset_path is not None:
+        print("Loading train dataset")
+        train_dataset, val_dataset = load_train_test(
+            dataset_path=train_dataset_path,
+            model_name=None,
+            layer=None,
+            compute_activations=compute_activations,
+            n_per_class=max_samples // 2 if max_samples else None,
+        )
+        print("Training finetuned baseline...")
+
+        # Train the finetune baseline:
+        finetune_baseline.train(
+            train_dataset,
+            val_dataset=val_dataset if use_validation_set else None,
+        )
+
+        torch.cuda.empty_cache()
+        del train_dataset
+        del val_dataset
 
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         if torch.distributed.get_rank() != 0:
