@@ -851,6 +851,7 @@ class FinetunedClassifier:
 def get_finetuned_baseline_results(
     finetune_config: FinetuneBaselineConfig,
     eval_datasets: dict[str, Path],
+    results_dir: Path | None = None,
     train_dataset_path: Path | None = None,
     checkpoint_path: Path | None = None,
     max_samples: Optional[int] = None,
@@ -916,17 +917,23 @@ def get_finetuned_baseline_results(
             compute_activations=compute_activations,
             n_per_class=max_samples // 2 if max_samples else None,
         )
-        eval_results.append(
-            finetune_baseline.get_full_results(
-                eval_dataset=eval_dataset,
-                dataset_name=dataset_name,
-                eval_dataset_path=eval_dataset_path,
-                max_samples=max_samples,
-            )
+        eval_result = finetune_baseline.get_full_results(
+            eval_dataset=eval_dataset,
+            dataset_name=dataset_name,
+            eval_dataset_path=eval_dataset_path,
+            max_samples=max_samples,
         )
+        eval_results.append(eval_result)
 
         # After each eval, clear the cache, delete the baseline model and dataset subset.
         torch.cuda.empty_cache()
         del eval_dataset
+
+        if results_dir is not None:
+            print(
+                f"Saving results for {dataset_name} to {results_dir / 'finetuning.jsonl'}"
+            )
+            with open(results_dir / "finetuning.jsonl", "a") as f:
+                f.write(eval_result.model_dump_json() + "\n")
 
     return eval_results

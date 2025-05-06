@@ -2,9 +2,9 @@ from models_under_pressure.baselines.finetune import (
     get_finetuned_baseline_results,
 )
 from models_under_pressure.config import (
-    EVAL_DATASETS,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
+    TEST_DATASETS,
     FinetuneBaselineConfig,
 )
 
@@ -23,7 +23,7 @@ if __name__ == "__main__":
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=2,
+        batch_size=1,
         shuffle=True,
         logger=None,
         Trainer={
@@ -33,25 +33,23 @@ if __name__ == "__main__":
             "devices": -1,
             "precision": "bf16-true",
             "strategy": "deepspeed_stage_2_offload",
+            # "strategy": "fsdp",
             # "strategy": "ddp",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "accumulate_grad_batches": 4,
+            "accumulate_grad_batches": 16,
         },
     )
 
     baseline_results = get_finetuned_baseline_results(
         finetune_config,
         train_dataset_path=SYNTHETIC_DATASET_PATH,
-        eval_datasets=EVAL_DATASETS,
+        # checkpoint_path="/home/ubuntu/models-under-pressure/.cache/lightning_logs/version_16/checkpoints/finetune-baselines-google/gemma-3-12b-it-epoch=01.ckpt",
+        eval_datasets=TEST_DATASETS,
         max_samples=None,
         compute_activations=True,
-        use_validation_set=False,
+        use_validation_set=True,
+        results_dir=RESULTS_DIR,
     )
     print(baseline_results)
-
-    # Save the results:
-    with open(RESULTS_DIR / "finetuning.jsonl", "a") as f:
-        for result in baseline_results:
-            f.write(result.model_dump_json() + "\n")
 
     # results = DataEfficiencyResults.model_validate(results_dict)
