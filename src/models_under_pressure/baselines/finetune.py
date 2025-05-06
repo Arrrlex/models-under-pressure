@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Self, Tuple, Union
 import hydra
 import os
 import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
 import torch
 import deepspeed
@@ -62,11 +61,11 @@ class BaselineResults(BaseModel):
         return self._ids
 
     @property
-    def probits(self) -> torch.Tensor:
+    def probits(self) -> np.ndarray:
         if self._logits is None:
             raise ValueError("Logits must be set before accessing probits")
-        sigmoid = torch.nn.Sigmoid()
-        return sigmoid(self._logits)[:, 1].cpu().to(torch.float32).numpy()
+        probs = torch.softmax(self._logits, dim=-1)
+        return probs[:, 1].cpu().numpy()
 
     @ids.setter
     def ids(self, value: List[str]):
@@ -473,7 +472,8 @@ class StakesDataset(torch.utils.data.Dataset):
         df: A pandas dataframe containing the inputs and labels.
     """
 
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, dataset: LabelledDataset):
+        df = dataset.to_pandas()
         self.inputs = df["inputs"].values
         self.labels = (df["labels"] == "high-stakes").astype(int).values
         self.ids = [str(i) for i in df["ids"].values]
@@ -641,7 +641,7 @@ class FinetunedClassifier:
             print("No pre-existing activations to remove")
             pass
 
-        train_dataset = StakesDataset(dataset.to_pandas())
+        train_dataset = StakesDataset(dataset)
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=self.finetune_config.get("batch_size", 12),
@@ -651,7 +651,7 @@ class FinetunedClassifier:
         )
 
         if val_dataset is not None:
-            val_dataset_object = StakesDataset(val_dataset.to_pandas())
+            val_dataset_object = StakesDataset(val_dataset)
             val_dataloader = DataLoader(
                 val_dataset_object,
                 batch_size=self.finetune_config.get("batch_size", 12),
@@ -769,11 +769,11 @@ class FinetunedClassifier:
         Run a plain forward pass (no PL test‑loop) to avoid the
         dead‑lock that occurs when re‑using a Trainer after ``fit()``.
         """
-        self.classifier.eval()  # ← inference mode
-        self.classifier.reset_test_results()
-
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.classifier.to(device).eval()  # inference mode
+
+        # self.classifier.eval()  # ← inference mode
+        self.classifier.reset_test_results()
 
         device = next(self.classifier.parameters()).device
         collate_fn = create_collate_fn(self.tokenizer)
@@ -790,7 +790,7 @@ class FinetunedClassifier:
 
         # A single‑worker DataLoader → no inter‑process barriers
         loader = DataLoader(
-            StakesDataset(dataset.to_pandas()),
+            StakesDataset(dataset),
             batch_size=4,  # TODO: Might wanna pass this as argument (These batches are on a single GPU but for inference mode!)
             shuffle=False,
             collate_fn=collate_fn,
@@ -823,6 +823,11 @@ class FinetunedClassifier:
     ) -> FinetunedBaselineResults:
         print(f"Getting full results for {dataset_name} ...")
 
+        # Make sure that the dataset doesn't contain duplicate IDs, as this causes issues
+        assert len(eval_dataset.ids) == len(
+            set(eval_dataset.ids)
+        ), "Dataset contains duplicate IDs!"
+
         # Get the results (only rank 0 will have them)
         results = self.get_results(eval_dataset)
         if results.logits is None or results.labels is None or results.ids is None:
@@ -849,6 +854,11 @@ class FinetunedClassifier:
             sort_indices = [id_to_index[id_] for id_ in eval_ids]
             labels = [labels[i] for i in sort_indices]
             scores = [scores[i] for i in sort_indices]
+            sorted_ids = [result_ids[i] for i in sort_indices]
+
+            assert (
+                sorted_ids == eval_ids
+            ), f"Sorted ids: {sorted_ids}, eval_ids: {eval_ids}"
         else:
             raise ValueError(
                 f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
@@ -860,7 +870,7 @@ class FinetunedClassifier:
         ), f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
 
         # Get the token counts using StakesDataset
-        stakes_dataset = StakesDataset(eval_dataset.to_pandas())
+        stakes_dataset = StakesDataset(eval_dataset)
         collate_fn = create_collate_fn(self.tokenizer)
         token_counts = [
             len(
@@ -908,6 +918,43 @@ class FinetunedClassifier:
         return baseline_results
 
 
+def run_sanity_check(
+    finetune_config: FinetuneBaselineConfig,
+    dataset_path: Path,
+    checkpoint_path: Path | None = None,
+    max_samples: Optional[int] = None,
+    compute_activations: bool = True,
+) -> None:
+    finetune_baseline = FinetunedClassifier(finetune_config)
+
+    dataset = load_dataset(
+        dataset_path=dataset_path,
+        model_name=None,
+        layer=None,
+        compute_activations=compute_activations,
+        n_per_class=max_samples // 2 if max_samples else None,
+    )
+
+    # Train the finetune baseline:
+    print("Training finetuned baseline...")
+    finetune_baseline.train(
+        dataset,
+        val_dataset=dataset,
+    )
+
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        if torch.distributed.get_rank() != 0:
+            return []
+
+    eval_result = finetune_baseline.get_full_results(
+        eval_dataset=dataset,
+        dataset_name="sanity_check",
+        eval_dataset_path=dataset_path,
+        max_samples=max_samples,
+    )
+    print(eval_result.metrics)
+
+
 def get_finetuned_baseline_results(
     finetune_config: FinetuneBaselineConfig,
     eval_datasets: dict[str, Path],
@@ -935,7 +982,6 @@ def get_finetuned_baseline_results(
             full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
             finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
-            print("Is it a dir?", os.path.isdir(checkpoint_path))
             state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
@@ -958,7 +1004,7 @@ def get_finetuned_baseline_results(
             val_dataset=val_dataset if use_validation_set else None,
         )
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         del train_dataset
         del val_dataset
 
@@ -986,7 +1032,7 @@ def get_finetuned_baseline_results(
         eval_results.append(eval_result)
 
         # After each eval, clear the cache, delete the baseline model and dataset subset.
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         del eval_dataset
 
         if results_dir is not None:
