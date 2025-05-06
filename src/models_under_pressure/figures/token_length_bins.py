@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -7,9 +8,9 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from sklearn.metrics import roc_auc_score
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase  # type: ignore
 
-from models_under_pressure.config import EVAL_DATASETS, EVALUATE_PROBES_DIR, RESULTS_DIR
+from models_under_pressure.config import PROJECT_ROOT
 from models_under_pressure.interfaces.dataset import Input, LabelledDataset, to_dialogue
 
 
@@ -37,32 +38,24 @@ def get_dataset_ids_and_token_lengths(
 
     print("Loading dataset and calculating token lengths ...")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-    data_frames = []
+    data = []
 
     for dataset_path in dataset_paths:
-        # Load dataset
         dataset = LabelledDataset.load_from(dataset_path)
-
-        # Get token lengths for each input
-        token_lengths = [len(tokenize(tokenizer, input)) for input in dataset.inputs]
-
-        # Create dataframe
-        df = pd.DataFrame(
+        dataset = dataset.assign(
+            token_length=[len(tokenize(tokenizer, input)) for input in dataset.inputs]
+        )
+        data += [
             {
                 "dataset_name": dataset_path.stem,
-                "ids": dataset.ids,
-                "token_length": token_lengths,
-                "label": dataset.labels_numpy(),
+                "id": record.id,
+                "token_length": record.token_length,
+                "label": record.label.to_int(),
             }
-        )
+            for record in dataset.to_records()
+        ]
 
-        data_frames.append(df)
-
-    # Combine all dataframes
-    output = pd.concat(data_frames, ignore_index=True)
-    output.set_index(["ids", "dataset_name"], inplace=True)
-
-    return output
+    return pd.DataFrame(data).set_index(["id", "dataset_name"])
 
 
 def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
@@ -77,26 +70,25 @@ def get_probe_results(probe_result_paths: dict[str, Path]) -> pd.DataFrame:
 
     """
     print("Loading probe results ... ")
-    data_frames = []
+    data = []
 
     for probe_name, probe_result_path in probe_result_paths.items():
         json_data = [json.loads(line) for line in open(probe_result_path)]
 
         for result in json_data:
-            data = {
-                "ids": result["ids"],
-                "probe_name": probe_name,
-                "preds": result["output_labels"],
-                "labels": result["ground_truth_labels"],
-                "dataset_name": result["dataset_name"],
-            }
+            num_samples = len(result["output_scores"])
+            data += [
+                {
+                    "id": result["ids"][i],
+                    "probe_name": probe_name,
+                    "preds": result["output_scores"][i],
+                    "labels": result["ground_truth_labels"][i],
+                    "dataset_name": result["dataset_name"],
+                }
+                for i in range(num_samples)
+            ]
 
-            df = pd.DataFrame(data)
-            df.set_index(["ids", "dataset_name"], inplace=True)
-
-            data_frames.append(df)
-
-    return pd.concat(data_frames, ignore_index=False)
+    return pd.DataFrame(data).set_index(["id", "dataset_name"])
 
 
 def process_data(
@@ -119,7 +111,7 @@ def process_data(
     df_probe_results = get_probe_results(probe_result_paths)
 
     # Join the dataframes on index (ids and dataset_name)
-    df = df_probe_results.join(df_token_lengths, how="inner")
+    df = df_probe_results.join(df_token_lengths, how="inner").reset_index()
 
     # Create token length bins
     if bins is None:
@@ -134,9 +126,8 @@ def process_data(
     results = []
     for name, group in grouped:
         probe_name, dataset_name, length_bin = name
-
-        # Skip if not enough samples
-        if len(group) < 2:
+        # Skip if not enough samples or if we don't have both labels
+        if len(group) < 2 or len(group["labels"].unique()) < 2:
             continue
 
         # Calculate AUROC
@@ -175,7 +166,9 @@ def process_data(
     return final_df
 
 
-def plot_token_length_bins(df: pd.DataFrame, suffixes: list[str]) -> None:
+def plot_token_length_bins(
+    df: pd.DataFrame, suffixes: list[str], plot_path: Path
+) -> None:
     """
     For each probe and token length bin, plot the mean AUROC across datasets as a bar chart.
     """
@@ -224,30 +217,51 @@ def plot_token_length_bins(df: pd.DataFrame, suffixes: list[str]) -> None:
     plt.tight_layout()
 
     # Save the plot
-    plt.savefig(RESULTS_DIR / "token_length_bins.png", dpi=300, bbox_inches="tight")
+    plt.savefig(plot_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
-if __name__ == "__main__":
-    # Check the probe results:
-    suffixes = [
-        "wOgjTcLk_20250505_094202",
-        "WYerRCIg_20250505_095716",
+def main(result_paths: list[Path], bins: list[int], plot_path: Path):
+    # Use all available datasets for token length info
+    dataset_paths = [
+        PROJECT_ROOT / path
+        for path in json.loads(open(result_paths[0]).readline())["config"][
+            "eval_datasets"
+        ]
     ]
-    results_files = {
-        suffix: EVALUATE_PROBES_DIR / f"results_{suffix}.jsonl" for suffix in suffixes
-    }
 
-    # Create bins for token lengths
-    bins = [0, 128, 256, 512, 1024, float("inf")]
+    probe_result_paths = {}
+    for path in result_paths:
+        suffix = path.stem.replace("results_", "")
+        model_name = (
+            re.search(r"[a-z]+[a-z_]+", suffix)
+            .group()
+            .removesuffix("_test")
+            .replace("_", " ")
+            .title()
+        )
+        probe_result_paths[model_name] = path
 
-    # Process results for each suffix
     final_df = process_data(
-        list(EVAL_DATASETS.values()),
-        results_files,
+        dataset_paths,
+        probe_result_paths,
         "meta-llama/Llama-3.2-1B-Instruct",
         bins,
     )
+    plot_token_length_bins(final_df, list(probe_result_paths.keys()), plot_path)
 
-    # Plot the results
-    plot_token_length_bins(final_df, suffixes)
+
+if __name__ == "__main__":
+    from models_under_pressure.config import DATA_DIR
+
+    results_dir = DATA_DIR / "results/evaluate_probes"
+    result_files = list(results_dir.glob("*.jsonl"))
+    test_result_files = [f for f in result_files if "test" in f.stem]
+    dev_result_files = [f for f in result_files if f not in test_result_files]
+
+    bins = [0, 128, 256, 512, 1024, float("inf")]
+
+    # Plot for dev
+    main(dev_result_files, bins, DATA_DIR / "results/plots/token_length_bins_dev.png")
+    # Plot for test
+    main(test_result_files, bins, DATA_DIR / "results/plots/token_length_bins_test.png")
