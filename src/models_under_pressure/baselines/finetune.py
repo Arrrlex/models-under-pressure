@@ -407,10 +407,35 @@ class ClassifierModule(pl.LightningModule):
         labels = torch.cat([x["labels"] for x in self.test_outputs])
         ids = [id_ for x in self.test_outputs for id_ in x["id"]]
 
-        # No all_gather, just store local results
-        self.test_results._logits = logits.cpu()
-        self.test_results._labels = labels.cpu()
-        self.test_results._ids = ids
+        # Distributed gather
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            world_size = torch.distributed.get_world_size()
+            # Gather logits and labels
+            logits_list = [torch.zeros_like(logits) for _ in range(world_size)]
+            labels_list = [torch.zeros_like(labels) for _ in range(world_size)]
+            torch.distributed.all_gather(logits_list, logits)
+            torch.distributed.all_gather(labels_list, labels)
+            logits = torch.cat(logits_list, dim=0)
+            labels = torch.cat(labels_list, dim=0)
+
+            # Gather ids (strings) using all_gather_object
+            ids_list = [None for _ in range(world_size)]
+            torch.distributed.all_gather_object(ids_list, ids)
+            ids = [item for sublist in ids_list for item in sublist]
+
+            # Only rank 0 sets the results
+            if torch.distributed.get_rank() == 0:
+                self.test_results._logits = logits.cpu()
+                self.test_results._labels = labels.cpu()
+                self.test_results._ids = ids
+            else:
+                self.test_results._logits = None
+                self.test_results._labels = None
+                self.test_results._ids = None
+        else:
+            self.test_results._logits = logits.cpu()
+            self.test_results._labels = labels.cpu()
+            self.test_results._ids = ids
 
 
 class LLMModel(nn.Module):
@@ -452,17 +477,41 @@ class LLMModel(nn.Module):
         # Get hidden size from model config
         hidden_size = _get_hidden_size(self.model)
 
-        new_head = nn.Linear(hidden_size, num_classes)
-        self.model.set_output_embeddings(new_head)
+        # new_head = nn.Linear(hidden_size, num_classes)
+        # self.model.set_output_embeddings(new_head)
 
-        self.model.config.vocab_size = num_classes
-        self.num_classes = num_classes
+        # self.model.config.vocab_size = num_classes
+        self.classifier_head = nn.Linear(hidden_size, num_classes)
+        # self.num_classes = num_classes
         self.hidden_dim = hidden_size
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        return self.model(input_ids, attention_mask=attention_mask).logits[:, -1, :]
+        # Robustly get the base transformer module
+        if hasattr(self.model, "model"):  # e.g., Llama, Gemma, GPT-NeoX
+            base_model = self.model.model
+        elif hasattr(self.model, "transformer"):  # e.g., GPT-2
+            base_model = self.model.transformer
+        else:
+            raise ValueError(
+                "Unknown model architecture: cannot find base transformer module (expected 'model' or 'transformer' attribute)."
+            )
+
+        if hasattr(base_model, "embed_tokens"):
+            print("embed_tokens.weight shape:", base_model.embed_tokens.weight.shape)
+        elif hasattr(base_model, "wte"):
+            print("wte.weight shape:", base_model.wte.weight.shape)
+        else:
+            print("No known embedding attribute found.")
+
+        outputs = base_model(
+            input_ids=input_ids, attention_mask=attention_mask, return_dict=True
+        )
+        last_hidden = outputs.last_hidden_state  # [batch, seq, hidden]
+        last_token = last_hidden[:, -1, :]  # [batch, hidden]
+        logits = self.classifier_head(last_token)  # [batch, num_classes]
+        return logits
 
 
 class StakesDataset(torch.utils.data.Dataset):
@@ -797,6 +846,20 @@ class FinetunedClassifier:
             num_workers=0,
         )
 
+        # Option to use PyTorch Lightning test loop if trainer is available
+        if hasattr(self, "_trainer") and self._trainer is not None:
+            print("Using PyTorch Lightning test loop")
+            # Use PL test loop
+            self._trainer.test(
+                self.classifier,
+                dataloaders=loader,
+            )
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                if torch.distributed.get_rank() != 0:
+                    return BaselineResults(_logits=None, _labels=None, _ids=None)
+            return self.classifier.test_results
+
+        # Manual forward pass fallback (legacy, avoids PL deadlock)
         for batch in loader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -958,13 +1021,13 @@ def get_finetuned_baseline_results(
             val_dataset=val_dataset if use_validation_set else None,
         )
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         del train_dataset
         del val_dataset
 
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        if torch.distributed.get_rank() != 0:
-            return []
+    # if torch.distributed.is_available() and torch.distributed.is_initialized():
+    #    if torch.distributed.get_rank() != 0:
+    #        return []
 
     print("\nLoading eval datasets")
     # We'll use the first eval dataset for the BaselineResults
@@ -986,9 +1049,12 @@ def get_finetuned_baseline_results(
         eval_results.append(eval_result)
 
         # After each eval, clear the cache, delete the baseline model and dataset subset.
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         del eval_dataset
 
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            if torch.distributed.get_rank() != 0:
+                continue
         if results_dir is not None:
             print(
                 f"Saving results for {dataset_name} to {results_dir / 'finetuning.jsonl'}"
