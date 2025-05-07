@@ -626,7 +626,9 @@ class LabelledDataset(BaseDataset[LabelledRecord]):
 
 
 def subsample_balanced_subset(
-    dataset: LabelledDataset, n_per_class: Optional[int] = None
+    dataset: LabelledDataset,
+    n_per_class: Optional[int] = None,
+    include_ambiguous: bool = False,
 ) -> LabelledDataset:
     """Subsample a balanced subset of the dataset"""
     high_stakes_indices = [
@@ -635,13 +637,27 @@ def subsample_balanced_subset(
     low_stakes_indices = [
         i for i, label in enumerate(dataset.labels) if label == Label.LOW_STAKES
     ]
+    if include_ambiguous:
+        ambiguous_indices = [
+            i for i, label in enumerate(dataset.labels) if label == Label.AMBIGUOUS
+        ]
 
-    n_per_class = n_per_class or min(len(high_stakes_indices), len(low_stakes_indices))
+    if n_per_class is None:
+        if include_ambiguous:
+            n_per_class = min(
+                len(high_stakes_indices),
+                len(low_stakes_indices),
+                len(ambiguous_indices),
+            )
+        else:
+            n_per_class = min(len(high_stakes_indices), len(low_stakes_indices))
 
     try:
         indices = random.sample(high_stakes_indices, n_per_class) + random.sample(
             low_stakes_indices, n_per_class
         )
+        if include_ambiguous:
+            indices += random.sample(ambiguous_indices, n_per_class)
     except ValueError:
         breakpoint()
 
