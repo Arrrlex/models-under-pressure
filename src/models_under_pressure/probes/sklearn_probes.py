@@ -57,7 +57,8 @@ class SklearnProbe(Probe):
         dataset: LabelledDataset,
         validation_dataset: LabelledDataset | None = None,
     ) -> Self:
-        print("Warning: SklearnProbe does not use a validation dataset")
+        if validation_dataset is not None:
+            print("Warning: SklearnProbe does not use a validation dataset")
         activations_obj = Activation.from_dataset(dataset)
 
         print("Training probe...")

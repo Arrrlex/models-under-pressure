@@ -17,14 +17,20 @@ from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
 from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
+    AutoModelForCausalLM,  # type: ignore
+    AutoTokenizer,  # type: ignore
+    PreTrainedTokenizer,  # type: ignore
+    PreTrainedTokenizerFast,  # type: ignore
 )
 from tqdm import tqdm
 
-from models_under_pressure.config import FinetuneBaselineConfig, global_settings
+from models_under_pressure.config import (
+    EVAL_DATASETS,
+    RESULTS_DIR,
+    SYNTHETIC_DATASET_PATH,
+    FinetuneBaselineConfig,
+    global_settings,
+)
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
@@ -463,6 +469,8 @@ class LLMModel(nn.Module):
         self.num_classes = num_classes
         self.hidden_dim = hidden_size
         self.padding_side = padding_side
+
+        self.model.gradient_checkpointing_enable()
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
@@ -1071,7 +1079,7 @@ def get_finetuned_baseline_results(
     return eval_results
 
 
-if __name__ == "__main__":
+def check_collate_fn():
     import argparse
     import random
     from models_under_pressure.dataset_utils import load_dataset
@@ -1136,3 +1144,58 @@ if __name__ == "__main__":
     decoded_text = tokenizer.decode(collated["input_ids"][0], skip_special_tokens=False)
     print("\nDecoded input_ids (including special tokens):")
     print(decoded_text)
+
+
+def run_finetune_baselines():
+    seeds = [0, 1, 2]
+    finetune_model = "Llama-3.1-8B-Instruct"
+
+    for seed in seeds:
+        pl.seed_everything(seed)
+
+        # Should be defined via a hydra run config file:
+        finetune_config = FinetuneBaselineConfig(
+            model_name_or_path="meta-llama/" + finetune_model,
+            num_classes=2,
+            ClassifierModule={  # set here to the default values
+                "learning_rate": 1e-4,
+                "weight_decay": 0.01,
+                "scheduler_params": None,
+                "class_weights": None,
+                "label_smoothing": 0.0,
+            },
+            batch_size=1,
+            shuffle=True,
+            logger={
+                "_target_": "pytorch_lightning.loggers.WandbLogger",
+                "project": "models-under-pressure",
+            },
+            Trainer={
+                "max_epochs": 40,  # 20,
+                "accelerator": "gpu",
+                "devices": [0],
+                "precision": "bf16-true",
+                "default_root_dir": global_settings.PL_DEFAULT_ROOT_DIR,
+                "accumulate_grad_batches": 16,
+            },
+        )
+
+        results = get_finetuned_baseline_results(
+            finetune_config,
+            SYNTHETIC_DATASET_PATH,
+            EVAL_DATASETS,
+            compute_activations=False,
+            max_samples=4000,
+        )
+
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        output_path = (
+            RESULTS_DIR
+            / f"finetune_baselines_{finetune_model}__{seed}_{timestamp}.jsonl"
+        )
+        for result in results:
+            result.save_to(output_path)
+
+
+if __name__ == "__main__":
+    run_finetune_baselines()

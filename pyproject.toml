@@ -45,7 +45,9 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "memray>=1.17.1",
     "pyyaml>=6.0.2",
-    "deepspeed",
+    "deepspeed>=0.16.7",
+    "peft>=0.15.2",
+    "evaluate>=0.4.3",
 ]
 
 [build-system]

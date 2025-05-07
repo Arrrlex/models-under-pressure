@@ -1,5 +1,4 @@
 # Code to generate Figure 2
-import json
 from pathlib import Path
 
 import numpy as np
@@ -7,11 +6,13 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_splits_lazy
 from models_under_pressure.interfaces.dataset import LabelledDataset
@@ -20,15 +21,7 @@ from models_under_pressure.interfaces.results import DatasetResults, EvaluationR
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
-from models_under_pressure.probes.pytorch_classifiers import (
-    AttentionProbeAttnThenLinear,
-    AttentionProbeAttnWeightLogits,
-    PytorchAttentionClassifier,
-    PytorchDifferenceOfMeansClassifier,
-    PytorchSimpleAttentionClassifier,
-)
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
-from models_under_pressure.probes.sklearn_probes import SklearnProbe
 from models_under_pressure.utils import double_check_config
 
 
@@ -91,7 +84,7 @@ def evaluate_probe_and_save_results(
 
         # calculate logits for the per token probe scores
         per_token_probe_logits = inv_softmax(per_token_probe_scores)
-        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)
+        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
 
         # Assert no NaN values in the per token probe logits
         for i, logits in enumerate(per_token_probe_logits):
@@ -140,46 +133,19 @@ def evaluate_probe_and_save_results(
             overwrite=True,
         )
 
-    return per_entry_probe_scores.tolist(), DatasetResults(
+    return per_entry_probe_scores.tolist(), DatasetResults(  # type: ignore
         layer=layer,
         metrics=calculate_metrics(
-            eval_dataset.labels_numpy(), per_entry_probe_scores, fpr
+            eval_dataset.labels_numpy(),
+            per_entry_probe_scores,  # type: ignore
+            fpr,  # type: ignore
         ),
     )
 
 
-def get_coefs(probe: Probe) -> list[float]:
-    if isinstance(probe, SklearnProbe):
-        coefs = list(probe._classifier.named_steps["logisticregression"].coef_)  # type: ignore
-    elif isinstance(probe, PytorchProbe):
-        if isinstance(probe._classifier, PytorchDifferenceOfMeansClassifier):
-            # For difference of means classifier, weights are directly in the linear layer
-            if probe._classifier.model is None:
-                raise ValueError("Classifier model is None")
-            else:
-                coefs = list(
-                    probe._classifier.model.weight.data.cpu().float().numpy().flatten()  # type: ignore
-                )
-        elif isinstance(probe._classifier, PytorchAttentionClassifier):
-            # For attention probe, get the weights from the final linear layer
-            model = probe._classifier.model
-            if isinstance(model, AttentionProbeAttnThenLinear):
-                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())  # type: ignore
-            elif isinstance(model, AttentionProbeAttnWeightLogits):
-                coefs = list(model.linear.weight.data.cpu().float().numpy().flatten())
-            else:
-                raise ValueError(f"Unknown attention probe model type: {type(model)}")
-        elif isinstance(probe._classifier, PytorchSimpleAttentionClassifier):
-            coefs = list()  # type: ignore
-        else:
-            # For regular PyTorch probe, weights are in the second layer of Sequential
-            coefs = list(probe._classifier.model[1].weight.data.cpu().float().numpy())  # type: ignore
-    return coefs
-
-
 def run_evaluation(
     config: EvalRunConfig,
-) -> tuple[list[EvaluationResult], list[float]]:
+) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
     splits = load_splits_lazy(
         dataset_path=config.dataset_path,
@@ -212,6 +178,7 @@ def run_evaluation(
         train_dataset=splits["train"],
         validation_dataset=validation_dataset,
         model_name=config.model_name,
+        use_store=global_settings.USE_PROBE_STORE,
     )
 
     results_list = []
@@ -241,6 +208,7 @@ def run_evaluation(
         )
 
         ground_truth_labels = eval_dataset.labels_numpy().tolist()
+        ids = list(eval_dataset.ids)
 
         if "scale_labels" in eval_dataset.other_fields:
             ground_truth_scale_labels = [
@@ -268,6 +236,7 @@ def run_evaluation(
             output_labels=list(int(a > 0.5) for a in probe_scores),
             ground_truth_scale_labels=ground_truth_scale_labels,
             ground_truth_labels=ground_truth_labels,
+            ids=ids,
             dataset_path=eval_dataset_path,
             best_epoch=best_epoch,
         )
@@ -276,26 +245,20 @@ def run_evaluation(
 
         del eval_dataset
 
-    coefs = get_coefs(probe)
-
     print(f"Saving results to {EVALUATE_PROBES_DIR / config.output_filename}")
     for result in results_list:
         result.save_to(EVALUATE_PROBES_DIR / config.output_filename)
-    if len(coefs) > 0:
-        coefs_dict = {
-            "id": config.id,
-            "coefs": coefs[0].tolist(),  # type: ignore
-        }
-        with open(EVALUATE_PROBES_DIR / config.coefs_filename, "w") as f:
-            json.dump(coefs_dict, f)
 
-    return results_list, coefs
+    return results_list
 
 
 if __name__ == "__main__":
     # Set random seed for reproducibility
+
     RANDOM_SEED = 0
     np.random.seed(RANDOM_SEED)
+
+    config_path = CONFIG_DIR / "probe/attention.yaml"
 
     config = EvalRunConfig(
         layer=31,
@@ -305,26 +268,24 @@ if __name__ == "__main__":
             name=ProbeType.attention,
             hyperparams={
                 "batch_size": 16,
-                "epochs": 50,
+                "epochs": 200,
                 "optimizer_args": {
-                    "lr": 1e-3,
-                    "weight_decay": 0.0004,
+                    "lr": 5e-3,
+                    "weight_decay": 1e-3,
                 },
                 "attn_hidden_dim": 27,
-                "probe_architecture": "simple_attention",
+                "probe_architecture": "attention_then_linear",
                 "scheduler_decay": 0.62,
+                "final_lr": 5e-5,
                 "gradient_accumulation_steps": 4,
+                "patience": 30,
             },
         ),
         compute_activations=False,
-        # dataset_path=TRAIN_DIR / "prompts_25_03_25_gpt-4o_original_plus_new.jsonl",
         dataset_path=SYNTHETIC_DATASET_PATH,
-        # dataset_path=INPUTS_DIR / "combined_deployment_dataset.jsonl",
-        # validation_dataset=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
         eval_datasets=list(EVAL_DATASETS.values()),
     )
-
     double_check_config(config)
 
     print(f"Running probe evaluation with ID {config.id}")

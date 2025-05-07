@@ -1,5 +1,6 @@
-name: linear_then_mean
+name: linear_then_softmax
 hyperparams:
+  temperature: 5
   batch_size: 16
   epochs: 200
   optimizer_args:
@@ -7,4 +8,4 @@ hyperparams:
     weight_decay: 1e-3
   final_lr: 1e-4
   gradient_accumulation_steps: 4
-  patience: 50
+  patience: 10
