@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 import pandas as pd
 import torch
@@ -82,7 +82,7 @@ def get_dataset_ids_and_token_lengths(
     return pd.DataFrame(data)
 
 
-def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
+def get_probe_results(probe_result_paths: Iterable[Path]) -> pd.DataFrame:
     """
     Read the results file, return a dataframe where each row is an entry in a dataset.
     The dataset is structured as:
@@ -120,7 +120,8 @@ def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
 
 
 def get_probe_results_with_token_lengths(
-    probe_result_paths: list[Path], tokenizer_name: str
+    probe_result_paths: Iterable[Path],
+    tokenizer_name: str,
 ) -> pd.DataFrame:
     """
     Read the results file, return a dataframe where each row is an entry in a dataset.
@@ -279,7 +280,9 @@ def plot_token_length_bins(df: pd.DataFrame, plot_path: Path) -> None:
     plt.close()
 
 
-def plot_rolling_auroc(df: pd.DataFrame, plot_path: Path, window_size: int) -> None:
+def plot_rolling_auroc(
+    df: pd.DataFrame, plot_path: Path, window_size: int | None = None
+) -> None:
     """
     Plot rolling AUROC over token length by taking rolling windows of IDs and calculating
     AUROC for each probe within those windows.
@@ -289,6 +292,9 @@ def plot_rolling_auroc(df: pd.DataFrame, plot_path: Path, window_size: int) -> N
         plot_path: Path to save the plot
         window_size: Number of IDs to include in each rolling window
     """
+    if window_size is None:
+        window_size = len(df) // 25
+
     plt.figure(figsize=(12, 7))
 
     # Get unique IDs and sort them by token length
@@ -310,7 +316,7 @@ def plot_rolling_auroc(df: pd.DataFrame, plot_path: Path, window_size: int) -> N
         rolling_auroc = []
         token_lengths = []
 
-        stride = window_size // 25
+        stride = max(1, window_size // 15)
 
         # Take rolling windows of IDs
         for i in tqdm(
@@ -388,56 +394,155 @@ def plot_token_length_distributions(df: pd.DataFrame, plot_path: Path) -> None:
     plt.close()
 
 
+def plot_sparklines_auroc(df: pd.DataFrame, plot_path: Path) -> None:
+    """
+    Create a sparklines-style plot showing AUROC trends by dataset, with each dataset as a row
+    and different probes shown as colored lines. This provides a compact visualization of trends
+    across all datasets.
+
+    Args:
+        df: DataFrame containing token lengths, predictions, and labels
+        plot_path: Path to save the plot
+    """
+    # Get unique datasets and sort them
+    datasets = sorted(df["dataset_name"].unique())
+    n_datasets = len(datasets)
+
+    # Create figure with one subplot per dataset
+    fig, axes = plt.subplots(n_datasets, 1, figsize=(12, 2 * n_datasets))
+    fig.suptitle("AUROC Trends by Dataset and Probe", y=0.95)
+
+    # Get unique IDs and sort them by token length
+    unique_ids = df[["id", "dataset_name", "token_length"]].drop_duplicates()
+    unique_ids = unique_ids.sort_values("token_length")
+
+    # Get unique probes
+    unique_probes = df["probe_name"].unique()
+    probe_colors = {probe: f"C{i}" for i, probe in enumerate(unique_probes)}
+
+    # Calculate rolling AUROC for each dataset and probe
+    for idx, dataset in tqdm(
+        enumerate(datasets), desc="Plotting sparklines", total=len(datasets)
+    ):
+        ax = axes[idx]
+        dataset_df = df[df["dataset_name"] == dataset]
+        dataset_ids = unique_ids[unique_ids["dataset_name"] == dataset]
+
+        # Calculate dataset-specific window size (aim for ~15 windows per dataset)
+        dataset_window_size = max(2, len(dataset_ids) // 15)
+        stride = max(1, dataset_window_size // 15)
+
+        # Store all AUROC values for this dataset to determine y-axis limits
+        dataset_aurocs = []
+
+        # Calculate rolling AUROC for each probe
+        for probe_name in unique_probes:
+            probe_data = dataset_df[dataset_df["probe_name"] == probe_name]
+            if len(probe_data) == 0:
+                continue
+
+            # Calculate rolling AUROC
+            rolling_auroc = []
+            token_lengths = []
+
+            for i in range(0, len(dataset_ids) - dataset_window_size + 1, stride):
+                window_ids = dataset_ids.iloc[i : i + dataset_window_size]
+                window_data = probe_data.merge(
+                    window_ids[["id", "dataset_name"]], on=["id", "dataset_name"]
+                )
+
+                if len(window_data["label"].unique()) < 2:
+                    continue
+
+                auroc = roc_auc_score(window_data["label"], window_data["pred"])
+                rolling_auroc.append(auroc)
+                token_lengths.append(window_ids["token_length"].mean())
+
+            if rolling_auroc:  # Only plot if we have data
+                dataset_aurocs.extend(rolling_auroc)
+                ax.plot(
+                    token_lengths,
+                    rolling_auroc,
+                    label=probe_name,
+                    color=probe_colors[probe_name],
+                    linewidth=1.5,
+                )
+
+        # Customize subplot
+        ax.set_title(f"{dataset} (window={dataset_window_size})", pad=5)
+        ax.grid(True, linestyle="--", alpha=0.3)
+
+        # Only show x-axis labels for bottom plot
+        if idx == n_datasets - 1:
+            ax.set_xlabel("Token Length")
+        else:
+            ax.set_xticklabels([])
+
+        # Set y-axis limits based on this dataset's AUROC values
+        if dataset_aurocs:
+            y_min = min(dataset_aurocs) - 0.05
+            y_max = max(dataset_aurocs) + 0.05
+            ax.set_ylim(y_min, y_max)
+
+        # Add legend only to the first subplot
+        if idx == 0:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+
 def main(
-    result_paths: list[Path],
-    bins: list[int],
+    result_paths: Iterable[Path],
     suffix: str,
     probes: list[str],
-    window_size: int,
 ):
     plots_dir = DATA_DIR / "results/plots"
-    # Use all available datasets for token length info
     df = get_probe_results_with_token_lengths(
-        result_paths, "meta-llama/Llama-3.2-1B-Instruct"
+        probe_result_paths=result_paths,
+        tokenizer_name="meta-llama/Llama-3.2-1B-Instruct",
+    )
+
+    plot_token_length_distributions(
+        df=df[df.probe_name == df.probe_name.iloc[0]],
+        plot_path=plots_dir / f"token_length_distributions_{suffix}.png",
     )
 
     # Filter for selected probes
     df = df[df["probe_name"].isin(probes)]
 
-    bins_df = process_data(df, bins)
-    plot_token_length_bins(bins_df, plots_dir / f"auroc_token_length_bins_{suffix}.png")
+    # Create rolling average plot for all datasets
+    # plot_rolling_auroc(
+    #     df,
+    #     plot_path=plots_dir / f"auroc_token_length_rolling_all_datasets_{suffix}.png",
+    # )
 
-    # Create rolling average plot
-    rolling_plot_path = plots_dir / f"auroc_token_length_rolling_{suffix}.png"
-    plot_rolling_auroc(df, rolling_plot_path, window_size=window_size)
+    # for dataset in df.dataset_name.unique():
+    #     print(f"Plotting rolling AUROC for {dataset}")
+    #     plot_rolling_auroc(
+    #         df[df["dataset_name"] == dataset],
+    #         plots_dir / f"auroc_token_length_rolling_{dataset.lower()}_{suffix}.png",
+    #     )
 
-    plot_token_length_distributions(
-        df, plots_dir / f"token_length_distributions_{suffix}.png"
+    plot_sparklines_auroc(
+        df,
+        plots_dir / f"auroc_sparklines_all_datasets_{suffix}.png",
     )
 
 
 if __name__ == "__main__":
     results_dir = DATA_DIR / "results/evaluate_probes"
-    test_result_files = set(results_dir.glob("*test*.jsonl"))
-    dev_result_files = set(results_dir.glob("*.jsonl")) - test_result_files
-
-    bins = [0, 128, 256, 512, 1024, float("inf")]
-
     selected_probes = ["Attention", "Linear Then Mean", "Linear Then Softmax"]
 
-    # Plot for dev
     main(
-        list(dev_result_files),
-        bins,
-        suffix="dev",
-        probes=selected_probes,
-        window_size=500,
-    )
-    # Plot for test
-    main(
-        list(test_result_files),
-        bins,
+        set(results_dir.glob("*test*.jsonl")),
         suffix="test",
         probes=selected_probes,
-        window_size=500,
+    )
+
+    main(
+        set(results_dir.glob("*dev*.jsonl")),
+        suffix="dev",
+        probes=selected_probes,
     )
