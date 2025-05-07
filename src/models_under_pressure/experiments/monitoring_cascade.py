@@ -303,7 +303,8 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             two_step_baseline_strategy=cfg.analysis.two_step_baseline_strategy,
             first_baseline_model_name=cfg.first_baseline_model_name,
             target_dataset=cfg.analysis.target_dataset,
-            model_names=cfg.analysis.model_names,
+            baseline_models=cfg.analysis.baseline_models,
+            finetuned_baseline_models=cfg.analysis.finetuned_baseline_models,
         )
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
@@ -390,6 +391,8 @@ def get_per_token_flops(full_model_name: str) -> int:
     #  which we don't have in our datasets.)
     if model_name == "llama-1b":
         per_token_flops = 2.0 * 10**9
+    elif model_name == "llama-3b":
+        per_token_flops = 6.0 * 10**9  # TODO Update this
     elif model_name == "llama-8b":
         per_token_flops = 1.6 * 10**10
     elif model_name == "llama-70b":
@@ -566,7 +569,10 @@ def evaluate_single_baseline_cascade(
         scores = [baseline_results.high_stakes_scores[i] for i in sampled_indices]
     else:  # FinetunedBaselineResults
         # For finetuned baselines, we don't have token counts, so use a fixed value
-        sampled_flops = [int(per_token_flops) * 1 for _ in sampled_indices]
+        sampled_flops = [
+            int(per_token_flops) * baseline_results.token_counts[i]
+            for i in sampled_indices
+        ]
         scores = [baseline_results.scores[i] for i in sampled_indices]
 
     sampled_results = CascadeResults(
@@ -601,15 +607,15 @@ def get_activation_dim(full_model_name: str) -> int:
     if model_name == "llama-1b":
         activation_dim = 2048
     elif model_name == "gemma-1b":
-        activation_dim = 2048
+        activation_dim = 1152
     elif model_name == "llama-8b":
         activation_dim = 4096
     elif model_name == "llama-70b":
         activation_dim = 8192
     elif model_name == "gemma-12b":
-        activation_dim = 4096
+        activation_dim = 3840
     elif model_name == "gemma-27b":
-        activation_dim = 4096
+        activation_dim = 5376
     else:
         raise ValueError(f"Unknown activation dimension for model: {model_name}")
     return int(activation_dim)
@@ -729,10 +735,11 @@ def compute_cascade_results(
     probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
     probe_strategy: dict[str, str],
-    two_step_baseline_strategy: dict[str, str] = None,
+    two_step_baseline_strategy: dict[str, str] | None = None,
     first_baseline_model_name: Optional[str] = None,
     target_dataset: Optional[str] = None,
-    model_names: Optional[List[str]] = None,
+    baseline_models: Optional[List[str]] = None,
+    finetuned_baseline_models: Optional[List[str]] = None,
 ):
     """Compute cascade results for all datasets or a specific dataset.
 
@@ -743,7 +750,8 @@ def compute_cascade_results(
         results_file: Path to save results to
         first_baseline_model_name: Name of the first baseline model for two-step cascades
         target_dataset: If specified, only compute results for this dataset
-        model_names: If specified, only include baseline results and cascades involving these models
+        baseline_models: If specified, only include baseline results and cascades involving these models
+        finetuned_baseline_models: If specified, only include finetuned baseline results and cascades involving these models
     """
     fraction_of_sample_options = [0.1 * i for i in range(1, 11)]
 
@@ -764,22 +772,25 @@ def compute_cascade_results(
             continue
 
         # Filter baseline results if model_names is specified
-        if model_names is not None:
+        if baseline_models is not None:
             baseline_results = [
                 result
                 for result in baseline_results
-                if get_abbreviated_model_name(result.model_name) in model_names
+                if get_abbreviated_model_name(result.model_name) in baseline_models
             ]
+
+        if finetuned_baseline_models is not None:
             finetuned_baseline_results = [
                 result
                 for result in finetuned_baseline_results
-                if get_abbreviated_model_name(result.model_name) in model_names
+                if get_abbreviated_model_name(result.model_name)
+                in finetuned_baseline_models
             ]
-            if not baseline_results and not finetuned_baseline_results:
-                print(
-                    f"No baseline results found for specified models in dataset {dataset_name}"
-                )
-                continue
+        if not baseline_results and not finetuned_baseline_results:
+            print(
+                f"No baseline results found for specified models in dataset {dataset_name}"
+            )
+            continue
 
         # Evaluate baseline cascades
         print(f"\nBaseline Results for {dataset_name}:")
@@ -851,7 +862,11 @@ def compute_cascade_results(
             strategies = [probe_strategy]
 
             print(f"\nProbe+Baseline Cascade Results for {dataset_name}:")
-            for baseline_result in baseline_results + finetuned_baseline_results:
+            for is_finetuned, baseline_result in zip(
+                [False] * len(baseline_results)
+                + [True] * len(finetuned_baseline_results),
+                baseline_results + finetuned_baseline_results,
+            ):
                 for fraction_of_samples in fraction_of_sample_options:
                     for strategy in strategies:
                         print(
@@ -875,7 +890,9 @@ def compute_cascade_results(
                         write_cascade_results_to_file(
                             results=probe_baseline_cascade_results,
                             output_file=results_file,
-                            cascade_type="probe_baseline",
+                            cascade_type="probe_baseline"
+                            if not is_finetuned
+                            else "probe_finetuned_baseline",
                             model_name=baseline_result.model_name,
                             probe_model_name=probe_results.config.model_name,
                             fraction_of_samples=fraction_of_samples,
@@ -1011,7 +1028,11 @@ def plot_cascade_results(
         baseline_model = result.get("baseline_model_name")
         if baseline_model:
             # Create a unique key for each method
-            if result["cascade_type"] in ["probe_baseline", "two_step_baseline"]:
+            if result["cascade_type"] in [
+                "probe_baseline",
+                "two_step_baseline",
+                "probe_finetuned_baseline",
+            ]:
                 key = (
                     baseline_model,
                     result["cascade_type"],
@@ -1059,6 +1080,11 @@ def plot_cascade_results(
             "bottom": ":",
             "mid": "-.",
         },
+        "probe_finetuned_baseline": {
+            "top": "-.",
+            "bottom": ":",
+            "mid": "--",
+        },
         "two_step_baseline": {
             "top": "--",
             "bottom": ":",
@@ -1077,9 +1103,17 @@ def plot_cascade_results(
             linestyle = line_styles["baseline"]
         elif cascade_type == "finetuned_baseline":
             linestyle = line_styles["finetuned_baseline"]
-        else:  # probe_baseline or two_step_baseline
+        elif cascade_type in [
+            "probe_baseline",
+            "probe_finetuned_baseline",
+            "two_step_baseline",
+        ]:
             selection_strategy = key[2]
+            remaining_strategy = key[3]
+            merge_strategy = key[4]
             linestyle = line_styles[cascade_type][selection_strategy]
+        else:
+            raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Sort fractions
         fractions = sorted(fraction_results.keys())
@@ -1105,7 +1139,11 @@ def plot_cascade_results(
             label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "finetuned_baseline":
             label = f"Finetuned Baseline ({get_abbreviated_model_name(baseline_model)})"
-        elif cascade_type == "probe_baseline":
+        elif cascade_type in [
+            "probe_baseline",
+            "probe_finetuned_baseline",
+            "two_step_baseline",
+        ]:
             selection_strategy = key[2]
             remaining_strategy = key[3]
             merge_strategy = key[4]
@@ -1115,23 +1153,11 @@ def plot_cascade_results(
                 else "fixed_0"
             )
             if show_strategy_in_legend:
-                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
+                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
             else:
-                label = f"Probe+Baseline ({get_abbreviated_model_name(baseline_model)})"
-        else:  # two_step_baseline
-            selection_strategy = key[2]
-            remaining_strategy = key[3]
-            merge_strategy = key[4]
-            first_baseline = key[4]  # probe_model_name is stored here
-            remaining_strategy_display = (
-                remaining_strategy.replace("fixed_", "fixed=")
-                if remaining_strategy
-                else "fixed_0"
-            )
-            if show_strategy_in_legend:
-                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
-            else:
-                label = f"Two-Step Baseline ({get_abbreviated_model_name(first_baseline)}→{get_abbreviated_model_name(baseline_model)})"
+                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+        else:
+            raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Plot line with shaded region
         plt.plot(
@@ -1331,22 +1357,15 @@ def evaluate_two_baselines_cascade(
         remaining_strategy: How to handle remaining samples
             Options: "fixed_X" where X is the fixed score, or "baseline"
     """
-    # Handle token counts for both types of baseline results
-    if isinstance(first_baseline_results, LikelihoodBaselineResults):
-        assert first_baseline_results.token_counts is not None
-        first_token_counts = first_baseline_results.token_counts
-    else:  # FinetunedBaselineResults
-        first_token_counts = [1] * len(
-            first_baseline_results.scores
-        )  # Use fixed token count of 1
+    assert first_baseline_results.ground_truth_scale_labels is not None
+    assert second_baseline_results.ground_truth_scale_labels is not None
 
-    if isinstance(second_baseline_results, LikelihoodBaselineResults):
-        assert second_baseline_results.token_counts is not None
-        second_token_counts = second_baseline_results.token_counts
-    else:  # FinetunedBaselineResults
-        second_token_counts = [1] * len(
-            second_baseline_results.scores
-        )  # Use fixed token count of 1
+    # Handle token counts for both types of baseline results
+    assert first_baseline_results.token_counts is not None
+    first_token_counts = first_baseline_results.token_counts
+
+    assert second_baseline_results.token_counts is not None
+    second_token_counts = second_baseline_results.token_counts
 
     assert first_baseline_results.ids == second_baseline_results.ids
 
@@ -1406,7 +1425,8 @@ def evaluate_probe_baseline_cascade(
     assert probe_results.ground_truth_labels is not None
     assert probe_results.ground_truth_scale_labels is not None
     assert probe_results.token_counts is not None
-
+    assert baseline_results.token_counts is not None
+    assert baseline_results.ground_truth_scale_labels is not None
     assert probe_results.ids == baseline_results.ids
 
     # Get model-specific per_token_flops
@@ -1424,18 +1444,12 @@ def evaluate_probe_baseline_cascade(
     )
 
     # Create baseline cascade results for all samples (second step)
+    baseline_flops = [
+        int(per_token_flops) * count for count in baseline_results.token_counts
+    ]
     if isinstance(baseline_results, LikelihoodBaselineResults):
-        assert baseline_results.token_counts is not None
-        baseline_flops = [
-            int(per_token_flops) * count for count in baseline_results.token_counts
-        ]
         scores = baseline_results.high_stakes_scores
     else:  # FinetunedBaselineResults
-        assert baseline_results.token_counts is not None
-        # For finetuned baselines, we don't have token counts, so use a fixed value
-        baseline_flops = [
-            int(per_token_flops) * count for count in baseline_results.token_counts
-        ]
         scores = baseline_results.scores
 
     baseline_cascade = CascadeResults(

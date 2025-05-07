@@ -5,7 +5,8 @@ input_dir: data/results/monitoring_cascade  # Directory containing computed resu
 first_baseline_model_name: null  # If specified, enables two-step baseline cascades
 
 analysis:
-  model_names: ["gemma-12b", "gemma-27b", "llama-70b"]  # If specified, only include these baseline models
+  baseline_models: ["gemma-12b", "gemma-27b", "llama-70b"]  # If specified, only include these baseline models
+  finetuned_baseline_models: ["gemma-1b"]  # If specified, only include these finetuned baseline models
   target_dataset: null  # If specified, only analyze results for this dataset
   probe_strategy:
     selection_strategy: "mid"
