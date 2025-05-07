@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import seaborn as sns
+from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import RESULTS_DIR
 from models_under_pressure.figures.utils import (
@@ -37,61 +41,54 @@ def prepare_data(
 
     # Rename columns output_scores, and output_labels to scores and labels
     probe_results.rename(
-        columns={"output_scores": "probe_scores", "output_labels": "probe_labels"},
+        columns={"output_scores": "scores", "output_labels": "labels"},
         inplace=True,
     )
+    # The labels here are ground truth...
     baseline_results.rename(
         columns={
-            "scores": "baseline_scores",
+            "scores": "scores",
+            "ground_truth": "ground_truth_labels",
         },
         inplace=True,
     )
+    baseline_results["labels"] = (baseline_results["scores"] > 0.5).astype(int)
+
+    # The labels here aren't ground truth...
     continuation_results.rename(
         columns={
-            "high_stakes_scores": "continuation_scores",
+            "high_stakes_scores": "scores",
+            "ground_truth": "ground_truth_labels",
         },
         inplace=True,
     )
+    continuation_results["labels"] = (continuation_results["scores"] > 0.5).astype(int)
 
-    # Add prefix to probe columns
-    probe_cols = [
-        col
-        for col in probe_results.columns
-        if col
-        not in [
-            "probe_scores",
-            "probe_labels",
-            "probe_name",
-            "probe_spec",
-            "dataset_name",
-            "ids",
-        ]
-    ]
-    probe_results.rename(
-        columns={col: f"probe_{col}" for col in probe_cols}, inplace=True
+    continuation_results["method"] = (
+        "continuation_" + continuation_results["model_name"]
     )
+    baseline_results["method"] = "baseline_" + baseline_results["model_name"]
+    probe_results["method"] = "probe_" + probe_results["probe_name"]
 
-    # Add prefix to baseline columns
-    baseline_cols = [
-        col
-        for col in baseline_results.columns
-        if col not in ["baseline_scores", "dataset_name", "ids"]
+    combined_df_columns = [
+        "dataset_name",
+        "ids",
+        "method",
+        "scores",
+        "labels",
+        "ground_truth_labels",
+        "load_id",
     ]
-    baseline_results.rename(
-        columns={col: f"baseline_{col}" for col in baseline_cols}, inplace=True
-    )
-
-    # Add prefix to continuation columns
-    continuation_cols = [
-        col
-        for col in continuation_results.columns
-        if col not in ["continuation_scores", "dataset_name", "ids"]
-    ]
-    continuation_results.rename(
-        columns={col: f"continuation_{col}" for col in continuation_cols}, inplace=True
-    )
 
     # For each probe, baseline and continuation dataset
+    df_combined_results = pd.concat(
+        [
+            probe_results[combined_df_columns],
+            baseline_results[combined_df_columns],
+            continuation_results[combined_df_columns],
+        ],
+        ignore_index=True,
+    )
 
     return df_combined_results
 
@@ -102,153 +99,131 @@ def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     """
 
-    # Create the individual probe, continuation and baseline results:
+    # Calculate the AUROC of a aggregated pandas group
+    def calc_auroc(group: pd.DataFrame) -> float:
+        return float(roc_auc_score(group["ground_truth_labels"], group["scores"]))
 
-    # Aggregate by dataset_name and calculate the AUROC score for the probe_scores, baseline_scores and continuation_scores vs ground truth labels
-    from sklearn.metrics import roc_auc_score
-
-    # Define functions to calculate AUROC for each method
-    def calc_probe_auroc(group: pd.DataFrame) -> float:
-        return float(
-            roc_auc_score(group["probe_ground_truth_labels"], group["probe_scores"])
-        )
-
-    def calc_baseline_auroc(group: pd.DataFrame) -> float:
-        return float(
-            roc_auc_score(group["baseline_ground_truth"], group["baseline_scores"])
-        )
-
-    def calc_continuation_auroc(group: pd.DataFrame) -> float:
-        return float(
-            roc_auc_score(
-                group["continuation_ground_truth"], group["continuation_scores"]
-            )
-        )
-
-    # Calculate AUROC scores using groupby and agg
-    plot_df = (
-        df.groupby("dataset_name")
-        .agg(
-            probe_auroc=("dataset_name", lambda x: calc_probe_auroc(df.loc[x.index])),
-            baseline_auroc=(
-                "dataset_name",
-                lambda x: calc_baseline_auroc(df.loc[x.index]),
-            ),
-            continuation_auroc=(
-                "dataset_name",
-                lambda x: calc_continuation_auroc(df.loc[x.index]),
-            ),
-        )
+    grp = (
+        df.groupby(["dataset_name", "method", "load_id"])
+        .apply(lambda x: float(roc_auc_score(x["ground_truth_labels"], x["scores"])))
         .reset_index()
+        .rename(columns={0: "auroc"})
     )
 
-    # Melt the dataframe to get it into the right format for plotting
-    plot_df = pd.melt(
-        plot_df,
-        id_vars=["dataset_name"],
-        value_vars=["probe_auroc", "baseline_auroc", "continuation_auroc"],
-        var_name="method",
-        value_name="auroc",
+    # Now group by the dataset_name and method and calculate the mean auroc and std of the auroc column:
+    plot_df = grp.groupby(["dataset_name", "method"]).agg(
+        auroc=("auroc", "mean"),
+        auroc_std=("auroc", "std"),
     )
 
-    # Clean up method names by removing '_auroc' suffix
-    plot_df["method"] = plot_df["method"].str.replace("_auroc", "")
-
-    # Calculate mean AUROC values across all datasets for each method
-    mean_aurocs = plot_df.groupby("method")["auroc"].mean().reset_index()
-
-    # Create a new dataframe with the mean values
-    mean_df = pd.DataFrame(
-        {
-            "dataset_name": ["Mean Across Datasets"] * len(mean_aurocs),
-            "method": mean_aurocs["method"],
-            "auroc": mean_aurocs["auroc"],
-        }
-    )
-
-    # Append the mean values to the plot dataframe
-    plot_df = pd.concat([plot_df, mean_df], ignore_index=True)
-
-    breakpoint()
-
-    return plot_df
+    return plot_df.reset_index()
 
 
 def plot_results(plot_df: pd.DataFrame) -> None:
     """
-    Plot the results
+    Plot the results as a grouped bar chart with error bars where available.
     """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import seaborn as sns
 
     # Set the style
     plt.style.use("seaborn-v0_8-whitegrid")
     sns.set_context("paper", font_scale=1.5)
 
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(15, 8))
 
     # Define colors for each method
     colors = {
-        "probe": "#1f77b4",  # blue
-        "baseline": "#ff7f0e",  # orange
-        "continuation": "#2ca02c",  # green
+        "probe_attention": "#1f77b4",  # blue
+        "baseline_meta-llama/Llama-3.1-8B-Instruct": "#ff7f0e",  # orange
+        "continuation_meta-llama/Llama-3.3-70B-Instruct": "#2ca02c",  # green
     }
 
-    # Create the bar plot
-    bar_width = 0.25
+    # Get unique datasets and methods
     datasets = plot_df["dataset_name"].unique()
-    x = np.arange(len(datasets))
+    methods = plot_df["method"].unique()
+
+    # Calculate mean performance across all datasets for each method
+    mean_performances = {}
+    for method in methods:
+        method_data = plot_df[plot_df["method"] == method]
+        mean_performances[method] = method_data["auroc"].mean()
+
+    # Add "Mean" as the first position
+    all_datasets = np.array(["Mean"] + list(datasets))
+
+    # Set up bar positions
+    bar_width = 0.25
+    x = np.arange(len(all_datasets))
 
     # Plot bars for each method
-    for i, method in enumerate(["probe", "baseline", "continuation"]):
+    for i, method in enumerate(methods):
         method_data = plot_df[plot_df["method"] == method]
+
+        # Create arrays aligned with all datasets (including Mean)
+        values = np.full(len(all_datasets), np.nan)
+        errors = np.full(len(all_datasets), np.nan)
+
+        # Set the mean value as the first position
+        values[0] = mean_performances[method]
+
+        # Fill in the values where we have data (starting from position 1)
+        for idx, dataset in enumerate(datasets):
+            dataset_data = method_data[method_data["dataset_name"] == dataset]
+            if not dataset_data.empty:
+                values[idx + 1] = dataset_data["auroc"].iloc[0]
+                errors[idx + 1] = dataset_data["auroc_std"].iloc[0]
+
+        # Only use error bars where std is not NaN and not 0
+        mask = (~np.isnan(errors)) & (errors > 0)
+        yerr = np.where(mask, errors, 0)
+
+        # Plot the bars with error bars
         ax.bar(
             x + (i - 1) * bar_width,
-            method_data["auroc"],
+            values,
             width=bar_width,
-            label=method.capitalize(),
-            color=colors[method],
+            label=method,
+            color=colors.get(
+                method, f"C{i}"
+            ),  # Use predefined color or fallback to default
             alpha=0.8,
+            yerr=yerr
+            if np.any(mask)
+            else None,  # Only show error bars if we have any valid errors
+            capsize=5,
         )
+
+    # Set the x-tick positions
+    ax.set_xticks(x)
+
+    # Create bold "Mean" and regular dataset labels
+    ticklabels = [r"$\mathbf{Mean}$"] + list(datasets)
+    ax.set_xticklabels(ticklabels, rotation=45, ha="right")
+
+    # Add a dotted vertical line to separate Mean from individual datasets
+    ax.axvline(x=0.5, color="gray", linestyle=":", alpha=0.7, linewidth=1.5)
 
     # Add labels, title and legend
     ax.set_xlabel("Dataset")
     ax.set_ylabel("AUROC")
-    ax.set_title("Performance Comparison: Probe vs Baseline vs Continuation")
-    ax.set_xticks(x)
-    ax.set_xticklabels(datasets, rotation=45, ha="right")
-    ax.legend()
+    ax.set_title("Performance Comparison Across Datasets")
+
+    ax.legend(ncols=3, loc="upper left")
 
     # Add grid lines
     ax.grid(True, linestyle="--", alpha=0.7)
 
-    # Add value labels on top of bars
-    for i, method in enumerate(["probe", "baseline", "continuation"]):
-        method_data = plot_df[plot_df["method"] == method]
-        for j, value in enumerate(method_data["auroc"]):
-            ax.text(
-                x[j] + (i - 1) * bar_width,
-                value + 0.01,
-                f"{value:.3f}",
-                ha="center",
-                va="bottom",
-                fontsize=9,
-                rotation=90,
-            )
-
     # Set y-axis limits
     ax.set_ylim(0, 1.1)
 
-    # Adjust layout
+    # Adjust layout to prevent label cutoff
     plt.tight_layout()
 
-    # Show the plot
-    plt.show()
-
     # Save the plot
-    plt.savefig(RESULTS_DIR / "probes_vs_baseline_plot.png")
+    plt.savefig(
+        RESULTS_DIR / "probes_vs_baseline_plot.png", bbox_inches="tight", dpi=300
+    )
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -263,8 +238,6 @@ if __name__ == "__main__":
         baseline_paths=[Path(baseline_path)],
         continuation_paths=[Path(contin_path)],
     )
-
-    breakpoint()
 
     df_plot = create_plot_dataframe(df_combined)
 

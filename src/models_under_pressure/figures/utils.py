@@ -20,9 +20,9 @@ def process_raw_probe_results(result: dict) -> pd.DataFrame:
     data_size = len(result["output_scores"])
 
     for field in list_fields:
-        assert (
-            len(result.get(field, [])) == data_size
-        ), f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
+        assert len(result.get(field, [])) == data_size, (
+            f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
+        )
 
     # Config fields
     config_str = json.dumps(result["config"])
@@ -67,9 +67,9 @@ def process_raw_continuation_results(result: dict) -> pd.DataFrame:
     data_size = len(result["low_stakes_scores"])
 
     for field in list_fields:
-        assert (
-            len(result.get(field, [])) == data_size
-        ), f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
+        assert len(result.get(field, [])) == data_size, (
+            f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
+        )
 
     dataset_name = result["dataset_name"]
     dataset_path = result["dataset_path"]
@@ -109,8 +109,9 @@ def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
     for probe_result_path in probe_result_paths:
         results = [json.loads(line) for line in open(probe_result_path)]
 
-        for result in results:
+        for i, result in enumerate(results):
             df = process_raw_probe_results(result)
+            df["load_id"] = i
             data_frames.append(df)
 
     output = pd.concat(data_frames, ignore_index=False)
@@ -140,8 +141,10 @@ def get_baseline_results(baseline_result_paths: list[Path]) -> pd.DataFrame:
         with open(path) as f:
             results = [json.loads(line) for line in f if line.strip()]
 
-        for result in results:
-            data_frames.append(pd.DataFrame(result))
+        for i, result in enumerate(results):
+            df = pd.DataFrame(result)
+            df["load_id"] = i
+            data_frames.append(df)
 
     output = pd.concat(data_frames, ignore_index=False)
     output["dataset_name"] = output["dataset_name"].apply(map_dataset_name)
@@ -180,8 +183,9 @@ def get_continuation_results(continuation_result_paths: list[Path]) -> pd.DataFr
     for probe_result_path in continuation_result_paths:
         results = [json.loads(line) for line in open(probe_result_path)]
 
-        for result in results:
+        for i, result in enumerate(results):
             df = process_raw_continuation_results(result)
+            df["load_id"] = i
             data_frames.append(df)
 
     output = pd.concat(data_frames, ignore_index=False)
