@@ -2,9 +2,11 @@ from pathlib import Path
 from typing import Any, Dict, Sequence
 
 import torch
-from datasets import Dataset, load_metric
-from peft import LoraConfig, TaskType, get_peft_model
+from datasets import Dataset
+import evaluate
+from peft import LoraConfig, TaskType, get_peft_model, PeftModel
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 from transformers.data.data_collator import DataCollatorWithPadding
 from transformers.models.auto.modeling_auto import AutoModelForSequenceClassification
 from transformers.models.auto.tokenization_auto import AutoTokenizer
@@ -12,12 +14,16 @@ from transformers.trainer import Trainer
 from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
-from models_under_pressure.config import SYNTHETIC_DATASET_PATH
-from models_under_pressure.dataset_utils import load_train_test
-from models_under_pressure.interfaces.dataset import to_dialogue
+from models_under_pressure.config import (
+    EVAL_DATASETS_BALANCED,
+    LOCAL_MODELS,
+    SYNTHETIC_DATASET_PATH,
+)
+from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.interfaces.dataset import Input, to_dialogue
 
 
-def tokenize(tokenizer: AutoTokenizer, inputs: Sequence[str]) -> Dict[str, Any]:
+def tokenize(tokenizer: AutoTokenizer, inputs: Sequence[Input]) -> Dict[str, Any]:
     """Tokenize inputs using the model's chat template."""
     dialogues = [to_dialogue(input) for input in inputs]
     input_dicts = [[d.model_dump() for d in dialogue] for dialogue in dialogues]
@@ -45,7 +51,7 @@ def tokenize(tokenizer: AutoTokenizer, inputs: Sequence[str]) -> Dict[str, Any]:
 
 
 def evaluate_model(
-    model: AutoModelForSequenceClassification,
+    model: AutoModelForSequenceClassification,  # type: ignore
     tokenizer: AutoTokenizer,
     dataset_paths: Dict[str, Path],
 ) -> Dict[str, float]:
@@ -60,46 +66,29 @@ def evaluate_model(
         Dictionary mapping dataset names to their AUROC scores
     """
     results = {}
-    model.eval()
+    model.eval()  # type: ignore
 
     for dataset_name, dataset_path in dataset_paths.items():
         # Load dataset
-        _, test = load_train_test(dataset_path)
+        dataset = load_dataset(dataset_path)
+        tokens = tokenize(tokenizer, dataset.inputs)
 
-        # Convert to HuggingFace dataset
-        test_dict = {
-            "text": test.inputs,
-            "label": [label.to_int() for label in test.labels],
-        }
-        test_ds = Dataset.from_dict(test_dict)
-
-        # Preprocess
-        def preprocess(batch: Dict[str, Any]) -> Dict[str, Any]:
-            tokenized = tokenize(tokenizer, batch["text"])
-            tokenized["labels"] = batch["label"]
-            return tokenized
-
-        test_ds = test_ds.map(
-            preprocess, batched=True, remove_columns=["text", "label"]
-        )
+        # Convert tokens to tensors and move to GPU
+        input_ids = tokens["input_ids"].to(model.device)  # type: ignore
+        attention_mask = tokens["attention_mask"].to(model.device)  # type: ignore
+        labels = torch.tensor([label.to_int() for label in dataset.labels])
 
         # Get predictions
         predictions = []
-        labels = []
-
         with torch.no_grad():
-            for batch in test_ds:
-                input_ids = torch.tensor(batch["input_ids"]).unsqueeze(0)
-                attention_mask = torch.tensor(batch["attention_mask"]).unsqueeze(0)
-
-                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            for i in tqdm(range(len(input_ids))):
+                outputs = model(  # type: ignore
+                    input_ids=input_ids[i : i + 1],
+                    attention_mask=attention_mask[i : i + 1],
+                )
                 logits = outputs.logits
-                probs = torch.softmax(logits, dim=-1)[
-                    :, 1
-                ]  # Get probability of positive class
-
+                probs = torch.softmax(logits, dim=-1)[:, 1]
                 predictions.append(probs.item())
-                labels.append(batch["labels"])
 
         # Calculate AUROC
         auroc = roc_auc_score(labels, predictions)
@@ -114,7 +103,8 @@ def main(base_model: str, training_dataset_path: Path):
 
     # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_model)
-    if tokenizer.pad_token_id is None:
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     # Convert LabelledDataset instances to HuggingFace datasets
@@ -141,9 +131,10 @@ def main(base_model: str, training_dataset_path: Path):
 
     # 2. Load base model and wrap with LoRA
     model = AutoModelForSequenceClassification.from_pretrained(
-        "meta-llama/Llama-3-8B-Instruct",
+        base_model,
         num_labels=2,
     )
+    model.config.pad_token_id = tokenizer.pad_token_id
     lora_cfg = LoraConfig(
         task_type=TaskType.SEQ_CLS,
         inference_mode=False,
@@ -155,7 +146,7 @@ def main(base_model: str, training_dataset_path: Path):
 
     # 3. Training setup
     data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
-    metric = load_metric("accuracy")
+    metric = evaluate.load("accuracy")
 
     def compute_metrics(eval_pred: EvalPrediction) -> Dict[str, float]:
         logits, labels = eval_pred.predictions, eval_pred.label_ids
@@ -171,8 +162,10 @@ def main(base_model: str, training_dataset_path: Path):
         learning_rate=2e-4,
         fp16=True,
         logging_steps=50,
+        eval_strategy="steps",
         eval_steps=200,
-        save_steps=500,
+        save_strategy="steps",
+        save_steps=600,
         save_total_limit=3,
         load_best_model_at_end=True,
         metric_for_best_model="accuracy",
@@ -207,8 +200,47 @@ def main(base_model: str, training_dataset_path: Path):
     return model
 
 
+def load_and_evaluate(
+    base_model: str,
+    adapter_path: str,
+    eval_datasets: Dict[str, Path],
+) -> Dict[str, float]:
+    """Load a saved model and evaluate it on multiple datasets."""
+    # Initialize tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    # Load base model and adapters
+    model = AutoModelForSequenceClassification.from_pretrained(
+        base_model,
+        num_labels=2,
+    )
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model = PeftModel.from_pretrained(model, adapter_path)
+    model = model.to("cuda")  # Move model to GPU
+    model.eval()  # Set to evaluation mode
+
+    # Evaluate
+    results = evaluate_model(model, tokenizer, eval_datasets)
+    print("\nEvaluation Results:")
+    for dataset_name, auroc in results.items():
+        print(f"{dataset_name}: AUROC = {auroc:.4f}")
+
+    return results
+
+
 if __name__ == "__main__":
-    main(
-        base_model="meta-llama/Llama-3-8B-Instruct",
-        training_dataset_path=SYNTHETIC_DATASET_PATH,
+    # To train a new model:
+    # main(
+    #     base_model=LOCAL_MODELS["llama-1b"],
+    #     training_dataset_path=SYNTHETIC_DATASET_PATH,
+    # )
+
+    # To evaluate a saved model:
+    load_and_evaluate(
+        base_model=LOCAL_MODELS["llama-1b"],
+        adapter_path="llama3-stakes-lora-adapters",
+        eval_datasets=EVAL_DATASETS_BALANCED,
     )
