@@ -1261,6 +1261,26 @@ def plot_cascade_results(
     plt.close()
 
 
+def process_dataset_name(dataset_name: str) -> str:
+    if dataset_name.split("_")[0] in [
+        "anthropic",
+        "mt",
+        "mts",
+        "manual",
+        "mask",
+        "toolace",
+        "mental",
+        "redteaming",
+    ]:
+        if dataset_name.startswith("mental"):
+            dataset_name = "mental_health"
+        else:
+            dataset_name = dataset_name.split("_")[0]
+    else:
+        raise ValueError(f"Not implemented for dataset name '{dataset_name}'")
+    return dataset_name
+
+
 def load_existing_results(
     output_dir: Path,
     use_test: bool = False,
@@ -1293,7 +1313,7 @@ def load_existing_results(
                     if use_test:
                         assert (
                             "/evals/test/" in str(result.dataset_path)
-                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
+                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {baseline_file}"
 
     # Read all finetuning baseline files
     for finetuning_file in output_dir.glob("finetuning*.jsonl"):
@@ -1302,20 +1322,7 @@ def load_existing_results(
                 if line.strip():  # Skip empty lines
                     result = FinetunedBaselineResults.model_validate_json(line.strip())
                     # TODO Modify this once proper dataset names are written to the finetuning results!
-                    dataset_name = result.dataset_name
-                    if dataset_name.split("_")[0] in [
-                        "anthropic",
-                        "mt",
-                        "mts",
-                        "manual",
-                        "mask",
-                        "toolace",
-                    ]:
-                        dataset_name = dataset_name.split("_")[0]
-                    else:
-                        raise ValueError(
-                            f"Not implemented for dataset name: {dataset_name}"
-                        )
+                    dataset_name = process_dataset_name(result.dataset_name)
                     finetuned_baseline_results_by_dataset[dataset_name].append(result)
 
     # Read probe results
@@ -1326,8 +1333,9 @@ def load_existing_results(
                 if use_test:
                     assert (
                         "/evals/test/" in str(result.dataset_path)
-                    ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
-                probe_results_by_dataset[result.dataset_name] = result
+                    ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {output_dir / 'probe_results.jsonl'}"
+                dataset_name = process_dataset_name(result.dataset_name)
+                probe_results_by_dataset[dataset_name] = result
 
     return (
         dict(baseline_results_by_dataset),
