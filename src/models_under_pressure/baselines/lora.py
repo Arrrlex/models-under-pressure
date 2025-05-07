@@ -1,10 +1,11 @@
+import sys
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
+import evaluate
 import torch
 from datasets import Dataset
-import evaluate
-from peft import LoraConfig, TaskType, get_peft_model, PeftModel
+from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 from transformers.data.data_collator import DataCollatorWithPadding
@@ -230,17 +231,18 @@ def load_and_evaluate(
 
 
 if __name__ == "__main__":
+    model_name = sys.argv[1]
     base_path = (DATA_DIR / "fine-tuned-models").resolve()
     # To train a new model:
     fine_tune(
-        base_model=LOCAL_MODELS["llama-8b"],
+        base_model=LOCAL_MODELS[model_name],
         training_dataset_path=SYNTHETIC_DATASET_PATH,
-        save_path=base_path / "llama8b-lora",
+        save_path=base_path / f"{model_name}-lora",
     )
 
     # To evaluate a saved model:
     load_and_evaluate(
-        base_model=LOCAL_MODELS["llama-8b"],
-        adapter_path=str(base_path / "llama8b-lora"),
+        base_model=LOCAL_MODELS[model_name],
+        adapter_path=str(base_path / f"{model_name}-lora"),
         eval_datasets=EVAL_DATASETS_BALANCED,
     )
