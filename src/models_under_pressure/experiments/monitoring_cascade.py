@@ -156,7 +156,9 @@ def _run_monitoring_cascade(
         )
         print("\nTraining probe...")
         probe = ProbeFactory.build(
-            probe=probe_spec,
+            probe_spec=probe_spec,
+            model_name=probe_model_name,
+            layer=probe_layer,
             train_dataset=train_dataset,
         )
 
@@ -546,13 +548,13 @@ def evaluate_single_baseline_cascade(
 ) -> CascadeResults:
     assert baseline_results.ground_truth_scale_labels is not None
     assert baseline_results.ground_truth is not None
+    assert baseline_results.token_counts is not None
 
     # Calculate number of samples to use
     total_samples = len(baseline_results.labels)
     num_samples_to_use = int(total_samples * fraction_of_samples)
 
     # Randomly sample indices for the subset
-    np.random.seed(42)  # For reproducibility
     sampled_indices = np.random.choice(total_samples, num_samples_to_use, replace=False)
     remaining_indices = np.setdiff1d(np.arange(total_samples), sampled_indices)
 
@@ -878,6 +880,7 @@ def compute_cascade_results(
                                 baseline_results=baseline_result,
                                 probe_results=probe_results,
                                 fraction_of_samples=fraction_of_samples,
+                                debug=False,
                                 **strategy,
                             )
                         )
