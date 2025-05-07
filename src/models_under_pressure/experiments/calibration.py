@@ -238,18 +238,18 @@ def run_calibration(config: EvalRunConfig):
         config=config,
         n_bins=10,
     )
-    # plot_stacked_histogram(
-    #     y_true_list,
-    #     y_prob_list,
-    #     list(EVAL_DATASETS.keys()) + list(TEST_DATASETS.keys()),
-    #     config=config,
-    #     n_bins=10,
-    # )
+    plot_stacked_histogram(
+        y_true_list,
+        y_prob_list,
+        list(EVAL_DATASETS_RAW.keys()) + list(TEST_DATASETS_BALANCED.keys()),
+        config=config,
+        n_bins=10,
+    )
 
 
 # Main execution
 if __name__ == "__main__":
-    id_used_in_eval = "raw_caliberation_all"
+    id_used_in_eval = "raw_calibration_all"
     model_name = LOCAL_MODELS["llama-70b"]
     layer = 31
     run_calibration(
