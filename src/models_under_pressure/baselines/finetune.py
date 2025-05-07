@@ -26,7 +26,11 @@ from tqdm import tqdm
 
 from models_under_pressure.config import FinetuneBaselineConfig, global_settings
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
-from models_under_pressure.interfaces.dataset import BaseDataset, LabelledDataset
+from models_under_pressure.interfaces.dataset import (
+    BaseDataset,
+    LabelledDataset,
+    to_dialogue,
+)
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
@@ -494,7 +498,7 @@ class StakesDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx: Union[int, slice]):
         return {
-            "text": self.inputs[idx],
+            "input": self.inputs[idx],
             "label": self.labels[idx],
             "id": self.ids[idx],
         }
@@ -517,13 +521,22 @@ def create_collate_fn(
         """
 
         # Extract texts, labels, and ids from batch
-        texts = [item["text"] for item in batch]
+        dialogues = [item["input"] for item in batch]
         labels = [item["label"] for item in batch]
         ids = [str(item["id"]) for item in batch]
 
+        dialogues = [to_dialogue(d) for d in dialogues]
+        input_dicts = [[d.model_dump() for d in dialogue] for dialogue in dialogues]
+
+        input_str = tokenizer.apply_chat_template(
+            input_dicts,
+            tokenize=False,  # Return string instead of tokens
+            add_generation_prompt=False,  # Add final assistant prefix for generation
+        )
+
         # Tokenize the texts
         encoded = tokenizer(
-            texts,
+            input_str,
             padding=True,
             truncation=True,
             max_length=max_length,
@@ -890,7 +903,7 @@ class FinetunedClassifier:
                 collate_fn(
                     [
                         {
-                            "text": sample["text"],
+                            "input": sample["input"],
                             "label": sample["label"],
                             "id": sample["id"],
                         }
@@ -1056,3 +1069,70 @@ def get_finetuned_baseline_results(
                 f.write(eval_result.model_dump_json() + "\n")
 
     return eval_results
+
+
+if __name__ == "__main__":
+    import argparse
+    import random
+    from models_under_pressure.dataset_utils import load_dataset
+    from models_under_pressure.config import EVAL_DATASETS
+
+    default_dataset_path = EVAL_DATASETS["toolace"]
+    default_model_name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
+
+    parser = argparse.ArgumentParser(
+        description="Test collate function and print a random sample from a dataset."
+    )
+    parser.add_argument(
+        "--dataset_path",
+        type=str,
+        default=default_dataset_path,
+        help="Path to the dataset file.",
+    )
+    parser.add_argument(
+        "--model_name_or_path",
+        type=str,
+        default=default_model_name_or_path,
+        help="Model name or path for tokenizer.",
+    )
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        default=512,
+        help="Max sequence length for tokenization.",
+    )
+    args = parser.parse_args()
+
+    # Load dataset
+    dataset = load_dataset(
+        dataset_path=args.dataset_path,
+        model_name=None,
+        layer=None,
+        compute_activations=True,  # Avoid loading activations
+    )
+
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    # Create collate function
+    collate_fn = create_collate_fn(tokenizer, max_length=args.max_length)
+
+    # Wrap dataset in StakesDataset
+    stakes_dataset = StakesDataset(dataset)
+
+    # Get a random sample
+    idxs = list(range(len(stakes_dataset)))
+    random.shuffle(idxs)
+    sample_batch = [stakes_dataset[idxs[0]]]
+    collated = collate_fn(sample_batch)
+
+    print("Random sample from collated batch:")
+    for k, v in collated.items():
+        print(f"{k}: {v}")
+
+    # Decode input_ids back to text (including special tokens)
+    decoded_text = tokenizer.decode(collated["input_ids"][0], skip_special_tokens=False)
+    print("\nDecoded input_ids (including special tokens):")
+    print(decoded_text)
