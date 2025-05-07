@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import typer
 
 from models_under_pressure.interfaces.dataset import Label
 
@@ -122,7 +121,9 @@ def setup_row_analyzer_controls(
 
     # Add probe logits/probs column selection
     probe_columns = [
-        col for col in all_columns if "logit" in col.lower() or "prob" in col.lower()
+        col
+        for col in all_columns
+        if "logit" in col.lower() or "prob" in col.lower() or "attention" in col.lower()
     ]
     probe_column = (
         st.sidebar.selectbox(
@@ -224,6 +225,9 @@ def display_word_level_visualization(
         )
 
         # If we have valid probe values that match the number of tokens
+        probe_values = probe_values[: len(tokens)]
+        # fill the null values with 0
+        probe_values = [0 if x is None else x for x in probe_values]
         if isinstance(probe_values, (list, np.ndarray)) and len(tokens) == len(
             probe_values
         ):
@@ -572,12 +576,11 @@ def add_download_button(data: DashboardDataset) -> None:
     st.download_button("Download CSV", csv, "filtered_data.csv", "text/csv")
 
 
-def main(
-    file_path: str = typer.Argument(..., help="Path to the dataset to visualize"),
-    debug: bool = typer.Option(False, help="Enable debug mode"),
-):
+def main():
     # Load the dataset
-    data = DashboardDataset.load_from(file_path, debug=debug)
+    data = DashboardDataset.load_from(
+        "/home/ubuntu/urja/urja/models-under-pressure/data/results/evaluate_probes/extras_probed.jsonl"
+    )
 
     # Setup page
     setup_page()
@@ -612,4 +615,4 @@ def main(
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    main()

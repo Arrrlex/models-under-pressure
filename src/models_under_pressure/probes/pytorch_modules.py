@@ -18,14 +18,28 @@ class AttnLite(nn.Module):
         self,
         x: Float[torch.Tensor, "batch_size seq_len embed_dim"],
         mask: Float[torch.Tensor, "batch_size seq_len"],
-    ) -> Float[torch.Tensor, " batch_size"]:
+        return_per_token: bool = False,
+    ) -> (
+        Float[torch.Tensor, " batch_size"]
+        | tuple[
+            Float[torch.Tensor, " batch_size"],
+            Float[torch.Tensor, " batch_size seq_len"],
+            Float[torch.Tensor, " batch_size seq_len"],
+        ]
+    ):
         attn_scores = self.context_query(x).squeeze(-1) / self.scale
-        attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
-        attn_weights = torch.softmax(attn_scores, dim=-1)
+        masked_attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
+        attn_weights = torch.softmax(masked_attn_scores, dim=-1)
+
         context = einops.einsum(
             attn_weights, x, "batch seq, batch seq embed -> batch embed"
         )
-        return self.classifier(context).squeeze(-1)
+        sequence_logits = self.classifier(context).squeeze(-1)
+
+        if return_per_token:
+            return sequence_logits, masked_attn_scores, attn_weights
+        else:
+            return sequence_logits
 
 
 class MeanThenLinear(nn.Module):

@@ -120,6 +120,9 @@ class EvaluationResult(BaseModel):
     masked_activations: list[Any] | None = None
     """Masked activations for each example in the eval dataset"""
 
+    per_token_probe_scores: list[Any] | None = None
+    """Probe scores for each token in the eval dataset"""
+
     timestamp: datetime = Field(default_factory=datetime.now)
 
     def save_to(self, path: Path) -> None:
