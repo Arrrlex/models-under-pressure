@@ -904,7 +904,7 @@ class FinetunedClassifier:
         predicted_labels = [score > 0.5 for score in scores]
         metrics = calculate_metrics(
             y_true=ground_truth,
-            y_pred=np.array(predicted_labels),
+            y_pred=np.array(scores),
             fpr=0.01,
         )
         baseline_results = FinetunedBaselineResults(
