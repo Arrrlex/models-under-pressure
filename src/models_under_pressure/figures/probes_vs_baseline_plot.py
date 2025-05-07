@@ -10,6 +10,16 @@ from models_under_pressure.figures.utils import (
 )
 
 
+def calculate_cascade_and_auroc(group: pd.DataFrame) -> float:
+    group["probe_baseline_and_score"] = group["probe_labels"] * group["baseline_labels"]
+
+    return float(
+        roc_auc_score(
+            group["probe_ground_truth_labels"], group["probe_baseline_and_score"]
+        )
+    )
+
+
 def prepare_data(
     probe_paths: list[Path],
     baseline_paths: list[Path],
@@ -81,17 +91,7 @@ def prepare_data(
         columns={col: f"continuation_{col}" for col in continuation_cols}, inplace=True
     )
 
-    # Combine the results on the ids and dataset_name columns
-    df_combined_results = pd.merge(
-        probe_results, baseline_results, on=["ids", "dataset_name"], how="inner"
-    )
-
-    df_combined_results = pd.merge(
-        df_combined_results,
-        continuation_results,
-        on=["ids", "dataset_name"],
-        how="inner",
-    )
+    # For each probe, baseline and continuation dataset
 
     return df_combined_results
 
@@ -108,15 +108,21 @@ def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     from sklearn.metrics import roc_auc_score
 
     # Define functions to calculate AUROC for each method
-    def calc_probe_auroc(group):
-        return roc_auc_score(group["probe_ground_truth_labels"], group["probe_scores"])
+    def calc_probe_auroc(group: pd.DataFrame) -> float:
+        return float(
+            roc_auc_score(group["probe_ground_truth_labels"], group["probe_scores"])
+        )
 
-    def calc_baseline_auroc(group):
-        return roc_auc_score(group["baseline_ground_truth"], group["baseline_scores"])
+    def calc_baseline_auroc(group: pd.DataFrame) -> float:
+        return float(
+            roc_auc_score(group["baseline_ground_truth"], group["baseline_scores"])
+        )
 
-    def calc_continuation_auroc(group):
-        return roc_auc_score(
-            group["continuation_ground_truth"], group["continuation_scores"]
+    def calc_continuation_auroc(group: pd.DataFrame) -> float:
+        return float(
+            roc_auc_score(
+                group["continuation_ground_truth"], group["continuation_scores"]
+            )
         )
 
     # Calculate AUROC scores using groupby and agg
@@ -147,6 +153,23 @@ def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     # Clean up method names by removing '_auroc' suffix
     plot_df["method"] = plot_df["method"].str.replace("_auroc", "")
+
+    # Calculate mean AUROC values across all datasets for each method
+    mean_aurocs = plot_df.groupby("method")["auroc"].mean().reset_index()
+
+    # Create a new dataframe with the mean values
+    mean_df = pd.DataFrame(
+        {
+            "dataset_name": ["Mean Across Datasets"] * len(mean_aurocs),
+            "method": mean_aurocs["method"],
+            "auroc": mean_aurocs["auroc"],
+        }
+    )
+
+    # Append the mean values to the plot dataframe
+    plot_df = pd.concat([plot_df, mean_df], ignore_index=True)
+
+    breakpoint()
 
     return plot_df
 
@@ -241,5 +264,9 @@ if __name__ == "__main__":
         continuation_paths=[Path(contin_path)],
     )
 
+    breakpoint()
+
     df_plot = create_plot_dataframe(df_combined)
+
+    # Calculate AUROC for each dataset
     plot_results(df_plot)
