@@ -386,6 +386,8 @@ class FinetuneBaselineConfig(BaseModel):
     batch_size: int
     shuffle: bool
     logger: Any | None
+    num_workers: int
+    test_batch_size: int
     Trainer: dict[str, JsonValue]
 
     def get(self, key: str, default: Optional[Any] = None) -> Any:

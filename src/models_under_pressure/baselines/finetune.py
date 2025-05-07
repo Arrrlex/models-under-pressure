@@ -1,28 +1,28 @@
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
+import deepspeed
 import hydra
-import os
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import deepspeed
 import torch.nn as nn
 import torch.nn.functional as F
+from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
-from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,  # type: ignore
     AutoTokenizer,  # type: ignore
     PreTrainedTokenizer,  # type: ignore
     PreTrainedTokenizerFast,  # type: ignore
 )
-from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
@@ -32,6 +32,7 @@ from models_under_pressure.config import (
     global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     LabelledDataset,
@@ -39,7 +40,6 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
-from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 
 hf_login()
 
@@ -102,17 +102,17 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing accuracy"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing accuracy"
+        )
         return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing AUROC"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing AUROC"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -126,9 +126,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing TPR at FPR"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing TPR at FPR"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -234,9 +234,9 @@ class ClassifierModule(pl.LightningModule):
         """Training step."""
 
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -279,9 +279,9 @@ class ClassifierModule(pl.LightningModule):
         """Validation step."""
 
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -323,9 +323,9 @@ class ClassifierModule(pl.LightningModule):
     ) -> Dict[str, torch.Tensor]:
         """Test step."""
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -363,7 +363,7 @@ class ClassifierModule(pl.LightningModule):
         # Always store id as a list of strings
         ids = batch["id"]  # already a list of strings
         self.test_outputs.append({"logits": logits, "labels": y, "id": ids})
-        return
+        return {"test_loss": loss, "test_acc": acc}
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -372,7 +372,9 @@ class ClassifierModule(pl.LightningModule):
 
         if strategy.startswith("deepspeed") and strategy.endswith("offload"):
             optimizer = deepspeed.ops.adam.DeepSpeedCPUAdam(
-                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+                self.parameters(),
+                lr=self.learning_rate,
+                weight_decay=int(self.weight_decay),
             )
         else:
             optimizer = torch.optim.Adam(
@@ -448,7 +450,7 @@ class LLMModel(nn.Module):
             cache_dir=cache_dir,
         )
 
-        def _get_hidden_size(model):
+        def _get_hidden_size(model: Any) -> int:
             cfg = model.config
             # most models (Llama, GPT-NeoX, Gemma-1B-text, …)
             if hasattr(cfg, "hidden_size"):
@@ -542,14 +544,15 @@ def create_collate_fn(
             add_generation_prompt=False,  # Add final assistant prefix for generation
         )
 
-        # Tokenize the texts
+        # Tokenize the texts - use a list of strings to ensure type compatibility
+        input_texts = [input_str] if isinstance(input_str, str) else input_str
         encoded = tokenizer(
-            input_str,
+            input_texts,  # type: ignore
             padding=True,
             truncation=True,
             max_length=max_length,
             return_tensors="pt",
-        )  # type: ignore
+        )
 
         # Convert labels to tensor
         labels = torch.tensor(labels)
@@ -577,23 +580,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert (
-            self._tokenizer is not None
-        ), "Tokenizer must be trained before it can be accessed"
+        assert self._tokenizer is not None, (
+            "Tokenizer must be trained before it can be accessed"
+        )
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert (
-            self._classifier is not None
-        ), "Classifier must be trained before it can be accessed"
+        assert self._classifier is not None, (
+            "Classifier must be trained before it can be accessed"
+        )
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert (
-            self._model is not None
-        ), "Model must be trained before it can be accessed"
+        assert self._model is not None, (
+            "Model must be trained before it can be accessed"
+        )
         return self._model
 
     def process_model_configs(self):
@@ -654,6 +657,13 @@ class FinetunedClassifier:
 
         cache_dir = self.initialize_model_and_classifier()
         print(f"Cache dir: {cache_dir}")
+
+        assert self._tokenizer is not None, (
+            "Tokenizer must be initialized before it can be accessed"
+        )
+        assert self._classifier is not None, (
+            "Classifier must be initialized before it can be accessed"
+        )
 
         trainer_args = self.finetune_config.get("Trainer", {})
 
@@ -763,8 +773,10 @@ class FinetunedClassifier:
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
+                assert state_dict is not None, "State dict is None"
                 self._classifier.load_state_dict(state_dict, strict=False)
             else:
+                torch.cuda.empty_cache()
                 self._classifier = ClassifierModule.load_from_checkpoint(
                     self._classifier_checkpoint,
                     model=self.model,
@@ -794,11 +806,15 @@ class FinetunedClassifier:
         """
         Predict the probability of each example in the dataset being high-stakes.
         """
+        # Cast to LabelledDataset - this is a type assertion for the type checker
+        # In practice, the dataset should already be a LabelledDataset
+        from typing import cast
 
-        return self.get_results(dataset).probits.tolist()
+        labelled_dataset = cast(LabelledDataset, dataset)
+        return self.get_results(labelled_dataset).probits.tolist()
 
     @torch.no_grad()
-    def get_results(self, dataset: BaseDataset) -> BaselineResults:
+    def get_results(self, dataset: LabelledDataset) -> BaselineResults:
         """
         Run a plain forward pass (no PL test‑loop) to avoid the
         dead‑lock that occurs when re‑using a Trainer after ``fit()``.
@@ -854,13 +870,13 @@ class FinetunedClassifier:
         dataset_name: str,
         eval_dataset_path: Path,
         max_samples: Optional[int] = None,
-    ) -> FinetunedBaselineResults:
+    ) -> FinetunedBaselineResults | None:
         print(f"Getting full results for {dataset_name} ...")
 
         # Make sure that the dataset doesn't contain duplicate IDs, as this causes issues
-        assert len(eval_dataset.ids) == len(
-            set(eval_dataset.ids)
-        ), "Dataset contains duplicate IDs!"
+        assert len(eval_dataset.ids) == len(set(eval_dataset.ids)), (
+            "Dataset contains duplicate IDs!"
+        )
 
         # Get the results (only rank 0 will have them)
         results = self.get_results(eval_dataset)
@@ -890,18 +906,18 @@ class FinetunedClassifier:
             scores = [scores[i] for i in sort_indices]
             sorted_ids = [result_ids[i] for i in sort_indices]
 
-            assert (
-                sorted_ids == eval_ids
-            ), f"Sorted ids: {sorted_ids}, eval_ids: {eval_ids}"
+            assert sorted_ids == eval_ids, (
+                f"Sorted ids: {sorted_ids}, eval_ids: {eval_ids}"
+            )
         else:
             raise ValueError(
                 f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
             )
 
         ground_truth = eval_dataset.labels_numpy().tolist()
-        assert (
-            labels == ground_truth
-        ), f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
+        assert labels == ground_truth, (
+            f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
+        )
 
         # Get the token counts using StakesDataset
         stakes_dataset = StakesDataset(eval_dataset)
@@ -929,7 +945,7 @@ class FinetunedClassifier:
             fpr=0.01,
         )
         baseline_results = FinetunedBaselineResults(
-            ids=eval_dataset.ids,
+            ids=list(eval_dataset.ids),
             labels=predicted_labels,
             accuracy=sum(
                 [label == gt for label, gt in zip(predicted_labels, ground_truth)]
@@ -958,7 +974,7 @@ def run_sanity_check(
     checkpoint_path: Path | None = None,
     max_samples: Optional[int] = None,
     compute_activations: bool = True,
-) -> None:
+) -> None | list:
     finetune_baseline = FinetunedClassifier(finetune_config)
 
     dataset = load_dataset(
@@ -986,7 +1002,9 @@ def run_sanity_check(
         eval_dataset_path=dataset_path,
         max_samples=max_samples,
     )
-    print(eval_result.metrics)
+    if eval_result is not None:
+        print(eval_result.metrics)
+    return
 
 
 def get_finetuned_baseline_results(
@@ -998,11 +1016,13 @@ def get_finetuned_baseline_results(
     max_samples: Optional[int] = None,
     compute_activations: bool = True,
     use_validation_set: bool = True,
+    seed: int = 42,
 ) -> List[FinetunedBaselineResults]:
-    assert (
-        train_dataset_path is not None or checkpoint_path is not None
-    ), "Must provide either train_dataset_path or checkpoint_path"
+    assert train_dataset_path is not None or checkpoint_path is not None, (
+        "Must provide either train_dataset_path or checkpoint_path"
+    )
 
+    pl.seed_everything(seed)
     finetune_baseline = FinetunedClassifier(finetune_config)
 
     if checkpoint_path is not None:
@@ -1017,6 +1037,7 @@ def get_finetuned_baseline_results(
             finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
             state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+            assert state_dict is not None, "State dict is None"
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
             finetune_baseline.classifier.load_state_dict(torch.load(checkpoint_path))
@@ -1074,7 +1095,8 @@ def get_finetuned_baseline_results(
                 f"Saving results for {dataset_name} to {results_dir / 'finetuning.jsonl'}"
             )
             with open(results_dir / "finetuning.jsonl", "a") as f:
-                f.write(eval_result.model_dump_json() + "\n")
+                if eval_result is not None:
+                    f.write(eval_result.model_dump_json() + "\n")
 
     return eval_results
 
@@ -1082,8 +1104,9 @@ def get_finetuned_baseline_results(
 def check_collate_fn():
     import argparse
     import random
-    from models_under_pressure.dataset_utils import load_dataset
+
     from models_under_pressure.config import EVAL_DATASETS
+    from models_under_pressure.dataset_utils import load_dataset
 
     default_dataset_path = EVAL_DATASETS["toolace"]
     default_model_name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
@@ -1165,6 +1188,8 @@ def run_finetune_baselines():
                 "label_smoothing": 0.0,
             },
             batch_size=1,
+            num_workers=25,
+            test_batch_size=1,
             shuffle=True,
             logger={
                 "_target_": "pytorch_lightning.loggers.WandbLogger",
@@ -1181,11 +1206,12 @@ def run_finetune_baselines():
         )
 
         results = get_finetuned_baseline_results(
-            finetune_config,
-            SYNTHETIC_DATASET_PATH,
-            EVAL_DATASETS,
+            finetune_config=finetune_config,
+            eval_datasets=EVAL_DATASETS,
+            results_dir=RESULTS_DIR,
+            train_dataset_path=SYNTHETIC_DATASET_PATH,
             compute_activations=False,
-            max_samples=4000,
+            use_validation_set=True,
         )
 
         timestamp = datetime.now().strftime("%Y-%m-%d")
