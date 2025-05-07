@@ -65,7 +65,7 @@ class BaselineResults(BaseModel):
         if self._logits is None:
             raise ValueError("Logits must be set before accessing probits")
         probs = torch.softmax(self._logits, dim=-1)
-        return probs[:, 1].cpu().numpy()
+        return probs[:, 1].cpu().to(torch.float32).numpy()
 
     @ids.setter
     def ids(self, value: List[str]):
@@ -429,6 +429,7 @@ class LLMModel(nn.Module):
         self,
         model_name_or_path: str,
         num_classes: int,
+        padding_side: str,
         cache_dir: Optional[str] = None,
     ):
         super().__init__()
@@ -457,11 +458,21 @@ class LLMModel(nn.Module):
         self.model.config.vocab_size = num_classes
         self.num_classes = num_classes
         self.hidden_dim = hidden_size
+        self.padding_side = padding_side
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        return self.model(input_ids, attention_mask=attention_mask).logits[:, -1, :]
+        if self.padding_side == "right":
+            seq_lengths = attention_mask.sum(dim=1) - 1  # (batch,)
+            batch_idx = torch.arange(seq_lengths.size(0), device=seq_lengths.device)
+            outputs = self.model(input_ids, attention_mask=attention_mask).logits
+            # print(seq_lengths, outputs.shape)
+            return outputs[batch_idx, seq_lengths, :]
+        elif self.padding_side == "left":
+            return self.model(input_ids, attention_mask=attention_mask).logits[:, -1, :]
+        else:
+            raise ValueError(f"Padding side {self.padding_side} not supported")
 
 
 class StakesDataset(torch.utils.data.Dataset):
@@ -596,9 +607,10 @@ class FinetunedClassifier:
         if self._tokenizer.pad_token_id is None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
         self._model = LLMModel(
-            model_name_or_path,
-            num_classes,
-            cache_dir,
+            model_name_or_path=model_name_or_path,
+            num_classes=num_classes,
+            cache_dir=cache_dir,
+            padding_side=self._tokenizer.padding_side,
         )
 
         # Create the pytorch lightning module:
@@ -709,6 +721,7 @@ class FinetunedClassifier:
                     model_name_or_path=model_name_or_path,
                     num_classes=num_classes,
                     cache_dir=cache_dir,
+                    padding_side=self._tokenizer.padding_side,
                 )
 
                 self._classifier = ClassifierModule(
@@ -791,7 +804,7 @@ class FinetunedClassifier:
         # A single‑worker DataLoader → no inter‑process barriers
         loader = DataLoader(
             StakesDataset(dataset),
-            batch_size=4,  # TODO: Might wanna pass this as argument (These batches are on a single GPU but for inference mode!)
+            batch_size=self.finetune_config.get("test_batch_size", 1),
             shuffle=False,
             collate_fn=collate_fn,
             num_workers=0,
