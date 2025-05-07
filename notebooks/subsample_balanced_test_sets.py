@@ -27,13 +27,17 @@ def subsample_balanced_dataset(in_path: str | Path, out_path: str | Path) -> Non
     # Subsample the dataset to have equal numbers of each label
     balanced_dataset = subsample_balanced_subset(dataset, include_ambiguous=True)
 
-    n_per_class = len(balanced_dataset) // 3
+    n_per_class = min(len(balanced_dataset) // 3, 400)
     balanced_dataset = subsample_balanced_subset(
         balanced_dataset, n_per_class=n_per_class, include_ambiguous=True
     )
 
     # Save the balanced dataset
-    balanced_dataset.save_to(out_path)
+    if out_path.exists():
+        print(f"Dataset already exists at {out_path}, skipping")
+        return
+    else:
+        balanced_dataset.save_to(out_path)
 
     # Print the label distribution
     balanced_dataset.print_label_distribution()
@@ -42,35 +46,30 @@ def subsample_balanced_dataset(in_path: str | Path, out_path: str | Path) -> Non
 if __name__ == "__main__":
     subsample_balanced_dataset(
         in_path=TEST_EVALS_DIR / "anthropic_test_raw_apr_23.jsonl",
-        out_path=TEST_EVALS_DIR / "anthropic_test_balanced_ambiguous_apr_23.jsonl",
-    )
-
-    subsample_balanced_dataset(
-        in_path=TEST_EVALS_DIR / "aya_redteaming.jsonl",
-        out_path=TEST_EVALS_DIR / "aya_redteaming_balanced_ambiguous.jsonl",
-    )
-
-    subsample_balanced_dataset(
-        in_path=TEST_EVALS_DIR / "mental_health_test_raw_apr_22.jsonl",
-        out_path=TEST_EVALS_DIR / "mental_health_test_balanced_ambiguous_apr_22.jsonl",
-    )
-
-    subsample_balanced_dataset(
-        in_path=TEST_EVALS_DIR / "mt_test_raw_apr_30.jsonl",
-        out_path=TEST_EVALS_DIR / "mt_test_balanced_ambiguous_apr_30.jsonl",
-    )
-
-    subsample_balanced_dataset(
-        in_path=TEST_EVALS_DIR / "mts_test_raw_apr_22.jsonl",
-        out_path=TEST_EVALS_DIR / "mts_test_balanced_ambiguous_apr_22.jsonl",
+        out_path=TEST_EVALS_DIR / "anthropic_test_balanced_ambiguous_may_7.jsonl",
     )
 
     subsample_balanced_dataset(
         in_path=TEST_EVALS_DIR / "redteaming_test_raw_apr_22.jsonl",
-        out_path=TEST_EVALS_DIR / "redteaming_test_balanced_ambiguous_apr_22.jsonl",
+        out_path=TEST_EVALS_DIR / "redteaming_test_balanced_ambiguous_may_7.jsonl",
     )
 
-    subsample_balanced_dataset(
-        in_path=TEST_EVALS_DIR / "toolace_test_raw_apr_22.jsonl",
-        out_path=TEST_EVALS_DIR / "toolace_test_balanced_ambiguous_apr_22.jsonl",
-    )
+    # subsample_balanced_dataset(
+    #     in_path=TEST_EVALS_DIR / "mental_health_test_raw_apr_22.jsonl",
+    #     out_path=TEST_EVALS_DIR / "mental_health_test_balanced_ambiguous_apr_22.jsonl",
+    # )
+
+    # subsample_balanced_dataset(
+    #     in_path=TEST_EVALS_DIR / "mt_test_raw_apr_30.jsonl",
+    #     out_path=TEST_EVALS_DIR / "mt_test_balanced_ambiguous_apr_30.jsonl",
+    # )
+
+    # subsample_balanced_dataset(
+    #     in_path=TEST_EVALS_DIR / "mts_test_raw_apr_22.jsonl",
+    #     out_path=TEST_EVALS_DIR / "mts_test_balanced_ambiguous_apr_22.jsonl",
+    # )
+
+    # subsample_balanced_dataset(
+    #     in_path=TEST_EVALS_DIR / "toolace_test_raw_apr_22.jsonl",
+    #     out_path=TEST_EVALS_DIR / "toolace_test_balanced_ambiguous_apr_22.jsonl",
+    # )
