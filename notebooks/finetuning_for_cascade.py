@@ -3,11 +3,9 @@ from models_under_pressure.baselines.finetune import (
     run_sanity_check,
 )
 from models_under_pressure.config import (
-    EVAL_DATASETS,
-    LOCAL_MODELS,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
-    TEST_DATASETS,
+    EVAL_DATASETS,
     FinetuneBaselineConfig,
 )
 
@@ -19,17 +17,17 @@ if __name__ == "__main__":
         # model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
         # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
         # model_name_or_path="google/gemma-3-12b-it",
-        model_name_or_path=LOCAL_MODELS["llama-1b"],
+        model_name_or_path="meta-llama/Llama-3.1-8B-Instruct",
         num_classes=2,
         ClassifierModule={  # set here to the default values
-            "learning_rate": 5e-5,
+            "learning_rate": 1e-5,
             "weight_decay": 0.01,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
         },
-        batch_size=8,
-        test_batch_size=8,
+        batch_size=2,
+        test_batch_size=2,
         shuffle=True,
         logger=None,
         num_workers=25,
@@ -60,7 +58,7 @@ if __name__ == "__main__":
             train_dataset_path=SYNTHETIC_DATASET_PATH,
             # train_dataset_path=TRAIN_DIR / "original_doubled_unconfounded",
             # eval_datasets=TEST_DATASETS,
-            eval_datasets=TEST_DATASETS,
+            eval_datasets=EVAL_DATASETS,
             max_samples=None,
             compute_activations=True,
             use_validation_set=True,
