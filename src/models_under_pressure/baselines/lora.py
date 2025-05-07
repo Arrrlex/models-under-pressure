@@ -15,6 +15,7 @@ from transformers.trainer_utils import EvalPrediction
 from transformers.training_args import TrainingArguments
 
 from models_under_pressure.config import (
+    DATA_DIR,
     EVAL_DATASETS_BALANCED,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
@@ -54,6 +55,7 @@ def evaluate_model(
     model: AutoModelForSequenceClassification,  # type: ignore
     tokenizer: AutoTokenizer,
     dataset_paths: Dict[str, Path],
+    batch_size: int = 8,  # Reduced default batch size
 ) -> Dict[str, float]:
     """Evaluate the model's AUROC on multiple datasets.
 
@@ -61,6 +63,7 @@ def evaluate_model(
         model: The trained model to evaluate
         tokenizer: The tokenizer to use
         dataset_paths: Dictionary mapping dataset names to their paths
+        batch_size: Number of examples to process at once
 
     Returns:
         Dictionary mapping dataset names to their AUROC scores
@@ -81,14 +84,17 @@ def evaluate_model(
         # Get predictions
         predictions = []
         with torch.no_grad():
-            for i in tqdm(range(len(input_ids))):
+            for i in tqdm(range(0, len(input_ids), batch_size)):
+                batch_input_ids = input_ids[i : i + batch_size]
+                batch_attention_mask = attention_mask[i : i + batch_size]
+
                 outputs = model(  # type: ignore
-                    input_ids=input_ids[i : i + 1],
-                    attention_mask=attention_mask[i : i + 1],
+                    input_ids=batch_input_ids,
+                    attention_mask=batch_attention_mask,
                 )
                 logits = outputs.logits
                 probs = torch.softmax(logits, dim=-1)[:, 1]
-                predictions.append(probs.item())
+                predictions.extend(probs.cpu().tolist())
 
         # Calculate AUROC
         auroc = roc_auc_score(labels, predictions)
@@ -97,7 +103,7 @@ def evaluate_model(
     return results
 
 
-def main(base_model: str, training_dataset_path: Path):
+def fine_tune(base_model: str, training_dataset_path: Path, save_path: Path):
     # 1. Prepare dataset
     train, test = load_train_test(training_dataset_path)
 
@@ -133,6 +139,8 @@ def main(base_model: str, training_dataset_path: Path):
     model = AutoModelForSequenceClassification.from_pretrained(
         base_model,
         num_labels=2,
+        torch_dtype=torch.bfloat16,  # Use BF16 instead of FP16
+        device_map="auto",  # Let the model handle device placement
     )
     model.config.pad_token_id = tokenizer.pad_token_id
     lora_cfg = LoraConfig(
@@ -150,17 +158,17 @@ def main(base_model: str, training_dataset_path: Path):
 
     def compute_metrics(eval_pred: EvalPrediction) -> Dict[str, float]:
         logits, labels = eval_pred.predictions, eval_pred.label_ids
-        preds = logits.argmax(-1)
-        return metric.compute(predictions=preds, references=labels)
+        preds = logits.argmax(-1)  # type: ignore
+        return metric.compute(predictions=preds, references=labels)  # type: ignore
 
     training_args = TrainingArguments(
-        output_dir="llama3-stakes-classifier",
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        gradient_accumulation_steps=8,
+        output_dir=str(save_path.parent),
+        per_device_train_batch_size=1,  # Minimal batch size
+        per_device_eval_batch_size=1,  # Minimal batch size
+        gradient_accumulation_steps=32,  # Increased to compensate for smaller batch size
         num_train_epochs=3,
         learning_rate=2e-4,
-        fp16=True,
+        bf16=True,  # Use BF16 instead of FP16
         logging_steps=50,
         eval_strategy="steps",
         eval_steps=200,
@@ -184,18 +192,7 @@ def main(base_model: str, training_dataset_path: Path):
     trainer.train()
 
     # 5. Save adapters and merged model
-    model.save_pretrained("llama3-stakes-lora-adapters")
-
-    # 6. Evaluate on multiple datasets
-    eval_datasets = {
-        "synthetic": SYNTHETIC_DATASET_PATH,
-        # Add more datasets here as needed
-    }
-
-    results = evaluate_model(model, tokenizer, eval_datasets)
-    print("\nEvaluation Results:")
-    for dataset_name, auroc in results.items():
-        print(f"{dataset_name}: AUROC = {auroc:.4f}")
+    model.save_pretrained(str(save_path))
 
     return model
 
@@ -216,14 +213,15 @@ def load_and_evaluate(
     model = AutoModelForSequenceClassification.from_pretrained(
         base_model,
         num_labels=2,
+        torch_dtype=torch.float16,  # Use FP16 to reduce memory usage
+        device_map="auto",  # Let the model handle device placement
     )
     model.config.pad_token_id = tokenizer.pad_token_id
     model = PeftModel.from_pretrained(model, adapter_path)
-    model = model.to("cuda")  # Move model to GPU
     model.eval()  # Set to evaluation mode
 
     # Evaluate
-    results = evaluate_model(model, tokenizer, eval_datasets)
+    results = evaluate_model(model, tokenizer, eval_datasets, batch_size=1)  # type: ignore
     print("\nEvaluation Results:")
     for dataset_name, auroc in results.items():
         print(f"{dataset_name}: AUROC = {auroc:.4f}")
@@ -232,15 +230,17 @@ def load_and_evaluate(
 
 
 if __name__ == "__main__":
+    base_path = (DATA_DIR / "fine-tuned-models").resolve()
     # To train a new model:
-    # main(
-    #     base_model=LOCAL_MODELS["llama-1b"],
-    #     training_dataset_path=SYNTHETIC_DATASET_PATH,
-    # )
+    fine_tune(
+        base_model=LOCAL_MODELS["llama-8b"],
+        training_dataset_path=SYNTHETIC_DATASET_PATH,
+        save_path=base_path / "llama8b-lora",
+    )
 
     # To evaluate a saved model:
     load_and_evaluate(
-        base_model=LOCAL_MODELS["llama-1b"],
-        adapter_path="llama3-stakes-lora-adapters",
+        base_model=LOCAL_MODELS["llama-8b"],
+        adapter_path=str(base_path / "llama8b-lora"),
         eval_datasets=EVAL_DATASETS_BALANCED,
     )
