@@ -20,9 +20,9 @@ def process_raw_probe_results(result: dict) -> pd.DataFrame:
     data_size = len(result["output_scores"])
 
     for field in list_fields:
-        assert len(result.get(field, [])) == data_size, (
-            f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
-        )
+        assert (
+            len(result.get(field, [])) == data_size
+        ), f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
 
     # Config fields
     config_str = json.dumps(result["config"])
@@ -67,9 +67,9 @@ def process_raw_continuation_results(result: dict) -> pd.DataFrame:
     data_size = len(result["low_stakes_scores"])
 
     for field in list_fields:
-        assert len(result.get(field, [])) == data_size, (
-            f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
-        )
+        assert (
+            len(result.get(field, [])) == data_size
+        ), f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
 
     dataset_name = result["dataset_name"]
     dataset_path = result["dataset_path"]
