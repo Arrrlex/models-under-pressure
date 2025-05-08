@@ -143,6 +143,7 @@ def _run_monitoring_cascade(
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
+    probe_results = []
     if probe_model_name:
         assert probe_layer is not None
 
@@ -163,7 +164,6 @@ def _run_monitoring_cascade(
         )
 
         # Evaluate probe
-        probe_results = []
         for dataset_name in dataset_names:
             eval_dataset = load_dataset(
                 dataset_path=eval_dataset_path,
@@ -636,8 +636,8 @@ def evaluate_single_probe_cascade(
 
     # Depending on the probe, flops are calculated differently
     if evaluation_results.config.probe_spec.name in [
-        "pytorch_per_entry_probe_mean",
-        "sklearn_mean_agg_probe",
+        "mean",
+        "sklearn",
     ]:
         # Flops per token are approximately activation_dim
         # (Since the average has to be computed as well)
