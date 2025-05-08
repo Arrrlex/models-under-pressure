@@ -5,10 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from models_under_pressure.config import (
-    EVAL_DATASETS_RAW,
     EVALUATE_PROBES_DIR,
     PLOTS_DIR,
-    TEST_DATASETS_BALANCED,
     EvalRunConfig,
 )
 from models_under_pressure.figures.utils import map_dataset_name
@@ -81,6 +79,7 @@ def plot_calibration(
     file_names: list[str],
     config: EvalRunConfig,
     n_bins: int = 10,
+    out_path: Path | None = None,
 ) -> None:
     fig, ax1 = plt.subplots(
         nrows=1,
@@ -126,8 +125,8 @@ def plot_calibration(
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
-    print(f"Saving {config.id}_calibration_all.pdf")
-    plt.savefig(PLOTS_DIR / f"{config.id}_calibration_all.pdf")
+    print(f"Saving {out_path.name}")
+    plt.savefig(out_path)
 
 
 def plot_stacked_histogram(
@@ -179,7 +178,10 @@ def plot_stacked_histogram(
     plt.close()
 
 
-def run_calibration(evaluate_probe_results_path: Path):
+def run_calibration(
+    evaluate_probe_results_path: Path,
+    out_path: Path,
+):
     """
     Run calibration analysis with the provided EvalRunConfig.
     If no config is provided, a default one will be created.
@@ -192,14 +194,14 @@ def run_calibration(evaluate_probe_results_path: Path):
     eval_datasets = {
         map_dataset_name(dataset_path): dataset_path
         for dataset_path in config.eval_datasets
-        if map_dataset_name(dataset_path) != "MT"
+        # if map_dataset_name(dataset_path) != "MT"
     }
     y_true_list = []
     y_prob_list = []
     scale_labels_list = []
     for result in results:
-        if map_dataset_name(result.dataset_path) == "MT":
-            continue
+        # if map_dataset_name(result.dataset_path) == "MT":
+        #     continue
         y_true, y_prob, scale_labels = prepare_data(result, use_scale_labels=True)
         y_true_list.append(y_true)
         y_prob_list.append(y_prob)
@@ -211,16 +213,26 @@ def run_calibration(evaluate_probe_results_path: Path):
         list(eval_datasets.keys()),
         config=config,
         n_bins=10,
+        out_path=out_path,
     )
-    plot_stacked_histogram(
-        y_true_list,
-        y_prob_list,
-        list(EVAL_DATASETS_RAW.keys()) + list(TEST_DATASETS_BALANCED.keys()),
-        config=config,
-        n_bins=10,
-    )
+    # plot_stacked_histogram(
+    #     y_true_list,
+    #     y_prob_list,
+    #     list(EVAL_DATASETS_RAW.keys()) + list(TEST_DATASETS_BALANCED.keys()),
+    #     config=config,
+    #     n_bins=10,
+    # )
 
 
 # Main execution
 if __name__ == "__main__":
-    run_calibration(EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl")
+    result_suffix = "attention_dev_1"
+    run_calibration(
+        EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl",
+        out_path=PLOTS_DIR / "attention_test_1_calibration.pdf",
+    )
+
+    run_calibration(
+        EVALUATE_PROBES_DIR / "results_softmax_test_1.jsonl",
+        out_path=PLOTS_DIR / "softmax_test_1_calibration.pdf",
+    )
