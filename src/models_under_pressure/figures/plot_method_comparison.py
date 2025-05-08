@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from adjustText import adjust_text  # <-- Import adjust_text
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 from models_under_pressure.config import DATA_DIR
@@ -36,9 +37,11 @@ def plot_method_comparison(
         if cascade_type == "probe":
             key = "Probe"
         elif cascade_type == "baseline":
-            key = f"{get_abbreviated_model_name(model_name)} (pr.)"
+            key = f"{get_abbreviated_model_name(model_name)} (prompted)"
+            method_type = "prompted"
         elif cascade_type == "finetuned_baseline":
-            key = f"{get_abbreviated_model_name(model_name)} (ft.)"
+            key = f"{get_abbreviated_model_name(model_name)} (finetuned)"
+            method_type = "finetuned"
         else:
             continue
 
@@ -46,6 +49,7 @@ def plot_method_comparison(
             {
                 "auroc": result["auroc"],
                 "avg_flops_per_sample": result["avg_flops_per_sample"],
+                "method_type": method_type if cascade_type != "probe" else "probe",
             }
         )
 
@@ -60,26 +64,50 @@ def plot_method_comparison(
 
     texts = []  # Store text annotations here
 
+    # Create lists for legend
+    legend_elements = []
+
     for method, data in method_results.items():
         aurocs = [d["auroc"] for d in data]
         flops = [d["avg_flops_per_sample"] for d in data]
+        method_type = data[0].get("method_type", "probe")
 
         mean_auroc = float(np.mean(aurocs))
         mean_flops = float(np.mean(flops))
 
-        if "(ft.)" in method:
-            color = colors["finetuned"]
-        elif "(pr.)" in method:
-            color = colors["prompted"]
-        else:
-            color = colors["probe"]
+        color = colors[method_type]
 
         plt.plot(mean_flops, mean_auroc, "o", label=method, color=color)
+        # Remove the method type suffix for display
+        display_method = method.split(" (")[0] if " (" in method else method
+        texts.append(
+            plt.text(mean_flops, mean_auroc, display_method, ha="center", va="bottom")
+        )
 
-        texts.append(plt.text(mean_flops, mean_auroc, method, ha="center", va="bottom"))
+    # Add legend elements for method types
+    for method_type, color in colors.items():
+        display_name = (
+            "Attention Probe"
+            if method_type == "probe"
+            else f"{method_type.capitalize()} LLM"
+        )
+        legend_elements.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=color,
+                markersize=8,
+                label=display_name,
+            )
+        )
 
-    plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
-    plt.ylabel("AUROC", fontsize=12)
+    # Add the legend at bottom left
+    plt.legend(handles=legend_elements, loc="lower left")
+
+    plt.xlabel("FLOPs per Sample (log scale)", fontsize=12)
+    plt.ylabel("Mean AUROC", fontsize=12)
     # plt.title("Method Comparison", fontsize=14, pad=20)
     plt.grid(True, alpha=0.3)
 
