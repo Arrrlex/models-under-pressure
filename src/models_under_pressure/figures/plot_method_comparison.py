@@ -20,6 +20,7 @@ def plot_method_comparison(
     results_dir: Path,
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (7, 5),
+    font_size: int = 12,
 ) -> None:
     results = []
     with open(results_dir / "cascade_results.jsonl") as f:
@@ -81,11 +82,18 @@ def plot_method_comparison(
 
         color = colors[method_type]
 
-        plt.plot(mean_flops, mean_auroc, "o", label=method, color=color)
+        plt.plot(mean_flops, mean_auroc, "o", label=method, color=color, markersize=10)
         # Remove the method type suffix for display
         display_method = method.split(" (")[0] if " (" in method else method
         texts.append(
-            plt.text(mean_flops, mean_auroc, display_method, ha="center", va="bottom")
+            plt.text(
+                mean_flops,
+                mean_auroc,
+                display_method,
+                ha="center",
+                va="bottom",
+                fontsize=font_size - 2,
+            )
         )
 
         # Store specific points
@@ -102,14 +110,14 @@ def plot_method_comparison(
             [probe_point[1], llama_8b_finetuned_point[1]],
             "--",
             color="gray",
-            alpha=0.7,
-            linewidth=1.5,
+            alpha=1.0,
+            linewidth=2,
             zorder=0,  # zorder=0 to ensure it's below the points
         )
 
         # Add annotation about computational difference
         # Use logarithmic interpolation for x since it's on a log scale
-        position_ratio = 0.5  # 0 would be at probe, 1 would be at llama-8b
+        position_ratio = 0.4  # 0 would be at probe, 1 would be at llama-8b
 
         # Logarithmic interpolation for x-coordinate
         log_probe_x = np.log10(probe_point[0])
@@ -128,12 +136,12 @@ def plot_method_comparison(
 
         # Place text directly on the line with white background
         plt.annotate(
-            f"10^{log_flops_ratio} × FLOPs",
+            f"10^{log_flops_ratio} × FLOPs →",
             (annotation_x, annotation_y),
             ha="center",
             va="center",
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9),
-            fontsize=10,
+            fontsize=font_size - 2,
             # weight="bold",
             zorder=10,  # Make sure it's on top of everything
         )
@@ -152,18 +160,21 @@ def plot_method_comparison(
                 marker="o",
                 color="w",
                 markerfacecolor=color,
-                markersize=8,
+                markersize=9,
                 label=display_name,
             )
         )
 
     # Add the legend at bottom left
-    plt.legend(handles=legend_elements, loc="lower left")
+    plt.legend(handles=legend_elements, loc="lower left", fontsize=font_size - 2)
 
-    plt.xlabel("FLOPs per Sample (log scale)", fontsize=12)
-    plt.ylabel("Mean AUROC", fontsize=12)
+    plt.xlabel("FLOPs per Sample (log scale)", fontsize=font_size)
+    plt.ylabel("Mean AUROC", fontsize=font_size)
     # plt.title("Method Comparison", fontsize=14, pad=20)
-    plt.grid(True, alpha=0.3)
+    plt.grid(True, alpha=0.6, linestyle="-", linewidth=0.7)
+
+    # Set y-axis limit to go up to 1.0
+    plt.ylim(top=1.0)
 
     plt.xscale("log")
     ax = plt.gca()
@@ -171,6 +182,9 @@ def plot_method_comparison(
 
     # Adjust texts to avoid overlap
     adjust_text(texts, arrowprops=dict(arrowstyle="-", color="gray"))
+
+    # Set tick label sizes
+    plt.tick_params(axis="both", which="major", labelsize=font_size - 2)
 
     plt.tight_layout()
 
@@ -183,4 +197,4 @@ def plot_method_comparison(
 
 if __name__ == "__main__":
     results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
-    plot_method_comparison(results_dir)
+    plot_method_comparison(results_dir, font_size=18)
