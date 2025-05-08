@@ -317,6 +317,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
+            show_shaded_regions=cfg.analysis.show_shaded_regions,
         )
 
 
@@ -985,6 +986,8 @@ def plot_cascade_results(
     target_dataset: Optional[str] = None,
     show_difference_from_probe: bool = False,
     show_strategy_in_legend: bool = True,
+    show_title: bool = False,
+    show_shaded_regions: bool = False,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -996,6 +999,8 @@ def plot_cascade_results(
         target_dataset: If specified, only plot results for this dataset
         show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
+        show_title: Whether to show a title on the plot
+        show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
     """
     import json
     from collections import defaultdict
@@ -1182,14 +1187,15 @@ def plot_cascade_results(
             markersize=3,
         )
 
-        # Add shaded region for uncertainty
-        plt.fill_between(
-            mean_flops_per_sample,
-            np.array(mean_aurocs) - np.array(std_aurocs),
-            np.array(mean_aurocs) + np.array(std_aurocs),
-            color=color,
-            alpha=0.1,
-        )
+        # Add shaded region for uncertainty if enabled
+        if show_shaded_regions:
+            plt.fill_between(
+                mean_flops_per_sample,
+                np.array(mean_aurocs) - np.array(std_aurocs),
+                np.array(mean_aurocs) + np.array(std_aurocs),
+                color=color,
+                alpha=0.1,
+            )
 
         # Add fraction labels if enabled
         if show_fraction_labels:
@@ -1228,13 +1234,14 @@ def plot_cascade_results(
             alpha=0.5,
         )
 
-        plt.fill_between(
-            [x_min, x_max],  # Use actual x-axis range
-            mean_probe_auroc - std_probe_auroc,
-            mean_probe_auroc + std_probe_auroc,
-            color="gray",
-            alpha=0.1,
-        )
+        if show_shaded_regions:
+            plt.fill_between(
+                [x_min, x_max],  # Use actual x-axis range
+                mean_probe_auroc - std_probe_auroc,
+                mean_probe_auroc + std_probe_auroc,
+                color="gray",
+                alpha=0.1,
+            )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
@@ -1242,14 +1249,19 @@ def plot_cascade_results(
         "AUROC Difference from Probe" if show_difference_from_probe else "AUROC",
         fontsize=12,
     )
-    title = "Cascade Performance Tradeoff"
-    if target_dataset:
-        title += f" - {target_dataset}"
-    else:
-        title += " (Averaged across datasets)"
-    plt.title(title, fontsize=14, pad=20)
-    plt.legend(title="Method", bbox_to_anchor=(1.05, 1), loc="upper left")
+    if show_title:
+        title = "Cascade Performance Tradeoff"
+        if target_dataset:
+            title += f" - {target_dataset}"
+        else:
+            title += " (Averaged across datasets)"
+        plt.title(title, fontsize=14, pad=20)
+    plt.legend(title="Method", bbox_to_anchor=(1.0, 0.0), loc="lower right")
     plt.grid(True, alpha=0.3)
+
+    # Set y-axis limits for AUROC plot
+    if not show_difference_from_probe:
+        plt.ylim(0.5, 1.0)
 
     # Set x-axis to log scale
     plt.xscale("log")
