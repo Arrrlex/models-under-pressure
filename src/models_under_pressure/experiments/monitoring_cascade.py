@@ -981,7 +981,7 @@ def get_abbreviated_model_name(full_name: str) -> str:
 def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
-    figsize: tuple[int, int] = (10, 6),
+    figsize: tuple[int, int] = (9, 4),
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
     show_difference_from_probe: bool = False,
@@ -1098,9 +1098,9 @@ def plot_cascade_results(
             "mid": "-.",
         },
         "probe_finetuned_baseline": {
-            "top": "-.",
+            "top": "--",
             "bottom": ":",
-            "mid": "--",
+            "mid": "-.",
         },
         "two_step_baseline": {
             "top": "--",
@@ -1153,7 +1153,7 @@ def plot_cascade_results(
 
         # Create label
         if cascade_type == "baseline":
-            label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
+            label = f"Prompted Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "finetuned_baseline":
             label = f"Finetuned Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type in [
@@ -1172,7 +1172,16 @@ def plot_cascade_results(
             if show_strategy_in_legend:
                 label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
             else:
-                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+                # label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+                if cascade_type == "two_step_baseline":
+                    cascade_name = "Baseline + Baseline"
+                elif cascade_type == "probe_baseline":
+                    cascade_name = "Probe + Pr. Baseline"
+                elif cascade_type == "probe_finetuned_baseline":
+                    cascade_name = "Probe + Ft. Baseline"
+                else:
+                    raise ValueError(f"Unknown cascade type: {cascade_type}")
+                label = f"{cascade_name} ({get_abbreviated_model_name(baseline_model)})"
         else:
             raise ValueError(f"Unknown cascade type: {cascade_type}")
 
@@ -1211,9 +1220,7 @@ def plot_cascade_results(
     # Plot probe performance line after all other data
     if show_difference_from_probe:
         # For difference plot, show zero line as probe performance
-        plt.axhline(
-            y=0, color="gray", linestyle="--", label="Probe Performance", alpha=0.5
-        )
+        plt.axhline(y=0, color="gray", linestyle="--", label="Probe", alpha=0.5)
     elif probe_aurocs:
         # For absolute plot, show actual probe performance
         mean_probe_auroc = float(
@@ -1230,7 +1237,7 @@ def plot_cascade_results(
             y=mean_probe_auroc,
             color="gray",
             linestyle="--",
-            label="Probe Performance",
+            label="Probe",
             alpha=0.5,
         )
 
@@ -1246,17 +1253,17 @@ def plot_cascade_results(
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
     plt.ylabel(
-        "AUROC Difference from Probe" if show_difference_from_probe else "AUROC",
+        "AUROC Difference from Probe" if show_difference_from_probe else "Mean AUROC",
         fontsize=12,
     )
     if show_title:
-        title = "Cascade Performance Tradeoff"
+        title = "Monitoring Performance vs Computation Cost"
         if target_dataset:
             title += f" - {target_dataset}"
         else:
             title += " (Averaged across datasets)"
         plt.title(title, fontsize=14, pad=20)
-    plt.legend(title="Method", bbox_to_anchor=(1.0, 0.0), loc="lower right")
+    plt.legend(title="Method", bbox_to_anchor=(1.0, 0.0), loc="lower right", ncol=2)
     plt.grid(True, alpha=0.3)
 
     # Set y-axis limits for AUROC plot
