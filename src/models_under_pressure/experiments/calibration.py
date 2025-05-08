@@ -7,12 +7,12 @@ import numpy as np
 from models_under_pressure.config import (
     EVAL_DATASETS_RAW,
     EVALUATE_PROBES_DIR,
-    LOCAL_MODELS,
     PLOTS_DIR,
     TEST_DATASETS_BALANCED,
     EvalRunConfig,
 )
-from models_under_pressure.interfaces.probes import ProbeSpec
+from models_under_pressure.figures.utils import map_dataset_name
+from models_under_pressure.interfaces.results import EvaluationResult
 
 # Add this before creating any plots
 plt.rcParams.update(
@@ -36,26 +36,11 @@ def load_data(file_path: Path) -> list[dict]:
 
 # Prepare the data
 def prepare_data(
-    data: list[dict],
-    dataset_name: str,
-    config: EvalRunConfig,
+    result: EvaluationResult,
     use_scale_labels: bool = False,
 ) -> tuple[list[int], list[float], list[float]]:
-    dataset_res = [
-        entry
-        # entry["config"]["id"] == config.id
-        if (
-            entry["dataset_name"] == dataset_name
-            and entry["metrics"]["layer"] == config.layer
-            and entry["config"]["model_name"] == config.model_name
-            and entry["config"]["max_samples"] == config.max_samples
-        )
-        else None
-        for entry in data
-    ]
-    # extract the not none entry first
-
-    dataset_res = [entry for entry in dataset_res if entry is not None][-1]
+    dataset_res = result.model_dump()
+    dataset_name = result.dataset_name
     y_prob = dataset_res["output_scores"]  # type: ignore
     if use_scale_labels:
         if dataset_name == "manual":
@@ -105,16 +90,6 @@ def plot_calibration(
     )
     # fig.subplots_adjust(hspace=0.4)
 
-    dataset_names = {
-        "manual": "Manual",
-        "anthropic": "Anthropic HH",
-        "mt": "MT Samples",
-        "mts": "MTS Dialog",
-        "toolace": "ToolACE",
-        "mental_health": "Mental Health",
-        "redteaming": "Aya Red Teaming",
-    }
-
     # Calibration curve
     # Create bins based on predicted probabilities
     for y_true, y_prob, scale_labels, file_name in zip(
@@ -139,7 +114,7 @@ def plot_calibration(
             mean_scale,
             marker="o",
             linewidth=3,
-            label=f"{dataset_names[file_name]}",
+            label=f"{file_name.title()}",
         )
     ax1.plot([0, 1], [1, 10], linestyle="--", linewidth=3, label="Perfect Calibration")
     ax1.set_xlim(0.0, 1.0)
@@ -151,6 +126,7 @@ def plot_calibration(
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
+    print(f"Saving {config.id}_calibration_all.pdf")
     plt.savefig(PLOTS_DIR / f"{config.id}_calibration_all.pdf")
 
 
@@ -198,35 +174,33 @@ def plot_stacked_histogram(
     ax2.legend()
 
     # save the plots with data name in the same directory
+    print(f"Saving {config.id}_stacked_histogram.pdf")
     plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
     plt.close()
 
 
-def run_calibration(config: EvalRunConfig):
+def run_calibration(evaluate_probe_results_path: Path):
     """
     Run calibration analysis with the provided EvalRunConfig.
     If no config is provided, a default one will be created.
     """
+    results = [
+        EvaluationResult.model_validate_json(line)
+        for line in evaluate_probe_results_path.read_text().splitlines()
+    ]
+    config = results[0].config
+    eval_datasets = {
+        map_dataset_name(dataset_path): dataset_path
+        for dataset_path in config.eval_datasets
+        if map_dataset_name(dataset_path) != "MT"
+    }
     y_true_list = []
     y_prob_list = []
     scale_labels_list = []
-    for eval_dataset in EVAL_DATASETS_RAW.keys():
-        data = load_data(
-            EVALUATE_PROBES_DIR / "raw_results" / "results_raw_caliberation_all.jsonl"
-        )
-        y_true, y_prob, scale_labels = prepare_data(
-            data, eval_dataset, config=config, use_scale_labels=True
-        )
-        y_true_list.append(y_true)
-        y_prob_list.append(y_prob)
-        scale_labels_list.append(scale_labels)
-    for eval_dataset in TEST_DATASETS_BALANCED.keys():
-        data = load_data(
-            EVALUATE_PROBES_DIR / "raw_results" / "results_best_probe_test.jsonl"
-        )
-        y_true, y_prob, scale_labels = prepare_data(
-            data, eval_dataset, config=config, use_scale_labels=True
-        )
+    for result in results:
+        if map_dataset_name(result.dataset_path) == "MT":
+            continue
+        y_true, y_prob, scale_labels = prepare_data(result, use_scale_labels=True)
         y_true_list.append(y_true)
         y_prob_list.append(y_prob)
         scale_labels_list.append(scale_labels)
@@ -234,7 +208,7 @@ def run_calibration(config: EvalRunConfig):
         y_true_list,
         y_prob_list,
         scale_labels_list,
-        list(EVAL_DATASETS_RAW.keys()) + list(TEST_DATASETS_BALANCED.keys()),
+        list(eval_datasets.keys()),
         config=config,
         n_bins=10,
     )
@@ -249,17 +223,4 @@ def run_calibration(config: EvalRunConfig):
 
 # Main execution
 if __name__ == "__main__":
-    id_used_in_eval = "raw_calibration_all"
-    model_name = LOCAL_MODELS["llama-70b"]
-    layer = 31
-    run_calibration(
-        EvalRunConfig(
-            id=id_used_in_eval,
-            model_name=model_name,
-            layer=layer,
-            max_samples=None,
-            probe_spec=ProbeSpec(
-                name="pytorch_per_token_probe",
-            ),
-        ),
-    )
+    run_calibration(EVALUATE_PROBES_DIR / "results_for_calibration.jsonl")

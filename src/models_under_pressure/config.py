@@ -311,6 +311,7 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
+    probe_id: str | None = None
 
     @property
     def output_filename(self) -> str:
