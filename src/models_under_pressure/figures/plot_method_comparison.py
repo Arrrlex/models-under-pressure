@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from adjustText import adjust_text  # <-- Import adjust_text
+from matplotlib.colors import to_hex, to_rgb
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
@@ -14,6 +15,14 @@ from models_under_pressure.config import DATA_DIR
 from models_under_pressure.experiments.monitoring_cascade import (
     get_abbreviated_model_name,
 )
+
+
+def darken_color(color: str, factor: float = 0.7) -> str:
+    """Darken a color by the given factor (0 to 1)."""
+    rgb = to_rgb(color)
+    r, g, b = rgb
+    darker_rgb = (r * factor, g * factor, b * factor)
+    return to_hex(darker_rgb)
 
 
 def plot_method_comparison(
@@ -81,6 +90,8 @@ def plot_method_comparison(
         mean_flops = float(np.mean(flops))
 
         color = colors[method_type]
+        # Create darker version of the color for text
+        text_color = darken_color(color, factor=0.7)
 
         plt.plot(mean_flops, mean_auroc, "o", label=method, color=color, markersize=10)
         # Remove the method type suffix for display
@@ -93,6 +104,8 @@ def plot_method_comparison(
                 ha="center",
                 va="bottom",
                 fontsize=font_size - 2,
+                color=text_color,
+                # weight="bold",
             )
         )
 
