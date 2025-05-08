@@ -10,7 +10,7 @@ import seaborn as sns
 from models_under_pressure.figures.utils import map_dataset_name
 
 # Set the style
-plt.style.use("seaborn-v0_8-whitegrid")
+# plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("paper", font_scale=1.5)
 
 
@@ -233,15 +233,27 @@ def plot_probe_metric(
         if label.get_text() == "Mean":
             label.set_fontweight("bold")
 
-    # Add legend
-    plt.legend(
+    # # Add legend
+    # plt.legend(
+    #     loc="lower left",
+    #     ncol=2,
+    #     framealpha=1.0,
+    #     facecolor="white",
+    #     edgecolor="black",
+    #     fontsize=14,
+    # )
+
+    legend = plt.legend(
         loc="lower left",
         ncol=2,
-        framealpha=1.0,
+        framealpha=1.0,  # opaque frame
         facecolor="white",
         edgecolor="black",
         fontsize=14,
     )
+
+    for h in legend.legend_handles:
+        h.set_alpha(1)  # opaque handles
 
     # Set y-axis limits and labels
     plt.ylim(0.6, 1.0)
@@ -266,14 +278,19 @@ if __name__ == "__main__":
     # Get all files in the evaluate_probes directory
     results_dir = DATA_DIR / "results/evaluate_probes"
 
+    # Process data once for both plots
+    dev_data = process_data(list(results_dir.glob("*dev*.jsonl")), "auroc")
+    test_data = process_data(list(results_dir.glob("*test*.jsonl")), "auroc")
+
+    # Generate matplotlib version
     plot_probe_metric(
-        process_data(list(results_dir.glob("*dev*.jsonl")), "auroc"),
+        dev_data,
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_dev.png",
     )
 
     plot_probe_metric(
-        process_data(list(results_dir.glob("*test*.jsonl")), "auroc"),
+        test_data,
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_test.png",
     )

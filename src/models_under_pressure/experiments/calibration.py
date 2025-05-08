@@ -223,4 +223,4 @@ def run_calibration(evaluate_probe_results_path: Path):
 
 # Main execution
 if __name__ == "__main__":
-    run_calibration(EVALUATE_PROBES_DIR / "results_for_calibration.jsonl")
+    run_calibration(EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl")
