@@ -1253,16 +1253,6 @@ def plot_cascade_results(
     # Sort legend entries
     legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
 
-    # Create legend with sorted entries
-    plt.legend(
-        [entry["line"] for entry in legend_entries],
-        [entry["label"] for entry in legend_entries],
-        title="Method",
-        bbox_to_anchor=(1.0, 0.0),
-        loc="lower right",
-        ncol=2,
-    )
-
     # Plot probe performance line after all other data
     if show_difference_from_probe:
         # For difference plot, show zero line as probe performance
@@ -1295,7 +1285,7 @@ def plot_cascade_results(
             color="gray",
             linestyle="--",
             label="Probe",
-            alpha=0.5,
+            alpha=0.9,
         )
         legend_entries.insert(
             0,
@@ -1315,6 +1305,16 @@ def plot_cascade_results(
                 color="gray",
                 alpha=0.1,
             )
+
+    # Create legend with sorted entries
+    plt.legend(
+        [entry["line"] for entry in legend_entries],
+        [entry["label"] for entry in legend_entries],
+        # title="Method",
+        bbox_to_anchor=(1.0, 0.0),
+        loc="lower right",
+        # ncol=2,
+    )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
