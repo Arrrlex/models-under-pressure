@@ -14,6 +14,7 @@ while working with potentially very large language models.
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Callable, Iterator, Self, Sequence, Type
 
 import torch
@@ -216,6 +217,14 @@ class LLMModel:
     tokenize_kwargs: dict[str, Any]
     model: torch.nn.Module
     tokenizer: PreTrainedTokenizerBase
+    default_tokenize_kwargs: MappingProxyType[str, Any] = MappingProxyType(
+        {
+            "return_tensors": "pt",
+            "truncation": True,
+            "padding": True,
+            "max_length": 2**13,
+        }
+    )
 
     @classmethod
     def load(
@@ -268,14 +277,7 @@ class LLMModel:
 
         model.generation_config.pad_token_id = tokenizer.pad_token_id
 
-        default_tokenize_kwargs = {
-            "return_tensors": "pt",
-            "truncation": True,
-            "padding": True,
-            "max_length": 2**13,
-        }
-
-        tokenize_kwargs = default_tokenize_kwargs | (tokenize_kwargs or {})
+        tokenize_kwargs = cls.default_tokenize_kwargs | (tokenize_kwargs or {})
 
         llm_device = next(model.parameters()).device
         dtype = next(model.parameters()).dtype

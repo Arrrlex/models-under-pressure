@@ -1364,16 +1364,10 @@ def load_existing_results(
                     if tokenizer.pad_token_id is None:
                         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-                    default_tokenize_kwargs = {
-                        "return_tensors": "pt",
-                        "truncation": True,
-                        "padding": True,
-                        "max_length": 2**13,
-                    }
                     tokenized_inputs = tokenize_inputs(
                         tokenizer,
                         dataset.inputs,
-                        **default_tokenize_kwargs,
+                        **LLMModel.default_tokenize_kwargs,
                     )
                     token_counts = (
                         np.array(tokenized_inputs["attention_mask"])
