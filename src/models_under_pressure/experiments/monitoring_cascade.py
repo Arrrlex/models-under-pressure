@@ -1250,6 +1250,19 @@ def plot_cascade_results(
             }
         )
 
+    # Sort legend entries
+    legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
+
+    # Create legend with sorted entries
+    plt.legend(
+        [entry["line"] for entry in legend_entries],
+        [entry["label"] for entry in legend_entries],
+        title="Method",
+        bbox_to_anchor=(1.0, 0.0),
+        loc="lower right",
+        ncol=2,
+    )
+
     # Plot probe performance line after all other data
     if show_difference_from_probe:
         # For difference plot, show zero line as probe performance
@@ -1303,19 +1316,6 @@ def plot_cascade_results(
                 alpha=0.1,
             )
 
-    # Sort legend entries
-    legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
-
-    # Create legend with sorted entries
-    plt.legend(
-        [entry["line"] for entry in legend_entries],
-        [entry["label"] for entry in legend_entries],
-        title="Method",
-        bbox_to_anchor=(1.0, 0.0),
-        loc="lower right",
-        ncol=2,
-    )
-
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
     plt.ylabel(
@@ -1341,6 +1341,10 @@ def plot_cascade_results(
     # Format x-axis ticks to be more readable
     ax = plt.gca()
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
+
+    # Add some padding to the x-axis to make room for the legend
+    xmin, xmax = plt.xlim()
+    plt.xlim(xmin, xmax * 1.1)
 
     # Adjust layout
     plt.tight_layout()
