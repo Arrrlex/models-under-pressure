@@ -67,6 +67,10 @@ def plot_method_comparison(
     # Create lists for legend
     legend_elements = []
 
+    # Store points for later connection
+    probe_point = None
+    llama_8b_finetuned_point = None
+
     for method, data in method_results.items():
         aurocs = [d["auroc"] for d in data]
         flops = [d["avg_flops_per_sample"] for d in data]
@@ -82,6 +86,56 @@ def plot_method_comparison(
         display_method = method.split(" (")[0] if " (" in method else method
         texts.append(
             plt.text(mean_flops, mean_auroc, display_method, ha="center", va="bottom")
+        )
+
+        # Store specific points
+        if method == "Probe":
+            probe_point = (mean_flops, mean_auroc)
+        elif "llama-8b (finetuned)" in method:
+            llama_8b_finetuned_point = (mean_flops, mean_auroc)
+
+    # Connect Probe and Llama-8B finetuned with a dashed line if both exist
+    if probe_point and llama_8b_finetuned_point:
+        print(f"Connecting {probe_point} and {llama_8b_finetuned_point}")
+        plt.plot(
+            [probe_point[0], llama_8b_finetuned_point[0]],
+            [probe_point[1], llama_8b_finetuned_point[1]],
+            "--",
+            color="gray",
+            alpha=0.7,
+            linewidth=1.5,
+            zorder=0,  # zorder=0 to ensure it's below the points
+        )
+
+        # Add annotation about computational difference
+        # Use logarithmic interpolation for x since it's on a log scale
+        position_ratio = 0.5  # 0 would be at probe, 1 would be at llama-8b
+
+        # Logarithmic interpolation for x-coordinate
+        log_probe_x = np.log10(probe_point[0])
+        log_llama_x = np.log10(llama_8b_finetuned_point[0])
+        log_annotation_x = log_probe_x + position_ratio * (log_llama_x - log_probe_x)
+        annotation_x = 10**log_annotation_x
+
+        # Linear interpolation for y-coordinate (no log scale)
+        annotation_y = probe_point[1] + position_ratio * (
+            llama_8b_finetuned_point[1] - probe_point[1]
+        )
+        print(annotation_x, annotation_y)
+
+        flops_ratio = llama_8b_finetuned_point[0] / probe_point[0]
+        log_flops_ratio = int(np.log10(flops_ratio))
+
+        # Place text directly on the line with white background
+        plt.annotate(
+            f"10^{log_flops_ratio} × FLOPs",
+            (annotation_x, annotation_y),
+            ha="center",
+            va="center",
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9),
+            fontsize=10,
+            # weight="bold",
+            zorder=10,  # Make sure it's on top of everything
         )
 
     # Add legend elements for method types
@@ -123,6 +177,7 @@ def plot_method_comparison(
     if output_file is None:
         output_file = results_dir / "method_comparison.pdf"
     plt.savefig(output_file, bbox_inches="tight")
+    plt.show()
     plt.close()
 
 
