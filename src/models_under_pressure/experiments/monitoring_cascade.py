@@ -10,6 +10,7 @@ import yaml
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
+from transformers import AutoTokenizer
 
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
@@ -21,6 +22,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
     TEST_DATASETS,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
@@ -38,7 +40,7 @@ from models_under_pressure.interfaces.results import (
     FinetunedBaselineResults,
     LikelihoodBaselineResults,
 )
-from models_under_pressure.model import LLMModel
+from models_under_pressure.model import LLMModel, tokenize_inputs
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import AttrDict
 
@@ -143,6 +145,7 @@ def _run_monitoring_cascade(
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
+    probe_results = []
     if probe_model_name:
         assert probe_layer is not None
 
@@ -163,7 +166,6 @@ def _run_monitoring_cascade(
         )
 
         # Evaluate probe
-        probe_results = []
         for dataset_name in dataset_names:
             eval_dataset = load_dataset(
                 dataset_path=eval_dataset_path,
@@ -315,6 +317,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
+            show_shaded_regions=cfg.analysis.show_shaded_regions,
         )
 
 
@@ -629,6 +632,8 @@ def evaluate_single_probe_cascade(
     assert evaluation_results.output_scores is not None
     assert evaluation_results.ground_truth_labels is not None
     assert evaluation_results.ground_truth_scale_labels is not None
+    if evaluation_results.token_counts is None:  # TODO Remove again!
+        evaluation_results.token_counts = [1] * len(evaluation_results.output_scores)
     assert evaluation_results.token_counts is not None
 
     # Get activation dimension for model
@@ -636,8 +641,8 @@ def evaluate_single_probe_cascade(
 
     # Depending on the probe, flops are calculated differently
     if evaluation_results.config.probe_spec.name in [
-        "pytorch_per_entry_probe_mean",
-        "sklearn_mean_agg_probe",
+        "mean",
+        "sklearn",
     ]:
         # Flops per token are approximately activation_dim
         # (Since the average has to be computed as well)
@@ -648,6 +653,11 @@ def evaluate_single_probe_cascade(
     elif evaluation_results.config.probe_spec.name == "pytorch_per_token_probe":
         flops = [
             activation_dim * token_count
+            for token_count in evaluation_results.token_counts
+        ]
+    elif evaluation_results.config.probe_spec.name == "attention":
+        flops = [
+            2 * activation_dim * token_count
             for token_count in evaluation_results.token_counts
         ]
     else:
@@ -971,11 +981,13 @@ def get_abbreviated_model_name(full_name: str) -> str:
 def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
-    figsize: tuple[int, int] = (10, 6),
+    figsize: tuple[int, int] = (9, 4),
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
     show_difference_from_probe: bool = False,
     show_strategy_in_legend: bool = True,
+    show_title: bool = False,
+    show_shaded_regions: bool = False,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -987,6 +999,8 @@ def plot_cascade_results(
         target_dataset: If specified, only plot results for this dataset
         show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
+        show_title: Whether to show a title on the plot
+        show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
     """
     import json
     from collections import defaultdict
@@ -1084,9 +1098,9 @@ def plot_cascade_results(
             "mid": "-.",
         },
         "probe_finetuned_baseline": {
-            "top": "-.",
+            "top": "--",
             "bottom": ":",
-            "mid": "--",
+            "mid": "-.",
         },
         "two_step_baseline": {
             "top": "--",
@@ -1095,7 +1109,28 @@ def plot_cascade_results(
         },
     }
 
-    # Plot each group
+    # Define model size order (smallest to largest)
+    model_size_order = {
+        "llama-1b": 0,
+        "gemma-1b": 1,
+        "llama-3b": 2,
+        "llama-8b": 3,
+        "gemma-12b": 4,
+        "gemma-27b": 5,
+        "llama-70b": 6,
+    }
+
+    # Define cascade type order within each model group
+    cascade_type_order = {
+        "baseline": 0,
+        "finetuned_baseline": 1,
+        "probe_baseline": 2,
+        "probe_finetuned_baseline": 2,
+        "two_step_baseline": 2,
+    }
+
+    # Collect all legend entries
+    legend_entries = []
     for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
         cascade_type = key[1]
@@ -1139,7 +1174,7 @@ def plot_cascade_results(
 
         # Create label
         if cascade_type == "baseline":
-            label = f"Baseline ({get_abbreviated_model_name(baseline_model)})"
+            label = f"Prompted Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "finetuned_baseline":
             label = f"Finetuned Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type in [
@@ -1158,12 +1193,21 @@ def plot_cascade_results(
             if show_strategy_in_legend:
                 label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)}) - {selection_strategy}/{remaining_strategy_display}/{merge_strategy}"
             else:
-                label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+                # label = f"{cascade_type.replace('_', ' ').title()} ({get_abbreviated_model_name(baseline_model)})"
+                if cascade_type == "two_step_baseline":
+                    cascade_name = "Baseline + Baseline"
+                elif cascade_type == "probe_baseline":
+                    cascade_name = "Probe + Pr. Baseline"
+                elif cascade_type == "probe_finetuned_baseline":
+                    cascade_name = "Probe + Ft. Baseline"
+                else:
+                    raise ValueError(f"Unknown cascade type: {cascade_type}")
+                label = f"{cascade_name} ({get_abbreviated_model_name(baseline_model)})"
         else:
             raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Plot line with shaded region
-        plt.plot(
+        line = plt.plot(
             mean_flops_per_sample,
             mean_aurocs,
             "o-",
@@ -1171,16 +1215,17 @@ def plot_cascade_results(
             linestyle=linestyle,
             label=label,
             markersize=3,
-        )
+        )[0]
 
-        # Add shaded region for uncertainty
-        plt.fill_between(
-            mean_flops_per_sample,
-            np.array(mean_aurocs) - np.array(std_aurocs),
-            np.array(mean_aurocs) + np.array(std_aurocs),
-            color=color,
-            alpha=0.1,
-        )
+        # Add shaded region for uncertainty if enabled
+        if show_shaded_regions:
+            plt.fill_between(
+                mean_flops_per_sample,
+                np.array(mean_aurocs) - np.array(std_aurocs),
+                np.array(mean_aurocs) + np.array(std_aurocs),
+                color=color,
+                alpha=0.1,
+            )
 
         # Add fraction labels if enabled
         if show_fraction_labels:
@@ -1193,11 +1238,35 @@ def plot_cascade_results(
                     fontsize=8,
                 )
 
+        # Add to legend entries with sorting information
+        legend_entries.append(
+            {
+                "line": line,
+                "label": label,
+                "model_size": model_size_order.get(
+                    get_abbreviated_model_name(baseline_model), 999
+                ),
+                "cascade_type": cascade_type_order.get(cascade_type, 999),
+            }
+        )
+
+    # Sort legend entries
+    legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
+
     # Plot probe performance line after all other data
     if show_difference_from_probe:
         # For difference plot, show zero line as probe performance
-        plt.axhline(
-            y=0, color="gray", linestyle="--", label="Probe Performance", alpha=0.5
+        probe_line = plt.axhline(
+            y=0, color="gray", linestyle="--", label="Probe", alpha=0.5
+        )
+        legend_entries.insert(
+            0,
+            {
+                "line": probe_line,
+                "label": "Probe",
+                "model_size": -1,  # Put probe first
+                "cascade_type": -1,
+            },
         )
     elif probe_aurocs:
         # For absolute plot, show actual probe performance
@@ -1211,36 +1280,60 @@ def plot_cascade_results(
         # Get the x-axis limits after plotting all the data
         x_min, x_max = plt.xlim()
 
-        plt.axhline(
+        probe_line = plt.axhline(
             y=mean_probe_auroc,
             color="gray",
             linestyle="--",
-            label="Probe Performance",
-            alpha=0.5,
+            label="Probe",
+            alpha=0.9,
+        )
+        legend_entries.insert(
+            0,
+            {
+                "line": probe_line,
+                "label": "Probe",
+                "model_size": -1,  # Put probe first
+                "cascade_type": -1,
+            },
         )
 
-        plt.fill_between(
-            [x_min, x_max],  # Use actual x-axis range
-            mean_probe_auroc - std_probe_auroc,
-            mean_probe_auroc + std_probe_auroc,
-            color="gray",
-            alpha=0.1,
-        )
+        if show_shaded_regions:
+            plt.fill_between(
+                [x_min, x_max],  # Use actual x-axis range
+                mean_probe_auroc - std_probe_auroc,
+                mean_probe_auroc + std_probe_auroc,
+                color="gray",
+                alpha=0.1,
+            )
+
+    # Create legend with sorted entries
+    plt.legend(
+        [entry["line"] for entry in legend_entries],
+        [entry["label"] for entry in legend_entries],
+        # title="Method",
+        bbox_to_anchor=(1.0, 0.0),
+        loc="lower right",
+        # ncol=2,
+    )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
     plt.ylabel(
-        "AUROC Difference from Probe" if show_difference_from_probe else "AUROC",
+        "AUROC Difference from Probe" if show_difference_from_probe else "Mean AUROC",
         fontsize=12,
     )
-    title = "Cascade Performance Tradeoff"
-    if target_dataset:
-        title += f" - {target_dataset}"
-    else:
-        title += " (Averaged across datasets)"
-    plt.title(title, fontsize=14, pad=20)
-    plt.legend(title="Method", bbox_to_anchor=(1.05, 1), loc="upper left")
+    if show_title:
+        title = "Monitoring Performance vs Computation Cost"
+        if target_dataset:
+            title += f" - {target_dataset}"
+        else:
+            title += " (Averaged across datasets)"
+        plt.title(title, fontsize=14, pad=20)
     plt.grid(True, alpha=0.3)
+
+    # Set y-axis limits for AUROC plot
+    if not show_difference_from_probe:
+        plt.ylim(0.5, 1.0)
 
     # Set x-axis to log scale
     plt.xscale("log")
@@ -1248,6 +1341,10 @@ def plot_cascade_results(
     # Format x-axis ticks to be more readable
     ax = plt.gca()
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
+
+    # Add some padding to the x-axis to make room for the legend
+    xmin, xmax = plt.xlim()
+    plt.xlim(xmin, xmax * 1.1)
 
     # Adjust layout
     plt.tight_layout()
@@ -1259,6 +1356,26 @@ def plot_cascade_results(
             output_file = results_file.parent / f"cascade_plot_{target_dataset}.pdf"
     plt.savefig(output_file, bbox_inches="tight")
     plt.close()
+
+
+def process_dataset_name(dataset_name: str) -> str:
+    if dataset_name.split("_")[0] in [
+        "anthropic",
+        "mt",
+        "mts",
+        "manual",
+        "mask",
+        "toolace",
+        "mental",
+        "redteaming",
+    ]:
+        if dataset_name.startswith("mental"):
+            dataset_name = "mental_health"
+        else:
+            dataset_name = dataset_name.split("_")[0]
+    else:
+        raise ValueError(f"Not implemented for dataset name '{dataset_name}'")
+    return dataset_name
 
 
 def load_existing_results(
@@ -1293,7 +1410,7 @@ def load_existing_results(
                     if use_test:
                         assert (
                             "/evals/test/" in str(result.dataset_path)
-                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
+                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {baseline_file}"
 
     # Read all finetuning baseline files
     for finetuning_file in output_dir.glob("finetuning*.jsonl"):
@@ -1302,32 +1419,62 @@ def load_existing_results(
                 if line.strip():  # Skip empty lines
                     result = FinetunedBaselineResults.model_validate_json(line.strip())
                     # TODO Modify this once proper dataset names are written to the finetuning results!
-                    dataset_name = result.dataset_name
-                    if dataset_name.split("_")[0] in [
-                        "anthropic",
-                        "mt",
-                        "mts",
-                        "manual",
-                        "mask",
-                        "toolace",
-                    ]:
-                        dataset_name = dataset_name.split("_")[0]
-                    else:
-                        raise ValueError(
-                            f"Not implemented for dataset name: {dataset_name}"
-                        )
+                    dataset_name = process_dataset_name(result.dataset_name)
                     finetuned_baseline_results_by_dataset[dataset_name].append(result)
 
-    # Read probe results
-    with open(output_dir / "probe_results.jsonl") as f:
+    # Read probe results and add token counts
+    probe_file = output_dir / "probe_results_with_token_counts.jsonl"
+    if not probe_file.exists():
+        probe_file = output_dir / "probe_results.jsonl"
+    with open(probe_file) as f:
         for line in f:
             if line.strip():  # Skip empty lines
                 result = EvaluationResult.model_validate_json(line.strip())
                 if use_test:
                     assert (
                         "/evals/test/" in str(result.dataset_path)
-                    ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path}"
-                probe_results_by_dataset[result.dataset_name] = result
+                    ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {output_dir / 'probe_results.jsonl'}"
+                dataset_name = process_dataset_name(result.dataset_name)
+
+                # If token counts are missing, load dataset and get them
+                if result.token_counts is None:
+                    print(
+                        f"Missing token counts for {result.dataset_name}, loading dataset to get them"
+                    )
+
+                    dataset = LabelledDataset.load_from(result.dataset_path)
+
+                    tokenizer_kwargs = {
+                        "pretrained_model_name_or_path": result.config.model_name,
+                        "cache_dir": global_settings.CACHE_DIR,
+                    }
+                    tokenizer = AutoTokenizer.from_pretrained(**tokenizer_kwargs)
+                    if tokenizer.pad_token_id is None:
+                        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+                    tokenized_inputs = tokenize_inputs(
+                        tokenizer,
+                        dataset.inputs,
+                        **LLMModel.default_tokenize_kwargs,
+                    )
+                    token_counts = (
+                        np.array(tokenized_inputs["attention_mask"])
+                        .sum(axis=1)
+                        .tolist()
+                    )
+                    # Create new result with token counts
+                    result_dict = result.model_dump()
+                    result_dict["token_counts"] = token_counts
+                    result = EvaluationResult.model_validate(result_dict)
+
+                    # Save modified result back to file
+                    # (Commented out because it's quite fast to compute anyway)
+                    with open(
+                        output_dir / "probe_results_with_token_counts.jsonl", "a"
+                    ) as f_out:
+                        f_out.write(result.model_dump_json() + "\n")
+
+                probe_results_by_dataset[dataset_name] = result
 
     return (
         dict(baseline_results_by_dataset),
