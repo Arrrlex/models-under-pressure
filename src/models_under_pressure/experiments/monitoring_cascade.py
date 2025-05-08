@@ -1109,7 +1109,28 @@ def plot_cascade_results(
         },
     }
 
-    # Plot each group
+    # Define model size order (smallest to largest)
+    model_size_order = {
+        "llama-1b": 0,
+        "gemma-1b": 1,
+        "llama-3b": 2,
+        "llama-8b": 3,
+        "gemma-12b": 4,
+        "gemma-27b": 5,
+        "llama-70b": 6,
+    }
+
+    # Define cascade type order within each model group
+    cascade_type_order = {
+        "baseline": 0,
+        "finetuned_baseline": 1,
+        "probe_baseline": 2,
+        "probe_finetuned_baseline": 2,
+        "two_step_baseline": 2,
+    }
+
+    # Collect all legend entries
+    legend_entries = []
     for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
         cascade_type = key[1]
@@ -1186,7 +1207,7 @@ def plot_cascade_results(
             raise ValueError(f"Unknown cascade type: {cascade_type}")
 
         # Plot line with shaded region
-        plt.plot(
+        line = plt.plot(
             mean_flops_per_sample,
             mean_aurocs,
             "o-",
@@ -1194,7 +1215,7 @@ def plot_cascade_results(
             linestyle=linestyle,
             label=label,
             markersize=3,
-        )
+        )[0]
 
         # Add shaded region for uncertainty if enabled
         if show_shaded_regions:
@@ -1217,10 +1238,33 @@ def plot_cascade_results(
                     fontsize=8,
                 )
 
+        # Add to legend entries with sorting information
+        legend_entries.append(
+            {
+                "line": line,
+                "label": label,
+                "model_size": model_size_order.get(
+                    get_abbreviated_model_name(baseline_model), 999
+                ),
+                "cascade_type": cascade_type_order.get(cascade_type, 999),
+            }
+        )
+
     # Plot probe performance line after all other data
     if show_difference_from_probe:
         # For difference plot, show zero line as probe performance
-        plt.axhline(y=0, color="gray", linestyle="--", label="Probe", alpha=0.5)
+        probe_line = plt.axhline(
+            y=0, color="gray", linestyle="--", label="Probe", alpha=0.5
+        )
+        legend_entries.insert(
+            0,
+            {
+                "line": probe_line,
+                "label": "Probe",
+                "model_size": -1,  # Put probe first
+                "cascade_type": -1,
+            },
+        )
     elif probe_aurocs:
         # For absolute plot, show actual probe performance
         mean_probe_auroc = float(
@@ -1233,12 +1277,21 @@ def plot_cascade_results(
         # Get the x-axis limits after plotting all the data
         x_min, x_max = plt.xlim()
 
-        plt.axhline(
+        probe_line = plt.axhline(
             y=mean_probe_auroc,
             color="gray",
             linestyle="--",
             label="Probe",
             alpha=0.5,
+        )
+        legend_entries.insert(
+            0,
+            {
+                "line": probe_line,
+                "label": "Probe",
+                "model_size": -1,  # Put probe first
+                "cascade_type": -1,
+            },
         )
 
         if show_shaded_regions:
@@ -1249,6 +1302,19 @@ def plot_cascade_results(
                 color="gray",
                 alpha=0.1,
             )
+
+    # Sort legend entries
+    legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
+
+    # Create legend with sorted entries
+    plt.legend(
+        [entry["line"] for entry in legend_entries],
+        [entry["label"] for entry in legend_entries],
+        title="Method",
+        bbox_to_anchor=(1.0, 0.0),
+        loc="lower right",
+        ncol=2,
+    )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
@@ -1263,7 +1329,6 @@ def plot_cascade_results(
         else:
             title += " (Averaged across datasets)"
         plt.title(title, fontsize=14, pad=20)
-    plt.legend(title="Method", bbox_to_anchor=(1.0, 0.0), loc="lower right", ncol=2)
     plt.grid(True, alpha=0.3)
 
     # Set y-axis limits for AUROC plot
