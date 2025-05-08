@@ -164,6 +164,36 @@ class HookedModel:
             hook.remove()
 
 
+def tokenize_inputs(
+    tokenizer: PreTrainedTokenizerBase,
+    dialogues: Sequence[Input],
+    add_generation_prompt: bool = False,
+    device: torch.device | str = "cpu",
+    **tokenize_kwargs: Any,
+) -> dict[str, torch.Tensor]:
+    dialogues = [to_dialogue(d) for d in dialogues]
+    input_dicts = [[d.model_dump() for d in dialogue] for dialogue in dialogues]
+
+    input_str = tokenizer.apply_chat_template(
+        input_dicts,
+        tokenize=False,  # Return string instead of tokens
+        add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
+    )
+
+    token_dict = tokenizer(input_str, **tokenize_kwargs)  # type: ignore
+    for k, v in token_dict.items():
+        if k in ["input_ids", "attention_mask"]:
+            token_dict[k] = v[:, 1:]
+        if isinstance(v, torch.Tensor):
+            token_dict[k] = v.to(device)
+
+    # Check that attention mask exists in token dict
+    if "attention_mask" not in token_dict:
+        raise ValueError("Tokenizer output must include attention mask")
+
+    return token_dict  # type: ignore
+
+
 @dataclass
 class LLMModel:
     """
@@ -303,27 +333,13 @@ class LLMModel:
     def tokenize(
         self, dialogues: Sequence[Input], add_generation_prompt: bool = False
     ) -> dict[str, torch.Tensor]:
-        dialogues = [to_dialogue(d) for d in dialogues]
-        input_dicts = [[d.model_dump() for d in dialogue] for dialogue in dialogues]
-
-        input_str = self.tokenizer.apply_chat_template(
-            input_dicts,
-            tokenize=False,  # Return string instead of tokens
-            add_generation_prompt=add_generation_prompt,  # Add final assistant prefix for generation
+        return tokenize_inputs(
+            self.tokenizer,
+            dialogues,
+            add_generation_prompt=add_generation_prompt,
+            device=self.llm_device,
+            **self.tokenize_kwargs,
         )
-
-        token_dict = self.tokenizer(input_str, **self.tokenize_kwargs)  # type: ignore
-        for k, v in token_dict.items():
-            if k in ["input_ids", "attention_mask"]:
-                token_dict[k] = v[:, 1:]
-            if isinstance(v, torch.Tensor):
-                token_dict[k] = v.to(self.llm_device)
-
-        # Check that attention mask exists in token dict
-        if "attention_mask" not in token_dict:
-            raise ValueError("Tokenizer output must include attention mask")
-
-        return token_dict  # type: ignore
 
     @torch.no_grad()
     def get_batched_activations_for_layers(

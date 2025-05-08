@@ -10,6 +10,7 @@ import yaml
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel
 from sklearn.metrics import roc_auc_score
+from transformers import AutoTokenizer
 
 from models_under_pressure.baselines.continuation import (
     evaluate_likelihood_continuation_baseline,
@@ -21,6 +22,7 @@ from models_under_pressure.config import (
     EVAL_DATASETS,
     LOCAL_MODELS,
     TEST_DATASETS,
+    global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset
 from models_under_pressure.experiments.evaluate_probes import (
@@ -38,7 +40,7 @@ from models_under_pressure.interfaces.results import (
     FinetunedBaselineResults,
     LikelihoodBaselineResults,
 )
-from models_under_pressure.model import LLMModel
+from models_under_pressure.model import LLMModel, tokenize_inputs
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import AttrDict
 
@@ -629,6 +631,8 @@ def evaluate_single_probe_cascade(
     assert evaluation_results.output_scores is not None
     assert evaluation_results.ground_truth_labels is not None
     assert evaluation_results.ground_truth_scale_labels is not None
+    if evaluation_results.token_counts is None:  # TODO Remove again!
+        evaluation_results.token_counts = [1] * len(evaluation_results.output_scores)
     assert evaluation_results.token_counts is not None
 
     # Get activation dimension for model
@@ -648,6 +652,11 @@ def evaluate_single_probe_cascade(
     elif evaluation_results.config.probe_spec.name == "pytorch_per_token_probe":
         flops = [
             activation_dim * token_count
+            for token_count in evaluation_results.token_counts
+        ]
+    elif evaluation_results.config.probe_spec.name == "attention":
+        flops = [
+            2 * activation_dim * token_count
             for token_count in evaluation_results.token_counts
         ]
     else:
@@ -1325,8 +1334,11 @@ def load_existing_results(
                     dataset_name = process_dataset_name(result.dataset_name)
                     finetuned_baseline_results_by_dataset[dataset_name].append(result)
 
-    # Read probe results
-    with open(output_dir / "probe_results.jsonl") as f:
+    # Read probe results and add token counts
+    probe_file = output_dir / "probe_results_with_token_counts.jsonl"
+    if not probe_file.exists():
+        probe_file = output_dir / "probe_results.jsonl"
+    with open(probe_file) as f:
         for line in f:
             if line.strip():  # Skip empty lines
                 result = EvaluationResult.model_validate_json(line.strip())
@@ -1335,6 +1347,51 @@ def load_existing_results(
                         "/evals/test/" in str(result.dataset_path)
                     ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {output_dir / 'probe_results.jsonl'}"
                 dataset_name = process_dataset_name(result.dataset_name)
+
+                # If token counts are missing, load dataset and get them
+                if result.token_counts is None:
+                    print(
+                        f"Missing token counts for {result.dataset_name}, loading dataset to get them"
+                    )
+
+                    dataset = LabelledDataset.load_from(result.dataset_path)
+
+                    tokenizer_kwargs = {
+                        "pretrained_model_name_or_path": result.config.model_name,
+                        "cache_dir": global_settings.CACHE_DIR,
+                    }
+                    tokenizer = AutoTokenizer.from_pretrained(**tokenizer_kwargs)
+                    if tokenizer.pad_token_id is None:
+                        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+                    default_tokenize_kwargs = {
+                        "return_tensors": "pt",
+                        "truncation": True,
+                        "padding": True,
+                        "max_length": 2**13,
+                    }
+                    tokenized_inputs = tokenize_inputs(
+                        tokenizer,
+                        dataset.inputs,
+                        **default_tokenize_kwargs,
+                    )
+                    token_counts = (
+                        np.array(tokenized_inputs["attention_mask"])
+                        .sum(axis=1)
+                        .tolist()
+                    )
+                    # Create new result with token counts
+                    result_dict = result.model_dump()
+                    result_dict["token_counts"] = token_counts
+                    result = EvaluationResult.model_validate(result_dict)
+
+                    # Save modified result back to file
+                    # (Commented out because it's quite fast to compute anyway)
+                    with open(
+                        output_dir / "probe_results_with_token_counts.jsonl", "a"
+                    ) as f_out:
+                        f_out.write(result.model_dump_json() + "\n")
+
                 probe_results_by_dataset[dataset_name] = result
 
     return (
