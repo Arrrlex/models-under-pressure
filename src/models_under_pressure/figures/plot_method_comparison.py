@@ -6,6 +6,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from adjustText import adjust_text  # <-- Import adjust_text
 from matplotlib.ticker import FuncFormatter
 
 from models_under_pressure.config import DATA_DIR
@@ -17,26 +18,16 @@ from models_under_pressure.experiments.monitoring_cascade import (
 def plot_method_comparison(
     results_dir: Path,
     output_file: Optional[Path] = None,
-    figsize: tuple[int, int] = (10, 6),
+    figsize: tuple[int, int] = (7, 5),
 ) -> None:
-    """Plot comparison of different methods showing the tradeoff between FLOPs and AUROC.
-
-    Args:
-        results_dir: Directory containing the results files
-        output_file: Path to save the plot. If None, saves to results_dir / "method_comparison.pdf"
-        figsize: Figure size as (width, height) in inches
-    """
-    # Read results from file
     results = []
     with open(results_dir / "cascade_results.jsonl") as f:
         for line in f:
             if line.strip():
                 result = json.loads(line)
-                # Only include results with fraction_of_samples = 1.0
                 if result.get("fraction_of_samples") == 1.0:
                     results.append(result)
 
-    # Group results by method type and model
     method_results = defaultdict(list)
     for result in results:
         cascade_type = result["cascade_type"]
@@ -49,7 +40,7 @@ def plot_method_comparison(
         elif cascade_type == "finetuned_baseline":
             key = f"{get_abbreviated_model_name(model_name)} (ft.)"
         else:
-            continue  # Skip other cascade types
+            continue
 
         method_results[key].append(
             {
@@ -58,54 +49,49 @@ def plot_method_comparison(
             }
         )
 
-    # Set up the plot
     plt.figure(figsize=figsize)
     sns.set_style("whitegrid")
 
-    # Plot each method
+    colors = {
+        "probe": "green",
+        "prompted": "blue",
+        "finetuned": "red",
+    }
+
+    texts = []  # Store text annotations here
+
     for method, data in method_results.items():
-        # Calculate mean for this method
         aurocs = [d["auroc"] for d in data]
         flops = [d["avg_flops_per_sample"] for d in data]
 
         mean_auroc = float(np.mean(aurocs))
         mean_flops = float(np.mean(flops))
 
-        # Plot point
-        plt.plot(
-            mean_flops,
-            mean_auroc,
-            "o",
-            label=method,
-        )
+        if "(ft.)" in method:
+            color = colors["finetuned"]
+        elif "(pr.)" in method:
+            color = colors["prompted"]
+        else:
+            color = colors["probe"]
 
-        # Add method name above point
-        plt.annotate(
-            method,
-            (mean_flops, mean_auroc),
-            xytext=(0, 10),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-        )
+        plt.plot(mean_flops, mean_auroc, "o", label=method, color=color)
 
-    # Customize plot
+        texts.append(plt.text(mean_flops, mean_auroc, method, ha="center", va="bottom"))
+
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
     plt.ylabel("AUROC", fontsize=12)
-    plt.title("Method Comparison", fontsize=14, pad=20)
+    # plt.title("Method Comparison", fontsize=14, pad=20)
     plt.grid(True, alpha=0.3)
 
-    # Set x-axis to log scale
     plt.xscale("log")
-
-    # Format x-axis ticks to be more readable
     ax = plt.gca()
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
 
-    # Adjust layout
+    # Adjust texts to avoid overlap
+    adjust_text(texts, arrowprops=dict(arrowstyle="-", color="gray"))
+
     plt.tight_layout()
 
-    # Save plot
     if output_file is None:
         output_file = results_dir / "method_comparison.pdf"
     plt.savefig(output_file, bbox_inches="tight")
@@ -113,6 +99,5 @@ def plot_method_comparison(
 
 
 if __name__ == "__main__":
-    # Example usage
     results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
     plot_method_comparison(results_dir)
