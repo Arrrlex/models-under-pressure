@@ -93,6 +93,47 @@ def process_raw_continuation_results(result: dict) -> pd.DataFrame:
     )
 
 
+def process_raw_finetune_results(result: dict) -> pd.DataFrame:
+    """
+    Process the raw finetune results:
+    1. Establish the size of the dataset, ensure that all fields match the dataset size.
+    2. Hyperparameter fields are then duplicated for each element of the dataset.
+    """
+
+    list_fields = [
+        "labels",
+        "ground_truth",
+        "scores",
+        "ids",
+    ]
+    data_size = len(result["scores"])
+
+    for field in list_fields:
+        assert (
+            len(result.get(field, [])) == data_size
+        ), f"Field {field} has a different size than the dataset. Expected {data_size}, got {len(result[field])}"
+
+    dataset_name = result["dataset_name"]
+    dataset_path = result["dataset_path"]
+    model_name = result["model_name"]
+    max_samples = result["max_samples"]
+    timestamp = result["timestamp"]
+
+    return pd.DataFrame(
+        {
+            "scores": result["scores"],
+            "labels": result["labels"],
+            "ground_truth": result["ground_truth"],
+            "ids": result["ids"],
+            "dataset_name": [dataset_name] * data_size,
+            "dataset_path": [dataset_path] * data_size,
+            "model_name": [model_name] * data_size,
+            "max_samples": [max_samples] * data_size,
+            "timestamp": [timestamp] * data_size,
+        }
+    )
+
+
 def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
     """
     Read the results file, return a dataframe where each row is an entry in a dataset.
@@ -106,13 +147,17 @@ def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
     print("Loading probe results ... ")
     data_frames = []
 
-    for probe_result_path in probe_result_paths:
+    for i, probe_result_path in enumerate(probe_result_paths):
         results = [json.loads(line) for line in open(probe_result_path)]
 
-        for i, result in enumerate(results):
+        file_results = []
+        for result in results:
             df = process_raw_probe_results(result)
-            df["load_id"] = i
-            data_frames.append(df)
+            file_results.append(df)
+
+        file_results = pd.concat(file_results, ignore_index=False)
+        file_results["load_id"] = i
+        data_frames.append(file_results)
 
     output = pd.concat(data_frames, ignore_index=False)
     output["dataset_name"] = output["dataset_name"].apply(map_dataset_name)
@@ -137,14 +182,18 @@ def get_baseline_results(baseline_result_paths: list[Path]) -> pd.DataFrame:
     """
     print("Loading baseline results ... ")
     data_frames = []
-    for path in baseline_result_paths:
+    for i, path in enumerate(baseline_result_paths):
         with open(path) as f:
             results = [json.loads(line) for line in f if line.strip()]
 
-        for i, result in enumerate(results):
-            df = pd.DataFrame(result)
-            df["load_id"] = i
-            data_frames.append(df)
+        file_results = []
+        for result in results:
+            df = process_raw_finetune_results(result)
+            file_results.append(df)
+
+        file_results = pd.concat(file_results, ignore_index=False)
+        file_results["load_id"] = i
+        data_frames.append(file_results)
 
     output = pd.concat(data_frames, ignore_index=False)
     output["dataset_name"] = output["dataset_name"].apply(map_dataset_name)
@@ -180,13 +229,17 @@ def get_continuation_results(continuation_result_paths: list[Path]) -> pd.DataFr
     print("Loading continuation results ... ")
     data_frames = []
 
-    for probe_result_path in continuation_result_paths:
+    for i, probe_result_path in enumerate(continuation_result_paths):
         results = [json.loads(line) for line in open(probe_result_path)]
 
-        for i, result in enumerate(results):
+        file_results = []
+        for result in results:
             df = process_raw_continuation_results(result)
-            df["load_id"] = i
-            data_frames.append(df)
+            file_results.append(df)
+
+        file_results = pd.concat(file_results, ignore_index=False)
+        file_results["load_id"] = i
+        data_frames.append(file_results)
 
     output = pd.concat(data_frames, ignore_index=False)
     output["dataset_name"] = output["dataset_name"].apply(map_dataset_name)
