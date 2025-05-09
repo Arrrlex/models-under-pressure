@@ -223,7 +223,7 @@ def display_word_level_visualization(
             tokenizer_input = [{"role": "user", "content": text_value}]
 
         tokens = tokenizer.apply_chat_template(
-            tokenizer_input, tokenize=True, add_generation_prompt=True
+            tokenizer_input, tokenize=True, add_generation_prompt=False
         )
 
         # If we have valid probe values that match the number of tokens
