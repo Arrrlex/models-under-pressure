@@ -91,6 +91,11 @@ def evaluate_probe_and_save_results(
                 additional_scores[additional_scores != -1]
                 for additional_scores in per_token_attention_scores
             ]
+            # llm_model = LLMModel.load(
+            #     model_name=model_name,
+            # )
+            # tokens = llm_model.tokenize(eval_dataset.inputs, tokenize=False)
+            print("ok")
         else:
             per_token_probe_scores = [
                 probe_score[probe_score != -1]
@@ -119,6 +124,7 @@ def evaluate_probe_and_save_results(
             "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
             "per_token_attention_scores": per_token_attention_scores,
+            "tokens": eval_dataset.other_fields["input_ids"].tolist(),  # type: ignore
         }
 
         for score, values in probe_scores_dict.items():

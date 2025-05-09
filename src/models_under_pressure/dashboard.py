@@ -181,6 +181,7 @@ def display_word_level_visualization(
 
     # Get the probe values
     probe_values = selected_row[probe_column]
+    tokens = selected_row["tokens_Llama-3.3-70B-Instruct_prompts_4x_l31"]
     attention_values = selected_row[
         "per_token_attention_scores_Llama-3.3-70B-Instruct_prompts_4x_l31"
     ]
@@ -216,15 +217,16 @@ def display_word_level_visualization(
         )
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-        try:  # Load via JSON:
-            tokenizer_input = json.loads(text_value)
+        tokenizer_input = [{"role": "user", "content": text_value}]
+        print(tokenizer_input)
 
-        except json.JSONDecodeError:  # Load via messages
-            tokenizer_input = [{"role": "user", "content": text_value}]
-
-        tokens = tokenizer.apply_chat_template(
-            tokenizer_input, tokenize=True, add_generation_prompt=False
-        )
+        # tokens = tokenizer.apply_chat_template(
+        #     tokenizer_input, tokenize=True, add_generation_prompt=False
+        # )
+        tokens_string = tokenizer.convert_ids_to_tokens(tokens)
+        print(len(tokens))
+        print(len(tokens_string))
+        print(len(probe_values) - sum([1 for x in probe_values if x == 0]))
 
         # If we have valid probe values that match the number of tokens
         probe_values = probe_values[: len(tokens)]
@@ -303,7 +305,7 @@ def display_word_level_visualization(
             # Build HTML for colored tokens
             html = "<div style='font-size: 18px; line-height: 2;'>"
             for token, val, attn_val in zip(tokens, probe_values, attention_values):
-                bg_color = get_color2(val)
+                bg_color = get_background_color2(val)
                 # underline_color = get_underline_color(attn_val)
                 # font_color = get_font_color(attn_val)
 
@@ -338,7 +340,7 @@ def display_word_level_visualization(
                         <span style='font-size: 17px;'>More Attention</span>
                     </span>
                 </div>
-                <p style='margin-bottom: 8px;'><strong>Probe scores (Stakes):</strong></p>
+                <p style='margin-bottom: 8px;'><strong>Stakes scores:</strong></p>
                 <div style='display: flex; align-items: center; margin-bottom: 10px;'>
                     <div style='width: 300px; height: 15px; background: linear-gradient(to right, rgb(135, 206, 250), rgb(255,255,255), rgb(245,162,173));'></div>
                 </div>
@@ -646,7 +648,7 @@ def add_download_button(data: DashboardDataset) -> None:
 def main():
     # Load the dataset
     data = DashboardDataset.load_from(
-        "/home/ubuntu/urja/urja/models-under-pressure/data/results/evaluate_probes/extras_probed.jsonl"
+        "/home/ubuntu/urja/urja/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
     )
 
     # Setup page
