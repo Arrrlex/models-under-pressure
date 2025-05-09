@@ -7,9 +7,9 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     CONFIG_DIR,
+    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
-    RED_TEAM_DATASETS,
     SYNTHETIC_DATASET_PATH,
     EvalRunConfig,
     global_settings,
@@ -98,13 +98,6 @@ def evaluate_probe_and_save_results(
                 for probe_score in probe.per_token_predictions(eval_dataset)
             ]
 
-        # remove 0 or null values from per_token_probe_scores and per_token_attention_scores
-        # per_token_probe_scores = [
-        #     per_token_probe_score[: len(per_token_attention_score)]
-        #     for per_token_probe_score, per_token_attention_score in zip(
-        #         per_token_probe_scores, per_token_attention_scores
-        #     )
-        # ]
         # calculate logits for the per token probe scores
         per_token_probe_logits = inv_softmax(per_token_probe_scores)
         per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
@@ -222,6 +215,7 @@ def run_evaluation(
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
+        # for per token, save results = True
         probe_scores, dataset_results = evaluate_probe_and_save_results(
             probe=probe,
             train_dataset_path=config.dataset_path,
@@ -230,7 +224,6 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
             output_dir=EVALUATE_PROBES_DIR,
-            save_results=True,
         )
 
         ground_truth_labels = eval_dataset.labels_numpy().tolist()
@@ -307,7 +300,7 @@ if __name__ == "__main__":
         compute_activations=False,
         dataset_path=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
-        eval_datasets=list(RED_TEAM_DATASETS.values()),
+        eval_datasets=list(EVAL_DATASETS.values()),
     )
     double_check_config(config)
 

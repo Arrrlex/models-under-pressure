@@ -105,16 +105,15 @@ AIS_DATASETS = {
     },
 }
 RED_TEAM_DATASETS = {
-    # "borderline_examples": DATA_DIR / "evals" / "red-team/borderline_requests.jsonl",
-    # "task_difficulty": DATA_DIR / "evals" / "red-team/cog_heavy_requests.jsonl",
-    # "confounding": DATA_DIR / "evals" / "red-team/confounding_requests.jsonl",
-    # "embedded": DATA_DIR / "evals" / "red-team/embedded_requests.jsonl",
-    # "honesty_confounding": DATA_DIR
-    # / "evals"
-    # / "red-team/honesty_confounding_requests.jsonl",
-    # "humorous": DATA_DIR / "evals" / "red-team/humorous_requests.jsonl",
+    "borderline_examples": DATA_DIR / "evals" / "red-team/borderline_requests.jsonl",
+    "task_difficulty": DATA_DIR / "evals" / "red-team/cog_heavy_requests.jsonl",
+    "confounding": DATA_DIR / "evals" / "red-team/confounding_requests.jsonl",
+    "embedded": DATA_DIR / "evals" / "red-team/embedded_requests.jsonl",
+    "honesty_confounding": DATA_DIR
+    / "evals"
+    / "red-team/honesty_confounding_requests.jsonl",
     "negated": DATA_DIR / "evals" / "red-team/negated_requests.jsonl",
-    # "extras": DATA_DIR / "evals" / "red-team/extras.jsonl",
+    "extras": DATA_DIR / "evals" / "red-team/extras.jsonl",
 }
 
 
