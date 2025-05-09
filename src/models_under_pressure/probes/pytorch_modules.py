@@ -30,6 +30,8 @@ class AttnLite(nn.Module):
         attn_scores = self.context_query(x).squeeze(-1) / self.scale
         masked_attn_scores = attn_scores.masked_fill(~mask, float("-inf"))
         attn_weights = torch.softmax(masked_attn_scores, dim=-1)
+        token_logits = self.classifier(x).squeeze(-1)
+        token_logits = token_logits.masked_fill(~mask, 0)
 
         context = einops.einsum(
             attn_weights, x, "batch seq, batch seq embed -> batch embed"
@@ -37,7 +39,7 @@ class AttnLite(nn.Module):
         sequence_logits = self.classifier(context).squeeze(-1)
 
         if return_per_token:
-            return sequence_logits, masked_attn_scores, attn_weights
+            return sequence_logits, attn_scores, token_logits
         else:
             return sequence_logits
 

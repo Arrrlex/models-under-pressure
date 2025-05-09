@@ -181,7 +181,9 @@ def display_word_level_visualization(
 
     # Get the probe values
     probe_values = selected_row[probe_column]
-
+    attention_values = selected_row[
+        "per_token_attention_scores_Llama-3.3-70B-Instruct_prompts_4x_l31"
+    ]
     # Handle different formats of probe values
     if isinstance(probe_values, (list, np.ndarray)):
         # Already in the correct format
@@ -226,6 +228,7 @@ def display_word_level_visualization(
 
         # If we have valid probe values that match the number of tokens
         probe_values = probe_values[: len(tokens)]
+        attention_values = attention_values[: len(tokens)]
         # fill the null values with 0
         probe_values = [0 if x is None else x for x in probe_values]
         if isinstance(probe_values, (list, np.ndarray)) and len(tokens) == len(
@@ -234,30 +237,75 @@ def display_word_level_visualization(
             # Create a visualization of colored tokens
             min_val = min(probe_values)
             max_val = max(probe_values)
+            min_attn = min(attention_values)
+            max_attn = max(attention_values)
             range_val = max_val - min_val if max_val != min_val else 1
 
             # Function to get color for a value
-            def get_color(val: float) -> str:
-                # Normalize to 0-1 scale
-                normalized = (val - min_val) / range_val
-
-                # Calculate opacity based on distance from 0.5 (middle point)
-                # Values close to 0.5 will be nearly transparent
-                alpha = min(
-                    1.0, abs(normalized - 0.5) * 4
-                )  # Scale to make middle values transparent
-
-                if normalized < 0.5:
-                    # Green for lower values (more intense as it approaches 0)
-                    return f"rgba(20, 200, 20, {alpha})"
+            def get_color2(val: float) -> str:
+                if val < 0:
+                    # For negative values: blue to white
+                    normalized = abs(val / min_val) if min_val != 0 else 0
+                    return f"rgba(135, 206, 250, {normalized})"
+                elif val > 0:
+                    # For positive values: white to pink
+                    normalized = val / max_val if max_val != 0 else 0
+                    return f"rgba(245, 162, 173, {normalized})"
                 else:
-                    # Red for higher values (more intense as it approaches 1)
-                    return f"rgba(255, 120, 120, {alpha})"
+                    # For zero: white
+                    return "rgba(255, 255, 255, 0)"
+
+            def get_background_color(val: float) -> str:
+                normalized = (val - min_val) / range_val
+                alpha = normalized
+                return f"rgba(135, 206, 250, {alpha})"
+
+            def get_background_color2(val: float) -> str:
+                normalized = (val - min_val) / range_val
+                alpha = normalized
+                return f"rgba(151,125,227, {alpha})"
+
+            def get_font_color(attn_val: float) -> str:
+                norm_attn = (
+                    (attn_val - min_attn) / (max_attn - min_attn)
+                    if max_attn != min_attn
+                    else 0.5
+                )
+
+                from matplotlib.colors import to_rgb
+
+                maroon_rgb = to_rgb("blue")
+                darkblue_rgb = to_rgb("red")
+                interp_rgb = [
+                    maroon_rgb[i] + norm_attn * (darkblue_rgb[i] - maroon_rgb[i])
+                    for i in range(3)
+                ]
+                return f"rgb({int(interp_rgb[0] * 255)}, {int(interp_rgb[1] * 255)}, {int(interp_rgb[2] * 255)})"
+
+            def get_underline_color(attn_val: float) -> str:
+                norm_attn = (
+                    (attn_val - min_attn) / (max_attn - min_attn)
+                    if max_attn != min_attn
+                    else 0.5
+                )
+
+                from matplotlib.colors import to_rgb
+
+                maroon_rgb = to_rgb("blue")
+                darkblue_rgb = to_rgb("red")
+                interp_rgb = [
+                    maroon_rgb[i] + norm_attn * (darkblue_rgb[i] - maroon_rgb[i])
+                    for i in range(3)
+                ]
+                return f"rgb({int(interp_rgb[0] * 255)}, {int(interp_rgb[1] * 255)}, {int(interp_rgb[2] * 255)})"
 
             # Build HTML for colored tokens
+            # Build HTML for colored tokens
             html = "<div style='font-size: 18px; line-height: 2;'>"
-            for token, val in zip(tokens, probe_values):
-                color = get_color(val)
+            for token, val, attn_val in zip(tokens, probe_values, attention_values):
+                bg_color = get_color2(val)
+                # underline_color = get_underline_color(attn_val)
+                # font_color = get_font_color(attn_val)
 
                 # Convert token ID to display text
                 if isinstance(token, int):
@@ -268,20 +316,39 @@ def display_word_level_visualization(
                     display_token = str(token).replace("Ġ", " ").replace("▁", " ")
 
                 # Use black text color always, with colored background based on value
-                html += f"<span style='background-color: {color}; color: black; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
+                html += f"<span style='background-color: {bg_color}; color: black; padding: 3px; margin: 2px; border-radius: 3px;'>{display_token}</span>"
+                # html += f"<span style='background-color: {bg_color}; color: black; padding: 3px; margin: 2px; border-bottom: 3px solid {underline_color}; border-radius: 3px;'>{display_token}</span>"
+                # html += f"<span style='background-color: {bg_color}; color: {font_color}; padding: 3px; margin: 2px; border-bottom: 3px solid {underline_color}; border-radius: 3px;'>{display_token}</span>"
+
             html += "</div>"
 
             # Add color legend
-            html += f"""
+            html += """
             <div style='margin-top: 20px;'>
-                <p><strong>Color Legend:</strong></p>
+                <h3 style='font-size: 20px; margin-bottom: 15px;'><strong>Legend</strong></h3>
+                <p style='margin-bottom: 8px;'><strong>Attention scores:</strong></p>
                 <div style='display: flex; align-items: center; margin-bottom: 10px;'>
-                    <div style='width: 300px; height: 30px; background: linear-gradient(to right, rgba(20, 200, 20, 1), rgba(20, 200, 20, 0), rgba(200, 20, 20, 0), rgba(200, 20, 20, 1));'></div>
+                    <div style='width: 300px; height: 15px; background: linear-gradient(to right, rgb(255, 255, 255), rgb(151,125,227));'></div>
+                </div>
+                <div style='display: flex; justify-content: space-between; width: 300px; margin-bottom: 20px;'>
+                    <span style='display: flex; flex-direction: column; align-items: center;'>
+                        <span style='font-size: 17px;'>Less Attention</span>
+                    </span>
+                    <span style='display: flex; flex-direction: column; align-items: center;'>
+                        <span style='font-size: 17px;'>More Attention</span>
+                    </span>
+                </div>
+                <p style='margin-bottom: 8px;'><strong>Probe scores (Stakes):</strong></p>
+                <div style='display: flex; align-items: center; margin-bottom: 10px;'>
+                    <div style='width: 300px; height: 15px; background: linear-gradient(to right, rgb(135, 206, 250), rgb(255,255,255), rgb(245,162,173));'></div>
                 </div>
                 <div style='display: flex; justify-content: space-between; width: 300px;'>
-                    <span>{min_val:.4f}</span>
-                    <span>{(min_val + max_val) / 2:.4f}</span>
-                    <span>{max_val:.4f}</span>
+                    <span style='display: flex; flex-direction: column; align-items: center;'>
+                        <span style='font-size: 17px;'>Low Probe Score</span>
+                    </span>
+                    <span style='display: flex; flex-direction: column; align-items: center;'>
+                        <span style='font-size: 17px;'>High Probe Score</span>
+                    </span>
                 </div>
             </div>
             """

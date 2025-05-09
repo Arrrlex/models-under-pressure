@@ -80,7 +80,7 @@ def evaluate_probe_and_save_results(
 
         # Get rid of the padding in the per token probe scores
         if isinstance(probe._classifier, PytorchAdamClassifier):  # type: ignore
-            (per_token_probe_scores, per_token_attention_scores) = (
+            (per_token_attention_scores, per_token_probe_scores) = (
                 probe.per_token_predictions(eval_dataset)
             )
 
@@ -105,7 +105,7 @@ def evaluate_probe_and_save_results(
         #     )
         # ]
         # calculate logits for the per token probe scores
-        # per_token_probe_logits = inv_softmax(per_token_probe_scores)
+        per_token_probe_logits = inv_softmax(per_token_probe_scores)
         per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
 
         # Assert no NaN values in the per token probe logits
@@ -116,7 +116,7 @@ def evaluate_probe_and_save_results(
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
             "per_entry_probe_logits": per_entry_probe_logits,
-            # "per_token_probe_logits": per_token_probe_logits,
+            "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
             "per_token_attention_scores": per_token_attention_scores,
         }
