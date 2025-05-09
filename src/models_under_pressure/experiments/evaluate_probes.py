@@ -21,8 +21,8 @@ from models_under_pressure.interfaces.results import DatasetResults, EvaluationR
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
+from models_under_pressure.probes.pytorch_modules import AttnLite
 from models_under_pressure.probes.pytorch_probes import (
-    PytorchAdamClassifier,
     PytorchProbe,
 )
 from models_under_pressure.utils import double_check_config
@@ -77,9 +77,11 @@ def evaluate_probe_and_save_results(
     print(f"Obtained {len(per_entry_probe_scores)} probe scores")
     if save_results:
         output_dir.mkdir(parents=True, exist_ok=True)
+        per_token_probe_scores = []
+        per_token_attention_scores = []
 
         # Get rid of the padding in the per token probe scores
-        if isinstance(probe._classifier, PytorchAdamClassifier):  # type: ignore
+        if isinstance(probe._classifier.model, AttnLite):  # type: ignore
             (per_token_attention_scores, per_token_probe_scores) = (
                 probe.per_token_predictions(eval_dataset)
             )
@@ -103,18 +105,19 @@ def evaluate_probe_and_save_results(
         per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
 
         # Assert no NaN values in the per token probe logits
-        # for i, logits in enumerate(per_token_probe_logits):
-        #     if np.any(np.isnan(logits)):
-        #         raise ValueError(f"Found NaN values in probe logits for entry {i}")
+        for i, logits in enumerate(per_token_probe_logits):
+            if np.any(np.isnan(logits)):
+                print(f"Found NaN values in probe logits for entry {i}")
 
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
             "per_entry_probe_logits": per_entry_probe_logits,
             "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
-            "per_token_attention_scores": per_token_attention_scores,
             "tokens": eval_dataset.other_fields["input_ids"].tolist(),  # type: ignore
         }
+        if probe._classifier.model == AttnLite:  # type: ignore
+            probe_scores_dict["per_token_attention_scores"] = per_token_attention_scores
 
         for score, values in probe_scores_dict.items():
             if len(values) != len(eval_dataset.inputs):
