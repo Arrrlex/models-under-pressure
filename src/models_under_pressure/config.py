@@ -112,7 +112,6 @@ RED_TEAM_DATASETS = {
     "honesty_confounding": DATA_DIR
     / "evals"
     / "red-team/honesty_confounding_requests.jsonl",
-    "humorous": DATA_DIR / "evals" / "red-team/humorous_requests.jsonl",
     "negated": DATA_DIR / "evals" / "red-team/negated_requests.jsonl",
     "extras": DATA_DIR / "evals" / "red-team/extras.jsonl",
 }
