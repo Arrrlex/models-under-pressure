@@ -1,28 +1,29 @@
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
+import deepspeed
 import hydra
-import os
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import deepspeed
 import torch.nn as nn
 import torch.nn.functional as F
+from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
-from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+from pytorch_lightning.strategies import FSDPStrategy
 from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,  # type: ignore
     AutoTokenizer,  # type: ignore
     PreTrainedTokenizer,  # type: ignore
     PreTrainedTokenizerFast,  # type: ignore
 )
-from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
@@ -32,6 +33,7 @@ from models_under_pressure.config import (
     global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     LabelledDataset,
@@ -39,7 +41,6 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
-from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 
 hf_login()
 
@@ -375,8 +376,8 @@ class ClassifierModule(pl.LightningModule):
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
-            optimizer = torch.optim.Adam(
-                # optimizer = torch.optim.Adafactor(
+            # optimizer = torch.optim.Adam(
+            optimizer = torch.optim.Adafactor(
                 self.parameters(),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay,
@@ -446,6 +447,7 @@ class LLMModel(nn.Module):
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path,
             cache_dir=cache_dir,
+            torch_dtype=torch.bfloat16,  # Doesn't seem to make a difference
         )
 
         def _get_hidden_size(model):
@@ -714,6 +716,15 @@ class FinetunedClassifier:
             logger = None
 
         # Setup the pytorch lightning trainer:
+        if trainer_args.get("strategy", "") == "fsdp":
+            trainer_args["strategy"] = FSDPStrategy(
+                # fsdp_strategy="FULL_SHARD",
+                sharding_strategy="NO_SHARD",
+                # mixed_precision="bf16",
+                state_dict_type="sharded",
+                # state_dict_device="cpu",
+            )
+        # TODO Take these args from a new field "strategy_args"
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
             logger=logger,
@@ -734,7 +745,7 @@ class FinetunedClassifier:
             print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
             strategy = trainer_args.get("strategy", "")
 
-            if strategy.startswith("fsdp"):
+            if isinstance(strategy, FSDPStrategy) or strategy.startswith("fsdp"):
                 ckpt = torch.load(self._classifier_checkpoint, map_location="cpu")
                 full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
 
@@ -1082,8 +1093,9 @@ def get_finetuned_baseline_results(
 def check_collate_fn():
     import argparse
     import random
-    from models_under_pressure.dataset_utils import load_dataset
+
     from models_under_pressure.config import EVAL_DATASETS
+    from models_under_pressure.dataset_utils import load_dataset
 
     default_dataset_path = EVAL_DATASETS["toolace"]
     default_model_name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
