@@ -199,7 +199,7 @@ class ClassifierModule(pl.LightningModule):
             state_dict: Optional state_dict to load into the module
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model"])
+        self.save_hyperparameters(ignore=["model", "trainer_args"])
 
         self.model = model
         self.learning_rate = learning_rate
