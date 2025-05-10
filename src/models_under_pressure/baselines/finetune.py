@@ -11,6 +11,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+
+# from pytorch_lightning.utilities.consolidate_checkpoint import consolidate_checkpoint
+# from lightning.fabric.utilities.consolidate_checkpoint import consolidate_checkpoint
+from lightning.fabric.utilities.load import _load_distributed_checkpoint
+
+# from pytorch_lightning.fabric.strategies import FSDPStrategy
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.strategies import FSDPStrategy
@@ -473,6 +479,7 @@ class LLMModel(nn.Module):
         self.padding_side = padding_side
 
         self.model.gradient_checkpointing_enable()
+        self.model.config.use_cache = False
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
@@ -746,15 +753,20 @@ class FinetunedClassifier:
             strategy = trainer_args.get("strategy", "")
 
             if isinstance(strategy, FSDPStrategy) or strategy.startswith("fsdp"):
-                ckpt = torch.load(self._classifier_checkpoint, map_location="cpu")
-                full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
-
                 fresh_llm = LLMModel(
                     model_name_or_path=model_name_or_path,
                     num_classes=num_classes,
                     cache_dir=cache_dir,
                     padding_side=self._tokenizer.padding_side,
                 )
+
+                checkpoint_path = self._classifier_checkpoint
+                if os.path.isdir(checkpoint_path):  # <- sharded folder
+                    full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                else:  # already a file
+                    full_sd = torch.load(checkpoint_path, map_location="cpu")[
+                        "state_dict"
+                    ]
 
                 self._classifier = ClassifierModule(
                     model=fresh_llm,
@@ -763,7 +775,7 @@ class FinetunedClassifier:
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
-                _ = self._classifier.load_state_dict(full_sd, strict=False)
+                self._classifier.load_state_dict(full_sd, strict=False)
             elif strategy == "deepspeed_stage_2_offload":
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
                 state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
@@ -789,6 +801,7 @@ class FinetunedClassifier:
                     0
                 ].split("epoch=")[-1]
             )
+            self._classifier.to(dtype=torch.bfloat16)
         self._classifier.eval()
 
         return self
@@ -1023,14 +1036,23 @@ def get_finetuned_baseline_results(
         trainer_strategy = finetune_config.get("Trainer", {}).get("strategy", "")
 
         if trainer_strategy.startswith("fsdp"):
-            ckpt = torch.load(checkpoint_path, map_location="cpu")
-            full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
-            finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+            if os.path.isdir(checkpoint_path):  # <- sharded folder
+                full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+            else:  # already a file
+                full_sd = torch.load(checkpoint_path, map_location="cpu")["state_dict"]
+                finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
             state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
             finetune_baseline.classifier.load_state_dict(torch.load(checkpoint_path))
+
+        # Convert model weights to bfloat16 to match initialization
+        finetune_baseline.classifier.to(dtype=torch.bfloat16)
+
+        # Set model to evaluation mode
+        finetune_baseline.classifier.eval()
 
     if train_dataset_path is not None:
         print("Loading train dataset")
