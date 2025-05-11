@@ -264,6 +264,18 @@ if __name__ == "__main__":
     probe_type = ProbeType(probe_name)  # Convert string to enum
     with open(CONFIG_DIR / "probe" / f"{probe_name}.yaml") as f:
         probe_config = yaml.safe_load(f)
+        # Ensure numeric values are properly typed
+        if "optimizer_args" in probe_config["hyperparams"]:
+            probe_config["hyperparams"]["optimizer_args"]["lr"] = float(
+                probe_config["hyperparams"]["optimizer_args"]["lr"]
+            )
+            probe_config["hyperparams"]["optimizer_args"]["weight_decay"] = float(
+                probe_config["hyperparams"]["optimizer_args"]["weight_decay"]
+            )
+        if "final_lr" in probe_config["hyperparams"]:
+            probe_config["hyperparams"]["final_lr"] = float(
+                probe_config["hyperparams"]["final_lr"]
+            )
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
