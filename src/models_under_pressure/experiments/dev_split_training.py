@@ -1,10 +1,12 @@
 import os
 from typing import List
 
+import yaml
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
@@ -257,23 +259,23 @@ def run_dev_split_fine_tuning(
 if __name__ == "__main__":
     evaluate_on_test = False
 
+    probe_name = "attention"  # Set probe name first
+    # Load probe config
+    probe_type = ProbeType(probe_name)  # Convert string to enum
+    with open(CONFIG_DIR / "probe" / f"{probe_name}.yaml") as f:
+        probe_config = yaml.safe_load(f)
+
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        dev_sample_usage="combine",
+        dev_sample_usage="fine-tune",
+        fine_tune_epochs=10,
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         max_samples=None,
         compute_activations=False,
         probe_spec=ProbeSpec(
-            name=ProbeType.sklearn,
-            hyperparams={"C": 1e-3, "fit_intercept": False},
-            # name="pytorch_per_entry_probe_mean",
-            # hyperparams={
-            #     "batch_size": 16,
-            #     "epochs": 20,
-            #     "device": "cpu",
-            #     "optimizer_args": {"lr": 0.001, "weight_decay": 0.01},
-            # },
+            name=probe_type,
+            hyperparams=probe_config["hyperparams"],
         ),
         dataset_path=SYNTHETIC_DATASET_PATH,
         sample_repeats=5,
@@ -286,7 +288,7 @@ if __name__ == "__main__":
 
     double_check_config(config)
 
-    for k in range(5):
+    for k in range(1):
         print("Running dev split training experiment")
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
