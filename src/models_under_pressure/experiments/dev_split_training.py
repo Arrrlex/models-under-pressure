@@ -232,7 +232,7 @@ def run_dev_split_fine_tuning(
                     "training_args",
                 ):
                     probe._classifier.training_args["epochs"] = config.fine_tune_epochs  # type: ignore
-                probe.fit(k_split)
+                probe.fit(k_split, initialize_model=False)
             else:
                 raise ValueError(
                     f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
@@ -296,7 +296,7 @@ if __name__ == "__main__":
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
         dev_sample_usage="fine-tune",
-        fine_tune_epochs=10,
+        fine_tune_epochs=100,
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         max_samples=None,
