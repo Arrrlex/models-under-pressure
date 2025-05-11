@@ -45,6 +45,7 @@ def evaluate_probe(
 
 def run_dev_split_fine_tuning(
     config: DevSplitFineTuningConfig,
+    use_store: bool = True,
 ) -> List[DevSplitResult]:
     output_filename = config.output_filename
     if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
@@ -78,6 +79,7 @@ def run_dev_split_fine_tuning(
         layer=config.layer,
         train_dataset=train_split,
         validation_dataset=test_split,
+        use_store=use_store,
     )
 
     # Save the initial probe state
@@ -154,6 +156,7 @@ def run_dev_split_fine_tuning(
                 layer=config.layer,
                 train_dataset=train_split,
                 validation_dataset=test_split,
+                use_store=use_store,
             )
 
         # Evaluate initial probe on test split
@@ -197,6 +200,7 @@ def run_dev_split_fine_tuning(
                     layer=config.layer,
                     train_dataset=combined_split,
                     validation_dataset=None,
+                    use_store=use_store,
                 )
                 del combined_split
             elif config.dev_sample_usage == "only":
@@ -206,6 +210,7 @@ def run_dev_split_fine_tuning(
                     layer=config.layer,
                     train_dataset=k_split,
                     validation_dataset=None,
+                    use_store=use_store,
                 )
             elif config.dev_sample_usage == "fine-tune":
                 # Restore initial probe state before fine-tuning
@@ -259,23 +264,34 @@ def run_dev_split_fine_tuning(
 if __name__ == "__main__":
     evaluate_on_test = False
 
-    probe_name = "attention"  # Set probe name first
+    probe_name = "linear_then_mean"  # Set probe name first
     # Load probe config
     probe_type = ProbeType(probe_name)  # Convert string to enum
-    with open(CONFIG_DIR / "probe" / f"{probe_name}.yaml") as f:
-        probe_config = yaml.safe_load(f)
-        # Ensure numeric values are properly typed
-        if "optimizer_args" in probe_config["hyperparams"]:
-            probe_config["hyperparams"]["optimizer_args"]["lr"] = float(
-                probe_config["hyperparams"]["optimizer_args"]["lr"]
-            )
-            probe_config["hyperparams"]["optimizer_args"]["weight_decay"] = float(
-                probe_config["hyperparams"]["optimizer_args"]["weight_decay"]
-            )
-        if "final_lr" in probe_config["hyperparams"]:
-            probe_config["hyperparams"]["final_lr"] = float(
-                probe_config["hyperparams"]["final_lr"]
-            )
+
+    # Find the matching probe config file
+    probe_config = None
+    for config_file in (CONFIG_DIR / "probe").glob("*.yaml"):
+        with open(config_file) as f:
+            current_config = yaml.safe_load(f)
+            if current_config.get("name") == probe_name:
+                probe_config = current_config
+                break
+
+    if probe_config is None:
+        raise ValueError(f"No probe config found for probe name: {probe_name}")
+
+    # Ensure numeric values are properly typed
+    if "optimizer_args" in probe_config["hyperparams"]:
+        probe_config["hyperparams"]["optimizer_args"]["lr"] = float(
+            probe_config["hyperparams"]["optimizer_args"]["lr"]
+        )
+        probe_config["hyperparams"]["optimizer_args"]["weight_decay"] = float(
+            probe_config["hyperparams"]["optimizer_args"]["weight_decay"]
+        )
+    if "final_lr" in probe_config["hyperparams"]:
+        probe_config["hyperparams"]["final_lr"] = float(
+            probe_config["hyperparams"]["final_lr"]
+        )
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
@@ -305,7 +321,7 @@ if __name__ == "__main__":
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_dev_split_fine_tuning(config)
+        results = run_dev_split_fine_tuning(config, use_store=False)
         for result in results:
             print("-" * 100)
             print(result.dataset_name)
