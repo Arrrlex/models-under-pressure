@@ -49,6 +49,7 @@ dependencies = [
     "deepspeed>=0.16.7",
     "peft>=0.15.2",
     "evaluate>=0.4.3",
+    "bitsandbytes>=0.45.5",
 ]
 
 [build-system]

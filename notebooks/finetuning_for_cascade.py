@@ -26,7 +26,7 @@ if __name__ == "__main__":
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
-            "optimizer": "adamw",
+            "optimizer": "adamw8bit",
         },
         batch_size=2,
         test_batch_size=2,
@@ -44,7 +44,7 @@ if __name__ == "__main__":
             # "gradient_clip_val": 1.0,
             "strategy": "ddp",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "accumulate_grad_batches": 8,
+            "accumulate_grad_batches": 4,
         },
     )
 
