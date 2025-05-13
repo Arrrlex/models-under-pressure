@@ -4,9 +4,9 @@ from models_under_pressure.baselines.finetune import (
 )
 from models_under_pressure.config import (
     EVAL_DATASETS,
+    LOCAL_MODELS,
     RESULTS_DIR,
     SYNTHETIC_DATASET_PATH,
-    TEST_DATASETS,
     FinetuneBaselineConfig,
 )
 
@@ -16,16 +16,17 @@ if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = FinetuneBaselineConfig(
         # model_name_or_path="meta-llama/Llama-3.2-1B-Instruct",
-        model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
+        # model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
         # model_name_or_path="google/gemma-3-12b-it",
-        # model_name_or_path=LOCAL_MODELS["gemma-1b"],
+        model_name_or_path=LOCAL_MODELS["llama-8b"],
         num_classes=2,
         ClassifierModule={  # set here to the default values
-            "learning_rate": 1e-3,
+            "learning_rate": 1e-5,
             "weight_decay": 0.01,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
+            "optimizer": "adamw",
         },
         batch_size=2,
         test_batch_size=2,
@@ -39,11 +40,11 @@ if __name__ == "__main__":
             "devices": [0],
             "precision": "bf16-true",
             # "strategy": "deepspeed_stage_2_offload",
-            "strategy": "fsdp",
+            # "strategy": "fsdp",
             # "gradient_clip_val": 1.0,
-            # "strategy": "ddp",
+            "strategy": "ddp",
             "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "accumulate_grad_batches": 1,
+            "accumulate_grad_batches": 8,
         },
     )
 
@@ -59,9 +60,9 @@ if __name__ == "__main__":
             train_dataset_path=SYNTHETIC_DATASET_PATH,
             # train_dataset_path=TRAIN_DIR / "original_doubled_unconfounded",
             # eval_datasets=TEST_DATASETS,
-            eval_datasets=TEST_DATASETS,
+            eval_datasets=EVAL_DATASETS,
             # checkpoint_path="/home/ubuntu/models-under-pressure/.cache/lightning_logs/version_0/checkpoints/finetune-baselines-meta-llama/Llama-3.2-3B-Instruct-epoch=03.ckpt",
-            max_samples=100,
+            max_samples=None,
             compute_activations=True,
             use_validation_set=True,
             results_dir=RESULTS_DIR,

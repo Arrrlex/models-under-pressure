@@ -182,6 +182,7 @@ class ClassifierModule(pl.LightningModule):
         class_weights: Optional[torch.Tensor] = None,
         trainer_args: Optional[Dict[str, Any]] = None,
         label_smoothing: float = 0.0,
+        optimizer: str = "adam",
     ):
         """
         Initialize the classifier module.
@@ -190,13 +191,13 @@ class ClassifierModule(pl.LightningModule):
             model: The PyTorch model to train
             learning_rate: Learning rate for the optimizer
             weight_decay: Weight decay for the optimizer
-            optimizer_class: The optimizer class to use
-            scheduler_class: The learning rate scheduler class to use
             scheduler_params: Parameters for the learning rate scheduler
             num_classes: Number of classes for classification (if not specified in model)
+            batch_size: Batch size for logging metrics
             class_weights: Class weights for handling imbalanced datasets
+            trainer_args: Arguments for the PyTorch Lightning Trainer
             label_smoothing: Label smoothing factor for the loss function
-            state_dict: Optional state_dict to load into the module
+            optimizer: Optimizer to use ("adam" or "adafactor")
         """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "trainer_args"])
@@ -212,6 +213,7 @@ class ClassifierModule(pl.LightningModule):
         self.test_results = BaselineResults()
         self.test_outputs = []
         self.trainer_args = trainer_args
+        self.optimizer = optimizer
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -382,12 +384,34 @@ class ClassifierModule(pl.LightningModule):
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
-            # optimizer = torch.optim.Adam(
-            optimizer = torch.optim.Adafactor(
-                self.parameters(),
-                lr=self.learning_rate,
-                weight_decay=self.weight_decay,
-            )
+            if self.optimizer.lower() == "adafactor":
+                optimizer = torch.optim.Adafactor(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adamw":
+                optimizer = torch.optim.AdamW(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adam":
+                optimizer = torch.optim.Adam(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adamw8bit":
+                import bitsandbytes as bnb
+
+                optimizer = bnb.optim.AdamW8bit(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            else:
+                raise ValueError(f"Optimizer {self.optimizer} not supported")
 
         return optimizer
 
@@ -1197,6 +1221,7 @@ def run_finetune_baselines():
                 "scheduler_params": None,
                 "class_weights": None,
                 "label_smoothing": 0.0,
+                "optimizer": "adafactor",  # Can be "adam" or "adafactor"
             },
             batch_size=1,
             shuffle=True,
