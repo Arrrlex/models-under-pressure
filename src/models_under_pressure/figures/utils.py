@@ -200,7 +200,9 @@ def get_baseline_results(baseline_result_paths: list[Path]) -> pd.DataFrame:
     return output
 
 
-def map_dataset_name(dataset: str) -> str:
+def map_dataset_name(dataset: str | Path) -> str:
+    if isinstance(dataset, Path):
+        dataset = dataset.stem
     if "manual" in dataset:
         return "Manual"
     elif "anthropic" in dataset:

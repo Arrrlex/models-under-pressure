@@ -24,6 +24,10 @@ from models_under_pressure.probes.sklearn_probes import (
 
 class ProbeFactory:
     @classmethod
+    def load(cls, probe_id: str) -> Probe:
+        return ProbeStore().load_from_id(probe_id)
+
+    @classmethod
     def build(
         cls,
         probe_spec: ProbeSpec,
