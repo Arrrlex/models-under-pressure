@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score
 from tqdm import tqdm
 
 from models_under_pressure.config import (
@@ -18,6 +19,7 @@ from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, EvaluationResult
 from models_under_pressure.probes.base import Probe
+from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.probes.pytorch_probes import PytorchProbe
 from models_under_pressure.utils import double_check_config
@@ -30,14 +32,12 @@ def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
 def calculate_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, fpr: float
 ) -> dict[str, float]:
-    return {}
-    # metrics = {
-    #     "auroc": float(roc_auc_score(y_true, y_pred)),
-    #     "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
-    #     "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
-    #     "fpr": float(fpr),
-    # }
-    # return metrics
+    return {
+        "auroc": float(roc_auc_score(y_true, y_pred)),
+        "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
+        "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
+        "fpr": float(fpr),
+    }
 
 
 def evaluate_probe_and_save_results(

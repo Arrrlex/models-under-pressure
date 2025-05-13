@@ -106,7 +106,9 @@ class ManifestRow(BaseModel):
             The specification for this manifest row
         """
         return ActivationsSpec(
-            model_name=self.model_name, dataset_path=self.dataset_path, layer=self.layer
+            model_name=self.model_name,
+            dataset_path=PROJECT_ROOT / self.dataset_path,
+            layer=self.layer,
         )
 
 
