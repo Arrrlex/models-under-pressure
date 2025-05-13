@@ -80,6 +80,7 @@ def plot_calibration(
     config: EvalRunConfig,
     n_bins: int = 10,
     out_path: Path | None = None,
+    use_binary_labels: bool = False,
 ) -> None:
     fig, ax1 = plt.subplots(
         nrows=1,
@@ -101,10 +102,14 @@ def plot_calibration(
         prob_pred = []
         mean_scale = []
         for i in range(n_bins):
+            if use_binary_labels:
+                y_axis = y_true
+            else:
+                y_axis = scale_labels
             mask = bin_indices == i
             if np.any(mask):
                 prob_pred.append(np.mean(y_prob[mask]))
-                mean_scale.append(np.mean(scale_labels[mask]))
+                mean_scale.append(np.mean(y_axis[mask]))
 
         prob_pred = np.array(prob_pred)
         # prob_true = np.array(mean_scale)
@@ -117,11 +122,17 @@ def plot_calibration(
         )
     ax1.plot([0, 1], [1, 10], linestyle="--", linewidth=3, label="Perfect Calibration")
     ax1.set_xlim(0.0, 1.0)
-    ax1.set_ylim(0.0, 10.0)
+    if use_binary_labels:
+        ax1.set_ylim(0.0, 1.0)
+    else:
+        ax1.set_ylim(0.0, 10.0)
 
     # ax1.set_title("Caliberation Curves")
     ax1.set_xlabel("Predicted Probability (Binned)")
-    ax1.set_ylabel("Mean Stakes Rating")
+    if use_binary_labels:
+        ax1.set_ylabel("Mean Binary Label")
+    else:
+        ax1.set_ylabel("Mean Stakes Rating")
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
@@ -181,6 +192,7 @@ def plot_stacked_histogram(
 def run_calibration(
     evaluate_probe_results_path: Path,
     out_path: Path,
+    use_binary_labels: bool = False,
 ):
     """
     Run calibration analysis with the provided EvalRunConfig.
@@ -214,6 +226,7 @@ def run_calibration(
         config=config,
         n_bins=10,
         out_path=out_path,
+        use_binary_labels=use_binary_labels,
     )
     # plot_stacked_histogram(
     #     y_true_list,
@@ -226,13 +239,19 @@ def run_calibration(
 
 # Main execution
 if __name__ == "__main__":
-    result_suffix = "attention_dev_1"
+    run_calibration(
+        EVALUATE_PROBES_DIR / "results_for_calibration.jsonl",
+        out_path=PLOTS_DIR / "calibration_all_binary_labels.pdf",
+        use_binary_labels=True,
+    )
     run_calibration(
         EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl",
-        out_path=PLOTS_DIR / "attention_test_1_calibration.pdf",
+        out_path=PLOTS_DIR / "attention_test_1_calibration_binary_labels.pdf",
+        use_binary_labels=True,
     )
 
     run_calibration(
         EVALUATE_PROBES_DIR / "results_softmax_test_1.jsonl",
-        out_path=PLOTS_DIR / "softmax_test_1_calibration.pdf",
+        out_path=PLOTS_DIR / "softmax_test_1_calibration_binary_labels.pdf",
+        use_binary_labels=True,
     )
