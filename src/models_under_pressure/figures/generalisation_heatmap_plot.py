@@ -154,9 +154,9 @@ def main(*plot_paths: Path):
 if __name__ == "__main__":
     heatmap_dir = PROJECT_ROOT / "data/results/generate_heatmaps"
     plot_paths = [
-        heatmap_dir / "results_hUjuvHef.jsonl",
-        heatmap_dir / "results_II9z56Bi.jsonl",
-        heatmap_dir / "results_MWa6YOfW.jsonl",
-        heatmap_dir / "results_s0L9PnXM.jsonl",
+        heatmap_dir / "results_language.jsonl",
+        heatmap_dir / "results_length.jsonl",
+        heatmap_dir / "results_prompt_style.jsonl",
+        heatmap_dir / "results_tone.jsonl",
     ]
     main(*plot_paths)
