@@ -43,3 +43,9 @@ data_efficiency:
     - 256
     - 512
     - 709
+
+variation_types:
+  - prompt_style
+  - tone
+  - language
+  - length
