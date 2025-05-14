@@ -278,19 +278,27 @@ if __name__ == "__main__":
     # Get all files in the evaluate_probes directory
     results_dir = DATA_DIR / "results/evaluate_probes"
 
-    # Process data once for both plots
-    dev_data = process_data(list(results_dir.glob("*dev*.jsonl")), "auroc")
-    test_data = process_data(list(results_dir.glob("*test*.jsonl")), "auroc")
+    dev_paths = [
+        path
+        for path in results_dir.glob("*dev*.jsonl")
+        if "difference_of_means" not in path.stem
+    ]
+
+    test_paths = [
+        path
+        for path in results_dir.glob("*test*.jsonl")
+        if "difference_of_means" not in path.stem
+    ]
 
     # Generate matplotlib version
     plot_probe_metric(
-        dev_data,
+        process_data(dev_paths, "auroc"),
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_dev.png",
     )
 
     plot_probe_metric(
-        test_data,
+        process_data(test_paths, "auroc"),
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_test.png",
     )
