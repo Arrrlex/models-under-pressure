@@ -246,7 +246,7 @@ def plot_probe_metric(
                 )
 
     # Add vertical separator line after Mean
-    plt.axvline(x=0.75, color="gray", linestyle="--", alpha=0.5)
+    # plt.axvline(x=0.75, color="gray", linestyle="--", alpha=0.5)
 
     # Add x-axis labels with Mean in bold using fontweight
     plt.xticks(group_positions, datasets_unique, ha="center", fontsize=14)
@@ -255,15 +255,15 @@ def plot_probe_metric(
         if label.get_text() == "Mean":
             label.set_fontweight("bold")
 
-    plt.legend(
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        ncol=1,
-        framealpha=1.0,  # opaque frame
-        facecolor="white",
-        edgecolor="black",
-        fontsize=14,
-    )
+    # plt.legend(
+    #     loc="center left",
+    #     bbox_to_anchor=(1.02, 0.5),
+    #     ncol=1,
+    #     framealpha=1.0,  # opaque frame
+    #     facecolor="white",
+    #     edgecolor="black",
+    #     fontsize=14,
+    # )
 
     # Set y-axis limits and labels
     plt.ylim(0.6, 1.0)
