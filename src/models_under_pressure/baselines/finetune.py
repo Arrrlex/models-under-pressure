@@ -14,8 +14,6 @@ from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoin
 
 # from pytorch_lightning.utilities.consolidate_checkpoint import consolidate_checkpoint
 # from lightning.fabric.utilities.consolidate_checkpoint import consolidate_checkpoint
-from lightning.fabric.utilities.load import _load_distributed_checkpoint
-
 # from pytorch_lightning.fabric.strategies import FSDPStrategy
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -747,14 +745,13 @@ class FinetunedClassifier:
             logger = None
 
         # Setup the pytorch lightning trainer:
-        if trainer_args.get("strategy", "") == "fsdp":
-            trainer_args["strategy"] = FSDPStrategy(
-                # fsdp_strategy="FULL_SHARD",
-                sharding_strategy="NO_SHARD",
-                # mixed_precision="bf16",
-                state_dict_type="sharded",
-                # state_dict_device="cpu",
-            )
+        # (This runs but stores a distributed checkpoint and loading that we got
+        #  incorrect results on the eval datasets!)
+        # if trainer_args.get("strategy", "") == "fsdp":
+        #    trainer_args["strategy"] = FSDPStrategy(
+        #        sharding_strategy="NO_SHARD",
+        #        state_dict_type="sharded",
+        #    )
         # TODO Take these args from a new field "strategy_args"
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
@@ -786,7 +783,12 @@ class FinetunedClassifier:
 
                 checkpoint_path = self._classifier_checkpoint
                 if os.path.isdir(checkpoint_path):
-                    full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                    # NOTE: Loading distributed checkpoints for FSDP has not thrown an error but
+                    # led to incorrect results!
+                    # full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                    raise NotImplementedError(
+                        "Loading FSDP directory checkpoints is not implemented yet"
+                    )
                 else:  # already a file
                     full_sd = torch.load(checkpoint_path, map_location="cpu")[
                         "state_dict"
@@ -1061,8 +1063,13 @@ def get_finetuned_baseline_results(
 
         if trainer_strategy.startswith("fsdp"):
             if os.path.isdir(checkpoint_path):
-                full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
-                finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+                # NOTE: Loading distributed checkpoints for FSDP has not thrown an error but
+                # led to incorrect results!
+                # full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                # finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+                raise NotImplementedError(
+                    "Loading FSDP directory checkpoints is not implemented yet"
+                )
             else:  # already a file
                 full_sd = torch.load(checkpoint_path, map_location="cpu")["state_dict"]
                 finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
