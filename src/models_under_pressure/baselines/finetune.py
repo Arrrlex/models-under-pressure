@@ -1,28 +1,28 @@
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Self, Tuple, Union
 
+import deepspeed
 import hydra
-import os
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import deepspeed
 import torch.nn as nn
 import torch.nn.functional as F
+from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
-from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,  # type: ignore
     AutoTokenizer,  # type: ignore
     PreTrainedTokenizer,  # type: ignore
     PreTrainedTokenizerFast,  # type: ignore
 )
-from tqdm import tqdm
 
 from models_under_pressure.config import (
     EVAL_DATASETS,
@@ -32,6 +32,7 @@ from models_under_pressure.config import (
     global_settings,
 )
 from models_under_pressure.dataset_utils import load_dataset, load_train_test
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
     LabelledDataset,
@@ -39,7 +40,6 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
-from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 
 hf_login()
 
@@ -773,11 +773,21 @@ class FinetunedClassifier:
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
-            self.best_epoch = int(
-                os.path.splitext(os.path.basename(checkpoint_callback.best_model_path))[
-                    0
-                ].split("epoch=")[-1]
-            )
+            try:
+                self.best_epoch = int(
+                    os.path.splitext(
+                        os.path.basename(checkpoint_callback.best_model_path)
+                    )[0].split("epoch=")[-1]
+                )
+            except ValueError:
+                self.best_epoch = int(
+                    os.path.splitext(
+                        os.path.basename(checkpoint_callback.best_model_path)
+                    )[0]
+                    .split("epoch=")[-1]
+                    .split("-")[0]
+                )
+
         self._classifier.eval()
 
         return self
@@ -1082,8 +1092,9 @@ def get_finetuned_baseline_results(
 def check_collate_fn():
     import argparse
     import random
-    from models_under_pressure.dataset_utils import load_dataset
+
     from models_under_pressure.config import EVAL_DATASETS
+    from models_under_pressure.dataset_utils import load_dataset
 
     default_dataset_path = EVAL_DATASETS["toolace"]
     default_model_name_or_path = "meta-llama/Llama-3.1-8B-Instruct"
