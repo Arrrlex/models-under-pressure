@@ -2,10 +2,17 @@
 
 ## Running Experiments
 
-Training on dev split plot:
+### Training on Dev Split of Evaluation Datasets
 
 - Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
 - Run `figures/dev_split_training_plot.py` to generate the corresponding plot.
+
+### Cascade Plot
+
+- To generate finetuning results, run `notebooks/finetuning_for_cascade.py` (adjust the settings in that script depending on the model you want to finetune)
+- To generate the other results, run `experiments/monitoring_cascade.py`. The corresponding configuration files can be found under `config/experiments/monitoring_cascade.yaml` and `config/experiments/monitoring_cascade/`. It has one part for computing the results and a second part to generate the plot based on the results.
+  - Result generation: The script generates result files for the selected probe and the continuation baselines.
+  - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
 
 
 ## Dataset
