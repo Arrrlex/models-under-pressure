@@ -13,6 +13,16 @@ from models_under_pressure.figures.utils import map_dataset_name
 # plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("paper", font_scale=1.5)
 
+# Define custom colors for probes
+PROBE_COLORS = {
+    "Attention": "#FF7F0E",  # HSV: 28°, 95%, 100%
+    "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
+    "Last Token": "#2CA02C",  # Green
+    "Max": "#9467BD",  # Purple
+    "Mean": "#8C564B",  # Brown
+    "Rolling Mean Max": "#E377C2",  # Pink
+}
+
 
 def process_data(
     paths: list[Path],
@@ -163,8 +173,20 @@ def plot_probe_metric(
     # Set up the plot
     plt.figure(figsize=(14, 6))
 
-    # Remove custom color palette and use default seaborn colors
-    colors = sns.color_palette()
+    # Create a mapping from sorted probes to colors
+    sorted_probes = overall_means = stats_df.groupby("Probe")[
+        metric_name.upper()
+    ].mean()
+    sorted_probes = sorted_probes.sort_values(ascending=False).index.tolist()
+
+    # Map probe names to colors from our custom palette
+    color_mapping = {}
+    for probe in sorted_probes:
+        if probe in PROBE_COLORS:
+            color_mapping[probe] = PROBE_COLORS[probe]
+        else:
+            # Fallback to a default color if not in our palette
+            color_mapping[probe] = "#D3D3D3"  # Light gray as fallback
 
     # Set up the positions for the bars
     datasets_unique = combined_df["Dataset"].cat.categories.tolist()
@@ -213,7 +235,7 @@ def plot_probe_metric(
                     label=probe
                     if dataset == datasets_unique[0]
                     else None,  # Only label once
-                    color=colors[i % len(colors)],
+                    color=color_mapping.get(probe, "#D3D3D3"),
                     alpha=0.8
                     if dataset != "Mean"
                     else 1.0,  # Make Mean bars more prominent
@@ -233,27 +255,15 @@ def plot_probe_metric(
         if label.get_text() == "Mean":
             label.set_fontweight("bold")
 
-    # # Add legend
-    # plt.legend(
-    #     loc="lower left",
-    #     ncol=2,
-    #     framealpha=1.0,
-    #     facecolor="white",
-    #     edgecolor="black",
-    #     fontsize=14,
-    # )
-
-    legend = plt.legend(
-        loc="lower left",
-        ncol=2,
+    plt.legend(
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        ncol=1,
         framealpha=1.0,  # opaque frame
         facecolor="white",
         edgecolor="black",
         fontsize=14,
     )
-
-    for h in legend.legend_handles:
-        h.set_alpha(1)  # opaque handles
 
     # Set y-axis limits and labels
     plt.ylim(0.6, 1.0)
@@ -268,7 +278,7 @@ def plot_probe_metric(
     output_path_pdf = output_path.with_suffix(".pdf")
 
     print(f"Saving to {output_path_png} and {output_path_pdf}")
-    plt.savefig(output_path_png, bbox_inches="tight")
+    plt.savefig(output_path_png, bbox_inches="tight", dpi=500)
     plt.savefig(output_path_pdf, bbox_inches="tight", format="pdf")
 
 
