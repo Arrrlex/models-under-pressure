@@ -785,7 +785,7 @@ class FinetunedClassifier:
                 )
 
                 checkpoint_path = self._classifier_checkpoint
-                if os.path.isdir(checkpoint_path):  # <- sharded folder
+                if os.path.isdir(checkpoint_path):
                     full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
                 else:  # already a file
                     full_sd = torch.load(checkpoint_path, map_location="cpu")[
@@ -1060,7 +1060,7 @@ def get_finetuned_baseline_results(
         trainer_strategy = finetune_config.get("Trainer", {}).get("strategy", "")
 
         if trainer_strategy.startswith("fsdp"):
-            if os.path.isdir(checkpoint_path):  # <- sharded folder
+            if os.path.isdir(checkpoint_path):
                 full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
                 finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
             else:  # already a file
