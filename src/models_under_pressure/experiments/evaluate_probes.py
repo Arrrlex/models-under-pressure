@@ -294,7 +294,7 @@ if __name__ == "__main__":
             name=ProbeType.attention,
             hyperparams={
                 "batch_size": 16,
-                "epochs": 200,
+                "epochs": 1,  # 200,
                 "optimizer_args": {
                     "lr": 0.005,
                     "weight_decay": 0.001,

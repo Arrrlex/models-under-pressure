@@ -181,6 +181,44 @@ class FinetunedBaselineResults(BaselineResults):
     finetune_config: FinetuneBaselineConfig | None = None
 
 
+class FinetunedBaselineDataEfficiencyResults(FinetunedBaselineResults):
+    """Results for a data efficiency experiment with finetuned baseline."""
+
+    dataset_size: int
+    """Number of examples used for training the model"""
+
+    @classmethod
+    def from_finetuned_baseline_results(
+        cls, results: FinetunedBaselineResults, dataset_size: int
+    ) -> "FinetunedBaselineDataEfficiencyResults":
+        """
+        Convert a FinetunedBaselineResults instance to a FinetunedBaselineDataEfficiencyResults instance
+        by adding the dataset_size field.
+
+        Args:
+            results: The FinetunedBaselineResults instance to convert
+            dataset_size: The number of examples used for training the model
+
+        Returns:
+            A new FinetunedBaselineDataEfficiencyResults instance
+        """
+        # Create a dictionary from the original results
+        data = results.model_dump()
+
+        # Add the dataset_size field
+        data["dataset_size"] = dataset_size
+
+        # Create and return the new instance
+        return cls(**data)
+
+
+class ProbeDataEfficiencyResult(EvaluationResult):
+    """Results for a data efficiency experiment with a probe."""
+
+    config: DataEfficiencyConfig
+    train_dataset_size: int | None = None
+
+
 class DevSplitResult(BaseModel):
     """Results for a single dev split fine-tuning run."""
 
@@ -258,6 +296,17 @@ class DataEfficiencyResults(BaseModel):
     config: DataEfficiencyConfig
     baseline_config: Optional[FinetuneBaselineConfig] = None
     probe_results: list[ProbeDataEfficiencyResults]
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+    def save_to(self, path: Path) -> None:
+        with open(path, "a") as f:
+            f.write(self.model_dump_json() + "\n")
+
+
+class DataEfficiencyBaselineResults(BaseModel):
+    config: DataEfficiencyConfig
+    baseline_config: FinetuneBaselineConfig
+    baseline_results: list[FinetunedBaselineDataEfficiencyResults]
     timestamp: datetime = Field(default_factory=datetime.now)
 
     def save_to(self, path: Path) -> None:

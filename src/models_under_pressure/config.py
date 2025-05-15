@@ -382,12 +382,13 @@ class DataEfficiencyConfig(BaseModel):
     dataset_path: Path
     probes: list[ProbeSpec]
     dataset_sizes: list[int]
-    eval_dataset_paths: list[Path]
+    eval_dataset_paths: dict[str, Path]
     compute_activations: bool = False
+    results_dir: Path = RESULTS_DIR / "data_efficiency"
 
     @property
     def output_path(self) -> Path:
-        return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"
+        return self.results_dir / f"results_{self.id}.jsonl"
 
 
 # TODO: Maybe rename this and keep it experiment agnostic

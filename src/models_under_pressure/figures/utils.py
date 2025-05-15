@@ -26,14 +26,35 @@ def process_raw_probe_results(result: dict) -> pd.DataFrame:
 
     # Config fields
     config_str = json.dumps(result["config"])
-    probe_spec_str = json.dumps(result["config"]["probe_spec"])
-    probe_name = result["config"]["probe_spec"]["name"]
+    probe_spec_str = json.dumps(result["config"].get(" probe_spec", {}))
+    probe_name = result["config"].get("probe_spec", {}).get("name", "")
+
+    if probe_name == "" and "method" in list(result.keys()):
+        probe_name = result["method"]
+
     model_name = result["config"]["model_name"]
-    max_samples = result["config"]["max_samples"]
+    max_samples = result["config"].get("max_samples", None)
     timestamp = result["timestamp"]
 
-    return pd.DataFrame(
-        {
+    if result.get("train_dataset_size", None) is not None:
+        train_dataset_size = result["train_dataset_size"]
+        output = {
+            "config": [config_str] * data_size,
+            "probe_spec": [probe_spec_str] * data_size,
+            "probe_name": [probe_name] * data_size,
+            "output_scores": result["output_scores"],
+            "output_labels": result["output_labels"],
+            "ground_truth_labels": result["ground_truth_labels"],
+            "ids": result["ids"],
+            "dataset_name": [result["dataset_name"]] * data_size,
+            "dataset_path": [result["dataset_path"]] * data_size,
+            "model_name": [model_name] * data_size,
+            "max_samples": [max_samples] * data_size,
+            "timestamp": [timestamp] * data_size,
+            "train_dataset_size": [train_dataset_size] * data_size,
+        }
+    else:
+        output = {
             "config": [config_str] * data_size,
             "probe_spec": [probe_spec_str] * data_size,
             "probe_name": [probe_name] * data_size,
@@ -47,7 +68,8 @@ def process_raw_probe_results(result: dict) -> pd.DataFrame:
             "max_samples": [max_samples] * data_size,
             "timestamp": [timestamp] * data_size,
         }
-    )
+
+    return pd.DataFrame(output)
 
 
 def process_raw_continuation_results(result: dict) -> pd.DataFrame:
@@ -119,8 +141,23 @@ def process_raw_finetune_results(result: dict) -> pd.DataFrame:
     max_samples = result["max_samples"]
     timestamp = result["timestamp"]
 
-    return pd.DataFrame(
-        {
+    if result.get("dataset_size", None) is not None:
+        train_dataset_size = result["dataset_size"]
+
+        output = {
+            "scores": result["scores"],
+            "labels": result["labels"],
+            "ground_truth": result["ground_truth"],
+            "ids": result["ids"],
+            "dataset_name": [dataset_name] * data_size,
+            "dataset_path": [dataset_path] * data_size,
+            "model_name": [model_name] * data_size,
+            "max_samples": [max_samples] * data_size,
+            "timestamp": [timestamp] * data_size,
+            "train_dataset_size": [train_dataset_size] * data_size,
+        }
+    else:
+        output = {
             "scores": result["scores"],
             "labels": result["labels"],
             "ground_truth": result["ground_truth"],
@@ -131,7 +168,8 @@ def process_raw_finetune_results(result: dict) -> pd.DataFrame:
             "max_samples": [max_samples] * data_size,
             "timestamp": [timestamp] * data_size,
         }
-    )
+
+    return pd.DataFrame(output)
 
 
 def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
