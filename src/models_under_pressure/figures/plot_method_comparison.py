@@ -68,9 +68,9 @@ def plot_method_comparison(
     sns.set_style("whitegrid")
 
     colors = {
-        "probe": "blue",
-        "prompted": "green",
-        "finetuned": "brown",
+        "probe": "#2563EB",
+        "prompted": "#65A30D",
+        "finetuned": "#C026D3",
     }
 
     texts = []  # Store text annotations here

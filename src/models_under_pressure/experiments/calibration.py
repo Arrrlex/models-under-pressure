@@ -136,7 +136,7 @@ def plot_calibration(
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
-    print(f"Saving {out_path.name}")
+    print(f"Saving {out_path}")
     plt.savefig(out_path)
 
 
@@ -184,8 +184,9 @@ def plot_stacked_histogram(
     ax2.legend()
 
     # save the plots with data name in the same directory
-    print(f"Saving {config.id}_stacked_histogram.pdf")
-    plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
+    plot_path = PLOTS_DIR / f"{config.id}_stacked_histogram.pdf"
+    print(f"Saving {plot_path}")
+    plt.savefig(plot_path)
     plt.close()
 
 
@@ -246,12 +247,18 @@ if __name__ == "__main__":
     )
     run_calibration(
         EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl",
-        out_path=PLOTS_DIR / "attention_test_1_calibration_binary_labels.pdf",
-        use_binary_labels=True,
+        out_path=PLOTS_DIR / "attention_test_1_calibration.pdf",
+        use_binary_labels=False,
     )
 
     run_calibration(
         EVALUATE_PROBES_DIR / "results_softmax_test_1.jsonl",
-        out_path=PLOTS_DIR / "softmax_test_1_calibration_binary_labels.pdf",
-        use_binary_labels=True,
+        out_path=PLOTS_DIR / "softmax_test_1_calibration.pdf",
+        use_binary_labels=False,
+    )
+
+    run_calibration(
+        EVALUATE_PROBES_DIR / "results_mean_test_1.jsonl",
+        out_path=PLOTS_DIR / "mean_test_1_calibration.pdf",
+        use_binary_labels=False,
     )

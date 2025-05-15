@@ -351,6 +351,65 @@ def generate_roc_plots(
         )
 
 
+def plot_auroc_comparison(
+    eval_datasets: dict[str, LabelledDataset],
+    probe_results: list[EvaluationResult],
+    classifiers: dict[str, TextClassifier],
+    output_dir: Path,
+) -> None:
+    """Generate a bar plot comparing AUROCs across datasets and methods."""
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import seaborn as sns
+    from sklearn.metrics import roc_auc_score
+
+    # Collect AUROC scores for each dataset and method
+    data = []
+    for name, dataset in eval_datasets.items():
+        name = map_dataset_name(name)
+        labels = dataset.labels_numpy()
+
+        # Get probe AUROC
+        probe_result = next(
+            res for res in probe_results if map_dataset_name(res.dataset_name) == name
+        )
+        probe_scores = probe_result.output_scores
+        assert probe_scores is not None
+        data.append(
+            {
+                "Dataset": name,
+                "Method": "Probe",
+                "AUROC": roc_auc_score(labels, probe_scores),
+            }
+        )
+
+        # Get classifier AUROCs
+        for clf_name, clf in classifiers.items():
+            scores = clf.predict_proba(dataset)
+            data.append(
+                {
+                    "Dataset": name,
+                    "Method": clf_name,
+                    "AUROC": roc_auc_score(labels, scores),
+                }
+            )
+
+    # Convert list of dictionaries to DataFrame
+    df = pd.DataFrame(data)
+
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    sns.barplot(data=df, x="Dataset", y="AUROC", hue="Method")
+    plt.xticks(rotation=45)
+    plt.ylim(0, 1)
+    plt.tight_layout()
+
+    # Save plot
+    print(f"Saving plot to {output_dir / 'probe_vs_word_statistics.pdf'}")
+    plt.savefig(output_dir / "probe_vs_word_statistics.pdf")
+    plt.close()
+
+
 def analyse(
     dataset: LabelledDataset,
     eval_datasets: Dict[str, LabelledDataset],
@@ -382,7 +441,7 @@ if __name__ == "__main__":
         for line in open(RESULTS_DIR / "evaluate_probes/results_attention_test_1.jsonl")
     ]
 
-    classifiers = {
+    classifiers: dict[str, TextClassifier] = {
         # "Bag of Words": BagOfWordsClassifier().fit(train_dataset),
         "TF-IDF": TfIdfClassifier().fit(train_dataset),
     }
@@ -394,4 +453,11 @@ if __name__ == "__main__":
         probe_results=probe_results,
         output_dir=PLOTS_DIR,
         classifiers=classifiers,
+    )
+
+    plot_auroc_comparison(
+        eval_datasets=eval_datasets,
+        probe_results=probe_results,
+        classifiers=classifiers,
+        output_dir=PLOTS_DIR,
     )
