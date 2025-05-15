@@ -300,16 +300,16 @@ def plot_results(
         "probe_softmax": "#1f77b4",  # Blue for softmax probe
     }
     finetuned_colors = [
-        hsv_to_rgb(271, 66, 100),  # Base purple
-        hsv_to_rgb(271, 66, 50),  # Base pink
-        hsv_to_rgb(330, 69, 100),  # Base pink
-        hsv_to_rgb(330, 69, 50),
+        "limegreen",
+        "limegreen",
+        "green",
+        "green",
     ]  # Shades of purple/pink for finetuned methods
     continuation_colors = [
-        hsv_to_rgb(84, 89, 100),  # Base purple
-        hsv_to_rgb(84, 89, 50),  # Base pink
-        hsv_to_rgb(160, 91, 100),  # Base pink
-        hsv_to_rgb(160, 91, 50),
+        "darkturquoise",
+        "darkturquoise",
+        "teal",
+        "teal",
     ]  # New colors for continuation methods
 
     # Print HSV values for all colors
@@ -348,42 +348,69 @@ def plot_results(
     for i, method in enumerate(continuation_methods):
         color_dict[method] = continuation_colors[i % len(continuation_colors)]
 
-    # Define hatch patterns with variations for different methods
-    # hatch_patterns = ["/", "\\", "x", "+", "*", "o", "O", ".", "|", "-"]
+    # Define hatch patterns with variations for different methods and sizes
+    hatch_patterns = {
+        # Small models (1b, 3b) - small circles
+        "small_1": ".",  # Tiny dots for 1b
+        "small_3": "o",  # Small circles for 3b
+        # Medium models (8b, 12b) - medium circles
+        "medium_8": "o",  # Medium circles for 8b
+        "medium_12": "O",  # Larger circles for 12b
+        # Large models (>12b) - large circles
+        "large_27": "O",  # Large circles for 27b
+        "large_70": "O",  # Largest circles for 70b
+    }
 
-    # Define hatch patterns - using the same patterns for finetuned and continuation methods with same index
-    # Comment out hatch dictionary setup to remove hatching
-    """
+    # Store linewidth information for different model sizes
+    linewidth_dict = {}
+    # Store hatchdensity (spacing between elements) for different model sizes
+    # Higher value means sparser hatching (fewer circles)
+    hatchdensity_dict = {}
+
+    # Define hatch patterns based on model size
     hatch_dict = {}
+    # No hatching for probe methods
     for method in probe_methods:
-        hatch_dict[method] = ""  # No hatch for probes
+        hatch_dict[method] = ""
+        linewidth_dict[method] = 0.5
+        hatchdensity_dict[method] = 1
 
-    # Create mappings to match finetuned and continuation methods by model name
-    finetuned_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(finetuned_methods)
-    }
-    continuation_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(continuation_methods)
-    }
+    # Assign hatches based on exact model size to control thickness
+    for method in finetuned_methods + continuation_methods:
+        # Extract model name part after the prefix
+        if method.startswith("baseline_"):
+            model_name = method.split("_")[1]
+        else:  # continuation
+            model_name = method.split("_")[1]
 
-    # Assign hatches to finetuned methods
-    for i, method in enumerate(finetuned_methods):
-        hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
+        # Get model size
+        size = extract_model_size(model_name)
 
-    # Assign the same hatch to continuation methods with matching model names when possible
-    for method in continuation_methods:
-        model_name = method.split("_")[1]
-        # Try to find matching finetuned to use same pattern, or fall back to index-based assignment
-        if model_name in finetuned_name_to_index:
-            finetuned_index = finetuned_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[finetuned_index % len(hatch_patterns)]
-        else:
-            # Fallback if no matching finetuned exists
-            i = continuation_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
-    """
-    # Empty hatch dictionary to remove all hatches
-    # hatch_dict = {method: "" for method in methods}
+        # Assign pattern based on exact size for specific thickness
+        if size == 1:
+            hatch_dict[method] = hatch_patterns["small_1"]
+            linewidth_dict[method] = 0.8
+            hatchdensity_dict[method] = 4  # More dense (many small dots)
+        elif size <= 3:
+            hatch_dict[method] = hatch_patterns["small_3"]
+            linewidth_dict[method] = 1.0
+            hatchdensity_dict[method] = 6  # Dense small circles
+        elif size <= 8:
+            hatch_dict[method] = hatch_patterns["medium_8"]
+            linewidth_dict[method] = 1.2
+            hatchdensity_dict[method] = 8  # Medium spacing
+        elif size <= 12:
+            hatch_dict[method] = hatch_patterns["medium_12"]
+            linewidth_dict[method] = 1.5
+            hatchdensity_dict[method] = 10  # Fewer medium circles
+        elif size <= 27:
+            hatch_dict[method] = hatch_patterns["large_27"]
+            linewidth_dict[method] = 1.8
+            hatchdensity_dict[method] = 12  # Few large circles
+        else:  # > 27b (like 70b)
+            hatch_dict[method] = hatch_patterns["large_70"]
+            linewidth_dict[method] = 2.0
+            hatchdensity_dict[method] = 15  # Very few very large circles
 
     # Calculate mean performance across all datasets for each method
     mean_performances = {}
@@ -522,83 +549,58 @@ def plot_results(
             method_label = method[9:]  # Remove 'baseline_' prefix
             method_type = "finetuned"
 
-            # Comment out hatch pattern assignment
-            """
-            # Use model size to determine hatch density for finetuned models
-            model_size = extract_model_size(method_label)
+            # Get hatch density (spacing) for this method
+            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
 
-            # Assign hatch patterns based on individual model (name + size)
-            model_name = extract_model_name(method_label)
-            model_key = f"{model_name}{model_size}"  # Combine name and size
-
-            # Get all finetuned methods to assign unique patterns dynamically
-            all_finetuned = [m for m in all_methods if m.startswith("baseline_")]
-            unique_models = set()
-
-            # Extract unique model identifiers
-            for m in all_finetuned:
-                m_label = m[9:]  # Remove 'baseline_' prefix
-                m_name = extract_model_name(m_label)
-                m_size = extract_model_size(m_label)
-                unique_models.add(f"{m_name}{m_size}")
-
-            # List of distinct hatch patterns to use
-            hatch_options = [".", "..", "o", "oo", "*", "**", "+", "++", "x", "xx"]
-
-            # Assign a unique pattern based on the model's position in sorted unique models
-            sorted_models = sorted(list(unique_models))
-            hatch_index = (
-                sorted_models.index(model_key) if model_key in sorted_models else 0
-            )
-            hatch_pattern = hatch_options[hatch_index % len(hatch_options)]
-            """
-            hatch_pattern = ""  # No hatch
+            # Create the combined hatching pattern with proper density
+            hatch_pattern = hatch_dict.get(method, "")
+            # For circular patterns, control the density based on model size
+            if hatch_pattern in ["o", "O"]:
+                # Create a pattern with controlled density
+                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
 
         elif method.startswith("continuation_"):
             method_label = method[13:]  # Remove 'continuation_' prefix
             method_type = "continuation"
 
-            # Comment out hatch pattern assignment
-            """
-            # Use model size to determine hatch density for continuation models
-            model_size = extract_model_size(method_label)
+            # Get hatch density (spacing) for this method
+            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
 
-            # Assign hatch patterns based on individual model (name + size)
-            model_name = extract_model_name(method_label)
-            model_key = f"{model_name}{model_size}"  # Combine name and size
-
-            # Get all continuation methods to assign unique patterns dynamically
-            all_continuation = [m for m in all_methods if m.startswith("continuation_")]
-            unique_models = set()
-
-            # Extract unique model identifiers
-            for m in all_continuation:
-                m_label = m[13:]  # Remove 'continuation_' prefix
-                m_name = extract_model_name(m_label)
-                m_size = extract_model_size(m_label)
-                unique_models.add(f"{m_name}{m_size}")
-
-            # List of distinct hatch patterns to use
-            hatch_options = [".", "..", "o", "oo", "*", "**", "+", "++", "x", "xx"]
-
-            # Assign a unique pattern based on the model's position in sorted unique models
-            sorted_models = sorted(list(unique_models))
-            hatch_index = (
-                sorted_models.index(model_key) if model_key in sorted_models else 0
-            )
-            hatch_pattern = hatch_options[hatch_index % len(hatch_options)]
-            """
-            hatch_pattern = ""  # No hatch
+            # Create the combined hatching pattern with proper density
+            hatch_pattern = hatch_dict.get(method, "")
+            # For circular patterns, control the density based on model size
+            if hatch_pattern in ["o", "O"]:
+                # Create a pattern with controlled density
+                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
 
         elif method.startswith("probe_"):
             method_label = method[6:]  # Remove 'probe_' prefix
             method_type = "probe"
-            hatch_pattern = ""  # No hatch for probes
+
+            # Get hatch density (spacing) for this method
+            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
+
+            # Create the combined hatching pattern with proper density
+            hatch_pattern = hatch_dict.get(method, "")
+            # For circular patterns, control the density based on model size
+            if hatch_pattern in ["o", "O"]:
+                # Create a pattern with controlled density
+                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
         else:
             method_label = method
             method_type = "other"
-            hatch_pattern = ""
 
+            # Get hatch density (spacing) for this method
+            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
+
+            # Create the combined hatching pattern with proper density
+            hatch_pattern = hatch_dict.get(method, "")
+            # For circular patterns, control the density based on model size
+            if hatch_pattern in ["o", "O"]:
+                # Create a pattern with controlled density
+                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
+
+        # Use the method-specific line width when drawing the bar
         ax.bar(
             positions,
             values_list,
@@ -606,12 +608,12 @@ def plot_results(
             # Store method type in the label for later parsing
             label=f"{method_type}:{method_label}",
             color=color_dict.get(method),
-            hatch=hatch_pattern,  # Use the density-based hatch pattern
+            hatch=hatch_pattern,  # Use the size-based hatch pattern
             alpha=0.8,
             yerr=yerr_list if np.any(mask) else None,
             capsize=5,
             edgecolor="black",
-            linewidth=0.5,
+            linewidth=linewidth_dict.get(method, 0.5),  # Use the size-based linewidth
         )
 
     # Add a dotted vertical line to separate Mean from individual datasets
