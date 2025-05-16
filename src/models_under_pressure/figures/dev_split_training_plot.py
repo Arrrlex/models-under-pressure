@@ -1,12 +1,13 @@
+import json
 from pathlib import Path
-from typing import Literal
+from typing import Dict, Literal, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR
+from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR, RESULTS_DIR
 from models_under_pressure.interfaces.results import DevSplitResult
 
 # Set style parameters
@@ -25,6 +26,31 @@ plt.rcParams.update(
 sns.set_style("whitegrid")
 
 
+def load_baseline_results(baseline_file: Path) -> Dict[str, float]:
+    """Load baseline results from a file.
+
+    Args:
+        baseline_file: Path to the JSONL file containing baseline results
+
+    Returns:
+        Dictionary mapping dataset names to baseline AUROC values
+    """
+    baseline_results = {}
+    with open(baseline_file) as f:
+        for line in f:
+            if line.strip():
+                result = json.loads(line)
+                dataset_name = result.get("dataset_name")
+                if dataset_name:
+                    baseline_results[dataset_name] = result.get("auroc", 0.0)
+                else:
+                    print(
+                        f"WARNING: No dataset name found in baseline results for {line}"
+                    )
+
+    return baseline_results
+
+
 def plot_dev_split_results(
     results_file: Path,
     metric: Literal["auroc", "tpr_at_fpr", "accuracy"] = "auroc",
@@ -32,6 +58,7 @@ def plot_dev_split_results(
     figsize: tuple[int, int] = (10, 6),
     dataset_name: str | None = None,
     combine_datasets: bool = True,
+    baseline_file: Optional[Path] = None,
 ) -> None:
     """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
@@ -44,6 +71,7 @@ def plot_dev_split_results(
         combine_datasets: If True, combines all datasets into a single line per dev_sample_usage.
                         If False, plots individual lines for each dataset with consistent colors
                         and line styles.
+        baseline_file: Path to a JSONL file containing baseline results to plot as a horizontal line
     """
     # Read results from file
     results = []
@@ -51,6 +79,11 @@ def plot_dev_split_results(
         for line in f:
             if line.strip():
                 results.append(DevSplitResult.model_validate_json(line))
+
+    # Load baseline results if provided
+    baseline_results = {}
+    if baseline_file is not None and baseline_file.exists():
+        baseline_results = load_baseline_results(baseline_file)
 
     eval_usage_mapping = {
         "only": "Dev samples only",
@@ -189,6 +222,14 @@ def plot_dev_split_results(
                 marker="o",
                 capsize=5,
             )
+
+            # Print performance values for this usage
+            print(f"\nPerformance values for {usage}:")
+            print(f"  k=0: {k0_mean:.4f} ± {k0_std:.4f}")
+            for k, mean, std in zip(
+                mean_metric.index, mean_metric.values, std_metric.values
+            ):
+                print(f"  k={k}: {mean:.4f} ± {std:.4f}")
     else:
         # Plot individual lines for each dataset and dev_sample_usage combination
         # Get unique datasets and assign colors
@@ -253,6 +294,15 @@ def plot_dev_split_results(
                     linestyle=line_styles[usage],
                 )
 
+                # Print performance values for this dataset and usage
+                print(f"\nPerformance values for {dataset} ({usage}):")
+                if "k0_mean" in locals():
+                    print(f"  k=0: {k0_mean:.4f} ± {k0_std:.4f}")
+                for k, mean, std in zip(
+                    mean_metric.index, mean_metric.values, std_metric.values
+                ):
+                    print(f"  k={k}: {mean:.4f} ± {std:.4f}")
+
     # Add horizontal line for k=0 results
     if k0_metrics and combine_datasets:
         # Align runs by order across datasets for k=0
@@ -288,6 +338,37 @@ def plot_dev_split_results(
                 alpha=0.1,
             )
 
+            # Print synthetic dataset only performance
+            print(f"\nSynthetic dataset only performance: {k0_mean:.4f} ± {k0_std:.4f}")
+
+    # Add baseline results if provided
+    if baseline_results:
+        current_dataset = dataset_name if dataset_name else "default"
+        if current_dataset in baseline_results:
+            baseline_value = float(baseline_results[current_dataset])
+            plt.axhline(
+                y=baseline_value,
+                color="red",
+                linestyle="-.",
+                label="Baseline results",
+                alpha=0.7,
+            )
+            print(f"\nBaseline result from file: {baseline_value:.4f}")
+        else:
+            # If we have baseline results but not for this specific dataset,
+            # compute the mean across all datasets
+            mean_baseline = float(np.mean(list(baseline_results.values())))
+            plt.axhline(
+                y=mean_baseline,
+                color="red",
+                linestyle="-.",
+                label="Baseline results (mean)",
+                alpha=0.7,
+            )
+            print(
+                f"\nBaseline result from file (mean across datasets): {mean_baseline:.4f}"
+            )
+
     # Customize plot
     plt.xlabel("Number of dev split samples for training")
     plt.ylabel(
@@ -317,4 +398,13 @@ def plot_dev_split_results(
 
 if __name__ == "__main__":
     results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
-    plot_dev_split_results(results_file, metric="auroc", combine_datasets=False)
+    # Optional: path to baseline results file
+    baseline_file = (
+        RESULTS_DIR / "baseline_llama-70b.jsonl"
+    )  # Uncomment and modify to use
+    plot_dev_split_results(
+        results_file,
+        metric="auroc",
+        combine_datasets=False,
+        baseline_file=baseline_file,  # Uncomment to use baseline results
+    )
