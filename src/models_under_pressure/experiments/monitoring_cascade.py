@@ -804,53 +804,51 @@ def compute_cascade_results(
             )
             continue
 
-        # Evaluate baseline cascades
+        # Evaluate baseline cascades - only use 100% for baseline-only methods
         print(f"\nBaseline Results for {dataset_name}:")
         for result in baseline_results:
-            for fraction_of_samples in fraction_of_sample_options + (
-                [1.0] if 1.0 not in fraction_of_sample_options else []
-            ):
-                print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
-                cascade_results = evaluate_single_baseline_cascade(
-                    result, fraction_of_samples=fraction_of_samples
-                )
-                print(f"- AUROC: {cascade_results.auroc:.3f}")
-                print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+            # Only use 100% for baseline-only methods
+            fraction_of_samples = 1.0
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
-                # Write results to file
-                write_cascade_results_to_file(
-                    results=cascade_results,
-                    output_file=results_file,
-                    cascade_type="baseline",
-                    model_name=result.model_name,
-                    probe_model_name=None,
-                    fraction_of_samples=fraction_of_samples,
-                    dataset_name=dataset_name,
-                )
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+                dataset_name=dataset_name,
+            )
 
-        # Evaluate finetuned baseline cascades
+        # Evaluate finetuned baseline cascades - only use 100% for baseline-only methods
         print(f"\nFinetuned Baseline Results for {dataset_name}:")
         for result in finetuned_baseline_results:
-            for fraction_of_samples in fraction_of_sample_options + (
-                [1.0] if 1.0 not in fraction_of_sample_options else []
-            ):
-                print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
-                cascade_results = evaluate_single_baseline_cascade(
-                    result, fraction_of_samples=fraction_of_samples
-                )
-                print(f"- AUROC: {cascade_results.auroc:.3f}")
-                print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+            # Only use 100% for baseline-only methods
+            fraction_of_samples = 1.0
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
-                # Write results to file
-                write_cascade_results_to_file(
-                    results=cascade_results,
-                    output_file=results_file,
-                    cascade_type="finetuned_baseline",
-                    model_name=result.model_name,
-                    probe_model_name=None,
-                    fraction_of_samples=fraction_of_samples,
-                    dataset_name=dataset_name,
-                )
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="finetuned_baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+                dataset_name=dataset_name,
+            )
 
         if probe_results:
             # Evaluate probe cascade
@@ -1109,6 +1107,23 @@ def plot_cascade_results(
         },
     }
 
+    # Define marker styles and sizes
+    marker_styles = {
+        "baseline": "o",
+        "finetuned_baseline": "s",
+        "probe_baseline": "o",
+        "probe_finetuned_baseline": "o",
+        "two_step_baseline": "o",
+    }
+
+    marker_sizes = {
+        "baseline": 10,  # Larger marker for baseline-only methods
+        "finetuned_baseline": 10,  # Larger marker for baseline-only methods
+        "probe_baseline": 5,
+        "probe_finetuned_baseline": 5,
+        "two_step_baseline": 5,
+    }
+
     # Define model size order (smallest to largest)
     model_size_order = {
         "llama-1b": 0,
@@ -1136,22 +1151,27 @@ def plot_cascade_results(
         cascade_type = key[1]
         color = model_to_color[baseline_model]
 
-        # Get appropriate line style
-        if cascade_type == "baseline":
-            linestyle = line_styles["baseline"]
-        elif cascade_type == "finetuned_baseline":
-            linestyle = line_styles["finetuned_baseline"]
-        elif cascade_type in [
-            "probe_baseline",
-            "probe_finetuned_baseline",
-            "two_step_baseline",
-        ]:
-            selection_strategy = key[2]
-            remaining_strategy = key[3]
-            merge_strategy = key[4]
-            linestyle = line_styles[cascade_type][selection_strategy]
+        # Get appropriate line style and marker
+        marker = marker_styles[cascade_type]
+        markersize = marker_sizes[cascade_type]
+
+        # For baseline-only methods, we'll use scatter plots without lines
+        is_baseline_only = cascade_type in ["baseline", "finetuned_baseline"]
+
+        if is_baseline_only:
+            # Single point for baseline-only methods, no line
+            linestyle = "none"
         else:
-            raise ValueError(f"Unknown cascade type: {cascade_type}")
+            # Get line style for cascade methods
+            if (
+                cascade_type == "probe_baseline"
+                or cascade_type == "probe_finetuned_baseline"
+                or cascade_type == "two_step_baseline"
+            ):
+                selection_strategy = key[2]
+                linestyle = line_styles[cascade_type][selection_strategy]
+            else:
+                linestyle = line_styles[cascade_type]
 
         # Sort fractions
         fractions = sorted(fraction_results.keys())
@@ -1206,19 +1226,32 @@ def plot_cascade_results(
         else:
             raise ValueError(f"Unknown cascade type: {cascade_type}")
 
-        # Plot line with shaded region
-        line = plt.plot(
-            mean_flops_per_sample,
-            mean_aurocs,
-            "o-",
-            color=color,
-            linestyle=linestyle,
-            label=label,
-            markersize=3,
-        )[0]
+        # Plot differently based on whether it's a baseline-only method or a cascade method
+        if is_baseline_only:
+            # For baseline-only methods, plot a single point with a larger marker
+            line = plt.scatter(
+                mean_flops_per_sample,
+                mean_aurocs,
+                marker=marker,
+                color=color,
+                s=markersize**2,  # Square the size for scatter
+                label=label,
+                zorder=10,  # Make sure points are on top
+            )
+        else:
+            # For cascade methods, plot a line with markers
+            line = plt.plot(
+                mean_flops_per_sample,
+                mean_aurocs,
+                marker=marker,
+                color=color,
+                linestyle=linestyle,
+                label=label,
+                markersize=markersize,
+            )[0]
 
         # Add shaded region for uncertainty if enabled
-        if show_shaded_regions:
+        if show_shaded_regions and not is_baseline_only:
             plt.fill_between(
                 mean_flops_per_sample,
                 np.array(mean_aurocs) - np.array(std_aurocs),
@@ -1228,7 +1261,7 @@ def plot_cascade_results(
             )
 
         # Add fraction labels if enabled
-        if show_fraction_labels:
+        if show_fraction_labels and not is_baseline_only:
             for x, y, f in zip(mean_flops_per_sample, mean_aurocs, fractions):
                 plt.annotate(
                     f"{f:.2f}",
@@ -1247,6 +1280,7 @@ def plot_cascade_results(
                     get_abbreviated_model_name(baseline_model), 999
                 ),
                 "cascade_type": cascade_type_order.get(cascade_type, 999),
+                "is_baseline_only": is_baseline_only,
             }
         )
 
@@ -1266,6 +1300,7 @@ def plot_cascade_results(
                 "label": "Probe",
                 "model_size": -1,  # Put probe first
                 "cascade_type": -1,
+                "is_baseline_only": False,
             },
         )
     elif probe_aurocs:
@@ -1294,6 +1329,7 @@ def plot_cascade_results(
                 "label": "Probe",
                 "model_size": -1,  # Put probe first
                 "cascade_type": -1,
+                "is_baseline_only": False,
             },
         )
 
@@ -1306,10 +1342,16 @@ def plot_cascade_results(
                 alpha=0.1,
             )
 
-    # Create legend with sorted entries
+    # Create legend with sorted entries - handle differently for line and scatter objects
+    handles = []
+    labels = []
+    for entry in legend_entries:
+        handles.append(entry["line"])
+        labels.append(entry["label"])
+
     plt.legend(
-        [entry["line"] for entry in legend_entries],
-        [entry["label"] for entry in legend_entries],
+        handles=handles,
+        labels=labels,
         # title="Method",
         bbox_to_anchor=(1.0, 0.0),
         loc="lower right",
