@@ -1,7 +1,7 @@
 name: attention
 hyperparams:
   batch_size: 128
-  epochs: 20
+  epochs: 200
   optimizer_args:
     lr: 5e-3
     weight_decay: 1e-3
