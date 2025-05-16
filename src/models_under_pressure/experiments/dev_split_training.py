@@ -204,6 +204,7 @@ def run_dev_split_fine_tuning(
                 )
                 del combined_split
             elif config.dev_sample_usage == "only":
+                # TODO Unsure if gradient_accumulation has to be set to 1 here
                 probe = ProbeFactory.build(
                     probe_spec=config.probe_spec,
                     model_name=config.model_name,
@@ -232,6 +233,7 @@ def run_dev_split_fine_tuning(
                     "training_args",
                 ):
                     probe._classifier.training_args["epochs"] = config.fine_tune_epochs  # type: ignore
+                    probe._classifier.training_args["gradient_accumulation_steps"] = 1  # type: ignore
                 probe.fit(k_split, initialize_model=False)
             else:
                 raise ValueError(
@@ -262,9 +264,9 @@ def run_dev_split_fine_tuning(
 
 
 if __name__ == "__main__":
-    evaluate_on_test = False
+    evaluate_on_test = True
 
-    probe_name = "linear_then_mean"  # Set probe name first
+    probe_name = "attention"  # Set probe name first
     # Load probe config
     probe_type = ProbeType(probe_name)  # Convert string to enum
 
@@ -296,7 +298,7 @@ if __name__ == "__main__":
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
         dev_sample_usage="fine-tune",
-        fine_tune_epochs=100,
+        fine_tune_epochs=20,
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         max_samples=None,
@@ -307,16 +309,16 @@ if __name__ == "__main__":
         ),
         dataset_path=SYNTHETIC_DATASET_PATH,
         sample_repeats=5,
-        validation_dataset=False,
+        validation_dataset=True,
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
         eval_dataset_names=None,
-        output_filename="dev_split_training.jsonl",
+        output_filename="dev_split_training_neurips.jsonl",
     )
 
     double_check_config(config)
 
-    for k in range(1):
+    for k in range(5):
         print("Running dev split training experiment")
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
