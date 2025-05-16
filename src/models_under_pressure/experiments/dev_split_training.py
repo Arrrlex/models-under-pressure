@@ -260,6 +260,9 @@ def run_dev_split_fine_tuning(
             )
             fine_tuned_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
+        del test_split
+        del dev_split
+
     return results_list
 
 
@@ -323,7 +326,7 @@ if __name__ == "__main__":
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_dev_split_fine_tuning(config, use_store=False)
+        results = run_dev_split_fine_tuning(config, use_store=True)
         for result in results:
             print("-" * 100)
             print(result.dataset_name)
