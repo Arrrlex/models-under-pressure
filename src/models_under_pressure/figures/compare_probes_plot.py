@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 import seaborn as sns
 
 from models_under_pressure.figures.utils import map_dataset_name
@@ -21,6 +22,10 @@ PROBE_COLORS = {
     "Max": "#9467BD",  # Purple
     "Mean": "#8C564B",  # Brown
     "Rolling Mean Max": "#E377C2",  # Pink
+}
+
+PROBE_NAME_MAPPING = {
+    "Rolling Mean Max": "Max of Rolling Means",
 }
 
 
@@ -75,16 +80,27 @@ def process_data(
         f"{metric_name.upper()}_std"
     ] / np.sqrt(stats_df["count"])
 
-    # Keep only the mean and standard error columns
+    # Calculate 95% confidence interval
+    # Using t-distribution for small sample sizes
+    stats_df[f"{metric_name.upper()}_ci95"] = stats_df[
+        f"{metric_name.upper()}_se"
+    ] * stats.t.ppf(0.975, stats_df["count"] - 1)
+
+    # Keep only the mean and confidence interval columns
     stats_df = stats_df[
-        ["Dataset", "Probe", f"{metric_name.upper()}_mean", f"{metric_name.upper()}_se"]
+        [
+            "Dataset",
+            "Probe",
+            f"{metric_name.upper()}_mean",
+            f"{metric_name.upper()}_ci95",
+        ]
     ]
 
     # Rename columns to match the original format
     stats_df = stats_df.rename(
         columns={
             f"{metric_name.upper()}_mean": metric_name.upper(),
-            f"{metric_name.upper()}_se": f"{metric_name.upper()}_SE",
+            f"{metric_name.upper()}_ci95": f"{metric_name.upper()}_CI95",
         }
     )
 
@@ -114,10 +130,14 @@ def plot_probe_metric(
     # Flatten column names
     mean_auroc.columns = ["Probe", f"{metric_name}_mean", f"{metric_name}_std", "count"]
 
-    # Calculate standard error across replicates
+    # Calculate 95% confidence interval across replicates
     mean_auroc[f"{metric_name}_se"] = mean_auroc[f"{metric_name}_std"] / np.sqrt(
         mean_auroc["count"]
     )
+    mean_auroc[f"{metric_name}_ci95"] = mean_auroc[f"{metric_name}_se"] * stats.t.ppf(
+        0.975, mean_auroc["count"] - 1
+    )
+
     mean_auroc["dataset"] = "Mean"  # Adding a 'Mean' dataset category
 
     # Combine the original data with the mean data
@@ -125,11 +145,11 @@ def plot_probe_metric(
         [
             stats_df,
             mean_auroc[
-                ["Probe", "dataset", f"{metric_name}_mean", f"{metric_name}_se"]
+                ["Probe", "dataset", f"{metric_name}_mean", f"{metric_name}_ci95"]
             ].rename(
                 columns={
                     f"{metric_name}_mean": metric_name.upper(),
-                    f"{metric_name}_se": f"{metric_name.upper()}_SE",
+                    f"{metric_name}_ci95": f"{metric_name.upper()}_CI95",
                 }
             ),
         ]
@@ -222,17 +242,17 @@ def plot_probe_metric(
                 # Get the metric value and error
                 if dataset == "Mean":
                     value = probe_data[f"{metric_name}_mean"].iloc[0]
-                    error = probe_data[f"{metric_name}_se"].iloc[0]
+                    error = probe_data[f"{metric_name}_ci95"].iloc[0]
                 else:
                     value = probe_data[metric_name.upper()].iloc[0]
-                    error = probe_data[f"{metric_name.upper()}_SE"].iloc[0]
+                    error = probe_data[f"{metric_name.upper()}_CI95"].iloc[0]
 
                 # Plot the bar with error bars and black border
                 plt.bar(
                     position,
                     value,
                     width=width,
-                    label=probe
+                    label=PROBE_NAME_MAPPING.get(probe, probe)
                     if dataset == datasets_unique[0]
                     else None,  # Only label once
                     color=color_mapping.get(probe, "#D3D3D3"),

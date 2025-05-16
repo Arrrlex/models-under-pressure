@@ -42,7 +42,6 @@ def plot_method_comparison(
     for result in results:
         cascade_type = result["cascade_type"]
         model_name = result.get("baseline_model_name")
-        print(f"Processing {cascade_type} {model_name}")
         if cascade_type == "probe":
             key = "Probe"
             method_type = "probe"
@@ -53,7 +52,6 @@ def plot_method_comparison(
             key = f"{get_abbreviated_model_name(model_name)} (finetuned)"
             method_type = "finetuned"
         else:
-            print(f"Skipping {cascade_type}")
             continue
 
         method_results[key].append(
@@ -69,9 +67,15 @@ def plot_method_comparison(
 
     colors = {
         "probe": "#2563EB",
-        "prompted": "#65A30D",
-        "finetuned": "#C026D3",
+        "finetuned": "#2CA02C",
+        "prompted": "#9467BD",
     }
+
+    #     # "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
+    # "Last Token": "#2CA02C",  # Green
+    # "Max": "#9467BD",  # Purple
+    # "Mean": "#8C564B",  # Brown
+    # "Rolling Mean Max": "#E377C2",  # Pink
 
     texts = []  # Store text annotations here
 
@@ -211,5 +215,5 @@ def plot_method_comparison(
 
 
 if __name__ == "__main__":
-    results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
+    results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips_2"
     plot_method_comparison(results_dir, font_size=18)
