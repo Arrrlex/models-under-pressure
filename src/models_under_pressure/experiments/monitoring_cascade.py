@@ -313,7 +313,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
             results_file,
-            output_file=output_dir / "cascade_plot.pdf",
+            output_file=output_dir / "cascade_plot.png",
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
@@ -986,7 +986,8 @@ def plot_cascade_results(
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
-    add_legend: bool = True,
+    add_legend: bool = False,
+    probe_name: str = "Attention",  # TODO Get from config!
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -1084,8 +1085,25 @@ def plot_cascade_results(
 
     # Create color palette based on number of unique baseline models
     baseline_models = sorted(set(key[0] for key in grouped_results.keys()))
-    colors = sns.color_palette("husl", n_colors=len(baseline_models))
-    model_to_color = {model: color for model, color in zip(baseline_models, colors)}
+    # colors = sns.color_palette("husl", n_colors=len(baseline_models))
+    # model_to_color = {model: color for model, color in zip(baseline_models, colors)}
+    # TODO The colors actually depend on finetuned vs prompted!
+    model_colors = {
+        "gemma-1b": (
+            0.19607843137254902,
+            0.803921568627451,
+            0.19607843137254902,
+        ),  # Finetuned
+        "gemma-12b": (0.0, 0.807843137254902, 0.8196078431372549),  # Continuation
+        "gemma-27b": (0.0, 0.654902, 0.660784),  # Continuation
+        "llama-1b": "green",  # TODO
+        "llama-8b": "blue",  # TODO
+        "llama-70b": (0.0, 0.5019607843137255, 0.5019607843137255),  # Continuation
+    }
+    model_to_color = {
+        model: model_colors[get_abbreviated_model_name(model)]
+        for model in baseline_models
+    }
 
     # Define line styles
     line_styles = {
@@ -1110,8 +1128,8 @@ def plot_cascade_results(
 
     # Define marker styles and sizes
     marker_styles = {
-        "baseline": "D",
-        "finetuned_baseline": "s",
+        "baseline": "P",
+        "finetuned_baseline": "X",
         "probe_baseline": "o",
         "probe_finetuned_baseline": "o",
         "two_step_baseline": "o",
@@ -1329,7 +1347,7 @@ def plot_cascade_results(
             0,
             {
                 "line": probe_line,
-                "label": "Probe",
+                "label": f"Probe ({probe_name})",
                 "model_size": -1,  # Put probe first
                 "cascade_type": -1,
                 "is_baseline_only": False,
@@ -1397,10 +1415,10 @@ def plot_cascade_results(
 
     # Save plot
     if output_file is None:
-        output_file = results_file.parent / "cascade_plot.pdf"
+        output_file = results_file.parent / "cascade_plot.png"
         if target_dataset:
-            output_file = results_file.parent / f"cascade_plot_{target_dataset}.pdf"
-    plt.savefig(output_file, bbox_inches="tight")
+            output_file = results_file.parent / f"cascade_plot_{target_dataset}.png"
+    plt.savefig(output_file, bbox_inches="tight", dpi=600)
     plt.close()
 
 
