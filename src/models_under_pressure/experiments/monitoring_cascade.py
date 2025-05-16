@@ -986,6 +986,7 @@ def plot_cascade_results(
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
+    add_legend: bool = True,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -1089,27 +1090,27 @@ def plot_cascade_results(
     # Define line styles
     line_styles = {
         "baseline": "-",
-        "finetuned_baseline": "--",
+        "finetuned_baseline": "-",
         "probe_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
         "probe_finetuned_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
         "two_step_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
     }
 
     # Define marker styles and sizes
     marker_styles = {
-        "baseline": "o",
+        "baseline": "D",
         "finetuned_baseline": "s",
         "probe_baseline": "o",
         "probe_finetuned_baseline": "o",
@@ -1119,9 +1120,9 @@ def plot_cascade_results(
     marker_sizes = {
         "baseline": 10,  # Larger marker for baseline-only methods
         "finetuned_baseline": 10,  # Larger marker for baseline-only methods
-        "probe_baseline": 5,
-        "probe_finetuned_baseline": 5,
-        "two_step_baseline": 5,
+        "probe_baseline": 7,
+        "probe_finetuned_baseline": 7,
+        "two_step_baseline": 7,
     }
 
     # Define model size order (smallest to largest)
@@ -1246,6 +1247,7 @@ def plot_cascade_results(
                 marker=marker,
                 color=color,
                 linestyle=linestyle,
+                linewidth=2,
                 label=label,
                 markersize=markersize,
             )[0]
@@ -1319,6 +1321,7 @@ def plot_cascade_results(
             y=mean_probe_auroc,
             color="gray",
             linestyle="--",
+            linewidth=2,
             label="Probe",
             alpha=0.9,
         )
@@ -1349,14 +1352,15 @@ def plot_cascade_results(
         handles.append(entry["line"])
         labels.append(entry["label"])
 
-    plt.legend(
-        handles=handles,
-        labels=labels,
-        # title="Method",
-        bbox_to_anchor=(1.0, 0.0),
-        loc="lower right",
-        # ncol=2,
-    )
+    if add_legend:
+        plt.legend(
+            handles=handles,
+            labels=labels,
+            # title="Method",
+            bbox_to_anchor=(1.0, 0.0),
+            loc="lower right",
+            # ncol=2,
+        )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
@@ -1375,7 +1379,7 @@ def plot_cascade_results(
 
     # Set y-axis limits for AUROC plot
     if not show_difference_from_probe:
-        plt.ylim(0.5, 1.0)
+        plt.ylim(0.8, 1.0)
 
     # Set x-axis to log scale
     plt.xscale("log")
