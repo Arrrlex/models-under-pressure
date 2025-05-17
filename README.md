@@ -12,7 +12,7 @@ Training on dev split plot:
 
 ### Prompted Baselines
 
-Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.)
+Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
 
 
 ## Dataset
