@@ -88,6 +88,7 @@ def plot_dev_split_results(
     eval_usage_mapping = {
         "only": "Dev samples only",
         "combine": "Synthetic + dev samples",
+        "fine-tune": "Finetuned on dev samples",
     }
 
     # Create DataFrame for plotting
@@ -165,12 +166,21 @@ def plot_dev_split_results(
                         runs = k_data[k_data["dataset"] == dataset]["metric"].values
                         run_lists.append(runs)
                     # Stack into 2D array (datasets x runs), then transpose to (runs x datasets)
-                    run_matrix = np.array([runs for runs in run_lists])
-                    # Only keep columns (runs) where all datasets have a value (align by shortest)
+                    # First, check if run_lists is not empty
+                    if not run_lists:
+                        continue
+
+                    # Convert to list of arrays to handle inhomogeneous shapes
+                    run_lists = [np.array(runs) for runs in run_lists]
+
+                    # Find minimum runs per dataset to align them
                     min_runs = min(len(runs) for runs in run_lists)
                     if min_runs == 0:
                         continue  # skip if no runs for this k
-                    run_matrix = run_matrix[:, :min_runs]
+
+                    # Truncate each dataset's runs to the minimum length
+                    run_matrix = np.array([runs[:min_runs] for runs in run_lists])
+
                     # Now, for each run index, compute mean across datasets
                     run_means = run_matrix.mean(axis=0)  # shape: (min_runs,)
                     # Compute mean and std over these run means
@@ -184,7 +194,10 @@ def plot_dev_split_results(
                 std_metric = usage_data.groupby("k")["metric"].std()
 
             # Get k=0 point
-            if usage == eval_usage_mapping["combine"]:
+            if (
+                usage == eval_usage_mapping["combine"]
+                or usage == eval_usage_mapping["fine-tune"]
+            ):
                 # For combine, use the training dataset only baseline
                 # Align runs by order across datasets for k=0
                 k0_run_lists = []
@@ -398,6 +411,9 @@ def plot_dev_split_results(
 
 if __name__ == "__main__":
     results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
+    # results_file = Path(
+    #    "/Users/john/Downloads/dev_split_training_neurips_test_attention.jsonl"
+    # )
     # Optional: path to baseline results file
     baseline_file = (
         RESULTS_DIR / "baseline_llama-70b.jsonl"
@@ -405,6 +421,6 @@ if __name__ == "__main__":
     plot_dev_split_results(
         results_file,
         metric="auroc",
-        combine_datasets=False,
+        combine_datasets=True,
         baseline_file=baseline_file,  # Uncomment to use baseline results
     )
