@@ -8,6 +8,13 @@ Training on dev split plot:
 - Run `figures/dev_split_training_plot.py` to generate the corresponding plot.
 
 
+## Computing Baselines
+
+### Prompted Baselines
+
+Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.)
+
+
 ## Dataset
 
 We contribute 2 new datasets in this repository:
