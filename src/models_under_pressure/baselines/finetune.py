@@ -49,6 +49,23 @@ from models_under_pressure.utils import hf_login
 hf_login()
 
 
+# Add this new function for loading checkpoint with bfloat16 precision
+def get_bf16_state_dict_from_zero_checkpoint(checkpoint_dir):
+    """
+    Get the state dict from a Zero checkpoint directory in bfloat16 format.
+    This is similar to get_fp32_state_dict_from_zero_checkpoint but preserves bfloat16 precision.
+    """
+    fp32_state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir)
+    # Convert the loaded state dict to bfloat16
+    bf16_state_dict = {
+        k: v.to(torch.bfloat16)
+        if isinstance(v, torch.Tensor) and v.dtype == torch.float32
+        else v
+        for k, v in fp32_state_dict.items()
+    }
+    return bf16_state_dict
+
+
 class BaselineResults(BaseModel):
     _logits: Optional[torch.Tensor] = None
     _labels: Optional[torch.Tensor] = None
@@ -804,7 +821,8 @@ class FinetunedClassifier:
                 self._classifier.load_state_dict(full_sd, strict=False)
             elif strategy == "deepspeed_stage_2_offload":
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
-                state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
+                # Use our new function instead of get_fp32_state_dict_from_zero_checkpoint
+                state_dict = get_bf16_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
                     model=self.model,
                     batch_size=batch_size,
@@ -1074,7 +1092,7 @@ def get_finetuned_baseline_results(
                 full_sd = torch.load(checkpoint_path, map_location="cpu")["state_dict"]
                 finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
-            state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+            state_dict = get_bf16_state_dict_from_zero_checkpoint(checkpoint_path)
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
             finetune_baseline.classifier.load_state_dict(torch.load(checkpoint_path))
