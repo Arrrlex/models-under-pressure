@@ -1,5 +1,19 @@
 # Models Under Pressure
 
+## Datasets
+
+Our datasets can be found here:
+
+| Dataset Name | Balanced | Raw |
+|--------------|----------|-----|
+| Training | [train](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/train.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/test.jsonl) | - |
+| Anthropic HH | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_balanced_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_balanced_apr_23.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_raw_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_raw_apr_23.jsonl) |
+| MT | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_balanced_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_balanced_apr_30.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_raw_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_raw_apr_30.jsonl) |
+| MTS | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_raw_apr_22.jsonl) |
+| Toolace | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_raw_apr_22.jsonl) |
+| Mental Health | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_balanced_apr_22.jsonl) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_raw_apr_22.jsonl) |
+| Aya Redteaming | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming_balanced.csv) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming.jsonl) |
+
 ## Running Experiments
 
 Training on dev split plot:
