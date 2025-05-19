@@ -13,17 +13,25 @@ from models_under_pressure.interfaces.results import DevSplitResult
 
 BASELINE_COLOR = (0.0, 0.5019607843137255, 0.5019607843137255)
 BASELINE_NAME = "Prompted Llama-70B"
+PROBE_COLORS: dict[str, tuple[float, float, float]] = {
+    "linear_then_softmax": (
+        0.12156862745098039,
+        0.4666666666666667,
+        0.7058823529411765,
+    ),
+    "attention": (1.0, 0.4980392156862745, 0.054901960784313725),
+}
 
 # Set style parameters
 plt.rcParams.update(
     {
         "font.size": 14,
-        "axes.labelsize": 16,
+        "axes.labelsize": 17,
         "axes.titlesize": 18,
-        "xtick.labelsize": 14,
-        "ytick.labelsize": 14,
-        "legend.fontsize": 12,
-        "legend.title_fontsize": 14,
+        "xtick.labelsize": 15,
+        "ytick.labelsize": 15,
+        "legend.fontsize": 15,
+        "legend.title_fontsize": 16,
     }
 )
 
@@ -88,10 +96,19 @@ def plot_dev_split_results(
     """
     # Read results from file
     results = []
+    probe_name = None
     with open(results_file) as f:
         for line in f:
             if line.strip():
                 results.append(DevSplitResult.model_validate_json(line))
+                result_probe_name = results[-1].config.probe_spec.name
+                if probe_name is None:
+                    probe_name = result_probe_name
+                else:
+                    if probe_name != result_probe_name:
+                        raise ValueError(
+                            f"Probe name mismatch: {probe_name} != {result_probe_name}"
+                        )
 
     # Load baseline results if provided
     baseline_results = {}
@@ -156,10 +173,40 @@ def plot_dev_split_results(
 
     # Define line styles for different dev_sample_usage settings
     line_styles = {
-        eval_usage_mapping["only"]: "-",
+        eval_usage_mapping["only"]: "--",
         eval_usage_mapping["combine"]: "-.",
-        eval_usage_mapping["fine-tune"]: "--",
+        eval_usage_mapping["fine-tune"]: "-",
     }
+
+    # Add baseline results if provided
+    if baseline_results:
+        current_dataset = dataset_name if dataset_name else "default"
+        if current_dataset in baseline_results:
+            baseline_value = float(baseline_results[current_dataset])
+            plt.axhline(
+                y=baseline_value,
+                color=BASELINE_COLOR,
+                linestyle="-.",
+                label=BASELINE_NAME,
+                alpha=0.7,
+                linewidth=line_width,
+            )
+            print(f"\nBaseline result from file: {baseline_value:.4f}")
+        else:
+            # If we have baseline results but not for this specific dataset,
+            # compute the mean across all datasets
+            mean_baseline = float(np.mean(list(baseline_results.values())))
+            plt.axhline(
+                y=mean_baseline,
+                color=BASELINE_COLOR,
+                linestyle="-.",
+                label=BASELINE_NAME,
+                alpha=0.7,
+                linewidth=line_width,
+            )
+            print(
+                f"\nBaseline result from file (mean across datasets): {mean_baseline:.4f}"
+            )
 
     if combine_datasets:
         # Plot lines for each dev_sample_usage setting
@@ -251,6 +298,8 @@ def plot_dev_split_results(
                 marker="o",
                 capsize=5,
                 linewidth=line_width,
+                linestyle=line_styles[usage],
+                color=PROBE_COLORS.get(probe_name, "orange"),
             )
 
             # Print performance values for this usage
@@ -364,11 +413,11 @@ def plot_dev_split_results(
             k0_std = k0_run_means.std()
             plt.axhline(
                 y=k0_mean,
-                color="gray",
-                linestyle="--",
-                label="Synthetic dataset only",
+                linestyle=":",
+                label="Synthetic data only",
                 alpha=0.7,
                 linewidth=line_width,
+                color=PROBE_COLORS.get(probe_name, "orange"),  # type: ignore
             )
             # Add error band for k=0
             x_min = 0  # Match the k=0 point position
@@ -386,43 +435,13 @@ def plot_dev_split_results(
                 f"\nSynthetic dataset only performance: {k0_mean:.4f} ± {k0_std * Z_SCORE_95:.4f} (95% CI)"
             )
 
-    # Add baseline results if provided
-    if baseline_results:
-        current_dataset = dataset_name if dataset_name else "default"
-        if current_dataset in baseline_results:
-            baseline_value = float(baseline_results[current_dataset])
-            plt.axhline(
-                y=baseline_value,
-                color=BASELINE_COLOR,
-                linestyle="-.",
-                label=BASELINE_NAME,
-                alpha=0.7,
-                linewidth=line_width,
-            )
-            print(f"\nBaseline result from file: {baseline_value:.4f}")
-        else:
-            # If we have baseline results but not for this specific dataset,
-            # compute the mean across all datasets
-            mean_baseline = float(np.mean(list(baseline_results.values())))
-            plt.axhline(
-                y=mean_baseline,
-                color=BASELINE_COLOR,
-                linestyle="-.",
-                label=BASELINE_NAME,
-                alpha=0.7,
-                linewidth=line_width,
-            )
-            print(
-                f"\nBaseline result from file (mean across datasets): {mean_baseline:.4f}"
-            )
-
     # Customize plot
     plt.xlabel("Number of dev split samples for training")
     plt.ylabel(
         "Mean " + (metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
     )
     plt.legend(title="Training Data", bbox_to_anchor=(0.98, 0.02), loc="lower right")
-    plt.grid(True, alpha=0.3)
+    plt.grid(True, alpha=0.5)
 
     # Set x-axis to log scale since k values are powers of 2
     plt.xscale("log", base=2)
@@ -444,9 +463,7 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    results_file = (
-        EVALUATE_PROBES_DIR / "dev_split_training_neurips_test_attention.jsonl"
-    )
+    results_file = EVALUATE_PROBES_DIR / "dev_split_training_neurips_test_softmax.jsonl"
     baseline_file = (
         RESULTS_DIR / "monitoring_cascade_neurips" / "baseline_llama-70b.jsonl"
     )
