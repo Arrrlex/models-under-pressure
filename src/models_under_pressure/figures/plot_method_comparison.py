@@ -15,6 +15,30 @@ from models_under_pressure.experiments.monitoring_cascade import (
     get_abbreviated_model_name,
 )
 
+probe_colours = {
+    "attention": "#FF7F0E",
+    "softmax": "#1F77B4",
+    "last_token": "#2CA02C",
+    "max": "#9467BD",
+    "mean": "#8C564B",
+    "rolling_mean_max": "#E377C2",
+}
+
+finetuned_colours = [
+    "#7CFC00",
+    "#32CD32",
+    "#228B22",
+    "#008000",
+    "#006400",
+]
+
+prompted_colours = [
+    "#00CED1",
+    "#00ABAB",
+    "#00A7A9",
+    "#008080",
+]
+
 
 def darken_color(color: str, factor: float = 0.7) -> str:
     """Darken a color by the given factor (0 to 1)."""
@@ -66,16 +90,10 @@ def plot_method_comparison(
     sns.set_style("whitegrid")
 
     colors = {
-        "probe": "#2563EB",
-        "finetuned": "#2CA02C",
-        "prompted": "#9467BD",
+        "probe": probe_colours["attention"],
+        "finetuned": finetuned_colours[2],
+        "prompted": prompted_colours[1],
     }
-
-    #     # "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
-    # "Last Token": "#2CA02C",  # Green
-    # "Max": "#9467BD",  # Purple
-    # "Mean": "#8C564B",  # Brown
-    # "Rolling Mean Max": "#E377C2",  # Pink
 
     texts = []  # Store text annotations here
 
