@@ -4,30 +4,15 @@
 
 Our datasets can be found here:
 
-| Dataset Type | Split Type | Split | URL |
-|--------------|------------|-------|-----|
-| Training | Training | train | [train split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/train.jsonl) |
-| Training | Training | test | [test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/test.jsonl) |
-| Anthropic HH | Dev | balanced | [balanced dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_balanced_apr_23.jsonl) |
-| Anthropic HH | Dev | raw | [raw dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_raw_apr_23.jsonl) |
-| Anthropic HH | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_balanced_apr_23.jsonl) |
-| Anthropic HH | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_raw_apr_23.jsonl) |
-| MT | Dev | balanced | [balanced dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_balanced_apr_30.jsonl) |
-| MT | Dev | raw | [raw dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_raw_apr_30.jsonl) |
-| MT | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_balanced_apr_30.jsonl) |
-| MT | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_raw_apr_30.jsonl) |
-| MTS | Dev | balanced | [balanced dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_balanced_apr_22.jsonl) |
-| MTS | Dev | raw | [raw dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_raw_apr_22.jsonl) |
-| MTS | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_balanced_apr_22.jsonl) |
-| MTS | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_raw_apr_22.jsonl) |
-| Toolace | Dev | balanced | [balanced dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_balanced_apr_22.jsonl) |
-| Toolace | Dev | raw | [raw dev split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_raw_apr_22.jsonl) |
-| Toolace | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_balanced_apr_22.jsonl) |
-| Toolace | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_raw_apr_22.jsonl) |
-| Mental Health | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_balanced_apr_22.jsonl) |
-| Mental Health | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_raw_apr_22.jsonl) |
-| Aya Redteaming | Test | balanced | [balanced test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming_balanced.csv) |
-| Aya Redteaming | Test | raw | [raw test split](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming.jsonl) |
+| Dataset Name | Balanced | Raw |
+|--------------|----------|-----|
+| Training | [train](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/train.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/test.jsonl) | - |
+| Anthropic HH | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_balanced_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_balanced_apr_23.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_raw_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_raw_apr_23.jsonl) |
+| MT | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_balanced_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_balanced_apr_30.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_raw_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_raw_apr_30.jsonl) |
+| MTS | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_raw_apr_22.jsonl) |
+| Toolace | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_raw_apr_22.jsonl) |
+| Mental Health | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_balanced_apr_22.jsonl) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_raw_apr_22.jsonl) |
+| Aya Redteaming | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming_balanced.csv) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming.jsonl) |
 
 ## Running Experiments
 
