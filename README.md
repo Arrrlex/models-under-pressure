@@ -10,6 +10,14 @@
   - If you want to include the line for the baseline, you can obtain the corresponding file from the cascade experiment.
 
 
+### Data Efficiency Experiment
+
+Code for running the data efficiency experiment is included in [src/models_under_pressure/experiments/data_efficiency.py](experiments/data_efficiency.py).
+
+- Use the function `run_data_efficiency_experiment` to get results for different types of probes.
+- Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
+
+
 ## Computing Baselines
 
 ### Prompted Baselines
