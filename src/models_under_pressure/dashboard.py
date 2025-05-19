@@ -8,6 +8,7 @@ dashboard <path_to_dataset>
 
 import json
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -645,11 +646,9 @@ def add_download_button(data: DashboardDataset) -> None:
     st.download_button("Download CSV", csv, "filtered_data.csv", "text/csv")
 
 
-def main():
+def main(data_path: str):
     # Load the dataset
-    data = DashboardDataset.load_from(
-        "/home/ubuntu/urja/urja/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
-    )
+    data = DashboardDataset.load_from(data_path)
 
     # Setup page
     setup_page()
@@ -684,4 +683,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1])

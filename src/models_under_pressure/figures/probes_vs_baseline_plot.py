@@ -499,31 +499,31 @@ def plot_results(plot_df: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     probe_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_attention_test_1.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_attention_test_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_attention_test_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_softmax_test_1.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_softmax_test_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/evaluate_probes/results_softmax_test_3.jsonl",
     ]
 
     finetune_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama-8b_test.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/finetuned_baselines/finetuning_llama-8b_test.jsonl",
     ]
 
     continuation_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
+        "/home/xxx/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
     ]
 
     df_combined = prepare_data(

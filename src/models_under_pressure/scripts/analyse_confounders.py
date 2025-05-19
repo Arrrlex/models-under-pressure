@@ -1,4 +1,4 @@
-from pathlib import Path
+import sys
 from typing import Dict, Protocol, Sequence, Tuple, runtime_checkable
 
 import numpy as np
@@ -320,16 +320,10 @@ def filter_dataset(
 
 
 if __name__ == "__main__":
-    # Load datasets
-    input_path = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/prompts_25_03_25_gpt-4o_original_doubled.jsonl"
-    )
-    output_path_train = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
-    )
-    output_path_test = Path(
-        "/Users/urjapawar/Documents/refactor]/models-under-pressure/data/training/original_doubled_unconfounded/test.jsonl"
-    )
+    input_path, output_path = sys.argv[1:]
+    output_path_train = f"{output_path}/train.jsonl"
+    output_path_test = f"{output_path}/test.jsonl"
+
     dataset = LabelledDataset.load_from(input_path)
     # eval_datasets = {
     #     name: LabelledDataset.load_from(path) for name, path in EVAL_DATASETS.items()

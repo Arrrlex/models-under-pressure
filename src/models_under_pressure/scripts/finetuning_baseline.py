@@ -113,7 +113,7 @@ def train(
     gradient_accumulation_steps: int = 1,
     max_epochs: int = 10,
     shuffle: bool = True,
-    wandb_entity: str = "william_bankes",
+    wandb_entity: str = "xxx",
     devices: List[int] = [0],
     use_test_set: bool = False,
     logger: Optional[WandbLogger] = None,
@@ -177,7 +177,7 @@ def train(
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
         mode="min",
-        dirpath="/scratch/ucabwjn/models-under-pressure",
+        dirpath="/scratch/xxx/models-under-pressure",
         filename=best_model_path_template
         + "-val_loss_{val_loss:.2f}-epoch_{epoch:02d}",
     )
@@ -188,7 +188,7 @@ def train(
         accelerator="gpu",
         devices=devices,
         precision="bf16-true",
-        default_root_dir="/scratch/ucabwjn/models-under-pressure",
+        default_root_dir="/scratch/xxx/models-under-pressure",
         callbacks=[checkpoint_callback],  # type: ignore
         logger=logger,
         accumulate_grad_batches=gradient_accumulation_steps,
@@ -318,7 +318,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb_entity",
         type=str,
-        default="william_bankes",
         help="Weights & Biases entity name",
     )
     parser.add_argument(
@@ -341,7 +340,7 @@ if __name__ == "__main__":
     logger = WandbLogger(
         project="models-under-pressure",
         entity=args.wandb_entity,
-        save_dir="/scratch/ucabwjn/models-under-pressure",
+        save_dir="/scratch/xxx/models-under-pressure",
     )
 
     results = train(
