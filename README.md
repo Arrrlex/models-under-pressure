@@ -5,7 +5,9 @@
 Training on dev split plot:
 
 - Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
-- Run `figures/dev_split_training_plot.py` to generate the corresponding plot.
+  - Important: Set `gradient_accumulation_steps` to 1 in the config of the corresponding probe, since training data for this experiment can consist only of few samples and no learning occurs if number of batches is less than gradient accumulation steps.
+- Run `figures/dev_split_training_plot.py` to generate the corresponding plot. Adjust file paths end of the file before.
+  - If you want to include the line for the baseline, you can obtain the corresponding file from the cascade experiment.
 
 
 ## Computing Baselines

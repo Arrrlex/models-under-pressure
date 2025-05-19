@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Self
 
 import numpy as np
 from jaxtyping import Float
@@ -32,6 +32,7 @@ class PytorchProbe(Probe):
         self,
         dataset: LabelledDataset,
         validation_dataset: LabelledDataset | None = None,
+        **train_args: Any,
     ) -> Self:
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
@@ -45,9 +46,12 @@ class PytorchProbe(Probe):
                 dataset.labels_torch(),
                 validation_activations=Activation.from_dataset(validation_dataset),
                 validation_y=validation_dataset.labels_torch(),
+                **train_args,
             )
         else:
-            self._classifier.train(activations_obj, dataset.labels_torch())
+            self._classifier.train(
+                activations_obj, dataset.labels_torch(), **train_args
+            )
         return self
 
     def predict(self, dataset: BaseDataset) -> list[Label]:

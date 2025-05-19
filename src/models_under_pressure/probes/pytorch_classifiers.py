@@ -213,6 +213,7 @@ class PytorchAdamClassifier:
         validation_activations: Activation | None = None,
         validation_y: Float[torch.Tensor, " batch_size"] | None = None,
         print_gradient_norm: bool = False,
+        initialize_model: bool = True,
     ) -> Self:
         """
         Train the classifier on the activations and labels.
@@ -227,10 +228,15 @@ class PytorchAdamClassifier:
         Returns:
             Self
         """
-        self.model = self.probe_architecture(
-            activations.embed_dim, **self.training_args
-        )
-        self.model = self.model.to(self.device).to(self.dtype)
+        if initialize_model:
+            self.model = self.probe_architecture(
+                activations.embed_dim, **self.training_args
+            )
+            self.model = self.model.to(self.device).to(self.dtype)
+        else:
+            if self.model is None:
+                raise ValueError("Model not initialized")
+            self.model.train()
 
         # Initialize wandb if project name is provided
         if self.wandb_project is not None:
