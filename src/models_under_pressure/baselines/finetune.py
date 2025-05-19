@@ -1252,7 +1252,7 @@ def run_finetune_baselines():
                 "scheduler_params": None,
                 "class_weights": None,
                 "label_smoothing": 0.0,
-                "optimizer": "adafactor",  # Can be "adam" or "adafactor"
+                "optimizer": "adamw8bit",
             },
             batch_size=1,
             shuffle=True,
@@ -1272,10 +1272,11 @@ def run_finetune_baselines():
 
         results = get_finetuned_baseline_results(
             finetune_config,
-            SYNTHETIC_DATASET_PATH,
-            EVAL_DATASETS,
+            train_dataset_path=SYNTHETIC_DATASET_PATH,
+            eval_datasets=EVAL_DATASETS,
+            results_dir=RESULTS_DIR,
             compute_activations=False,
-            max_samples=4000,
+            max_samples=None,
         )
 
         timestamp = datetime.now().strftime("%Y-%m-%d")
