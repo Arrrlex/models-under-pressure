@@ -5,6 +5,7 @@
 Training on dev split plot:
 
 - Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
+  - Important: Set `gradient_accumulation_steps` to 1 in the config of the corresponding probe, since training data for this experiment can consist only of few samples and no learning occurs if number of batches is less than gradient accumulation steps.
 - Run `figures/dev_split_training_plot.py` to generate the corresponding plot.
 
 
