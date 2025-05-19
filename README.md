@@ -38,7 +38,12 @@ Code for running the data efficiency experiment is included in [experiments/data
   - Result generation: The script generates result files for the selected probe and the continuation baselines.
   - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
   - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
- 
+
+  ### Figure 1 Plot
+
+- The script to generate this plot uses outputs from the cascade experiment. Run the cascade experiment to compute the full results (e.g. using null for model selections in `analyze.yaml`)
+- Then run [figures/plot_method_comparison.py](./src/models_under_pressure/figures/plot_method_comparison.py)
+
 
 ## Computing Baselines
 

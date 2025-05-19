@@ -8,6 +8,7 @@ import numpy as np
 import seaborn as sns
 from adjustText import adjust_text  # <-- Import adjust_text
 from matplotlib.colors import to_hex, to_rgb
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 from models_under_pressure.config import DATA_DIR
@@ -29,6 +30,7 @@ def plot_method_comparison(
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (7, 5),
     font_size: int = 12,
+    show_legend: bool = False,
 ) -> None:
     results = []
     with open(results_dir / "cascade_results.jsonl") as f:
@@ -80,7 +82,7 @@ def plot_method_comparison(
     texts = []  # Store text annotations here
 
     # Create lists for legend
-    # legend_elements = []
+    legend_elements = []
 
     # Store points for later connection
     # probe_point = None
@@ -96,29 +98,32 @@ def plot_method_comparison(
 
         color = colors[method_type]
         # Create darker version of the color for text
-        # text_color = darken_color(color, factor=0.7)
+        text_color = darken_color(color, factor=0.7)
 
         plt.plot(mean_flops, mean_auroc, "o", label=method, color=color, markersize=10)
-        # Remove the method type suffix for display
-        # display_method = method.split(" (")[0] if " (" in method else method
-        # texts.append(
-        #     plt.text(
-        #         mean_flops,
-        #         mean_auroc,
-        #         display_method,
-        #         ha="center",
-        #         va="bottom",
-        #         fontsize=font_size - 2,
-        #         color=text_color,
-        #         # weight="bold",
-        #     )
-        # )
+        if show_legend:
+            # Remove the method type suffix for display
+            display_method = method.split(" (")[0] if " (" in method else method
+            texts.append(
+                plt.text(
+                    mean_flops,
+                    mean_auroc,
+                    display_method,
+                    ha="center",
+                    va="bottom",
+                    fontsize=font_size - 2,
+                    color=text_color,
+                    # weight="bold",
+                )
+            )
 
         # Store specific points
-        # if method == "Probe":
-        #     probe_point = (mean_flops, mean_auroc)
-        # elif "llama-8b (finetuned)" in method:
-        #     llama_8b_finetuned_point = (mean_flops, mean_auroc)
+        if method == "Probe":
+            # probe_point = (mean_flops, mean_auroc)
+            pass
+        elif "llama-8b (finetuned)" in method:
+            # llama_8b_finetuned_point = (mean_flops, mean_auroc)
+            pass
 
     # Connect Probe and Llama-8B finetuned with a dashed line if both exist
     # if probe_point and llama_8b_finetuned_point:
@@ -165,26 +170,27 @@ def plot_method_comparison(
     #     )
 
     # Add legend elements for method types
-    # for method_type, color in colors.items():
-    #     display_name = (
-    #         "Attention Probe"
-    #         if method_type == "probe"
-    #         else f"{method_type.capitalize()} LLM"
-    #     )
-    #     legend_elements.append(
-    #         Line2D(
-    #             [0],
-    #             [0],
-    #             marker="o",
-    #             color="w",
-    #             markerfacecolor=color,
-    #             markersize=9,
-    #             label=display_name,
-    #         )
-    #     )
+    for method_type, color in colors.items():
+        display_name = (
+            "Attention Probe"
+            if method_type == "probe"
+            else f"{method_type.capitalize()} LLM"
+        )
+        legend_elements.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=color,
+                markersize=9,
+                label=display_name,
+            )
+        )
 
-    # Add the legend at bottom left
-    # plt.legend(handles=legend_elements, loc="lower left", fontsize=font_size - 2)
+    # Add the legend at bottom left if show_legend is True
+    if show_legend:
+        plt.legend(handles=legend_elements, loc="lower left", fontsize=font_size - 2)
 
     plt.xlabel("FLOPs per Sample (log scale)", fontsize=font_size)
     plt.ylabel("Mean AUROC", fontsize=font_size)
@@ -215,5 +221,5 @@ def plot_method_comparison(
 
 
 if __name__ == "__main__":
-    results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips_2"
-    plot_method_comparison(results_dir, font_size=18)
+    results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
+    plot_method_comparison(results_dir, font_size=18, show_legend=True)
