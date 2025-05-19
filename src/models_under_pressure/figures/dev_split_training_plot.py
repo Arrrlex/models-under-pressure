@@ -11,6 +11,9 @@ from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR, RESULTS
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.results import DevSplitResult
 
+BASELINE_COLOR = (0.0, 0.5019607843137255, 0.5019607843137255)
+BASELINE_NAME = "Prompted Llama-70B"
+
 # Set style parameters
 plt.rcParams.update(
     {
@@ -63,10 +66,11 @@ def plot_dev_split_results(
     results_file: Path,
     metric: Literal["auroc", "tpr_at_fpr", "accuracy"] = "auroc",
     output_file: Path | None = None,
-    figsize: tuple[int, int] = (10, 6),
+    figsize: tuple[int, int] = (6, 6),
     dataset_name: str | None = None,
     combine_datasets: bool = True,
     baseline_file: Optional[Path] = None,
+    line_width: float = 2.0,
 ) -> None:
     """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
@@ -80,6 +84,7 @@ def plot_dev_split_results(
                         If False, plots individual lines for each dataset with consistent colors
                         and line styles.
         baseline_file: Path to a JSONL file containing baseline results to plot as a horizontal line
+        line_width: Width of the lines in the plot. Default is 2.0.
     """
     # Read results from file
     results = []
@@ -245,6 +250,7 @@ def plot_dev_split_results(
                 label=usage,
                 marker="o",
                 capsize=5,
+                linewidth=line_width,
             )
 
             # Print performance values for this usage
@@ -327,6 +333,7 @@ def plot_dev_split_results(
                     capsize=5,
                     color=dataset_colors[dataset],
                     linestyle=line_styles[usage],
+                    linewidth=line_width,
                 )
 
                 # Print performance values for this dataset and usage
@@ -361,6 +368,7 @@ def plot_dev_split_results(
                 linestyle="--",
                 label="Synthetic dataset only",
                 alpha=0.7,
+                linewidth=line_width,
             )
             # Add error band for k=0
             x_min = 0  # Match the k=0 point position
@@ -385,10 +393,11 @@ def plot_dev_split_results(
             baseline_value = float(baseline_results[current_dataset])
             plt.axhline(
                 y=baseline_value,
-                color="red",
+                color=BASELINE_COLOR,
                 linestyle="-.",
-                label="Baseline results",
+                label=BASELINE_NAME,
                 alpha=0.7,
+                linewidth=line_width,
             )
             print(f"\nBaseline result from file: {baseline_value:.4f}")
         else:
@@ -397,10 +406,11 @@ def plot_dev_split_results(
             mean_baseline = float(np.mean(list(baseline_results.values())))
             plt.axhline(
                 y=mean_baseline,
-                color="red",
+                color=BASELINE_COLOR,
                 linestyle="-.",
-                label="Baseline results (mean)",
+                label=BASELINE_NAME,
                 alpha=0.7,
+                linewidth=line_width,
             )
             print(
                 f"\nBaseline result from file (mean across datasets): {mean_baseline:.4f}"
@@ -411,7 +421,7 @@ def plot_dev_split_results(
     plt.ylabel(
         "Mean " + (metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
     )
-    plt.legend(title="Training Data", bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.legend(title="Training Data", bbox_to_anchor=(0.98, 0.02), loc="lower right")
     plt.grid(True, alpha=0.3)
 
     # Set x-axis to log scale since k values are powers of 2
