@@ -21,7 +21,10 @@ from models_under_pressure.interfaces.results import DatasetResults, EvaluationR
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.metrics import tpr_at_fixed_fpr_score
 from models_under_pressure.probes.probe_factory import ProbeFactory
-from models_under_pressure.probes.pytorch_probes import PytorchProbe
+from models_under_pressure.probes.pytorch_modules import AttnLite
+from models_under_pressure.probes.pytorch_probes import (
+    PytorchProbe,
+)
 from models_under_pressure.utils import double_check_config
 
 
@@ -32,13 +35,12 @@ def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
 def calculate_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, fpr: float
 ) -> dict[str, float]:
-    metrics = {
+    return {
         "auroc": float(roc_auc_score(y_true, y_pred)),
         "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
         "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
         "fpr": float(fpr),
     }
-    return metrics
 
 
 def evaluate_probe_and_save_results(
@@ -72,15 +74,30 @@ def evaluate_probe_and_save_results(
     """
     per_entry_probe_scores = probe.predict_proba(eval_dataset)
     print(f"Obtained {len(per_entry_probe_scores)} probe scores")
-
     if save_results:
         output_dir.mkdir(parents=True, exist_ok=True)
+        per_token_probe_scores = []
+        per_token_attention_scores = []
 
         # Get rid of the padding in the per token probe scores
-        per_token_probe_scores = [
-            probe_score[probe_score != -1]
-            for probe_score in probe.per_token_predictions(eval_dataset.inputs)
-        ]
+        if isinstance(probe._classifier.model, AttnLite):  # type: ignore
+            (per_token_attention_scores, per_token_probe_scores) = (
+                probe.per_token_predictions(eval_dataset)
+            )
+
+            per_token_probe_scores = [
+                probe_score[probe_score != -1] for probe_score in per_token_probe_scores
+            ]
+            per_token_attention_scores = [
+                additional_scores[additional_scores != -1]
+                for additional_scores in per_token_attention_scores
+            ]
+
+        else:
+            per_token_probe_scores = [
+                probe_score[probe_score != -1]
+                for probe_score in probe.per_token_predictions(eval_dataset)
+            ]
 
         # calculate logits for the per token probe scores
         per_token_probe_logits = inv_softmax(per_token_probe_scores)
@@ -89,14 +106,17 @@ def evaluate_probe_and_save_results(
         # Assert no NaN values in the per token probe logits
         for i, logits in enumerate(per_token_probe_logits):
             if np.any(np.isnan(logits)):
-                raise ValueError(f"Found NaN values in probe logits for entry {i}")
+                print(f"Found NaN values in probe logits for entry {i}")
 
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
             "per_entry_probe_logits": per_entry_probe_logits,
             "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
+            "tokens": eval_dataset.other_fields["input_ids"].tolist(),  # type: ignore
         }
+        if probe._classifier.model == AttnLite:  # type: ignore
+            probe_scores_dict["per_token_attention_scores"] = per_token_attention_scores
 
         for score, values in probe_scores_dict.items():
             if len(values) != len(eval_dataset.inputs):
@@ -129,7 +149,7 @@ def evaluate_probe_and_save_results(
             f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
         )
         dataset_with_probe_scores.save_to(
-            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}.jsonl",
+            EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}_probed.jsonl",
             overwrite=True,
         )
 
@@ -147,39 +167,44 @@ def run_evaluation(
     config: EvalRunConfig,
 ) -> list[EvaluationResult]:
     """Train a linear probe on our training dataset and evaluate on all eval datasets."""
-    splits = load_splits_lazy(
-        dataset_path=config.dataset_path,
-        dataset_filters=config.dataset_filters,
-        n_per_class=config.max_samples,
-        model_name=config.model_name,
-        layer=config.layer,
-        compute_activations=config.compute_activations,
-    )
+    if probe_id := config.probe_id:
+        print(f"Loading probe from {probe_id} ...")
+        probe = ProbeFactory.load(probe_id)
 
-    if isinstance(config.validation_dataset, Path):
-        validation_dataset = load_dataset(
-            dataset_path=config.validation_dataset,
+    else:
+        splits = load_splits_lazy(
+            dataset_path=config.dataset_path,
             dataset_filters=config.dataset_filters,
+            n_per_class=config.max_samples,
             model_name=config.model_name,
             layer=config.layer,
             compute_activations=config.compute_activations,
-            n_per_class=config.max_samples // 2 if config.max_samples else None,
         )
-    elif config.validation_dataset:
-        validation_dataset = splits["test"]
-    else:
-        validation_dataset = None
 
-    # Create the probe:
-    print("Creating probe ...")
-    probe = ProbeFactory.build(
-        layer=config.layer,
-        probe_spec=config.probe_spec,
-        train_dataset=splits["train"],
-        validation_dataset=validation_dataset,
-        model_name=config.model_name,
-        use_store=global_settings.USE_PROBE_STORE,
-    )
+        if isinstance(config.validation_dataset, Path):
+            validation_dataset = load_dataset(
+                dataset_path=config.validation_dataset,
+                dataset_filters=config.dataset_filters,
+                model_name=config.model_name,
+                layer=config.layer,
+                compute_activations=config.compute_activations,
+                n_per_class=config.max_samples // 2 if config.max_samples else None,
+            )
+        elif config.validation_dataset:
+            validation_dataset = splits["test"]
+        else:
+            validation_dataset = None
+
+        # Create the probe:
+        print("Creating probe ...")
+        probe = ProbeFactory.build(
+            layer=config.layer,
+            probe_spec=config.probe_spec,
+            train_dataset=splits["train"],
+            validation_dataset=validation_dataset,
+            model_name=config.model_name,
+            use_store=global_settings.USE_PROBE_STORE,
+        )
 
     results_list = []
 
@@ -197,6 +222,7 @@ def run_evaluation(
         )
 
         print(f"Evaluating probe on {eval_dataset_name} ...")
+        # for per token, save results = True
         probe_scores, dataset_results = evaluate_probe_and_save_results(
             probe=probe,
             train_dataset_path=config.dataset_path,
@@ -268,17 +294,14 @@ if __name__ == "__main__":
             name=ProbeType.attention,
             hyperparams={
                 "batch_size": 16,
-                "epochs": 200,
+                "epochs": 1,  # 200,
                 "optimizer_args": {
-                    "lr": 5e-3,
-                    "weight_decay": 1e-3,
+                    "lr": 0.005,
+                    "weight_decay": 0.001,
                 },
-                "attn_hidden_dim": 27,
-                "probe_architecture": "attention_then_linear",
-                "scheduler_decay": 0.62,
-                "final_lr": 5e-5,
+                "final_lr": 0.0005,
                 "gradient_accumulation_steps": 4,
-                "patience": 30,
+                "patience": 50,
             },
         ),
         compute_activations=False,

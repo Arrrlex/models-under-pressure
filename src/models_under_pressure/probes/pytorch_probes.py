@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Self, Sequence
+from typing import Any, Self
 
 import numpy as np
 from jaxtyping import Float
@@ -9,12 +9,11 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
-    Dataset,
-    Input,
     Label,
     LabelledDataset,
 )
 from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchAdamClassifier,
     PytorchClassifier,
 )
 from models_under_pressure.probes.sklearn_probes import Probe
@@ -74,11 +73,14 @@ class PytorchProbe(Probe):
 
     def per_token_predictions(
         self,
-        inputs: Sequence[Input],
-    ) -> Float[np.ndarray, "batch_size seq_len"]:
-        dataset = Dataset(
-            inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
-        )
+        dataset: BaseDataset,
+    ) -> (
+        Float[np.ndarray, "batch_size seq_len"]
+        | tuple[
+            Float[np.ndarray, "batch_size seq_len"],
+            Float[np.ndarray, "batch_size seq_len"],
+        ]
+    ):
         """
         Probabilities are expected in the shape (batch_size, seq_len) by the classifier.
         """
@@ -88,4 +90,7 @@ class PytorchProbe(Probe):
 
         probs = self._classifier.probs(activations_obj, per_token=True)
 
-        return as_numpy(probs)
+        if isinstance(self._classifier, PytorchAdamClassifier):
+            return as_numpy(probs[1]), as_numpy(probs[2])
+        else:
+            return as_numpy(probs)

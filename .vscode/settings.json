@@ -12,5 +12,8 @@
   "python.languageServer": "Default",
   "editor.rulers": [
     88
+  ],
+  "python.analysis.extraPaths": [
+    "./src"
   ]
 }

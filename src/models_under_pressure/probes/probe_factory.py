@@ -1,3 +1,4 @@
+from models_under_pressure.config import global_settings
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.probes.probe_store import FullProbeSpec, ProbeStore
@@ -23,6 +24,10 @@ from models_under_pressure.probes.sklearn_probes import (
 
 class ProbeFactory:
     @classmethod
+    def load(cls, probe_id: str) -> Probe:
+        return ProbeStore().load_from_id(probe_id)
+
+    @classmethod
     def build(
         cls,
         probe_spec: ProbeSpec,
@@ -30,7 +35,7 @@ class ProbeFactory:
         model_name: str,
         layer: int,
         validation_dataset: LabelledDataset | None = None,
-        use_store: bool = True,
+        use_store: bool = global_settings.USE_PROBE_STORE,
     ) -> Probe:
         if use_store:
             store = ProbeStore()

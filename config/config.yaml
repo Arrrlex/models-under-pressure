@@ -1,5 +1,5 @@
 defaults:
-  - probe: sklearn
+  - probe: attention
   - eval_datasets: dev_balanced
   - model: llama-70b
   - baseline: llama3-1b-finetune
@@ -43,3 +43,9 @@ data_efficiency:
     - 256
     - 512
     - 709
+
+variation_types:
+  - prompt_style
+  - tone
+  - language
+  - length
