@@ -328,7 +328,7 @@ def display_word_level_visualization(
             html += """
             <div style='margin-top: 20px;'>
                 <h3 style='font-size: 20px; margin-bottom: 15px;'><strong>Legend</strong></h3>
-                <p style='margin-bottom: 8px;'><strong>Attention scores:</strong></p>
+                <p style='margin-bottom: 8px;'><strong>Attention Scores:</strong></p>
                 <div style='display: flex; align-items: center; margin-bottom: 10px;'>
                     <div style='width: 300px; height: 15px; background: linear-gradient(to right, rgb(255, 255, 255), rgb(151,125,227));'></div>
                 </div>
@@ -340,16 +340,16 @@ def display_word_level_visualization(
                         <span style='font-size: 17px;'>More Attention</span>
                     </span>
                 </div>
-                <p style='margin-bottom: 8px;'><strong>Stakes scores:</strong></p>
+                <p style='margin-bottom: 8px;'><strong>Concept Scores:</strong></p>
                 <div style='display: flex; align-items: center; margin-bottom: 10px;'>
                     <div style='width: 300px; height: 15px; background: linear-gradient(to right, rgb(135, 206, 250), rgb(255,255,255), rgb(245,162,173));'></div>
                 </div>
                 <div style='display: flex; justify-content: space-between; width: 300px;'>
                     <span style='display: flex; flex-direction: column; align-items: center;'>
-                        <span style='font-size: 17px;'>Low Probe Score</span>
+                        <span style='font-size: 17px;'>Low Concept Score</span>
                     </span>
                     <span style='display: flex; flex-direction: column; align-items: center;'>
-                        <span style='font-size: 17px;'>High Probe Score</span>
+                        <span style='font-size: 17px;'>High Concept Score</span>
                     </span>
                 </div>
             </div>
@@ -648,7 +648,7 @@ def add_download_button(data: DashboardDataset) -> None:
 def main():
     # Load the dataset
     data = DashboardDataset.load_from(
-        "/home/ubuntu/urja/urja/models-under-pressure/data/training/original_doubled_unconfounded/train.jsonl"
+        "/home/ubuntu/urja/urja/models-under-pressure/data/results/evaluate_probes/anthropic_test_balanced_apr_23_probed.jsonl"
     )
 
     # Setup page

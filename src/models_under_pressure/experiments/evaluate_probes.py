@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     CONFIG_DIR,
-    EVAL_DATASETS,
+    TEST_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
@@ -101,23 +101,24 @@ def evaluate_probe_and_save_results(
             ]
 
         # calculate logits for the per token probe scores
-        per_token_probe_logits = inv_softmax(per_token_probe_scores)
-        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
+        # per_token_probe_logits = inv_softmax(per_token_probe_scores)
+        # per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
 
         # Assert no NaN values in the per token probe logits
-        for i, logits in enumerate(per_token_probe_logits):
-            if np.any(np.isnan(logits)):
-                print(f"Found NaN values in probe logits for entry {i}")
+        # for i, logits in enumerate(per_token_probe_logits):
+        #     if np.any(np.isnan(logits)):
+        #         print(f"Found NaN values in probe logits for entry {i}")
 
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
-            "per_entry_probe_logits": per_entry_probe_logits,
-            "per_token_probe_logits": per_token_probe_logits,
+            # "per_entry_probe_logits": per_entry_probe_logits,
+            # "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
             "tokens": eval_dataset.other_fields["input_ids"].tolist(),  # type: ignore
+            "per_token_attention_scores": per_token_attention_scores,
         }
-        if probe._classifier.model == AttnLite:  # type: ignore
-            probe_scores_dict["per_token_attention_scores"] = per_token_attention_scores
+        # if probe._classifier.model == AttnLite:  # type: ignore
+        #     probe_scores_dict.update({"per_token_attention_scores": per_token_attention_scores})
 
         for score, values in probe_scores_dict.items():
             if len(values) != len(eval_dataset.inputs):
@@ -146,9 +147,9 @@ def evaluate_probe_and_save_results(
         dataset_with_probe_scores.other_fields = extra_fields
 
         # Save the dataset to the output path overriding the previous dataset
-        print(
-            f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split(".")[0]}.jsonl'}"
-        )
+        # print(
+        #     f"Saving dataset to {EVALUATE_PROBES_DIR / f'{eval_dataset_name.split('.')[0]}.jsonl'}"
+        # )
         dataset_with_probe_scores.save_to(
             EVALUATE_PROBES_DIR / f"{eval_dataset_name.split('.')[0]}_probed.jsonl",
             overwrite=True,
@@ -227,6 +228,7 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
             output_dir=EVALUATE_PROBES_DIR,
+            save_results=True,
         )
 
         ground_truth_labels = eval_dataset.labels_numpy().tolist()
@@ -303,7 +305,7 @@ if __name__ == "__main__":
         compute_activations=False,
         dataset_path=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
-        eval_datasets=list(EVAL_DATASETS.values()),
+        eval_datasets=list(TEST_DATASETS.values()),
     )
     double_check_config(config)
 
