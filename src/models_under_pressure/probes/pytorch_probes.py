@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Self, Sequence
+from typing import Any, Self
 
 import numpy as np
 from jaxtyping import Float
@@ -9,12 +9,11 @@ from models_under_pressure.interfaces.activations import (
 )
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
-    Dataset,
-    Input,
     Label,
     LabelledDataset,
 )
 from models_under_pressure.probes.pytorch_classifiers import (
+    PytorchAdamClassifier,
     PytorchClassifier,
 )
 from models_under_pressure.probes.sklearn_probes import Probe
@@ -33,6 +32,7 @@ class PytorchProbe(Probe):
         self,
         dataset: LabelledDataset,
         validation_dataset: LabelledDataset | None = None,
+        **train_args: Any,
     ) -> Self:
         """
         Fit the probe to the dataset, return a self object with a trained classifier.
@@ -46,9 +46,12 @@ class PytorchProbe(Probe):
                 dataset.labels_torch(),
                 validation_activations=Activation.from_dataset(validation_dataset),
                 validation_y=validation_dataset.labels_torch(),
+                **train_args,
             )
         else:
-            self._classifier.train(activations_obj, dataset.labels_torch())
+            self._classifier.train(
+                activations_obj, dataset.labels_torch(), **train_args
+            )
         return self
 
     def predict(self, dataset: BaseDataset) -> list[Label]:
@@ -70,11 +73,14 @@ class PytorchProbe(Probe):
 
     def per_token_predictions(
         self,
-        inputs: Sequence[Input],
-    ) -> Float[np.ndarray, "batch_size seq_len"]:
-        dataset = Dataset(
-            inputs=inputs, ids=[str(i) for i in range(len(inputs))], other_fields={}
-        )
+        dataset: BaseDataset,
+    ) -> (
+        Float[np.ndarray, "batch_size seq_len"]
+        | tuple[
+            Float[np.ndarray, "batch_size seq_len"],
+            Float[np.ndarray, "batch_size seq_len"],
+        ]
+    ):
         """
         Probabilities are expected in the shape (batch_size, seq_len) by the classifier.
         """
@@ -84,4 +90,7 @@ class PytorchProbe(Probe):
 
         probs = self._classifier.probs(activations_obj, per_token=True)
 
-        return as_numpy(probs)
+        if isinstance(self._classifier, PytorchAdamClassifier):
+            return as_numpy(probs[1]), as_numpy(probs[2])
+        else:
+            return as_numpy(probs)

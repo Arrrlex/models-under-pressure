@@ -46,6 +46,7 @@ def run_experiment(config: DictConfig):
             compute_activations=config.compute_activations,
             validation_dataset=config.validation_dataset,
             **({"id": config.id} if "id" in config else {}),
+            **({"probe_id": config.probe_id} if "probe_id" in config else {}),
         )
         double_check_config(
             evaluate_probe_config, double_check=global_settings.DOUBLE_CHECK_CONFIG

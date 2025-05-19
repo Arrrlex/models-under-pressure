@@ -112,7 +112,6 @@ RED_TEAM_DATASETS = {
     "honesty_confounding": DATA_DIR
     / "evals"
     / "red-team/honesty_confounding_requests.jsonl",
-    "humorous": DATA_DIR / "evals" / "red-team/humorous_requests.jsonl",
     "negated": DATA_DIR / "evals" / "red-team/negated_requests.jsonl",
     "extras": DATA_DIR / "evals" / "red-team/extras.jsonl",
 }
@@ -311,6 +310,7 @@ class EvalRunConfig(BaseModel):
     dataset_filters: dict[str, Any] | None = None
     compute_activations: bool = False
     validation_dataset: Path | bool = False
+    probe_id: str | None = None
 
     @property
     def output_filename(self) -> str:
@@ -382,12 +382,13 @@ class DataEfficiencyConfig(BaseModel):
     dataset_path: Path
     probes: list[ProbeSpec]
     dataset_sizes: list[int]
-    eval_dataset_paths: list[Path]
+    eval_dataset_paths: dict[str, Path]
     compute_activations: bool = False
+    results_dir: Path = RESULTS_DIR / "data_efficiency"
 
     @property
     def output_path(self) -> Path:
-        return RESULTS_DIR / "data_efficiency" / f"results_{self.id}.jsonl"
+        return self.results_dir / f"results_{self.id}.jsonl"
 
 
 # TODO: Maybe rename this and keep it experiment agnostic

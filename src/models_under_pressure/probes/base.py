@@ -1,14 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol, Self, Sequence
+from typing import Protocol, Self
 
 import numpy as np
-from jaxtyping import Float
 import torch
+from jaxtyping import Float
 
 from models_under_pressure.interfaces.dataset import (
     BaseDataset,
-    Input,
     Label,
     LabelledDataset,
 )
@@ -29,12 +28,12 @@ class Probe(ABC):
     @abstractmethod
     def predict_proba(
         self, dataset: BaseDataset
-    ) -> tuple[Float[np.ndarray, " batch_size"]]: ...
+    ) -> Float[np.ndarray, " batch_size"]: ...
 
     @abstractmethod
     def per_token_predictions(
         self,
-        inputs: Sequence[Input],
+        dataset: BaseDataset,
     ) -> Float[np.ndarray, "batch_size seq_len"]: ...
 
 

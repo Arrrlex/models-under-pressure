@@ -50,6 +50,7 @@ dependencies = [
     "peft>=0.15.2",
     "evaluate>=0.4.3",
     "bitsandbytes>=0.45.5",
+    "adjusttext>=1.3.0",
 ]
 
 [build-system]

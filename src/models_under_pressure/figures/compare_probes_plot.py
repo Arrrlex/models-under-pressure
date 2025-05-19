@@ -9,6 +9,10 @@ import seaborn as sns
 
 from models_under_pressure.figures.utils import map_dataset_name
 
+# Set the style
+# plt.style.use("seaborn-v0_8-whitegrid")
+sns.set_context("paper", font_scale=1.5)
+
 
 def process_data(
     paths: list[Path],
@@ -158,11 +162,9 @@ def plot_probe_metric(
 
     # Set up the plot
     plt.figure(figsize=(14, 6))
-    plt.rcParams.update({"font.size": 14})  # Increase base font size
 
-    # Create a custom color palette
-    colors = sns.color_palette("muted", len(probe_order))
-    probe_colors = dict(zip(probe_order, colors))
+    # Remove custom color palette and use default seaborn colors
+    colors = sns.color_palette()
 
     # Set up the positions for the bars
     datasets_unique = combined_df["Dataset"].cat.categories.tolist()
@@ -203,7 +205,7 @@ def plot_probe_metric(
                     value = probe_data[metric_name.upper()].iloc[0]
                     error = probe_data[f"{metric_name.upper()}_SE"].iloc[0]
 
-                # Plot the bar with error bars
+                # Plot the bar with error bars and black border
                 plt.bar(
                     position,
                     value,
@@ -211,12 +213,14 @@ def plot_probe_metric(
                     label=probe
                     if dataset == datasets_unique[0]
                     else None,  # Only label once
-                    color=probe_colors[probe],
+                    color=colors[i % len(colors)],
                     alpha=0.8
                     if dataset != "Mean"
                     else 1.0,  # Make Mean bars more prominent
                     yerr=error,
                     capsize=3,  # Add caps to error bars
+                    edgecolor="black",  # Add black border
+                    linewidth=1,  # Set border width
                 )
 
     # Add vertical separator line after Mean
@@ -229,8 +233,27 @@ def plot_probe_metric(
         if label.get_text() == "Mean":
             label.set_fontweight("bold")
 
-    # Add legend
-    plt.legend(loc="lower left", ncol=2, framealpha=1.0, facecolor="white", fontsize=14)
+    # # Add legend
+    # plt.legend(
+    #     loc="lower left",
+    #     ncol=2,
+    #     framealpha=1.0,
+    #     facecolor="white",
+    #     edgecolor="black",
+    #     fontsize=14,
+    # )
+
+    legend = plt.legend(
+        loc="lower left",
+        ncol=2,
+        framealpha=1.0,  # opaque frame
+        facecolor="white",
+        edgecolor="black",
+        fontsize=14,
+    )
+
+    for h in legend.legend_handles:
+        h.set_alpha(1)  # opaque handles
 
     # Set y-axis limits and labels
     plt.ylim(0.6, 1.0)
@@ -239,8 +262,14 @@ def plot_probe_metric(
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
-    print(f"Saving to {output_path}")
-    plt.savefig(output_path, bbox_inches="tight")
+
+    # Save both PNG and PDF versions
+    output_path_png = output_path
+    output_path_pdf = output_path.with_suffix(".pdf")
+
+    print(f"Saving to {output_path_png} and {output_path_pdf}")
+    plt.savefig(output_path_png, bbox_inches="tight")
+    plt.savefig(output_path_pdf, bbox_inches="tight", format="pdf")
 
 
 if __name__ == "__main__":
@@ -249,14 +278,19 @@ if __name__ == "__main__":
     # Get all files in the evaluate_probes directory
     results_dir = DATA_DIR / "results/evaluate_probes"
 
+    # Process data once for both plots
+    dev_data = process_data(list(results_dir.glob("*dev*.jsonl")), "auroc")
+    test_data = process_data(list(results_dir.glob("*test*.jsonl")), "auroc")
+
+    # Generate matplotlib version
     plot_probe_metric(
-        process_data(list(results_dir.glob("*dev*.jsonl")), "auroc"),
+        dev_data,
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_dev.png",
     )
 
     plot_probe_metric(
-        process_data(list(results_dir.glob("*test*.jsonl")), "auroc"),
+        test_data,
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_test.png",
     )

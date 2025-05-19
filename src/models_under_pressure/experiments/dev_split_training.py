@@ -1,10 +1,12 @@
 import os
 from typing import List
 
+import yaml
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from models_under_pressure.config import (
+    CONFIG_DIR,
     EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
@@ -43,6 +45,7 @@ def evaluate_probe(
 
 def run_dev_split_fine_tuning(
     config: DevSplitFineTuningConfig,
+    use_store: bool = True,
 ) -> List[DevSplitResult]:
     output_filename = config.output_filename
     if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
@@ -76,6 +79,7 @@ def run_dev_split_fine_tuning(
         layer=config.layer,
         train_dataset=train_split,
         validation_dataset=test_split,
+        use_store=use_store,
     )
 
     # Save the initial probe state
@@ -152,6 +156,7 @@ def run_dev_split_fine_tuning(
                 layer=config.layer,
                 train_dataset=train_split,
                 validation_dataset=test_split,
+                use_store=use_store,
             )
 
         # Evaluate initial probe on test split
@@ -195,15 +200,18 @@ def run_dev_split_fine_tuning(
                     layer=config.layer,
                     train_dataset=combined_split,
                     validation_dataset=None,
+                    use_store=use_store,
                 )
                 del combined_split
             elif config.dev_sample_usage == "only":
+                # TODO Unsure if gradient_accumulation has to be set to 1 here
                 probe = ProbeFactory.build(
                     probe_spec=config.probe_spec,
                     model_name=config.model_name,
                     layer=config.layer,
                     train_dataset=k_split,
                     validation_dataset=None,
+                    use_store=use_store,
                 )
             elif config.dev_sample_usage == "fine-tune":
                 # Restore initial probe state before fine-tuning
@@ -225,7 +233,8 @@ def run_dev_split_fine_tuning(
                     "training_args",
                 ):
                     probe._classifier.training_args["epochs"] = config.fine_tune_epochs  # type: ignore
-                probe.fit(k_split)
+                    probe._classifier.training_args["gradient_accumulation_steps"] = 1  # type: ignore
+                probe.fit(k_split, initialize_model=False)
             else:
                 raise ValueError(
                     f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'fine-tune', 'only', 'combine'"
@@ -251,37 +260,63 @@ def run_dev_split_fine_tuning(
             )
             fine_tuned_result.save_to(EVALUATE_PROBES_DIR / output_filename)
 
+        del test_split
+        del dev_split
+
     return results_list
 
 
 if __name__ == "__main__":
-    evaluate_on_test = False
+    evaluate_on_test = True
+
+    probe_name = "attention"  # Set probe name first
+    # Load probe config
+    probe_type = ProbeType(probe_name)  # Convert string to enum
+
+    # Find the matching probe config file
+    probe_config = None
+    for config_file in (CONFIG_DIR / "probe").glob("*.yaml"):
+        with open(config_file) as f:
+            current_config = yaml.safe_load(f)
+            if current_config.get("name") == probe_name:
+                probe_config = current_config
+                break
+
+    if probe_config is None:
+        raise ValueError(f"No probe config found for probe name: {probe_name}")
+
+    # Ensure numeric values are properly typed
+    if "optimizer_args" in probe_config["hyperparams"]:
+        probe_config["hyperparams"]["optimizer_args"]["lr"] = float(
+            probe_config["hyperparams"]["optimizer_args"]["lr"]
+        )
+        probe_config["hyperparams"]["optimizer_args"]["weight_decay"] = float(
+            probe_config["hyperparams"]["optimizer_args"]["weight_decay"]
+        )
+    if "final_lr" in probe_config["hyperparams"]:
+        probe_config["hyperparams"]["final_lr"] = float(
+            probe_config["hyperparams"]["final_lr"]
+        )
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        dev_sample_usage="combine",
+        dev_sample_usage="fine-tune",
+        fine_tune_epochs=20,
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
         max_samples=None,
         compute_activations=False,
         probe_spec=ProbeSpec(
-            name=ProbeType.sklearn,
-            hyperparams={"C": 1e-3, "fit_intercept": False},
-            # name="pytorch_per_entry_probe_mean",
-            # hyperparams={
-            #     "batch_size": 16,
-            #     "epochs": 20,
-            #     "device": "cpu",
-            #     "optimizer_args": {"lr": 0.001, "weight_decay": 0.01},
-            # },
+            name=probe_type,
+            hyperparams=probe_config["hyperparams"],
         ),
         dataset_path=SYNTHETIC_DATASET_PATH,
         sample_repeats=5,
-        validation_dataset=False,
+        validation_dataset=True,
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
         eval_dataset_names=None,
-        output_filename="dev_split_training.jsonl",
+        output_filename="dev_split_training_neurips.jsonl",
     )
 
     double_check_config(config)
@@ -291,7 +326,7 @@ if __name__ == "__main__":
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_dev_split_fine_tuning(config)
+        results = run_dev_split_fine_tuning(config, use_store=True)
         for result in results:
             print("-" * 100)
             print(result.dataset_name)

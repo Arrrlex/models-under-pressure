@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, Self
+from typing import Protocol, Self, Tuple, Union
 
 import einops
 import torch
@@ -213,6 +213,7 @@ class PytorchAdamClassifier:
         validation_activations: Activation | None = None,
         validation_y: Float[torch.Tensor, " batch_size"] | None = None,
         print_gradient_norm: bool = False,
+        initialize_model: bool = True,
     ) -> Self:
         """
         Train the classifier on the activations and labels.
@@ -227,10 +228,15 @@ class PytorchAdamClassifier:
         Returns:
             Self
         """
-        self.model = self.probe_architecture(
-            activations.embed_dim, **self.training_args
-        )
-        self.model = self.model.to(self.device).to(self.dtype)
+        if initialize_model:
+            self.model = self.probe_architecture(
+                activations.embed_dim, **self.training_args
+            )
+            self.model = self.model.to(self.device).to(self.dtype)
+        else:
+            if self.model is None:
+                raise ValueError("Model not initialized")
+            self.model.train()
 
         # Initialize wandb if project name is provided
         if self.wandb_project is not None:
@@ -399,18 +405,26 @@ class PytorchAdamClassifier:
 
         return self
 
-    def probs(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
-        return self.logits(activations, per_token).sigmoid()
+    def probs(
+        self, activations: Activation, per_token: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        if per_token:
+            seq_logits, attn_scores, attn_weights = self.logits(
+                activations, per_token=True
+            )
+            return seq_logits.sigmoid(), attn_scores, attn_weights
+        else:
+            return self.logits(activations, per_token=False).sigmoid()
 
     @torch.no_grad()
-    def logits(self, activations: Activation, per_token: bool = False) -> torch.Tensor:
+    def logits(
+        self, activations: Activation, per_token: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         """
         Predict the logits of the activations.
         """
         if self.model is None:
             raise ValueError("Model not trained")
-
-        assert not per_token, "Per token is not supported for attention classifier"
 
         self.model.eval()
 
@@ -420,10 +434,27 @@ class PytorchAdamClassifier:
             shuffle=False,
         )
 
-        logits = []
+        sequence_logits = []
+        attn_scores = []
+        attn_weights = []
 
         # Process in batches
         for batch_acts, batch_mask, _, _ in tqdm(dataloader, desc="Processing batches"):
-            logits.append(self.model(batch_acts, batch_mask))
+            if per_token:
+                seq_log, scores, weights = self.model(
+                    batch_acts, batch_mask, return_per_token=True
+                )
+                sequence_logits.append(seq_log)
+                attn_scores.append(scores)
+                attn_weights.append(weights)
+            else:
+                sequence_logits.append(self.model(batch_acts, batch_mask))
 
-        return torch.cat(logits, dim=0)
+        if per_token:
+            return (
+                torch.cat(sequence_logits, dim=0),
+                torch.cat(attn_scores, dim=0),
+                torch.cat(attn_weights, dim=0),
+            )
+        else:
+            return torch.cat(sequence_logits, dim=0)

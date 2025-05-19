@@ -85,8 +85,10 @@ class ProbeStore:
             pickle.dump(probe, f)
 
     def load(self, spec: FullProbeSpec) -> Probe:
-        probe_path = self.path / f"{spec.hash}.pkl"
-        with open(probe_path, "rb") as f:
+        return self.load_from_id(spec.hash)
+
+    def load_from_id(self, probe_id: str) -> Probe:
+        with open(self.path / f"{probe_id}.pkl", "rb") as f:
             return pickle.load(f)
 
     def delete(self, spec: FullProbeSpec):

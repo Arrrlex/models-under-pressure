@@ -11,10 +11,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
-
-# from pytorch_lightning.utilities.consolidate_checkpoint import consolidate_checkpoint
-# from lightning.fabric.utilities.consolidate_checkpoint import consolidate_checkpoint
-# from pytorch_lightning.fabric.strategies import FSDPStrategy
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.strategies import FSDPStrategy
@@ -840,12 +836,22 @@ class FinetunedClassifier:
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
-            self.best_epoch = int(
-                os.path.splitext(os.path.basename(checkpoint_callback.best_model_path))[
-                    0
-                ].split("epoch=")[-1]
-            )
-            self._classifier.to(dtype=torch.bfloat16)
+            try:
+                self.best_epoch = int(
+                    os.path.splitext(
+                        os.path.basename(checkpoint_callback.best_model_path)
+                    )[0].split("epoch=")[-1]
+                )
+                self._classifier.to(dtype=torch.bfloat16)
+            except ValueError:
+                self.best_epoch = int(
+                    os.path.splitext(
+                        os.path.basename(checkpoint_callback.best_model_path)
+                    )[0]
+                    .split("epoch=")[-1]
+                    .split("-")[0]
+                )
+
         self._classifier.eval()
 
         return self
