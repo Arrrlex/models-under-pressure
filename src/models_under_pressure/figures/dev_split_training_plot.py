@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from models_under_pressure.config import PLOTS_DIR, EVALUATE_PROBES_DIR, RESULTS_DIR
+from models_under_pressure.config import PLOTS_DIR, RESULTS_DIR
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.results import DevSplitResult
 
@@ -27,14 +27,17 @@ plt.rcParams.update(
 sns.set_style("whitegrid")
 
 
-def load_baseline_results(baseline_file: Path) -> Dict[str, float]:
+def load_baseline_results(
+    baseline_file: Path, metric: Literal["auroc", "tpr_at_fpr", "accuracy"] = "auroc"
+) -> Dict[str, float]:
     """Load baseline results from a file.
 
     Args:
         baseline_file: Path to the JSONL file containing baseline results
+        metric: Metric to calculate from the baseline results. Can be "auroc", "tpr_at_fpr", or "accuracy"
 
     Returns:
-        Dictionary mapping dataset names to baseline AUROC values
+        Dictionary mapping dataset names to baseline metric values
     """
     baseline_results = {}
     with open(baseline_file) as f:
@@ -48,7 +51,7 @@ def load_baseline_results(baseline_file: Path) -> Dict[str, float]:
                 metrics = calculate_metrics(
                     y_true=ground_truth, y_pred=scores, fpr=0.01
                 )
-                baseline_results[dataset_name] = metrics["auroc"]
+                baseline_results[dataset_name] = metrics[metric]
 
     return baseline_results
 
@@ -85,7 +88,7 @@ def plot_dev_split_results(
     # Load baseline results if provided
     baseline_results = {}
     if baseline_file is not None:
-        baseline_results = load_baseline_results(baseline_file)
+        baseline_results = load_baseline_results(baseline_file, metric=metric)
 
     eval_usage_mapping = {
         "only": "Dev samples only",
@@ -266,7 +269,10 @@ def plot_dev_split_results(
                 std_metric = usage_data.groupby("k")["metric"].std()
 
                 # Get k=0 point
-                if usage == eval_usage_mapping["combine"]:
+                if (
+                    usage == eval_usage_mapping["combine"]
+                    or usage == eval_usage_mapping["fine-tune"]
+                ):
                     # For combine, use the training dataset only baseline
                     val = k0_metrics.get(dataset)
                     if val is not None:
@@ -413,17 +419,18 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
-    # results_file = Path(
-    #    "/Users/john/Downloads/dev_split_training_neurips_test_attention.jsonl"
-    # )
+    # results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
+    results_file = Path(
+        "/Users/john/Downloads/dev_split_training_neurips_test_softmax.jsonl"
+    )
     # Optional: path to baseline results file
     baseline_file = (
-        RESULTS_DIR / "baseline_llama-70b.jsonl"
+        RESULTS_DIR / "monitoring_cascade_neurips" / "baseline_llama-70b.jsonl"
     )  # Uncomment and modify to use
     plot_dev_split_results(
         results_file,
-        metric="auroc",
+        # metric="auroc",
+        metric="tpr_at_fpr",
         combine_datasets=True,
         baseline_file=baseline_file,  # Uncomment to use baseline results
     )
