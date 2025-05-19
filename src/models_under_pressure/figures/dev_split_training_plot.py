@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from models_under_pressure.config import PLOTS_DIR, RESULTS_DIR
+from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR, RESULTS_DIR
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.results import DevSplitResult
 
@@ -25,6 +25,9 @@ plt.rcParams.update(
 )
 
 sns.set_style("whitegrid")
+
+# Define z-score for 95% confidence interval
+Z_SCORE_95 = 1.96
 
 
 def load_baseline_results(
@@ -231,7 +234,9 @@ def plot_dev_split_results(
             k_0_point = 1
             x_values = [k_0_point] + list(mean_metric.index)
             y_values = [k0_mean] + list(mean_metric.values)
-            y_err = [k0_std] + list(std_metric.values)
+            y_err = [k0_std * Z_SCORE_95] + [
+                std * Z_SCORE_95 for std in std_metric.values
+            ]
 
             plt.errorbar(
                 x_values,
@@ -244,11 +249,11 @@ def plot_dev_split_results(
 
             # Print performance values for this usage
             print(f"\nPerformance values for {usage}:")
-            print(f"  k=0: {k0_mean:.4f} ± {k0_std:.4f}")
+            print(f"  k=0: {k0_mean:.4f} ± {k0_std * Z_SCORE_95:.4f} (95% CI)")
             for k, mean, std in zip(
                 mean_metric.index, mean_metric.values, std_metric.values
             ):
-                print(f"  k={k}: {mean:.4f} ± {std:.4f}")
+                print(f"  k={k}: {mean:.4f} ± {std * Z_SCORE_95:.4f} (95% CI)")
     else:
         # Plot individual lines for each dataset and dev_sample_usage combination
         # Get unique datasets and assign colors
@@ -286,12 +291,17 @@ def plot_dev_split_results(
                         k_0_point = 1
                         x_values = np.array([k_0_point] + list(mean_metric.index))
                         y_values = np.array([k0_mean] + list(mean_metric.values))
-                        y_err = np.array([k0_std] + list(std_metric.values))
+                        y_err = np.array(
+                            [k0_std * Z_SCORE_95]
+                            + [std * Z_SCORE_95 for std in std_metric.values]
+                        )
                     else:
                         # Skip k=0 point but still plot the rest
                         x_values = np.array(list(mean_metric.index))
                         y_values = np.array(list(mean_metric.values))
-                        y_err = np.array(list(std_metric.values))
+                        y_err = np.array(
+                            [std * Z_SCORE_95 for std in std_metric.values]
+                        )
                 elif usage == eval_usage_mapping["only"]:
                     # For only, use 0.5 for auroc and 0 for tpr_at_fpr
                     k0_mean = 0.5 if metric == "auroc" else 0.0
@@ -299,7 +309,10 @@ def plot_dev_split_results(
                     k_0_point = 1
                     x_values = np.array([k_0_point] + list(mean_metric.index))
                     y_values = np.array([k0_mean] + list(mean_metric.values))
-                    y_err = np.array([k0_std] + list(std_metric.values))
+                    y_err = np.array(
+                        [k0_std * Z_SCORE_95]
+                        + [std * Z_SCORE_95 for std in std_metric.values]
+                    )
                 else:
                     raise NotImplementedError(
                         f"Didn't implement dev_sample_usage: {usage}"
@@ -319,11 +332,11 @@ def plot_dev_split_results(
                 # Print performance values for this dataset and usage
                 print(f"\nPerformance values for {dataset} ({usage}):")
                 if "k0_mean" in locals():
-                    print(f"  k=0: {k0_mean:.4f} ± {k0_std:.4f}")
+                    print(f"  k=0: {k0_mean:.4f} ± {k0_std * Z_SCORE_95:.4f} (95% CI)")
                 for k, mean, std in zip(
                     mean_metric.index, mean_metric.values, std_metric.values
                 ):
-                    print(f"  k={k}: {mean:.4f} ± {std:.4f}")
+                    print(f"  k={k}: {mean:.4f} ± {std * Z_SCORE_95:.4f} (95% CI)")
 
     # Add horizontal line for k=0 results
     if k0_metrics and combine_datasets:
@@ -354,14 +367,16 @@ def plot_dev_split_results(
             x_max = max(df["k"].unique())
             plt.fill_between(
                 [x_min, x_max],
-                [k0_mean - k0_std, k0_mean - k0_std],
-                [k0_mean + k0_std, k0_mean + k0_std],
+                [k0_mean - k0_std * Z_SCORE_95, k0_mean - k0_std * Z_SCORE_95],
+                [k0_mean + k0_std * Z_SCORE_95, k0_mean + k0_std * Z_SCORE_95],
                 color="gray",
                 alpha=0.1,
             )
 
             # Print synthetic dataset only performance
-            print(f"\nSynthetic dataset only performance: {k0_mean:.4f} ± {k0_std:.4f}")
+            print(
+                f"\nSynthetic dataset only performance: {k0_mean:.4f} ± {k0_std * Z_SCORE_95:.4f} (95% CI)"
+            )
 
     # Add baseline results if provided
     if baseline_results:
@@ -419,18 +434,16 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    # results_file = EVALUATE_PROBES_DIR / "dev_split_training_test.jsonl"
-    results_file = Path(
-        "/Users/john/Downloads/dev_split_training_neurips_test_softmax.jsonl"
+    results_file = (
+        EVALUATE_PROBES_DIR / "dev_split_training_neurips_test_attention.jsonl"
     )
-    # Optional: path to baseline results file
     baseline_file = (
         RESULTS_DIR / "monitoring_cascade_neurips" / "baseline_llama-70b.jsonl"
-    )  # Uncomment and modify to use
+    )
     plot_dev_split_results(
         results_file,
-        # metric="auroc",
-        metric="tpr_at_fpr",
+        metric="auroc",
+        # metric="tpr_at_fpr",
         combine_datasets=True,
-        baseline_file=baseline_file,  # Uncomment to use baseline results
+        baseline_file=baseline_file,
     )
