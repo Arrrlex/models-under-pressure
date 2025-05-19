@@ -16,7 +16,7 @@ Our datasets can be found here:
 
 ## Running Experiments
 
-Training on dev split plot:
+### Training on Dev Split of Evaluation Datasets
 
 - Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
   - Important: Set `gradient_accumulation_steps` to 1 in the config of the corresponding probe, since training data for this experiment can consist only of few samples and no learning occurs if number of batches is less than gradient accumulation steps.
@@ -24,11 +24,27 @@ Training on dev split plot:
   - If you want to include the line for the baseline, you can obtain the corresponding file from the cascade experiment.
 
 
+### Data Efficiency Experiment
+
+Code for running the data efficiency experiment is included in [src/models_under_pressure/experiments/data_efficiency.py](experiments/data_efficiency.py).
+
+- Use the function `run_data_efficiency_experiment` to get results for different types of probes.
+- Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
+
+
 ## Computing Baselines
 
 ### Prompted Baselines
 
 Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
+
+### Cascade Plot
+
+- To generate finetuning results, run `notebooks/finetuning_for_cascade.py` (adjust the settings in that script depending on the model you want to finetune)
+- To generate the other results, run `experiments/monitoring_cascade.py`. The corresponding configuration files can be found under `config/experiments/monitoring_cascade.yaml` and `config/experiments/monitoring_cascade/`. It has one part for computing the results and a second part to generate the plot based on the results.
+  - Result generation: The script generates result files for the selected probe and the continuation baselines.
+  - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
+  - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
 
 
 ## Dataset

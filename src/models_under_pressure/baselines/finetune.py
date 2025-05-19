@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
 from pydantic import BaseModel
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.strategies import FSDPStrategy
 from pytorch_lightning.utilities import grad_norm
 from sklearn.metrics import roc_auc_score, roc_curve
 from torch.utils.data import DataLoader
@@ -42,6 +43,23 @@ from models_under_pressure.interfaces.results import FinetunedBaselineResults
 from models_under_pressure.utils import hf_login
 
 hf_login()
+
+
+# Add this new function for loading checkpoint with bfloat16 precision
+def get_bf16_state_dict_from_zero_checkpoint(checkpoint_dir):
+    """
+    Get the state dict from a Zero checkpoint directory in bfloat16 format.
+    This is similar to get_fp32_state_dict_from_zero_checkpoint but preserves bfloat16 precision.
+    """
+    fp32_state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir)
+    # Convert the loaded state dict to bfloat16
+    bf16_state_dict = {
+        k: v.to(torch.bfloat16)
+        if isinstance(v, torch.Tensor) and v.dtype == torch.float32
+        else v
+        for k, v in fp32_state_dict.items()
+    }
+    return bf16_state_dict
 
 
 class BaselineResults(BaseModel):
@@ -175,6 +193,7 @@ class ClassifierModule(pl.LightningModule):
         class_weights: Optional[torch.Tensor] = None,
         trainer_args: Optional[Dict[str, Any]] = None,
         label_smoothing: float = 0.0,
+        optimizer: str = "adam",
     ):
         """
         Initialize the classifier module.
@@ -183,16 +202,16 @@ class ClassifierModule(pl.LightningModule):
             model: The PyTorch model to train
             learning_rate: Learning rate for the optimizer
             weight_decay: Weight decay for the optimizer
-            optimizer_class: The optimizer class to use
-            scheduler_class: The learning rate scheduler class to use
             scheduler_params: Parameters for the learning rate scheduler
             num_classes: Number of classes for classification (if not specified in model)
+            batch_size: Batch size for logging metrics
             class_weights: Class weights for handling imbalanced datasets
+            trainer_args: Arguments for the PyTorch Lightning Trainer
             label_smoothing: Label smoothing factor for the loss function
-            state_dict: Optional state_dict to load into the module
+            optimizer: Optimizer to use ("adam" or "adafactor")
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["model"])
+        self.save_hyperparameters(ignore=["model", "trainer_args"])
 
         self.model = model
         self.learning_rate = learning_rate
@@ -205,6 +224,7 @@ class ClassifierModule(pl.LightningModule):
         self.test_results = BaselineResults()
         self.test_outputs = []
         self.trainer_args = trainer_args
+        self.optimizer = optimizer
 
         # Determine number of classes if not provided
         if self.num_classes is None:
@@ -375,12 +395,34 @@ class ClassifierModule(pl.LightningModule):
                 self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
             )
         else:
-            optimizer = torch.optim.Adam(
-                # optimizer = torch.optim.Adafactor(
-                self.parameters(),
-                lr=self.learning_rate,
-                weight_decay=self.weight_decay,
-            )
+            if self.optimizer.lower() == "adafactor":
+                optimizer = torch.optim.Adafactor(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adamw":
+                optimizer = torch.optim.AdamW(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adam":
+                optimizer = torch.optim.Adam(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            elif self.optimizer.lower() == "adamw8bit":
+                import bitsandbytes as bnb
+
+                optimizer = bnb.optim.AdamW8bit(
+                    self.parameters(),
+                    lr=self.learning_rate,
+                    weight_decay=self.weight_decay,
+                )
+            else:
+                raise ValueError(f"Optimizer {self.optimizer} not supported")
 
         return optimizer
 
@@ -446,6 +488,7 @@ class LLMModel(nn.Module):
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path,
             cache_dir=cache_dir,
+            torch_dtype=torch.bfloat16,  # Doesn't seem to make a difference
         )
 
         def _get_hidden_size(model):
@@ -471,6 +514,7 @@ class LLMModel(nn.Module):
         self.padding_side = padding_side
 
         self.model.gradient_checkpointing_enable()
+        self.model.config.use_cache = False
 
     def forward(
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
@@ -714,6 +758,14 @@ class FinetunedClassifier:
             logger = None
 
         # Setup the pytorch lightning trainer:
+        # (This runs but stores a distributed checkpoint and loading that we got
+        #  incorrect results on the eval datasets!)
+        # if trainer_args.get("strategy", "") == "fsdp":
+        #    trainer_args["strategy"] = FSDPStrategy(
+        #        sharding_strategy="NO_SHARD",
+        #        state_dict_type="sharded",
+        #    )
+        # TODO Take these args from a new field "strategy_args"
         self._trainer = pl.Trainer(
             callbacks=[checkpoint_callback],  # type: ignore
             logger=logger,
@@ -734,16 +786,26 @@ class FinetunedClassifier:
             print(f"Loading best model checkpoint from: {self._classifier_checkpoint}")
             strategy = trainer_args.get("strategy", "")
 
-            if strategy.startswith("fsdp"):
-                ckpt = torch.load(self._classifier_checkpoint, map_location="cpu")
-                full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
-
+            if isinstance(strategy, FSDPStrategy) or strategy.startswith("fsdp"):
                 fresh_llm = LLMModel(
                     model_name_or_path=model_name_or_path,
                     num_classes=num_classes,
                     cache_dir=cache_dir,
                     padding_side=self._tokenizer.padding_side,
                 )
+
+                checkpoint_path = self._classifier_checkpoint
+                if os.path.isdir(checkpoint_path):
+                    # NOTE: Loading distributed checkpoints for FSDP has not thrown an error but
+                    # led to incorrect results!
+                    # full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                    raise NotImplementedError(
+                        "Loading FSDP directory checkpoints is not implemented yet"
+                    )
+                else:  # already a file
+                    full_sd = torch.load(checkpoint_path, map_location="cpu")[
+                        "state_dict"
+                    ]
 
                 self._classifier = ClassifierModule(
                     model=fresh_llm,
@@ -752,10 +814,11 @@ class FinetunedClassifier:
                     trainer_args=trainer_args,
                     **self.finetune_config.get("ClassifierModule", {}),
                 )
-                _ = self._classifier.load_state_dict(full_sd, strict=False)
+                self._classifier.load_state_dict(full_sd, strict=False)
             elif strategy == "deepspeed_stage_2_offload":
                 ckpt_dir = checkpoint_callback.best_model_path  # directory
-                state_dict = get_fp32_state_dict_from_zero_checkpoint(ckpt_dir)
+                # Use our new function instead of get_fp32_state_dict_from_zero_checkpoint
+                state_dict = get_bf16_state_dict_from_zero_checkpoint(ckpt_dir)
                 self._classifier = ClassifierModule(
                     model=self.model,
                     batch_size=batch_size,
@@ -779,6 +842,7 @@ class FinetunedClassifier:
                         os.path.basename(checkpoint_callback.best_model_path)
                     )[0].split("epoch=")[-1]
                 )
+                self._classifier.to(dtype=torch.bfloat16)
             except ValueError:
                 self.best_epoch = int(
                     os.path.splitext(
@@ -1022,14 +1086,28 @@ def get_finetuned_baseline_results(
         trainer_strategy = finetune_config.get("Trainer", {}).get("strategy", "")
 
         if trainer_strategy.startswith("fsdp"):
-            ckpt = torch.load(checkpoint_path, map_location="cpu")
-            full_sd = ckpt["state_dict"]  # Lightning puts the tensors here
-            finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+            if os.path.isdir(checkpoint_path):
+                # NOTE: Loading distributed checkpoints for FSDP has not thrown an error but
+                # led to incorrect results!
+                # full_sd = _load_distributed_checkpoint(Path(checkpoint_path))
+                # finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
+                raise NotImplementedError(
+                    "Loading FSDP directory checkpoints is not implemented yet"
+                )
+            else:  # already a file
+                full_sd = torch.load(checkpoint_path, map_location="cpu")["state_dict"]
+                finetune_baseline.classifier.load_state_dict(full_sd, strict=False)
         elif trainer_strategy == "deepspeed_stage_2_offload":
-            state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+            state_dict = get_bf16_state_dict_from_zero_checkpoint(checkpoint_path)
             finetune_baseline.classifier.load_state_dict(state_dict, strict=False)
         else:
             finetune_baseline.classifier.load_state_dict(torch.load(checkpoint_path))
+
+        # Convert model weights to bfloat16 to match initialization
+        finetune_baseline.classifier.to(dtype=torch.bfloat16)
+
+        # Set model to evaluation mode
+        finetune_baseline.classifier.eval()
 
     if train_dataset_path is not None:
         print("Loading train dataset")
@@ -1174,6 +1252,7 @@ def run_finetune_baselines():
                 "scheduler_params": None,
                 "class_weights": None,
                 "label_smoothing": 0.0,
+                "optimizer": "adamw8bit",
             },
             batch_size=1,
             shuffle=True,
@@ -1193,10 +1272,11 @@ def run_finetune_baselines():
 
         results = get_finetuned_baseline_results(
             finetune_config,
-            SYNTHETIC_DATASET_PATH,
-            EVAL_DATASETS,
+            train_dataset_path=SYNTHETIC_DATASET_PATH,
+            eval_datasets=EVAL_DATASETS,
+            results_dir=RESULTS_DIR,
             compute_activations=False,
-            max_samples=4000,
+            max_samples=None,
         )
 
         timestamp = datetime.now().strftime("%Y-%m-%d")

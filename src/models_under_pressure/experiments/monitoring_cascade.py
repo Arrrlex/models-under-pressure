@@ -313,11 +313,12 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
             results_file,
-            output_file=output_dir / "cascade_plot.pdf",
+            output_file=output_dir / f"cascade_plot.{cfg.analysis.plot_file_ending}",
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
             show_shaded_regions=cfg.analysis.show_shaded_regions,
+            plot_file_ending=cfg.analysis.plot_file_ending,
         )
 
 
@@ -804,53 +805,51 @@ def compute_cascade_results(
             )
             continue
 
-        # Evaluate baseline cascades
+        # Evaluate baseline cascades - only use 100% for baseline-only methods
         print(f"\nBaseline Results for {dataset_name}:")
         for result in baseline_results:
-            for fraction_of_samples in fraction_of_sample_options + (
-                [1.0] if 1.0 not in fraction_of_sample_options else []
-            ):
-                print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
-                cascade_results = evaluate_single_baseline_cascade(
-                    result, fraction_of_samples=fraction_of_samples
-                )
-                print(f"- AUROC: {cascade_results.auroc:.3f}")
-                print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+            # Only use 100% for baseline-only methods
+            fraction_of_samples = 1.0
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
-                # Write results to file
-                write_cascade_results_to_file(
-                    results=cascade_results,
-                    output_file=results_file,
-                    cascade_type="baseline",
-                    model_name=result.model_name,
-                    probe_model_name=None,
-                    fraction_of_samples=fraction_of_samples,
-                    dataset_name=dataset_name,
-                )
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+                dataset_name=dataset_name,
+            )
 
-        # Evaluate finetuned baseline cascades
+        # Evaluate finetuned baseline cascades - only use 100% for baseline-only methods
         print(f"\nFinetuned Baseline Results for {dataset_name}:")
         for result in finetuned_baseline_results:
-            for fraction_of_samples in fraction_of_sample_options + (
-                [1.0] if 1.0 not in fraction_of_sample_options else []
-            ):
-                print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
-                cascade_results = evaluate_single_baseline_cascade(
-                    result, fraction_of_samples=fraction_of_samples
-                )
-                print(f"- AUROC: {cascade_results.auroc:.3f}")
-                print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+            # Only use 100% for baseline-only methods
+            fraction_of_samples = 1.0
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
 
-                # Write results to file
-                write_cascade_results_to_file(
-                    results=cascade_results,
-                    output_file=results_file,
-                    cascade_type="finetuned_baseline",
-                    model_name=result.model_name,
-                    probe_model_name=None,
-                    fraction_of_samples=fraction_of_samples,
-                    dataset_name=dataset_name,
-                )
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="finetuned_baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+                dataset_name=dataset_name,
+            )
 
         if probe_results:
             # Evaluate probe cascade
@@ -988,12 +987,16 @@ def plot_cascade_results(
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
+    add_legend: bool = True,
+    probe_name: str = "Attention",  # TODO Get from config!
+    y_min: float = 0.8,
+    plot_file_ending: str = "png",  # Default to png if not specified
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
     Args:
         results_file: Path to the JSONL file containing cascade results
-        output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
+        output_file: Path to save the plot.
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
@@ -1001,6 +1004,7 @@ def plot_cascade_results(
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
         show_title: Whether to show a title on the plot
         show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
+        plot_file_ending: File extension for the output plot (e.g. "png", "pdf", "svg")
     """
     import json
     from collections import defaultdict
@@ -1085,28 +1089,83 @@ def plot_cascade_results(
 
     # Create color palette based on number of unique baseline models
     baseline_models = sorted(set(key[0] for key in grouped_results.keys()))
-    colors = sns.color_palette("husl", n_colors=len(baseline_models))
-    model_to_color = {model: color for model, color in zip(baseline_models, colors)}
+    # Finetuned baselines are green, prompted baselines are blue
+    model_colors = {
+        "gemma-1b": {
+            "finetuned_baseline": (
+                0.19607843137254902,
+                0.803921568627451,
+                0.19607843137254902,
+            ),
+            "baseline": "#5555FF",
+        },
+        "gemma-12b": {
+            "baseline": (0.0, 0.807843137254902, 0.8196078431372549),
+            "finetuned_baseline": "#006400",
+        },
+        "gemma-27b": {
+            "baseline": (0.0, 0.654902, 0.660784),
+        },
+        "llama-1b": {
+            "finetuned_baseline": "#7CFC00",
+            "baseline": "#9999FF",
+        },
+        "llama-8b": {
+            "finetuned_baseline": "#008000",
+            "baseline": "#0000FF",
+        },
+        "llama-70b": {
+            "baseline": (0.0, 0.5019607843137255, 0.5019607843137255),
+        },
+    }
+    # Use the same color for probe+baseline combinations
+    for model in list(model_colors.keys()):
+        for cascade_type in list(model_colors[model].keys()):
+            model_colors[model][f"probe_{cascade_type}"] = model_colors[model][
+                cascade_type
+            ]
+
+    model_to_color = {
+        model: model_colors[get_abbreviated_model_name(model)]
+        for model in baseline_models
+    }
 
     # Define line styles
     line_styles = {
         "baseline": "-",
-        "finetuned_baseline": "--",
+        "finetuned_baseline": "-",
         "probe_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
         "probe_finetuned_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
         "two_step_baseline": {
             "top": "--",
             "bottom": ":",
-            "mid": "-.",
+            "mid": "-",
         },
+    }
+
+    # Define marker styles and sizes
+    marker_styles = {
+        "baseline": "P",
+        "finetuned_baseline": "X",
+        "probe_baseline": "o",
+        "probe_finetuned_baseline": "o",
+        "two_step_baseline": "o",
+    }
+
+    marker_sizes = {
+        "baseline": 10,  # Larger marker for baseline-only methods
+        "finetuned_baseline": 10,  # Larger marker for baseline-only methods
+        "probe_baseline": 7,
+        "probe_finetuned_baseline": 7,
+        "two_step_baseline": 7,
     }
 
     # Define model size order (smallest to largest)
@@ -1134,24 +1193,29 @@ def plot_cascade_results(
     for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
         cascade_type = key[1]
-        color = model_to_color[baseline_model]
+        color = model_to_color[baseline_model][cascade_type]
 
-        # Get appropriate line style
-        if cascade_type == "baseline":
-            linestyle = line_styles["baseline"]
-        elif cascade_type == "finetuned_baseline":
-            linestyle = line_styles["finetuned_baseline"]
-        elif cascade_type in [
-            "probe_baseline",
-            "probe_finetuned_baseline",
-            "two_step_baseline",
-        ]:
-            selection_strategy = key[2]
-            remaining_strategy = key[3]
-            merge_strategy = key[4]
-            linestyle = line_styles[cascade_type][selection_strategy]
+        # Get appropriate line style and marker
+        marker = marker_styles[cascade_type]
+        markersize = marker_sizes[cascade_type]
+
+        # For baseline-only methods, we'll use scatter plots without lines
+        is_baseline_only = cascade_type in ["baseline", "finetuned_baseline"]
+
+        if is_baseline_only:
+            # Single point for baseline-only methods, no line
+            linestyle = "none"
         else:
-            raise ValueError(f"Unknown cascade type: {cascade_type}")
+            # Get line style for cascade methods
+            if (
+                cascade_type == "probe_baseline"
+                or cascade_type == "probe_finetuned_baseline"
+                or cascade_type == "two_step_baseline"
+            ):
+                selection_strategy = key[2]
+                linestyle = line_styles[cascade_type][selection_strategy]
+            else:
+                linestyle = line_styles[cascade_type]
 
         # Sort fractions
         fractions = sorted(fraction_results.keys())
@@ -1206,19 +1270,33 @@ def plot_cascade_results(
         else:
             raise ValueError(f"Unknown cascade type: {cascade_type}")
 
-        # Plot line with shaded region
-        line = plt.plot(
-            mean_flops_per_sample,
-            mean_aurocs,
-            "o-",
-            color=color,
-            linestyle=linestyle,
-            label=label,
-            markersize=3,
-        )[0]
+        # Plot differently based on whether it's a baseline-only method or a cascade method
+        if is_baseline_only:
+            # For baseline-only methods, plot a single point with a larger marker
+            line = plt.scatter(
+                mean_flops_per_sample,
+                mean_aurocs,
+                marker=marker,
+                color=color,
+                s=markersize**2,  # Square the size for scatter
+                label=label,
+                zorder=10,  # Make sure points are on top
+            )
+        else:
+            # For cascade methods, plot a line with markers
+            line = plt.plot(
+                mean_flops_per_sample,
+                mean_aurocs,
+                marker=marker,
+                color=color,
+                linestyle=linestyle,
+                linewidth=2,
+                label=label,
+                markersize=markersize,
+            )[0]
 
         # Add shaded region for uncertainty if enabled
-        if show_shaded_regions:
+        if show_shaded_regions and not is_baseline_only:
             plt.fill_between(
                 mean_flops_per_sample,
                 np.array(mean_aurocs) - np.array(std_aurocs),
@@ -1228,7 +1306,7 @@ def plot_cascade_results(
             )
 
         # Add fraction labels if enabled
-        if show_fraction_labels:
+        if show_fraction_labels and not is_baseline_only:
             for x, y, f in zip(mean_flops_per_sample, mean_aurocs, fractions):
                 plt.annotate(
                     f"{f:.2f}",
@@ -1247,6 +1325,7 @@ def plot_cascade_results(
                     get_abbreviated_model_name(baseline_model), 999
                 ),
                 "cascade_type": cascade_type_order.get(cascade_type, 999),
+                "is_baseline_only": is_baseline_only,
             }
         )
 
@@ -1266,6 +1345,7 @@ def plot_cascade_results(
                 "label": "Probe",
                 "model_size": -1,  # Put probe first
                 "cascade_type": -1,
+                "is_baseline_only": False,
             },
         )
     elif probe_aurocs:
@@ -1284,6 +1364,7 @@ def plot_cascade_results(
             y=mean_probe_auroc,
             color="gray",
             linestyle="--",
+            linewidth=2,
             label="Probe",
             alpha=0.9,
         )
@@ -1291,9 +1372,10 @@ def plot_cascade_results(
             0,
             {
                 "line": probe_line,
-                "label": "Probe",
+                "label": f"Probe ({probe_name})",
                 "model_size": -1,  # Put probe first
                 "cascade_type": -1,
+                "is_baseline_only": False,
             },
         )
 
@@ -1306,15 +1388,23 @@ def plot_cascade_results(
                 alpha=0.1,
             )
 
-    # Create legend with sorted entries
-    plt.legend(
-        [entry["line"] for entry in legend_entries],
-        [entry["label"] for entry in legend_entries],
-        # title="Method",
-        bbox_to_anchor=(1.0, 0.0),
-        loc="lower right",
-        # ncol=2,
-    )
+    # Create legend with sorted entries - handle differently for line and scatter objects
+    handles = []
+    labels = []
+    for entry in legend_entries:
+        handles.append(entry["line"])
+        labels.append(entry["label"])
+
+    if add_legend:
+        # Create legend outside the plot on the right
+        plt.legend(
+            handles=handles,
+            labels=labels,
+            bbox_to_anchor=(1.05, 1.0),  # Place legend outside to the right
+            loc="upper left",  # Anchor point is upper left of legend
+            borderaxespad=0.0,  # No padding between axes and legend
+            ncol=1,  # Single column for better readability
+        )
 
     # Customize plot
     plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
@@ -1333,7 +1423,7 @@ def plot_cascade_results(
 
     # Set y-axis limits for AUROC plot
     if not show_difference_from_probe:
-        plt.ylim(0.5, 1.0)
+        plt.ylim(y_min, 1.0)
 
     # Set x-axis to log scale
     plt.xscale("log")
@@ -1346,15 +1436,18 @@ def plot_cascade_results(
     xmin, xmax = plt.xlim()
     plt.xlim(xmin, xmax * 1.1)
 
-    # Adjust layout
-    plt.tight_layout()
+    # Adjust layout to make room for the legend
+    plt.tight_layout(rect=(0, 0, 0.85, 1))  # Leave 15% of the width for the legend
 
-    # Save plot
+    # Save plot with extra padding for the legend
     if output_file is None:
-        output_file = results_file.parent / "cascade_plot.pdf"
+        output_file = results_file.parent / f"cascade_plot.{plot_file_ending}"
         if target_dataset:
-            output_file = results_file.parent / f"cascade_plot_{target_dataset}.pdf"
-    plt.savefig(output_file, bbox_inches="tight")
+            output_file = (
+                results_file.parent
+                / f"cascade_plot_{target_dataset}.{plot_file_ending}"
+            )
+    plt.savefig(output_file, bbox_inches="tight", dpi=600)
     plt.close()
 
 
