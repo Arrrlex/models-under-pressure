@@ -313,11 +313,12 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
             results_file,
-            output_file=output_dir / "cascade_plot.png",
+            output_file=output_dir / f"cascade_plot.{cfg.analysis.plot_file_ending}",
             target_dataset=cfg.analysis.target_dataset,
             show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
             show_shaded_regions=cfg.analysis.show_shaded_regions,
+            plot_file_ending=cfg.analysis.plot_file_ending,
         )
 
 
@@ -989,12 +990,13 @@ def plot_cascade_results(
     add_legend: bool = True,
     probe_name: str = "Attention",  # TODO Get from config!
     y_min: float = 0.8,
+    plot_file_ending: str = "png",  # Default to png if not specified
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
     Args:
         results_file: Path to the JSONL file containing cascade results
-        output_file: Path to save the plot. If None, saves to results_file.parent / "cascade_plot.pdf"
+        output_file: Path to save the plot.
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
@@ -1002,6 +1004,7 @@ def plot_cascade_results(
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
         show_title: Whether to show a title on the plot
         show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
+        plot_file_ending: File extension for the output plot (e.g. "png", "pdf", "svg")
     """
     import json
     from collections import defaultdict
@@ -1393,13 +1396,14 @@ def plot_cascade_results(
         labels.append(entry["label"])
 
     if add_legend:
+        # Create legend outside the plot on the right
         plt.legend(
             handles=handles,
             labels=labels,
-            # title="Method",
-            bbox_to_anchor=(1.0, 0.0),
-            loc="lower right",
-            ncol=3 if len(labels) > 10 else 1,
+            bbox_to_anchor=(1.05, 1.0),  # Place legend outside to the right
+            loc="upper left",  # Anchor point is upper left of legend
+            borderaxespad=0.0,  # No padding between axes and legend
+            ncol=1,  # Single column for better readability
         )
 
     # Customize plot
@@ -1432,14 +1436,17 @@ def plot_cascade_results(
     xmin, xmax = plt.xlim()
     plt.xlim(xmin, xmax * 1.1)
 
-    # Adjust layout
-    plt.tight_layout()
+    # Adjust layout to make room for the legend
+    plt.tight_layout(rect=(0, 0, 0.85, 1))  # Leave 15% of the width for the legend
 
-    # Save plot
+    # Save plot with extra padding for the legend
     if output_file is None:
-        output_file = results_file.parent / "cascade_plot.png"
+        output_file = results_file.parent / f"cascade_plot.{plot_file_ending}"
         if target_dataset:
-            output_file = results_file.parent / f"cascade_plot_{target_dataset}.png"
+            output_file = (
+                results_file.parent
+                / f"cascade_plot_{target_dataset}.{plot_file_ending}"
+            )
     plt.savefig(output_file, bbox_inches="tight", dpi=600)
     plt.close()
 
