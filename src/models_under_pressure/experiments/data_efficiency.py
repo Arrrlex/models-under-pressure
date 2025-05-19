@@ -211,6 +211,19 @@ def run_data_efficiency_finetune_baseline_with_activations(
         compute_activations=True,
     )
 
+    print("Loading eval datasets")
+    eval_datasets = []
+    eval_dataset_names = []
+    for eval_dataset_name, eval_dataset_path in config.eval_dataset_paths.items():
+        eval_datasets.append(
+            load_dataset(
+                dataset_path=eval_dataset_path,
+                model_name=None,
+                layer=None,
+                compute_activations=True,
+            )
+        )
+        eval_dataset_names.append(eval_dataset_name)
     finetuned_baseline_results = []
 
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
@@ -225,17 +238,11 @@ def run_data_efficiency_finetune_baseline_with_activations(
         )
 
         # For each eval dataset, get the full results using the finetune api:
-        for eval_dataset_name, eval_dataset_path in tqdm(
-            config.eval_dataset_paths.items(),
+        for eval_dataset, eval_dataset_name in tqdm(
+            zip(eval_datasets, eval_dataset_names),
             desc=f"Evaluating datasets (size {dataset_size})",
-            total=len(config.eval_dataset_paths),
+            total=len(eval_datasets),
         ):
-            eval_dataset = load_dataset(
-                dataset_path=eval_dataset_path,
-                model_name=None,
-                layer=None,
-                compute_activations=True,
-            )
             results = finetune_baseline.get_full_results(
                 eval_dataset=eval_dataset,
                 dataset_name=eval_dataset_name,
