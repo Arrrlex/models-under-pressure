@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 from models_under_pressure.config import (
     CONFIG_DIR,
-    EVAL_DATASETS,
     EVALUATE_PROBES_DIR,
     LOCAL_MODELS,
     SYNTHETIC_DATASET_PATH,
+    TEST_DATASETS,
     EvalRunConfig,
     global_settings,
 )
@@ -35,12 +35,13 @@ def inv_softmax(x: list[np.ndarray]) -> list[list[float]]:
 def calculate_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, fpr: float
 ) -> dict[str, float]:
-    return {
+    metrics = {
         "auroc": float(roc_auc_score(y_true, y_pred)),
         "accuracy": float(accuracy_score(y_true, y_pred > 0.5)),
         "tpr_at_fpr": float(tpr_at_fixed_fpr_score(y_true, y_pred, fpr=fpr)),
         "fpr": float(fpr),
     }
+    return metrics
 
 
 def evaluate_probe_and_save_results(
@@ -99,24 +100,14 @@ def evaluate_probe_and_save_results(
                 for probe_score in probe.per_token_predictions(eval_dataset)
             ]
 
-        # calculate logits for the per token probe scores
-        per_token_probe_logits = inv_softmax(per_token_probe_scores)
-        per_entry_probe_logits = inv_softmax(per_entry_probe_scores)  # type: ignore
-
-        # Assert no NaN values in the per token probe logits
-        for i, logits in enumerate(per_token_probe_logits):
-            if np.any(np.isnan(logits)):
-                print(f"Found NaN values in probe logits for entry {i}")
-
         probe_scores_dict = {
             "per_entry_probe_scores": per_entry_probe_scores,
-            "per_entry_probe_logits": per_entry_probe_logits,
-            "per_token_probe_logits": per_token_probe_logits,
+            # "per_entry_probe_logits": per_entry_probe_logits,
+            # "per_token_probe_logits": per_token_probe_logits,
             "per_token_probe_scores": per_token_probe_scores,
             "tokens": eval_dataset.other_fields["input_ids"].tolist(),  # type: ignore
+            "per_token_attention_scores": per_token_attention_scores,
         }
-        if probe._classifier.model == AttnLite:  # type: ignore
-            probe_scores_dict["per_token_attention_scores"] = per_token_attention_scores
 
         for score, values in probe_scores_dict.items():
             if len(values) != len(eval_dataset.inputs):
@@ -170,7 +161,6 @@ def run_evaluation(
     if probe_id := config.probe_id:
         print(f"Loading probe from {probe_id} ...")
         probe = ProbeFactory.load(probe_id)
-
     else:
         splits = load_splits_lazy(
             dataset_path=config.dataset_path,
@@ -231,6 +221,7 @@ def run_evaluation(
             model_name=config.model_name,
             layer=config.layer,
             output_dir=EVALUATE_PROBES_DIR,
+            save_results=True,
         )
 
         ground_truth_labels = eval_dataset.labels_numpy().tolist()
@@ -294,7 +285,7 @@ if __name__ == "__main__":
             name=ProbeType.attention,
             hyperparams={
                 "batch_size": 16,
-                "epochs": 1,  # 200,
+                "epochs": 200,
                 "optimizer_args": {
                     "lr": 0.005,
                     "weight_decay": 0.001,
@@ -307,7 +298,7 @@ if __name__ == "__main__":
         compute_activations=False,
         dataset_path=SYNTHETIC_DATASET_PATH,
         validation_dataset=True,
-        eval_datasets=list(EVAL_DATASETS.values()),
+        eval_datasets=list(TEST_DATASETS.values()),
     )
     double_check_config(config)
 
