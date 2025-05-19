@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 import seaborn as sns
 
 from models_under_pressure.figures.utils import map_dataset_name
@@ -12,6 +13,20 @@ from models_under_pressure.figures.utils import map_dataset_name
 # Set the style
 # plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("paper", font_scale=1.5)
+
+# Define custom colors for probes
+PROBE_COLORS = {
+    "Attention": "#FF7F0E",  # HSV: 28°, 95%, 100%
+    "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
+    "Last Token": "#2CA02C",  # Green
+    "Max": "#9467BD",  # Purple
+    "Mean": "#8C564B",  # Brown
+    "Rolling Mean Max": "#E377C2",  # Pink
+}
+
+PROBE_NAME_MAPPING = {
+    "Rolling Mean Max": "Max of Rolling Means",
+}
 
 
 def process_data(
@@ -65,16 +80,27 @@ def process_data(
         f"{metric_name.upper()}_std"
     ] / np.sqrt(stats_df["count"])
 
-    # Keep only the mean and standard error columns
+    # Calculate 95% confidence interval
+    # Using t-distribution for small sample sizes
+    stats_df[f"{metric_name.upper()}_ci95"] = stats_df[
+        f"{metric_name.upper()}_se"
+    ] * stats.t.ppf(0.975, stats_df["count"] - 1)
+
+    # Keep only the mean and confidence interval columns
     stats_df = stats_df[
-        ["Dataset", "Probe", f"{metric_name.upper()}_mean", f"{metric_name.upper()}_se"]
+        [
+            "Dataset",
+            "Probe",
+            f"{metric_name.upper()}_mean",
+            f"{metric_name.upper()}_ci95",
+        ]
     ]
 
     # Rename columns to match the original format
     stats_df = stats_df.rename(
         columns={
             f"{metric_name.upper()}_mean": metric_name.upper(),
-            f"{metric_name.upper()}_se": f"{metric_name.upper()}_SE",
+            f"{metric_name.upper()}_ci95": f"{metric_name.upper()}_CI95",
         }
     )
 
@@ -104,10 +130,14 @@ def plot_probe_metric(
     # Flatten column names
     mean_auroc.columns = ["Probe", f"{metric_name}_mean", f"{metric_name}_std", "count"]
 
-    # Calculate standard error across replicates
+    # Calculate 95% confidence interval across replicates
     mean_auroc[f"{metric_name}_se"] = mean_auroc[f"{metric_name}_std"] / np.sqrt(
         mean_auroc["count"]
     )
+    mean_auroc[f"{metric_name}_ci95"] = mean_auroc[f"{metric_name}_se"] * stats.t.ppf(
+        0.975, mean_auroc["count"] - 1
+    )
+
     mean_auroc["dataset"] = "Mean"  # Adding a 'Mean' dataset category
 
     # Combine the original data with the mean data
@@ -115,11 +145,11 @@ def plot_probe_metric(
         [
             stats_df,
             mean_auroc[
-                ["Probe", "dataset", f"{metric_name}_mean", f"{metric_name}_se"]
+                ["Probe", "dataset", f"{metric_name}_mean", f"{metric_name}_ci95"]
             ].rename(
                 columns={
                     f"{metric_name}_mean": metric_name.upper(),
-                    f"{metric_name}_se": f"{metric_name.upper()}_SE",
+                    f"{metric_name}_ci95": f"{metric_name.upper()}_CI95",
                 }
             ),
         ]
@@ -163,8 +193,20 @@ def plot_probe_metric(
     # Set up the plot
     plt.figure(figsize=(14, 6))
 
-    # Remove custom color palette and use default seaborn colors
-    colors = sns.color_palette()
+    # Create a mapping from sorted probes to colors
+    sorted_probes = overall_means = stats_df.groupby("Probe")[
+        metric_name.upper()
+    ].mean()
+    sorted_probes = sorted_probes.sort_values(ascending=False).index.tolist()
+
+    # Map probe names to colors from our custom palette
+    color_mapping = {}
+    for probe in sorted_probes:
+        if probe in PROBE_COLORS:
+            color_mapping[probe] = PROBE_COLORS[probe]
+        else:
+            # Fallback to a default color if not in our palette
+            color_mapping[probe] = "#D3D3D3"  # Light gray as fallback
 
     # Set up the positions for the bars
     datasets_unique = combined_df["Dataset"].cat.categories.tolist()
@@ -200,20 +242,20 @@ def plot_probe_metric(
                 # Get the metric value and error
                 if dataset == "Mean":
                     value = probe_data[f"{metric_name}_mean"].iloc[0]
-                    error = probe_data[f"{metric_name}_se"].iloc[0]
+                    error = probe_data[f"{metric_name}_ci95"].iloc[0]
                 else:
                     value = probe_data[metric_name.upper()].iloc[0]
-                    error = probe_data[f"{metric_name.upper()}_SE"].iloc[0]
+                    error = probe_data[f"{metric_name.upper()}_CI95"].iloc[0]
 
                 # Plot the bar with error bars and black border
                 plt.bar(
                     position,
                     value,
                     width=width,
-                    label=probe
+                    label=PROBE_NAME_MAPPING.get(probe, probe)
                     if dataset == datasets_unique[0]
                     else None,  # Only label once
-                    color=colors[i % len(colors)],
+                    color=color_mapping.get(probe, "#D3D3D3"),
                     alpha=0.8
                     if dataset != "Mean"
                     else 1.0,  # Make Mean bars more prominent
@@ -224,7 +266,7 @@ def plot_probe_metric(
                 )
 
     # Add vertical separator line after Mean
-    plt.axvline(x=0.75, color="gray", linestyle="--", alpha=0.5)
+    # plt.axvline(x=0.75, color="gray", linestyle="--", alpha=0.5)
 
     # Add x-axis labels with Mean in bold using fontweight
     plt.xticks(group_positions, datasets_unique, ha="center", fontsize=14)
@@ -233,27 +275,15 @@ def plot_probe_metric(
         if label.get_text() == "Mean":
             label.set_fontweight("bold")
 
-    # # Add legend
     # plt.legend(
-    #     loc="lower left",
-    #     ncol=2,
-    #     framealpha=1.0,
+    #     loc="center left",
+    #     bbox_to_anchor=(1.02, 0.5),
+    #     ncol=1,
+    #     framealpha=1.0,  # opaque frame
     #     facecolor="white",
     #     edgecolor="black",
     #     fontsize=14,
     # )
-
-    legend = plt.legend(
-        loc="lower left",
-        ncol=2,
-        framealpha=1.0,  # opaque frame
-        facecolor="white",
-        edgecolor="black",
-        fontsize=14,
-    )
-
-    for h in legend.legend_handles:
-        h.set_alpha(1)  # opaque handles
 
     # Set y-axis limits and labels
     plt.ylim(0.6, 1.0)
@@ -268,7 +298,7 @@ def plot_probe_metric(
     output_path_pdf = output_path.with_suffix(".pdf")
 
     print(f"Saving to {output_path_png} and {output_path_pdf}")
-    plt.savefig(output_path_png, bbox_inches="tight")
+    plt.savefig(output_path_png, bbox_inches="tight", dpi=500)
     plt.savefig(output_path_pdf, bbox_inches="tight", format="pdf")
 
 
@@ -278,19 +308,27 @@ if __name__ == "__main__":
     # Get all files in the evaluate_probes directory
     results_dir = DATA_DIR / "results/evaluate_probes"
 
-    # Process data once for both plots
-    dev_data = process_data(list(results_dir.glob("*dev*.jsonl")), "auroc")
-    test_data = process_data(list(results_dir.glob("*test*.jsonl")), "auroc")
+    dev_paths = [
+        path
+        for path in results_dir.glob("*dev*.jsonl")
+        if "difference_of_means" not in path.stem
+    ]
+
+    test_paths = [
+        path
+        for path in results_dir.glob("*test*.jsonl")
+        if "difference_of_means" not in path.stem
+    ]
 
     # Generate matplotlib version
     plot_probe_metric(
-        dev_data,
+        process_data(dev_paths, "auroc"),
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_dev.png",
     )
 
     plot_probe_metric(
-        test_data,
+        process_data(test_paths, "auroc"),
         "AUROC",
         DATA_DIR / "results/plots/probe_auroc_by_dataset_test.png",
     )
