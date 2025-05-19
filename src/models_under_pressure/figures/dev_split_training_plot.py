@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from models_under_pressure.config import EVALUATE_PROBES_DIR, PLOTS_DIR, RESULTS_DIR
+from models_under_pressure.config import PLOTS_DIR, EVALUATE_PROBES_DIR, RESULTS_DIR
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.results import DevSplitResult
 
 # Set style parameters
@@ -41,12 +42,13 @@ def load_baseline_results(baseline_file: Path) -> Dict[str, float]:
             if line.strip():
                 result = json.loads(line)
                 dataset_name = result.get("dataset_name")
-                if dataset_name:
-                    baseline_results[dataset_name] = result.get("auroc", 0.0)
-                else:
-                    print(
-                        f"WARNING: No dataset name found in baseline results for {line}"
-                    )
+
+                ground_truth = np.array(result["ground_truth"])
+                scores = np.array(result["high_stakes_scores"])
+                metrics = calculate_metrics(
+                    y_true=ground_truth, y_pred=scores, fpr=0.01
+                )
+                baseline_results[dataset_name] = metrics["auroc"]
 
     return baseline_results
 
@@ -82,7 +84,7 @@ def plot_dev_split_results(
 
     # Load baseline results if provided
     baseline_results = {}
-    if baseline_file is not None and baseline_file.exists():
+    if baseline_file is not None:
         baseline_results = load_baseline_results(baseline_file)
 
     eval_usage_mapping = {
@@ -144,7 +146,8 @@ def plot_dev_split_results(
     # Define line styles for different dev_sample_usage settings
     line_styles = {
         eval_usage_mapping["only"]: "-",
-        eval_usage_mapping["combine"]: "--",
+        eval_usage_mapping["combine"]: "-.",
+        eval_usage_mapping["fine-tune"]: "--",
     }
 
     if combine_datasets:
