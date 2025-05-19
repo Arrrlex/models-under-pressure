@@ -211,19 +211,6 @@ def run_data_efficiency_finetune_baseline_with_activations(
         compute_activations=True,
     )
 
-    print("Loading eval datasets")
-    eval_datasets = []
-    eval_dataset_names = []
-    for eval_dataset_name, eval_dataset_path in config.eval_dataset_paths.items():
-        eval_datasets.append(
-            load_dataset(
-                dataset_path=eval_dataset_path,
-                model_name=None,
-                layer=None,
-                compute_activations=True,
-            )
-        )
-        eval_dataset_names.append(eval_dataset_name)
     finetuned_baseline_results = []
 
     for dataset_size in tqdm(config.dataset_sizes, desc="Dataset sizes"):
@@ -238,11 +225,17 @@ def run_data_efficiency_finetune_baseline_with_activations(
         )
 
         # For each eval dataset, get the full results using the finetune api:
-        for eval_dataset, eval_dataset_name in tqdm(
-            zip(eval_datasets, eval_dataset_names),
+        for eval_dataset_name, eval_dataset_path in tqdm(
+            config.eval_dataset_paths.items(),
             desc=f"Evaluating datasets (size {dataset_size})",
-            total=len(eval_datasets),
+            total=len(config.eval_dataset_paths),
         ):
+            eval_dataset = load_dataset(
+                dataset_path=eval_dataset_path,
+                model_name=None,
+                layer=None,
+                compute_activations=True,
+            )
             results = finetune_baseline.get_full_results(
                 eval_dataset=eval_dataset,
                 dataset_name=eval_dataset_name,
@@ -369,6 +362,7 @@ if __name__ == "__main__":
             "optimizer": "adamw8bit",
         },
         batch_size=2,
+        test_batch_size=2,
         shuffle=True,
         num_workers=10,
         logger={
@@ -376,7 +370,7 @@ if __name__ == "__main__":
             "project": "models-under-pressure",
         },
         Trainer={
-            "max_epochs": 5,  # 20,
+            "max_epochs": 30,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
