@@ -197,10 +197,7 @@ def run_data_efficiency_finetune_baseline_with_activations(
     config: DataEfficiencyConfig,
     finetune_config: FinetuneBaselineConfig,
 ) -> DataEfficiencyBaselineResults:
-    """Run data efficiency experiment by training probes on different sized subsets of the dataset.
-
-    Args:
-        config: Configuration for the data efficiency experiment
+    """Run data efficiency experiment by training a finetuned baseline on different sized subsets of the dataset.
 
     Returns:
         DataEfficiencyResults containing probe performance metrics for each dataset size
@@ -209,9 +206,9 @@ def run_data_efficiency_finetune_baseline_with_activations(
     print("Loading train dataset")
     train_dataset, val_dataset = load_train_test(
         dataset_path=config.dataset_path,
-        model_name=config.model_name,
-        layer=config.layer,
-        compute_activations=config.compute_activations,
+        model_name=None,
+        layer=None,
+        compute_activations=True,
     )
 
     print("Loading eval datasets")
@@ -221,9 +218,9 @@ def run_data_efficiency_finetune_baseline_with_activations(
         eval_datasets.append(
             load_dataset(
                 dataset_path=eval_dataset_path,
-                model_name=config.model_name,
-                layer=config.layer,
-                compute_activations=config.compute_activations,
+                model_name=None,
+                layer=None,
+                compute_activations=True,
             )
         )
         eval_dataset_names.append(eval_dataset_name)
@@ -361,23 +358,25 @@ if __name__ == "__main__":
 
     # Should be defined via a hydra run config file:
     finetune_config = FinetuneBaselineConfig(
-        model_name_or_path="meta-llama/Llama-3.2-3B-Instruct",
+        model_name_or_path=LOCAL_MODELS["llama-8b"],
         num_classes=2,
         ClassifierModule={  # set here to the default values
-            "learning_rate": 5e-5,
+            "learning_rate": 1e-5,
             "weight_decay": 0.01,
             "scheduler_params": None,
             "class_weights": None,
             "label_smoothing": 0.0,
+            "optimizer": "adamw8bit",
         },
-        batch_size=4,
+        batch_size=2,
         shuffle=True,
+        num_workers=10,
         logger={
             "_target_": "pytorch_lightning.loggers.WandbLogger",
             "project": "models-under-pressure",
         },
         Trainer={
-            "max_epochs": 20,  # 20,
+            "max_epochs": 5,  # 20,
             "accelerator": "gpu",
             "devices": [0],
             "precision": "bf16-true",
