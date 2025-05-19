@@ -986,8 +986,9 @@ def plot_cascade_results(
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
-    add_legend: bool = False,
+    add_legend: bool = True,
     probe_name: str = "Attention",  # TODO Get from config!
+    y_min: float = 0.8,
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -1085,21 +1086,42 @@ def plot_cascade_results(
 
     # Create color palette based on number of unique baseline models
     baseline_models = sorted(set(key[0] for key in grouped_results.keys()))
-    # colors = sns.color_palette("husl", n_colors=len(baseline_models))
-    # model_to_color = {model: color for model, color in zip(baseline_models, colors)}
-    # TODO The colors actually depend on finetuned vs prompted!
+    # Finetuned baselines are green, prompted baselines are blue
     model_colors = {
-        "gemma-1b": (
-            0.19607843137254902,
-            0.803921568627451,
-            0.19607843137254902,
-        ),  # Finetuned
-        "gemma-12b": (0.0, 0.807843137254902, 0.8196078431372549),  # Continuation
-        "gemma-27b": (0.0, 0.654902, 0.660784),  # Continuation
-        "llama-1b": "green",  # TODO
-        "llama-8b": "blue",  # TODO
-        "llama-70b": (0.0, 0.5019607843137255, 0.5019607843137255),  # Continuation
+        "gemma-1b": {
+            "finetuned_baseline": (
+                0.19607843137254902,
+                0.803921568627451,
+                0.19607843137254902,
+            ),
+            "baseline": "#5555FF",
+        },
+        "gemma-12b": {
+            "baseline": (0.0, 0.807843137254902, 0.8196078431372549),
+            "finetuned_baseline": "#006400",
+        },
+        "gemma-27b": {
+            "baseline": (0.0, 0.654902, 0.660784),
+        },
+        "llama-1b": {
+            "finetuned_baseline": "#7CFC00",
+            "baseline": "#9999FF",
+        },
+        "llama-8b": {
+            "finetuned_baseline": "#008000",
+            "baseline": "#0000FF",
+        },
+        "llama-70b": {
+            "baseline": (0.0, 0.5019607843137255, 0.5019607843137255),
+        },
     }
+    # Use the same color for probe+baseline combinations
+    for model in list(model_colors.keys()):
+        for cascade_type in list(model_colors[model].keys()):
+            model_colors[model][f"probe_{cascade_type}"] = model_colors[model][
+                cascade_type
+            ]
+
     model_to_color = {
         model: model_colors[get_abbreviated_model_name(model)]
         for model in baseline_models
@@ -1168,7 +1190,7 @@ def plot_cascade_results(
     for key, fraction_results in grouped_results.items():
         baseline_model = key[0]
         cascade_type = key[1]
-        color = model_to_color[baseline_model]
+        color = model_to_color[baseline_model][cascade_type]
 
         # Get appropriate line style and marker
         marker = marker_styles[cascade_type]
@@ -1377,7 +1399,7 @@ def plot_cascade_results(
             # title="Method",
             bbox_to_anchor=(1.0, 0.0),
             loc="lower right",
-            # ncol=2,
+            ncol=3 if len(labels) > 10 else 1,
         )
 
     # Customize plot
@@ -1397,7 +1419,7 @@ def plot_cascade_results(
 
     # Set y-axis limits for AUROC plot
     if not show_difference_from_probe:
-        plt.ylim(0.8, 1.0)
+        plt.ylim(y_min, 1.0)
 
     # Set x-axis to log scale
     plt.xscale("log")

@@ -22,6 +22,7 @@ Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experime
 - To generate the other results, run `experiments/monitoring_cascade.py`. The corresponding configuration files can be found under `config/experiments/monitoring_cascade.yaml` and `config/experiments/monitoring_cascade/`. It has one part for computing the results and a second part to generate the plot based on the results.
   - Result generation: The script generates result files for the selected probe and the continuation baselines.
   - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
+  - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
 
 
 ## Dataset
