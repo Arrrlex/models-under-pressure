@@ -31,6 +31,9 @@ Code for running the data efficiency experiment is included in [experiments/data
 - Use the function `run_data_efficiency_experiment` to get results for different types of probes.
 - Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
 
+Generate the plot by putting all results files into a single directory and calling the script [figures/plot_data_efficiency.py](./src/models_under_pressure/figures/plot_data_efficiency.py).
+
+
 ### Cascade Plot
 
 - To generate finetuning results, run `notebooks/finetuning_for_cascade.py` (adjust the settings in that script depending on the model you want to finetune)
