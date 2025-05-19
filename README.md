@@ -26,17 +26,10 @@ Our datasets can be found here:
 
 ### Data Efficiency Experiment
 
-Code for running the data efficiency experiment is included in [src/models_under_pressure/experiments/data_efficiency.py](experiments/data_efficiency.py).
+Code for running the data efficiency experiment is included in [experiments/data_efficiency.py](./src/models_under_pressure/experiments/data_efficiency.py). You can run that file directly after adjusting the configurations at the end of it and calling one of the functions defined in that file:
 
 - Use the function `run_data_efficiency_experiment` to get results for different types of probes.
 - Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
-
-
-## Computing Baselines
-
-### Prompted Baselines
-
-Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
 
 ### Cascade Plot
 
@@ -45,6 +38,13 @@ Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experime
   - Result generation: The script generates result files for the selected probe and the continuation baselines.
   - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
   - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
+ 
+
+## Computing Baselines
+
+### Prompted Baselines
+
+Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
 
 
 ## Dataset
