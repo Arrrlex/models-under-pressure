@@ -141,8 +141,16 @@ def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     plot_df = grp.groupby(["dataset_name", "method"]).agg(
         auroc=("auroc", "mean"),
         auroc_std=("auroc", "std"),
+        auroc_err=(
+            "auroc",
+            lambda x: 1.96 * x.std() / np.sqrt(len(x)),
+        ),  # 95% confidence interval
         tpr_at_fpr=("tpr_at_fpr", "mean"),
         tpr_at_fpr_std=("tpr_at_fpr", "std"),
+        tpr_at_fpr_err=(
+            "tpr_at_fpr",
+            lambda x: 1.96 * x.std() / np.sqrt(len(x)),
+        ),  # 95% confidence interval
     )
 
     return plot_df.reset_index()
@@ -271,7 +279,11 @@ def plot_results(
 
     # Separate methods by type
     probe_methods = sorted([m for m in all_methods if m.startswith("probe_")])
+
+    # Include all finetuned baselines (both Gemma and Llama)
     finetuned_methods = sorted([m for m in all_methods if m.startswith("baseline_")])
+
+    # Include all continuation baselines (both Gemma and Llama)
     continuation_methods = sorted(
         [m for m in all_methods if m.startswith("continuation_")]
     )
@@ -308,6 +320,7 @@ def plot_results(
     continuation_colors = [
         "darkturquoise",
         "darkturquoise",
+        "teal",
         "teal",
         "teal",
     ]  # New colors for continuation methods
@@ -355,7 +368,7 @@ def plot_results(
         "small_3": "o",  # Small circles for 3b
         # Medium models (8b, 12b) - medium circles
         "medium_8": "o",  # Medium circles for 8b
-        "medium_12": "O",  # Larger circles for 12b
+        "medium_12": "o",  # Larger circles for 12b
         # Large models (>12b) - large circles
         "large_27": "O",  # Large circles for 27b
         "large_70": "O",  # Largest circles for 70b
@@ -399,7 +412,7 @@ def plot_results(
             hatch_dict[method] = hatch_patterns["medium_8"]
             linewidth_dict[method] = 1.2
             hatchdensity_dict[method] = 8  # Medium spacing
-        elif size <= 12:
+        elif size <= 12 or "gemma-12b" in model_name.lower():
             hatch_dict[method] = hatch_patterns["medium_12"]
             linewidth_dict[method] = 1.5
             hatchdensity_dict[method] = 10  # Fewer medium circles
@@ -413,212 +426,109 @@ def plot_results(
             hatchdensity_dict[method] = 15  # Very few very large circles
 
     # Calculate mean performance across all datasets for each method
-    mean_performances = {}
+    auroc_means = {}
+    tpr_means = {}
+    auroc_errors = {}
+    tpr_errors = {}
+
     for method in methods:
         method_data = plot_df[plot_df["method"] == method]
-        # Use appropriate metric for mean calculation
-        if metric == "auroc":
-            mean_performances[method] = method_data["auroc"].mean()
-        else:  # metric == "tpr_at_fpr"
-            mean_performances[method] = method_data["tpr_at_fpr"].mean()
 
-    # Add "Mean" as the first position
-    all_datasets = np.array(["Mean"] + list(datasets))
+        # Calculate means
+        auroc_means[method] = method_data["auroc"].mean()
+        tpr_means[method] = method_data["tpr_at_fpr"].mean()
 
-    # Set the x-tick positions using numeric values only
-    positions = np.arange(len(all_datasets))
-    ax.set_xticks(positions)
-
-    # Don't set any text labels for the x-ticks
-    ax.set_xticklabels([])
-
-    # Optional: If you still want minimal numeric labels (just the numbers)
-    for i, pos in enumerate(positions):
-        ax.text(
-            pos,
-            -0.08,
-            str(i),
-            transform=ax.get_xaxis_transform(),
-            ha="center",
-            va="top",
-            fontsize=10,
+        # Get the pre-calculated error values (95% confidence intervals)
+        # These were calculated in create_plot_dataframe function
+        auroc_errors[method] = (
+            method_data["auroc_err"].mean()
+            if not method_data["auroc_err"].isna().all()
+            else None
+        )
+        tpr_errors[method] = (
+            method_data["tpr_at_fpr_err"].mean()
+            if not method_data["tpr_at_fpr_err"].isna().all()
+            else None
         )
 
-    # Create method grouping information
-    method_types = []
-    for method in methods:
-        if method.startswith("probe_"):
-            method_types.append("probe")
-        elif method.startswith("baseline_"):
-            method_types.append("finetuned")
-        elif method.startswith("continuation_"):
-            method_types.append("continuation")
-        else:
-            method_types.append("other")
+    # Set up the bar positions
+    bar_width = 0.7
+    total_methods = len(methods)
+    x_positions = np.arange(total_methods)
 
-    # TODO: EDIT HERE
-    # Calculate the total width needed for all bars including gaps
-    gap_size = 0.03  # Smaller gap between method groups
-    # total_bars = len(methods)
-
-    # Get count of each method type
-    probe_count = len(probe_methods)
-    finetuned_count = len(finetuned_methods)
-    continuation_count = len(continuation_methods)
-
-    # TODO: EDIT HERE
-    # Calculate bar width - use a fixed value that looks good 0.7
-    bar_width = 0.95 / (
-        probe_count + finetuned_count + continuation_count + 2
-    )  # +2 for the gaps
-
-    # Plot bars for each method
+    # Create a combined label for each method
+    method_labels = []
+    method_numbers = []
     for i, method in enumerate(methods):
-        method_data = plot_df[plot_df["method"] == method]
+        # Create numeric labels for x-axis
+        method_numbers.append(str(i + 1))
 
-        # Track position relative to the group's start
-        method_group_idx = 0
-
-        # Calculate base position based on method type
-        if method.startswith("probe_"):
-            # Find position within probe group
-            method_group_idx = probe_methods.index(method)
-            group_start = 0
-        elif method.startswith("baseline_"):
-            # Find position within finetuned group
-            method_group_idx = finetuned_methods.index(method)
-            # Place finetuned after probes (original order)
-            group_start = probe_count + gap_size / bar_width
-        elif method.startswith("continuation_"):
-            # Find position within continuation group
-            method_group_idx = continuation_methods.index(method)
-            # Place continuation after finetuned (original order)
-            group_start = probe_count + finetuned_count + 2 * gap_size / bar_width
-
-        # Calculate position with bar_width unit as the base
-        relative_pos = group_start + method_group_idx
-
-        # Position adjustment to center the bar groups
-        # Calculate each position individually
-        positions = []
-        for j in range(len(all_datasets)):
-            # Center everything around the x-tick position
-            center = j
-            # Total width of all bars and gaps
-            total_width = (
-                probe_count + finetuned_count + continuation_count
-            ) * bar_width + 2 * gap_size
-            # Start position (left edge of leftmost bar)
-            start_pos = center - total_width / 2
-            # Position of this specific bar
-            pos = start_pos + relative_pos * bar_width
-            positions.append(pos)
-
-        # Create arrays aligned with all datasets (including Mean)
-        values = np.zeros(len(all_datasets), dtype=float)
-        values.fill(np.nan)
-        errors = np.zeros(len(all_datasets), dtype=float)
-        errors.fill(np.nan)
-
-        # Set the mean value as the first position
-        values[0] = mean_performances[method]
-
-        # Fill in the values where we have data (starting from position 1)
-        for idx, dataset in enumerate(datasets):
-            dataset_data = method_data[method_data["dataset_name"] == dataset]
-            if not dataset_data.empty:
-                # Use the appropriate metric based on the flag
-                if metric == "auroc":
-                    values[idx + 1] = dataset_data["auroc"].iloc[0]
-                    errors[idx + 1] = dataset_data["auroc_std"].iloc[0]
-                else:  # metric == "tpr_at_fpr"
-                    values[idx + 1] = dataset_data["tpr_at_fpr"].iloc[0]
-                    errors[idx + 1] = dataset_data["tpr_at_fpr_std"].iloc[0]
-
-        # Only use error bars where std is not NaN and not 0
-        mask = (~np.isnan(errors)) & (errors > 0)
-        yerr = np.zeros_like(errors)
-        np.putmask(yerr, mask, errors)
-
-        # Convert to list for matplotlib compatibility
-        values_list = values.tolist()
-        yerr_list = yerr.tolist()
-
-        # Clean up labels for display
         if method.startswith("baseline_"):
-            method_label = method[9:]  # Remove 'baseline_' prefix
-            method_type = "finetuned"
-
-            # Get hatch density (spacing) for this method
-            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
-
-            # Create the combined hatching pattern with proper density
-            hatch_pattern = hatch_dict.get(method, "")
-            # For circular patterns, control the density based on model size
-            if hatch_pattern in ["o", "O"]:
-                # Create a pattern with controlled density
-                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
-
+            method_label = f"Finetune: {method.split('_')[1]}"
         elif method.startswith("continuation_"):
-            method_label = method[13:]  # Remove 'continuation_' prefix
-            method_type = "continuation"
-
-            # Get hatch density (spacing) for this method
-            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
-
-            # Create the combined hatching pattern with proper density
-            hatch_pattern = hatch_dict.get(method, "")
-            # For circular patterns, control the density based on model size
-            if hatch_pattern in ["o", "O"]:
-                # Create a pattern with controlled density
-                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
-
+            method_label = f"Continue: {method.split('_')[1]}"
         elif method.startswith("probe_"):
-            method_label = method[6:]  # Remove 'probe_' prefix
-            method_type = "probe"
-
-            # Get hatch density (spacing) for this method
-            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
-
-            # Create the combined hatching pattern with proper density
-            hatch_pattern = hatch_dict.get(method, "")
-            # For circular patterns, control the density based on model size
-            if hatch_pattern in ["o", "O"]:
-                # Create a pattern with controlled density
-                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
+            if "attention" in method:
+                method_label = "Attention Probe"
+            elif "softmax" in method:
+                method_label = "Softmax Probe"
+            else:
+                method_label = f"Probe: {method.split('_')[1]}"
         else:
             method_label = method
-            method_type = "other"
+        method_labels.append(method_label)
 
-            # Get hatch density (spacing) for this method
-            hatch_density = hatchdensity_dict.get(method, 6)  # Default density
+    # AUROC bars on the first subplot
+    for i, method in enumerate(methods):
+        # Clean hatch pattern for this method
+        hatch_pattern = hatch_dict.get(method, "")
+        if hatch_pattern in ["o", "O"]:
+            # Create a pattern with controlled density
+            hatch_pattern = hatch_pattern * max(
+                1, int(10 / hatchdensity_dict.get(method, 6))
+            )
 
-            # Create the combined hatching pattern with proper density
-            hatch_pattern = hatch_dict.get(method, "")
-            # For circular patterns, control the density based on model size
-            if hatch_pattern in ["o", "O"]:
-                # Create a pattern with controlled density
-                hatch_pattern = hatch_pattern * max(1, int(10 / hatch_density))
+        # Add error bars if available for this method
+        yerr = auroc_errors.get(method, None)
 
-        # Use the method-specific line width when drawing the bar
         ax.bar(
-            positions,
-            values_list,
+            x_positions[i],
+            auroc_means[method],
             width=bar_width,
-            # Store method type in the label for later parsing
-            label=f"{method_type}:{method_label}",
             color=color_dict.get(method),
-            hatch=hatch_pattern,  # Use the size-based hatch pattern
+            hatch=hatch_pattern,
             alpha=0.8,
-            yerr=yerr_list if np.any(mask) else None,
-            capsize=5,
             edgecolor="black",
-            linewidth=linewidth_dict.get(method, 0.5),  # Use the size-based linewidth
+            linewidth=linewidth_dict.get(method, 0.5),
+            yerr=yerr,
+            capsize=5,
         )
 
-    # Add a dotted vertical line to separate Mean from individual datasets
-    # Comment out or remove this line
-    # ax.axvline(x=0.5, color="gray", linestyle=":", alpha=0.7, linewidth=1.5)
+    # TPR@1%FPR bars on the second subplot
+    for i, method in enumerate(methods):
+        # Clean hatch pattern for this method
+        hatch_pattern = hatch_dict.get(method, "")
+        if hatch_pattern in ["o", "O"]:
+            # Create a pattern with controlled density
+            hatch_pattern = hatch_pattern * max(
+                1, int(10 / hatchdensity_dict.get(method, 6))
+            )
+
+        # Add error bars if available for this method
+        yerr = tpr_errors.get(method, None)
+
+        ax.bar(
+            x_positions[i],
+            tpr_means[method],
+            width=bar_width,
+            color=color_dict.get(method),
+            hatch=hatch_pattern,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=linewidth_dict.get(method, 0.5),
+            yerr=yerr,
+            capsize=5,
+        )
 
     # Add labels, title and legend
     ax.set_xlabel("Dataset")
@@ -641,11 +551,309 @@ def plot_results(
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
+    plt.subplots_adjust(top=0.9, wspace=0.3)
 
     # Save the plot
     legend_suffix = "" if show_legend else "_nolegend"
     output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.pdf"
     png_output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.png"
+    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
+    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
+    plt.close()
+
+
+def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
+    """
+    Create a figure with two subplots showing mean AUROC and TPR@1%FPR across all datasets.
+    One subplot for AUROC and another for TPR at 1% FPR.
+
+    Args:
+        plot_df: DataFrame containing the results to plot
+    """
+    # Set the style
+    plt.style.use("seaborn-v0_8-whitegrid")
+    sns.set_context("paper", font_scale=1.5)
+
+    # Create figure with two subplots side by side
+    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(20, 8), sharey=False)
+
+    # Define utility functions for model name and size extraction
+    def extract_model_name(label: str) -> str:
+        """Extract the base model name (e.g., llama, gemma) from the label."""
+        import re
+
+        # Look for common model names - adapt this regex as needed
+        name_match = re.search(r"(?i)(llama|gemma|mistral|gpt|opt|phi)", label)
+        if name_match:
+            return name_match.group(1).lower()  # Convert to lowercase for consistency
+        return ""  # Default if no model name found
+
+    def extract_model_size(label: str) -> int:
+        """Extract the model size (in billions) from the label."""
+        import re
+
+        size_match = re.search(r"(\d+)[bB]", label)
+        if size_match:
+            return int(size_match.group(1))
+        return 0  # Default if no size found
+
+    # Get all methods and categorize them
+    all_methods = plot_df["method"].unique()
+
+    # Separate methods by type
+    probe_methods = sorted([m for m in all_methods if m.startswith("probe_")])
+    finetuned_methods = sorted([m for m in all_methods if m.startswith("baseline_")])
+    continuation_methods = sorted(
+        [m for m in all_methods if m.startswith("continuation_")]
+    )
+
+    # Custom sort function to order models by name then size
+    def sort_by_model_name_and_size(method_list: list[str]) -> list[str]:
+        return sorted(
+            method_list,
+            key=lambda x: (
+                extract_model_name(x.split("_")[1]),
+                extract_model_size(x.split("_")[1]),
+            ),
+        )
+
+    # Sort methods by model name and size
+    probe_methods = sort_by_model_name_and_size(probe_methods)
+    finetuned_methods = sort_by_model_name_and_size(finetuned_methods)
+    continuation_methods = sort_by_model_name_and_size(continuation_methods)
+
+    # Order methods with probes first, then finetuned, then continuations
+    methods = probe_methods + finetuned_methods + continuation_methods
+
+    # Define distinct colors for different method types
+    probe_colors = {
+        "probe_attention": "#ff7f0e",  # Orange for attention probe
+        "probe_softmax": "#1f77b4",  # Blue for softmax probe
+    }
+    finetuned_colors = [
+        "limegreen",
+        "limegreen",
+        "green",
+        "green",
+    ]  # Shades of green for finetuned methods
+    continuation_colors = [
+        "darkturquoise",
+        "darkturquoise",
+        "darkturquoise",
+        "teal",
+        "teal",
+        "teal",
+    ]  # Blue/teal for continuation methods
+
+    # Create a color dictionary
+    color_dict = {}
+
+    # Assign colors to probe methods based on whether they contain "attention" or "softmax"
+    for method in probe_methods:
+        if "attention" in method:
+            color_dict[method] = probe_colors["probe_attention"]
+        elif "softmax" in method:
+            color_dict[method] = probe_colors["probe_softmax"]
+        else:
+            color_dict[method] = "#2ca02c"  # Default green for unrecognized probes
+
+    # Assign colors to finetuned methods
+    for i, method in enumerate(finetuned_methods):
+        color_dict[method] = finetuned_colors[i % len(finetuned_colors)]
+
+    # Assign colors to continuation methods
+    for i, method in enumerate(continuation_methods):
+        color_dict[method] = continuation_colors[i % len(continuation_colors)]
+
+    # Define hatch patterns with variations for different methods and sizes
+    hatch_patterns = {
+        "small_1": ".",  # Tiny dots for 1b
+        "small_3": ".",  # Small circles for 3b
+        "medium_8": "o",  # Medium circles for 8b
+        "medium_12": "o",  # Larger circles for 12b
+        "large_27": "O",  # Large circles for 27b
+        "large_70": "O",  # Largest circles for 70b
+    }
+
+    # Store linewidth information for different model sizes
+    linewidth_dict = {}
+    # Store hatchdensity (spacing between elements) for different model sizes
+    hatchdensity_dict = {}
+
+    # Define hatch patterns based on model size
+    hatch_dict = {}
+    # No hatching for probe methods
+    for method in probe_methods:
+        hatch_dict[method] = ""
+        linewidth_dict[method] = 0.5
+        hatchdensity_dict[method] = 1
+
+    # Assign hatches based on exact model size
+    for method in finetuned_methods + continuation_methods:
+        # Extract model name part after the prefix
+        if method.startswith("baseline_"):
+            model_name = method.split("_")[1]
+        else:  # continuation
+            model_name = method.split("_")[1]
+
+        # Get model size
+        size = extract_model_size(model_name)
+
+        # Assign pattern based on exact size for specific thickness
+        if size == 1:
+            hatch_dict[method] = hatch_patterns["small_1"]
+            linewidth_dict[method] = 0.8
+            hatchdensity_dict[method] = 4  # More dense (many small dots)
+        elif size <= 3:
+            hatch_dict[method] = hatch_patterns["small_3"]
+            linewidth_dict[method] = 1.0
+            hatchdensity_dict[method] = 6  # Dense small circles
+        elif size <= 8:
+            hatch_dict[method] = hatch_patterns["medium_8"]
+            linewidth_dict[method] = 1.2
+            hatchdensity_dict[method] = 8  # Medium spacing
+        elif size <= 12 or "gemma-12b" in model_name.lower():
+            hatch_dict[method] = hatch_patterns["medium_12"]
+            linewidth_dict[method] = 1.5
+            hatchdensity_dict[method] = 10  # Fewer medium circles
+        elif size <= 27:
+            hatch_dict[method] = hatch_patterns["large_27"]
+            linewidth_dict[method] = 1.8
+            hatchdensity_dict[method] = 12  # Few large circles
+        else:  # > 27b (like 70b)
+            hatch_dict[method] = hatch_patterns["large_70"]
+            linewidth_dict[method] = 2.0
+            hatchdensity_dict[method] = 15  # Very few very large circles
+
+    # Calculate mean performance across all datasets for each method
+    auroc_means = {}
+    tpr_means = {}
+    auroc_errors = {}
+    tpr_errors = {}
+
+    for method in methods:
+        method_data = plot_df[plot_df["method"] == method]
+
+        # Calculate means
+        auroc_means[method] = method_data["auroc"].mean()
+        tpr_means[method] = method_data["tpr_at_fpr"].mean()
+
+        # Get the pre-calculated error values (95% confidence intervals)
+        # These were calculated in create_plot_dataframe function
+        auroc_errors[method] = (
+            method_data["auroc_err"].mean()
+            if not method_data["auroc_err"].isna().all()
+            else None
+        )
+        tpr_errors[method] = (
+            method_data["tpr_at_fpr_err"].mean()
+            if not method_data["tpr_at_fpr_err"].isna().all()
+            else None
+        )
+
+    # Set up the bar positions
+    bar_width = 0.7
+    total_methods = len(methods)
+    x_positions = np.arange(total_methods)
+
+    # Create a combined label for each method
+    method_labels = []
+    method_numbers = []
+    for i, method in enumerate(methods):
+        # Create numeric labels for x-axis
+        method_numbers.append(str(i + 1))
+
+        if method.startswith("baseline_"):
+            method_label = f"Finetune: {method.split('_')[1]}"
+        elif method.startswith("continuation_"):
+            method_label = f"Continue: {method.split('_')[1]}"
+        elif method.startswith("probe_"):
+            if "attention" in method:
+                method_label = "Attention Probe"
+            elif "softmax" in method:
+                method_label = "Softmax Probe"
+            else:
+                method_label = f"Probe: {method.split('_')[1]}"
+        else:
+            method_label = method
+        method_labels.append(method_label)
+
+    # AUROC bars on the first subplot
+    for i, method in enumerate(methods):
+        # Clean hatch pattern for this method
+        hatch_pattern = hatch_dict.get(method, "")
+        if hatch_pattern in ["o", "O"]:
+            # Create a pattern with controlled density
+            hatch_pattern = hatch_pattern * max(
+                1, int(10 / hatchdensity_dict.get(method, 6))
+            )
+
+        # Add error bars if available for this method
+        yerr = auroc_errors.get(method, None)
+
+        ax1.bar(
+            x_positions[i],
+            auroc_means[method],
+            width=bar_width,
+            color=color_dict.get(method),
+            hatch=hatch_pattern,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=linewidth_dict.get(method, 0.5),
+            yerr=yerr,
+            capsize=5,
+        )
+
+    # TPR@1%FPR bars on the second subplot
+    for i, method in enumerate(methods):
+        # Clean hatch pattern for this method
+        hatch_pattern = hatch_dict.get(method, "")
+        if hatch_pattern in ["o", "O"]:
+            # Create a pattern with controlled density
+            hatch_pattern = hatch_pattern * max(
+                1, int(10 / hatchdensity_dict.get(method, 6))
+            )
+
+        # Add error bars if available for this method
+        yerr = tpr_errors.get(method, None)
+
+        ax2.bar(
+            x_positions[i],
+            tpr_means[method],
+            width=bar_width,
+            color=color_dict.get(method),
+            hatch=hatch_pattern,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=linewidth_dict.get(method, 0.5),
+            yerr=yerr,
+            capsize=5,
+        )
+
+    # Set up the axes
+    # Remove the titles
+    ax1.set_xlabel("Method", fontsize=12)
+    ax2.set_xlabel("Method", fontsize=12)
+    ax1.set_ylabel("AUROC", fontsize=12)
+    ax2.set_ylabel("TPR at 1% FPR", fontsize=12)
+
+    # Set y-axis limits
+    ax1.set_ylim(0.55, 1.0)
+    ax2.set_ylim(0.0, 1.0)
+
+    # Set tick positions and labels
+    for ax in [ax1, ax2]:
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(method_numbers, rotation=0)
+        ax.grid(True, linestyle="--", alpha=0.7)
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9, wspace=0.3)
+
+    # Save the plot
+    output_filename = "probes_vs_baseline_combined_metrics.pdf"
+    png_output_filename = "probes_vs_baseline_combined_metrics.png"
     plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
     plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
     plt.close()
@@ -664,14 +872,19 @@ if __name__ == "__main__":
     finetune_paths = [
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_3.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama-8b_test.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test_2.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test_3.jsonl",
     ]
 
     continuation_paths = [
+        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-1b_v2.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-1b.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
@@ -696,3 +909,6 @@ if __name__ == "__main__":
 
     # Plot with TPR at 1% FPR metric
     plot_results(df_plot, metric="tpr_at_fpr", show_legend=False)
+
+    # Plot the combined metrics chart
+    plot_combined_metrics(df_plot)

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -113,13 +113,17 @@ def plot_results(df: pd.DataFrame) -> None:
     plot_df = df.reset_index()
 
     # Set up the plot style
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(7, 7))
     sns.set_style("whitegrid")
 
-    # Get a list of distinct colors from a colormap
-    unique_methods = plot_df["method"].unique()
-    num_methods = len(unique_methods)
-    color_palette = cm.get_cmap("tab10", num_methods)
+    # Define specific colors for each method type
+    method_colors = {
+        "attention_probe": "tab:orange",
+        "linear_then_softmax_probe": "tab:blue",
+        "sklearn_probe": "tab:brown",
+        "finetuned_Llama-3.2-1B-Instruct": "limegreen",
+        "finetuned_Llama-3.2-3B-Instruct": "teal",
+    }
 
     # Define markers for methods
     markers = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "h"]
@@ -127,15 +131,66 @@ def plot_results(df: pd.DataFrame) -> None:
     # Plot each method as a separate line
     for i, method in enumerate(plot_df["method"].unique()):
         method_df = plot_df[plot_df["method"] == method]
+
+        # Determine the color based on method type
+        if "attention" in method:
+            color = method_colors["attention_probe"]
+        elif "linear_then_softmax" in method:
+            color = method_colors["linear_then_softmax_probe"]
+        elif "sklearn" in method:
+            color = method_colors["sklearn_probe"]
+        elif "finetuned_Llama-3.2-1B-Instruct" in method:
+            color = method_colors["finetuned_Llama-3.2-1B-Instruct"]
+        elif "finetuned_Llama-3.2-3B-Instruct" in method:
+            color = method_colors["finetuned_Llama-3.2-3B-Instruct"]
+        else:
+            # Fallback to default colors if method doesn't match any known type
+            color = "gray"  # Default color if none of the specific conditions match
+
+        # Convert color to different formats
+        if isinstance(color, str):
+            # Convert string color names to RGB
+            rgb_color = mcolors.to_rgb(color)
+            rgba_tuple = rgb_color + (1.0,)  # Add alpha=1.0
+            rgb_tuple = rgb_color
+
+            # Convert to hex format
+            hex_color = mcolors.to_hex(color)
+
+            # Convert to HSB (HSV) format
+            import colorsys
+
+            hsv_color = colorsys.rgb_to_hsv(rgb_color[0], rgb_color[1], rgb_color[2])
+        else:
+            # For colors already in RGBA format
+            rgba_tuple = color
+            rgb_tuple = (color[0], color[1], color[2])
+
+            # Convert to hex format
+            hex_color = "#{:02x}{:02x}{:02x}".format(
+                int(255 * color[0]), int(255 * color[1]), int(255 * color[2])
+            )
+
+            # Convert to HSB (HSV) format
+            import colorsys
+
+            hsv_color = colorsys.rgb_to_hsv(color[0], color[1], color[2])
+
         plt.plot(
             method_df["train_dataset_size"],
             method_df["auroc"],
             label=method,
             marker=markers[i % len(markers)],
-            color=color_palette(i),
+            color=color,
             linewidth=2,
             markersize=8,
         )
+        print(f"Method: {method}")
+        print(f"  RGBA: {rgba_tuple}")
+        print(f"  RGB: {rgb_tuple}")
+        print(f"  HEX: {hex_color}")
+        print(f"  HSB (HSV): {hsv_color}")
+        print()
 
     # Set x-axis to log scale
     plt.xscale("log")
@@ -143,13 +198,13 @@ def plot_results(df: pd.DataFrame) -> None:
     # Add labels and title
     plt.xlabel("Training Dataset Size (samples)", fontsize=14)
     plt.ylabel("AUROC (avg across datasets)", fontsize=14)
-    plt.title("Probe Performance vs Training Data Size", fontsize=16)
+    # plt.title("Probe Performance vs Training Data Size", fontsize=16)
 
     # Add grid
     plt.grid(True, alpha=0.3)
 
     # Add legend
-    plt.legend(fontsize=12)
+    # plt.legend(fontsize=12)
 
     # Adjust layout
     plt.tight_layout()
@@ -212,16 +267,16 @@ if __name__ == "__main__":
         "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_512.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_1024.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_1910.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_4.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_8.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_16.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_32.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_64.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_128.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_256.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_512.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1024.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1910.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_4.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_8.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_16.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_32.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_64.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_128.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_256.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_512.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1024.jsonl",
+        # "/home/ucabwjn/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1910.jsonl",
     ]
 
     probe_paths = [Path(path) for path in probe_paths]

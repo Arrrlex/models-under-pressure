@@ -221,8 +221,13 @@ def get_baseline_results(baseline_result_paths: list[Path]) -> pd.DataFrame:
     print("Loading baseline results ... ")
     data_frames = []
     for i, path in enumerate(baseline_result_paths):
-        with open(path) as f:
-            results = [json.loads(line) for line in f if line.strip()]
+        try:
+            with open(path) as f:
+                results = [json.loads(line) for line in f if line.strip()]
+        except Exception:
+            breakpoint()
+            print(f"Error decoding JSON from {path}")
+            continue
 
         file_results = []
         for result in results:
