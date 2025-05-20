@@ -68,9 +68,9 @@ def plot_method_comparison(
     sns.set_style("whitegrid")
 
     colors = {
-        "probe": "#2563EB",
-        "finetuned": "#2CA02C",
-        "prompted": "#9467BD",
+        "probe": "#FF7F0E",
+        "finetuned": "#008000",
+        "prompted": "#00CED1",
     }
 
     #     # "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
@@ -221,5 +221,5 @@ def plot_method_comparison(
 
 
 if __name__ == "__main__":
-    results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
-    plot_method_comparison(results_dir, font_size=18, show_legend=True)
+    results_dir = DATA_DIR / "results" / "monitoring_cascade_arxiv"
+    plot_method_comparison(results_dir, font_size=18, show_legend=False)
