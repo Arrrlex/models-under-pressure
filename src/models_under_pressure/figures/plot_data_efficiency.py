@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -59,10 +58,17 @@ def get_data_efficiency_probe_results(file_paths: list[Path]) -> pd.DataFrame:
 
 
 def prepare_plot_df(
-    df_probes: list[pd.DataFrame], df_baselines: list[pd.DataFrame]
+    df_probes: list[pd.DataFrame],
+    df_baselines: list[pd.DataFrame],
+    min_train_size: int = 0,
 ) -> pd.DataFrame:
     """
     Combine the baseline and probe results into a single plot dataframe.
+
+    Args:
+        df_probes: List of probe dataframes
+        df_baselines: List of baseline dataframes
+        min_train_size: Minimum training dataset size to include (default: 0)
     """
 
     # Concat the probe dataframes:
@@ -90,6 +96,9 @@ def prepare_plot_df(
 
     df = pd.concat([df_probe[selected_columns], df_baseline[selected_columns]])
 
+    # Filter out points below min_train_size
+    df = df[df["train_dataset_size"] >= min_train_size]
+
     grp = (
         df.groupby(["dataset_name", "method", "train_dataset_size"])
         .apply(lambda x: float(roc_auc_score(x["ground_truth_labels"], x["scores"])))
@@ -114,26 +123,34 @@ def plot_results(df: pd.DataFrame) -> None:
     plot_df = df.reset_index()
 
     # Set up the plot style
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(7, 6))
     sns.set_style("whitegrid")
 
     # Get a list of distinct colors from a colormap
-    unique_methods = plot_df["method"].unique()
-    num_methods = len(unique_methods)
-    color_palette = cm.get_cmap("tab10", num_methods)
+    # unique_methods = plot_df["method"].unique()
+    # num_methods = len(unique_methods)
+    # color_palette = cm.get_cmap("tab10", num_methods)
+    method_to_color = {
+        "attention": "#FF7F0E",
+        "linear_then_softmax": "#1F77B4",
+        "sklearn": "brown",
+        "finetuned_Llama-3.1-8B-Instruct": "#008000",
+        "finetuned_Llama-3.2-1B-Instruct": "#7CFC00",
+    }
 
     # Define markers for methods
     markers = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "h"]
 
     # Plot each method as a separate line
     for i, method in enumerate(plot_df["method"].unique()):
+        print(f"Plotting {method}")
         method_df = plot_df[plot_df["method"] == method]
         plt.plot(
             method_df["train_dataset_size"],
             method_df["auroc"],
             label=method,
             marker=markers[i % len(markers)],
-            color=color_palette(i),
+            color=method_to_color[method],
             linewidth=2,
             markersize=8,
         )
@@ -144,7 +161,7 @@ def plot_results(df: pd.DataFrame) -> None:
     # Add labels and title
     plt.xlabel("Training Dataset Size (samples)", fontsize=14)
     plt.ylabel("AUROC (avg across datasets)", fontsize=14)
-    plt.title("Probe Performance vs Training Data Size", fontsize=16)
+    # plt.title("Probe Performance vs Training Data Size", fontsize=16)
 
     # Add grid
     plt.grid(True, alpha=0.3)
@@ -158,7 +175,7 @@ def plot_results(df: pd.DataFrame) -> None:
     # Save the figure
     output_dir = Path("figures")
     output_dir.mkdir(exist_ok=True)
-    plt.savefig(output_dir / "data_efficiency.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_dir / "data_efficiency.png", dpi=600, bbox_inches="tight")
     plt.savefig(output_dir / "data_efficiency.pdf", bbox_inches="tight")
 
     plt.show()
@@ -182,5 +199,7 @@ if __name__ == "__main__":
     df_probe = get_probe_results(probe_paths)
     df_baseline = get_baseline_results(baseline_paths)
 
-    df_plot = prepare_plot_df([df_probe], [df_baseline])
+    # Set minimum training size to 1000 samples
+    min_train_size = 4
+    df_plot = prepare_plot_df([df_probe], [df_baseline], min_train_size=min_train_size)
     plot_results(df_plot)
