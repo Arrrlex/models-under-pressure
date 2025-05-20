@@ -15,12 +15,12 @@ from models_under_pressure.interfaces.results import EvaluationResult
 # Add this before creating any plots
 plt.rcParams.update(
     {
-        "font.size": 18,
-        "axes.titlesize": 22,
-        "axes.labelsize": 20,
-        "xtick.labelsize": 18,
-        "ytick.labelsize": 18,
-        "legend.fontsize": 18,
+        "font.size": 24,
+        "axes.titlesize": 28,
+        "axes.labelsize": 26,
+        "xtick.labelsize": 24,
+        "ytick.labelsize": 24,
+        "legend.fontsize": 24,
     }
 )
 
@@ -117,10 +117,10 @@ def plot_calibration(
             prob_pred,
             mean_scale,
             marker="o",
-            linewidth=3,
+            linewidth=4,
             label=f"{file_name.title()}",
         )
-    ax1.plot([0, 1], [1, 10], linestyle="--", linewidth=3, label="Perfect Calibration")
+    ax1.plot([0, 1], [1, 10], linestyle="--", linewidth=4, label="Perfect Calibration")
     ax1.set_xlim(0.0, 1.0)
     if use_binary_labels:
         ax1.set_ylim(0.0, 1.0)
@@ -136,8 +136,9 @@ def plot_calibration(
     ax1.grid()
     ax1.legend(title="Probe Calibration")
     # plt.show()
-    print(f"Saving {out_path.name}")
-    plt.savefig(out_path)
+    print(f"Saving {out_path}")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=600)
 
 
 def plot_stacked_histogram(
@@ -184,8 +185,9 @@ def plot_stacked_histogram(
     ax2.legend()
 
     # save the plots with data name in the same directory
-    print(f"Saving {config.id}_stacked_histogram.pdf")
-    plt.savefig(PLOTS_DIR / f"{config.id}_stacked_histogram.pdf")
+    plot_path = PLOTS_DIR / f"{config.id}_stacked_histogram.pdf"
+    print(f"Saving {plot_path}")
+    plt.savefig(plot_path)
     plt.close()
 
 
@@ -239,19 +241,25 @@ def run_calibration(
 
 # Main execution
 if __name__ == "__main__":
-    run_calibration(
-        EVALUATE_PROBES_DIR / "results_for_calibration.jsonl",
-        out_path=PLOTS_DIR / "calibration_all_binary_labels.pdf",
-        use_binary_labels=True,
-    )
+    # run_calibration(
+    #     EVALUATE_PROBES_DIR / "results_for_calibration.jsonl",
+    #     out_path=PLOTS_DIR / "calibration_all_binary_labels.pdf",
+    #     use_binary_labels=True,
+    # )
     run_calibration(
         EVALUATE_PROBES_DIR / "results_attention_test_1.jsonl",
-        out_path=PLOTS_DIR / "attention_test_1_calibration_binary_labels.pdf",
-        use_binary_labels=True,
+        out_path=PLOTS_DIR / "calibration_attention_test_1.png",
+        use_binary_labels=False,
     )
 
     run_calibration(
         EVALUATE_PROBES_DIR / "results_softmax_test_1.jsonl",
-        out_path=PLOTS_DIR / "softmax_test_1_calibration_binary_labels.pdf",
-        use_binary_labels=True,
+        out_path=PLOTS_DIR / "calibration_softmax_test_1.png",
+        use_binary_labels=False,
+    )
+
+    run_calibration(
+        EVALUATE_PROBES_DIR / "results_mean_test_1.jsonl",
+        out_path=PLOTS_DIR / "calibration_mean_test_1.png",
+        use_binary_labels=False,
     )

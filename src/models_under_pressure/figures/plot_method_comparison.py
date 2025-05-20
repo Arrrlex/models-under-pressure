@@ -30,6 +30,7 @@ def plot_method_comparison(
     output_file: Optional[Path] = None,
     figsize: tuple[int, int] = (7, 5),
     font_size: int = 12,
+    show_legend: bool = False,
 ) -> None:
     results = []
     with open(results_dir / "cascade_results.jsonl") as f:
@@ -43,9 +44,9 @@ def plot_method_comparison(
     for result in results:
         cascade_type = result["cascade_type"]
         model_name = result.get("baseline_model_name")
-
         if cascade_type == "probe":
             key = "Probe"
+            method_type = "probe"
         elif cascade_type == "baseline":
             key = f"{get_abbreviated_model_name(model_name)} (prompted)"
             method_type = "prompted"
@@ -59,7 +60,7 @@ def plot_method_comparison(
             {
                 "auroc": result["auroc"],
                 "avg_flops_per_sample": result["avg_flops_per_sample"],
-                "method_type": method_type if cascade_type != "probe" else "probe",
+                "method_type": method_type,
             }
         )
 
@@ -67,10 +68,16 @@ def plot_method_comparison(
     sns.set_style("whitegrid")
 
     colors = {
-        "probe": "green",
-        "prompted": "blue",
-        "finetuned": "red",
+        "probe": "#2563EB",
+        "finetuned": "#2CA02C",
+        "prompted": "#9467BD",
     }
+
+    #     # "Softmax": "#1F77B4",  # HSV: 205°, 83%, 71%
+    # "Last Token": "#2CA02C",  # Green
+    # "Max": "#9467BD",  # Purple
+    # "Mean": "#8C564B",  # Brown
+    # "Rolling Mean Max": "#E377C2",  # Pink
 
     texts = []  # Store text annotations here
 
@@ -78,8 +85,8 @@ def plot_method_comparison(
     legend_elements = []
 
     # Store points for later connection
-    probe_point = None
-    llama_8b_finetuned_point = None
+    # probe_point = None
+    # llama_8b_finetuned_point = None
 
     for method, data in method_results.items():
         aurocs = [d["auroc"] for d in data]
@@ -94,70 +101,73 @@ def plot_method_comparison(
         text_color = darken_color(color, factor=0.7)
 
         plt.plot(mean_flops, mean_auroc, "o", label=method, color=color, markersize=10)
-        # Remove the method type suffix for display
-        display_method = method.split(" (")[0] if " (" in method else method
-        texts.append(
-            plt.text(
-                mean_flops,
-                mean_auroc,
-                display_method,
-                ha="center",
-                va="bottom",
-                fontsize=font_size - 2,
-                color=text_color,
-                # weight="bold",
+        if show_legend:
+            # Remove the method type suffix for display
+            display_method = method.split(" (")[0] if " (" in method else method
+            texts.append(
+                plt.text(
+                    mean_flops,
+                    mean_auroc,
+                    display_method,
+                    ha="center",
+                    va="bottom",
+                    fontsize=font_size - 2,
+                    color=text_color,
+                    # weight="bold",
+                )
             )
-        )
 
         # Store specific points
         if method == "Probe":
-            probe_point = (mean_flops, mean_auroc)
+            # probe_point = (mean_flops, mean_auroc)
+            pass
         elif "llama-8b (finetuned)" in method:
-            llama_8b_finetuned_point = (mean_flops, mean_auroc)
+            # llama_8b_finetuned_point = (mean_flops, mean_auroc)
+            pass
 
     # Connect Probe and Llama-8B finetuned with a dashed line if both exist
-    if probe_point and llama_8b_finetuned_point:
-        print(f"Connecting {probe_point} and {llama_8b_finetuned_point}")
-        plt.plot(
-            [probe_point[0], llama_8b_finetuned_point[0]],
-            [probe_point[1], llama_8b_finetuned_point[1]],
-            "--",
-            color="gray",
-            alpha=1.0,
-            linewidth=2,
-            zorder=0,  # zorder=0 to ensure it's below the points
-        )
+    # if probe_point and llama_8b_finetuned_point:
+    #     print(f"Connecting {probe_point} and {llama_8b_finetuned_point}")
+    #     plt.plot(
+    #         [probe_point[0], llama_8b_finetuned_point[0]],
+    #         [probe_point[1], llama_8b_finetuned_point[1]],
+    #         "--",
+    #         color="gray",
+    #         alpha=1.0,
+    #         linewidth=2,
+    #         zorder=0,  # zorder=0 to ensure it's below the points
+    #     )
 
-        # Add annotation about computational difference
-        # Use logarithmic interpolation for x since it's on a log scale
-        position_ratio = 0.4  # 0 would be at probe, 1 would be at llama-8b
+    #     # Add annotation about computational difference
+    #     # Use logarithmic interpolation for x since it's on a log scale
+    #     position_ratio = 0.4  # 0 would be at probe, 1 would be at llama-8b
 
-        # Logarithmic interpolation for x-coordinate
-        log_probe_x = np.log10(probe_point[0])
-        log_llama_x = np.log10(llama_8b_finetuned_point[0])
-        log_annotation_x = log_probe_x + position_ratio * (log_llama_x - log_probe_x)
-        annotation_x = 10**log_annotation_x
+    #     # Logarithmic interpolation for x-coordinate
+    #     log_probe_x = np.log10(probe_point[0])
+    #     log_llama_x = np.log10(llama_8b_finetuned_point[0])
+    #     log_annotation_x = log_probe_x + position_ratio * (log_llama_x - log_probe_x)
+    #     annotation_x = 10**log_annotation_x
 
-        # Linear interpolation for y-coordinate (no log scale)
-        annotation_y = probe_point[1] + position_ratio * (
-            llama_8b_finetuned_point[1] - probe_point[1]
-        )
-        print(annotation_x, annotation_y)
+    #     # Linear interpolation for y-coordinate (no log scale)
+    #     annotation_y = probe_point[1] + position_ratio * (
+    #         llama_8b_finetuned_point[1] - probe_point[1]
+    #     )
+    #     print(annotation_x, annotation_y)
 
-        flops_ratio = llama_8b_finetuned_point[0] / probe_point[0]
-        log_flops_ratio = int(np.log10(flops_ratio))
+    #     flops_ratio = llama_8b_finetuned_point[0] / probe_point[0]
+    #     log_flops_ratio = int(np.log10(flops_ratio))
 
-        # Place text directly on the line with white background
-        plt.annotate(
-            f"10^{log_flops_ratio} × FLOPs →",
-            (annotation_x, annotation_y),
-            ha="center",
-            va="center",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9),
-            fontsize=font_size - 2,
-            # weight="bold",
-            zorder=10,  # Make sure it's on top of everything
-        )
+    #     # Place text directly on the line with white background
+    #     plt.annotate(
+    #         f"10^{log_flops_ratio} × FLOPs →",
+    #         (annotation_x, annotation_y),
+    #         ha="center",
+    #         va="center",
+    #         bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.9),
+    #         fontsize=font_size - 2,
+    #         # weight="bold",
+    #         zorder=10,  # Make sure it's on top of everything
+    #     )
 
     # Add legend elements for method types
     for method_type, color in colors.items():
@@ -178,8 +188,9 @@ def plot_method_comparison(
             )
         )
 
-    # Add the legend at bottom left
-    plt.legend(handles=legend_elements, loc="lower left", fontsize=font_size - 2)
+    # Add the legend at bottom left if show_legend is True
+    if show_legend:
+        plt.legend(handles=legend_elements, loc="lower left", fontsize=font_size - 2)
 
     plt.xlabel("FLOPs per Sample (log scale)", fontsize=font_size)
     plt.ylabel("Mean AUROC", fontsize=font_size)
@@ -202,12 +213,13 @@ def plot_method_comparison(
     plt.tight_layout()
 
     if output_file is None:
-        output_file = results_dir / "method_comparison.pdf"
-    plt.savefig(output_file, bbox_inches="tight")
+        output_file = results_dir / "method_comparison.png"
+    print(f"Saving to {output_file}")
+    plt.savefig(output_file, bbox_inches="tight", dpi=1000)
     plt.show()
     plt.close()
 
 
 if __name__ == "__main__":
     results_dir = DATA_DIR / "results" / "monitoring_cascade_neurips"
-    plot_method_comparison(results_dir, font_size=18)
+    plot_method_comparison(results_dir, font_size=18, show_legend=True)

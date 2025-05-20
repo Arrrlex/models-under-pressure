@@ -208,11 +208,14 @@ app.add_typer(DatasetStoreCLI().app, name="datasets")
 
 # Add dashboard command
 @app.command()
-def dashboard():
+def dashboard(
+    dashboard_args: list[str] = typer.Argument(
+        None, help="Arguments to pass to the dashboard script"
+    ),
+):
     """Run the Streamlit dashboard with any provided arguments."""
     dashboard_path = Path(__file__).parent / "dashboard.py"
-    args = sys.argv[1:]
-    subprocess.run(["streamlit", "run", str(dashboard_path), "--"] + args)
+    subprocess.run(["streamlit", "run", str(dashboard_path), "--"] + dashboard_args)
 
 
 @app.command()

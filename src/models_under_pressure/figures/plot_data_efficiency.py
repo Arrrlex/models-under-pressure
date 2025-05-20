@@ -7,6 +7,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn.metrics import roc_auc_score
 
+from models_under_pressure.config import RESULTS_DIR
 from models_under_pressure.figures.utils import get_baseline_results, get_probe_results
 
 
@@ -164,67 +165,19 @@ def plot_results(df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    # Define paths for different model types
-    attention_paths = []
+    # Define the directory containing the results
+    results_dir = RESULTS_DIR / "data_efficiency"
 
-    probe_paths = [
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_4.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_8.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_16.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_32.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_64.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_128.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_256.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_512.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_1024.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_sklearn_probe_1910.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_4.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_8.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_16.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_32.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_64.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_128.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_256.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_512.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_1024.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_attention_probe_1910.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_4.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_8.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_16.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_32.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_64.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_128.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_256.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_512.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_1024.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.3-70B-Instruct_linear_then_softmax_probe_1910.jsonl",
-    ]
+    # Find all JSONL files in the directory
+    all_jsonl_files = list(results_dir.glob("*.jsonl"))
 
-    baseline_paths = [
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_4.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_8.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_16.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_32.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_64.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_128.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_256.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_512.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_1024.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-1B-Instruct_baseline_1910.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_4.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_8.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_16.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_32.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_64.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_128.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_256.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_512.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1024.jsonl",
-        "/home/xxx/models-under-pressure/data/results/data_efficiency/Llama-3.2-3B-Instruct_baseline_1910.jsonl",
-    ]
+    # Separate files into probe and baseline paths based on filename
+    probe_paths = [path for path in all_jsonl_files if "_baseline_" not in path.name]
+    baseline_paths = [path for path in all_jsonl_files if "_baseline_" in path.name]
 
-    probe_paths = [Path(path) for path in probe_paths]
-    baseline_paths = [Path(path) for path in baseline_paths]
+    print(
+        f"Found {len(probe_paths)} probe files and {len(baseline_paths)} baseline files"
+    )
 
     df_probe = get_probe_results(probe_paths)
     df_baseline = get_baseline_results(baseline_paths)

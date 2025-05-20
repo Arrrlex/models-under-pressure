@@ -10,8 +10,8 @@ defaults:
 # - monitoring_cascade/analyze/config.yaml for cascade analysis and plotting
 
 # Whether to run compute and/or analyze steps
-compute_results: true
-analyze_cascade: false
+compute_results: false
+analyze_cascade: true
 
 # Whether to use test datasets instead of dev datasets
 use_test: true
