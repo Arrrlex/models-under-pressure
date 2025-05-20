@@ -1,6 +1,39 @@
 # Models Under Pressure
 
+## Setup
+
+In order to run this code:
+
+1. Install uv and run `uv sync`
+2. Create a cloudflare account and create an R2 bucket to store datasets & activations
+3. Add a `.env` file to the project root with the following environment variables:
+  ```
+  OPENAI_API_KEY=
+  OPEN_ROUTER_API_KEY=
+  HF_TOKEN=
+  R2_ACCESS_KEY_ID=
+  R2_SECRET_ACCESS_KEY=
+  R2_DATASETS_BUCKET=
+  R2_ACTIVATIONS_BUCKET=
+  R2_ACCOUNT_ID=
+  ACTIVATIONS_DIR=
+  HF_HOME=
+  WANDB_API_KEY=
+  ```
+
+## Activations
+
+In order to train or run inference with probes, you'll need to compute and store activations. You can do that using the `mup acts store` command. Here is an example:
+
+```bash
+uv run mup acts store --model 'meta-llama/Llama-3.2-1B-Instruct' --layer 11 --dataset data/training/prompts_4x/train.jsonl
+```
+
+This will compute activations, save them locally to `ACTIVATIONS_DIR`, and upload them to `R2_ACTIVATIONS_BUCKET`.
+
 ## Datasets
+
+We contribute a new synthetic dataset we use for training, as well as slightly modified external datasets labelled for stakes we use for evaluation.
 
 Our datasets can be found here:
 
@@ -14,55 +47,8 @@ Our datasets can be found here:
 | Mental Health | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_balanced_apr_22.jsonl) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_raw_apr_22.jsonl) |
 | Aya Redteaming | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming_balanced.csv) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming.jsonl) |
 
-## Running Experiments
 
-### Training on Dev Split of Evaluation Datasets
-
-- Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
-  - Important: Set `gradient_accumulation_steps` to 1 in the config of the corresponding probe, since training data for this experiment can consist only of few samples and no learning occurs if number of batches is less than gradient accumulation steps.
-- Run `figures/dev_split_training_plot.py` to generate the corresponding plot. Adjust file paths end of the file before.
-  - If you want to include the line for the baseline, you can obtain the corresponding file from the cascade experiment.
-
-
-### Data Efficiency Experiment
-
-Code for running the data efficiency experiment is included in [experiments/data_efficiency.py](./src/models_under_pressure/experiments/data_efficiency.py). You can run that file directly after adjusting the configurations at the end of it and calling one of the functions defined in that file:
-
-- Use the function `run_data_efficiency_experiment` to get results for different types of probes.
-- Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
-
-Generate the plot by putting all results files into a single directory and calling the script [figures/plot_data_efficiency.py](./src/models_under_pressure/figures/plot_data_efficiency.py).
-
-
-### Cascade Plot
-
-- To generate finetuning results, run `notebooks/finetuning_for_cascade.py` (adjust the settings in that script depending on the model you want to finetune)
-- To generate the other results, run `experiments/monitoring_cascade.py`. The corresponding configuration files can be found under `config/experiments/monitoring_cascade.yaml` and `config/experiments/monitoring_cascade/`. It has one part for computing the results and a second part to generate the plot based on the results.
-  - Result generation: The script generates result files for the selected probe and the continuation baselines.
-  - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
-  - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
-
-  ### Figure 1 Plot
-
-- The script to generate this plot uses outputs from the cascade experiment. Run the cascade experiment to compute the full results (e.g. using null for model selections in `analyze.yaml`)
-- Then run [figures/plot_method_comparison.py](./src/models_under_pressure/figures/plot_method_comparison.py)
-
-
-## Computing Baselines
-
-### Prompted Baselines
-
-Run `uv run python src/models_under_pressure/scripts/run_experiment.py +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
-
-
-## Dataset
-
-We contribute 2 new datasets in this repository:
-
-- Our synthetic dataset can be found at [data/training/prompts_25_03_25_gpt-4o.jsonl](./data/training/prompts_25_03_25_gpt-4o.jsonl)
-- Our manual data can be found at [data/evals/test/manual.csv](./data/evals/test/manual.csv), with a GPT-4.5-generated "upsampled" version at [data/evals/dev/manual_upsampled.csv](./data/evals/dev/manual_upsampled.csv).
-
-## Generating Dev Datasets for Evaluation
+### Generating Dev Datasets for Evaluation
 
 Run the files `anthropic_dataset.py`, `mt_dataset.py`, `mts_dataset.py` and `toolace_dataset.py` from `src/models_under_pressure/eval_datasets/`.
 That will create the corresponding dataset files (raw and balanced) in the dev evals directory (see config.py).
@@ -73,7 +59,7 @@ for all eval datasets.
 Warning: Creating further dev samples when test datasets are already present can lead to overlap between dev and test.
 Ideally, first generate the full dev datasets and then create the test datasets to avoid overlap.
 
-## Generating Test Datasets for Evaluation
+### Generating Test Datasets for Evaluation
 
 Run the files `anthropic_dataset.py`, `mt_dataset.py`, `mts_dataset.py` and `toolace_dataset.py` from `src/models_under_pressure/eval_datasets/`,
 using the `--split=test` argument.
@@ -109,7 +95,7 @@ Apr 23 version of Anthropic (dev and test): Remove the duplicate system prompt, 
 Apr 30 version of MT (dev and test): Moved 350 samples from test raw to dev raw and resampled the balanced versions.
 
 
-## Deployment Context Datasets
+### Deployment Context Datasets
 
 Medical deployment dataset:
 
@@ -128,3 +114,86 @@ Chatbot deployment dataset:
 - Script `create_deployment_datasets.py` was used to convert into proper Dataset and relabel (which led to removal of many items)
 
 Combined deployment dataset: Created by concatenating all previous datasets.
+
+
+## Running Experiments
+
+### Probe Comparison
+- Run `scripts/compare_probes.sh` to train probes and run prediction against all evaluation datasets
+- Run `compare_probes_plot.py` to generate the bar chart
+
+## Probe Calibration
+Run `experiments/calibration.py`, modifying the paths in the `if __name == '__main__'` block to point to the relevant files generated by `compare_probes.sh`
+
+### Probe Visualisation
+
+To generate the per-token probe scores for visualisation, run:
+
+```
+uv run mup exp +experiment=evaluate_probe probe=attention +id=attn_viz_dev
+```
+
+Then to visualise the probe scores in the dashboard, run:
+
+```
+uv run mup dashboard data/results/evaluate_probes/results_attn_viz_dev.jsonl
+```
+
+### Compare Probes to Baselines Plot
+
+To generate the bar charts comparing probes and baselines, run `models_under_pressure/figures/probes_vs_baselines_plot.py`. This should only be run after "Compare Probes" has been run, and after all baselines have been run. The results files should be adjusted accordingly.
+
+### Comparing Probes to Word Statistics Baselines
+
+To generate the plot comparing Attention probe with a TF-IDF based classifier, run `models_under_pressure/scripts/analyse_confounders.py`.
+
+### Cross Validation
+
+To run cross-validation and discover which layer has the best accuracy, run `uv run mup exp +experiment=cv`.
+
+### Generalisation Heatmaps
+
+To generate the data for the generalisation heatmaps, run `uv run mup exp +experiment=generalisation_heatmap`.
+
+Then to create the plots, run `models_under_pressure/figures/generalisation_heatmap_plot.py`, changing the paths to the datafiles if necessary.
+
+### Training on Dev Split of Evaluation Datasets
+
+- Run `experiments/dev_split_training.py` for the best probe with different settings of `dev_sample_usage`. The script computes results 5 times by default with the same settings.
+  - Important: Set `gradient_accumulation_steps` to 1 in the config of the corresponding probe, since training data for this experiment can consist only of few samples and no learning occurs if number of batches is less than gradient accumulation steps.
+- Run `figures/dev_split_training_plot.py` to generate the corresponding plot. Adjust file paths end of the file before.
+  - If you want to include the line for the baseline, you can obtain the corresponding file from the cascade experiment.
+
+
+### Data Efficiency Experiment
+
+Code for running the data efficiency experiment is included in [experiments/data_efficiency.py](./src/models_under_pressure/experiments/data_efficiency.py). You can run that file directly after adjusting the configurations at the end of it and calling one of the functions defined in that file:
+
+- Use the function `run_data_efficiency_experiment` to get results for different types of probes.
+- Use the function `run_data_efficiency_finetune_baseline_with_activations` to compute results for the finetuned baselines. (Adjust config accordingly and run one baseline model at a time.)
+
+Generate the plot by putting all results files into a single directory and calling the script [figures/plot_data_efficiency.py](./src/models_under_pressure/figures/plot_data_efficiency.py).
+
+### Cascade Plot
+
+- To generate finetuning results, run `notebooks/finetuning_for_cascade.py` (adjust the settings in that script depending on the model you want to finetune)
+- To generate the other results, run `experiments/monitoring_cascade.py`. The corresponding configuration files can be found under `config/experiments/monitoring_cascade.yaml` and `config/experiments/monitoring_cascade/`. It has one part for computing the results and a second part to generate the plot based on the results.
+  - Result generation: The script generates result files for the selected probe and the continuation baselines.
+  - Plot generation: Make sure that all the relevant files are included in one directory. This typically involves moving the finetuned baseline results into the directory with the other results. Then run the analysis step of the script.
+  - For generating the full cascade plot (appendix), make sure that in `analyze.yaml`, the `baseline_models` and `finetuned_baseline_models` selections are both set to null, so that all results are displayed. Also, you might want to tweak a few arguments of the plotting function such as reducing `y_lim`.
+
+### Figure 1 Plot
+
+- The script to generate this plot uses outputs from the cascade experiment. Run the cascade experiment to compute the full results (e.g. using null for model selections in `analyze.yaml`)
+- Then run [figures/plot_method_comparison.py](./src/models_under_pressure/figures/plot_method_comparison.py)
+
+
+## Computing Baselines
+
+### Prompted Baselines
+
+Run `uv run mup exp +experiment=run_baselines model=<MODEL>` (replacing `<MODEL>` by "llama-1b", "llama-70b", "gemma-1b" etc.) to generate the results of the respective prompted model on all dev datasets (make sure default for `eval_datasets` in `config/config.yaml` is set to `dev_balanced`) for all prompt templates. All results are written in JSONL format to a single results file.
+
+### Finetuned Baselines
+
+Run `models_under_pressure/baselines/finetune.py` (replacing the `finetune_model` variable in `run_finetune_baselines()` by "llama-1b", "llama-8b", "gemma-1b", etc.) to finetune the respective model on the synthetic dataset and generate the results on all dev datasets (change `EVAL_DATASETS` to `TEST_DATASETS` in the call to `get_finetuned_baseline_results` to instead get results on test datasets).
