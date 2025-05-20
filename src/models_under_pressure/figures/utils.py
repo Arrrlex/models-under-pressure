@@ -189,9 +189,13 @@ def get_probe_results(probe_result_paths: list[Path]) -> pd.DataFrame:
         results = [json.loads(line) for line in open(probe_result_path)]
 
         file_results = []
-        for result in results:
-            df = process_raw_probe_results(result)
-            file_results.append(df)
+        try:
+            for result in results:
+                df = process_raw_probe_results(result)
+                file_results.append(df)
+        except KeyError as e:
+            print(f"Error processing result {result}: {e}")
+            continue
 
         file_results = pd.concat(file_results, ignore_index=False)
         file_results["load_id"] = i
