@@ -52,6 +52,12 @@ Before running any experiments, make sure to download the datasets. Put eval dat
 
 Below you can also find information on how these datasets were generated.
 
+### Generating Synthetic Training Data
+
+The code for generating the synthetic dataset can be found in `models_under_pressure/dataset_generation`: in particular, to generate a synthetic dataset, run `situation_generation.py`, then `prompt_generation.py`.
+
+The code used for filtering confounding samples is in the `filter_dataset` function in `models_under_pressure/scripts/analyse_confounders.py`.
+
 ### Generating Dev Datasets for Evaluation
 
 Run the files `anthropic_dataset.py`, `mt_dataset.py`, `mts_dataset.py` and `toolace_dataset.py` from `src/models_under_pressure/eval_datasets/`.
