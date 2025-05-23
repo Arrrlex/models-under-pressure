@@ -174,17 +174,30 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     # Define distinct colors for different method types
     # Use predefined colors for simplicity
     probe_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
-    finetuned_color = "brown"  # Brown for all finetuned methods
-    continuation_color = "green"  # Green for all continuation methods
+
+    # Define colors for model families and types
+    finetuned_llama_color = "#8B4513"  # Saddle Brown
+    finetuned_gemma_color = "#CD853F"  # Peru
+    continuation_llama_color = "#228B22"  # Forest Green
+    continuation_gemma_color = "#32CD32"  # Lime Green
 
     # Create a color dictionary
     color_dict = {}
     for i, method in enumerate(probe_methods):
         color_dict[method] = probe_colors[i % len(probe_colors)]
+
+    # Assign colors based on model family and type
     for method in finetuned_methods:
-        color_dict[method] = finetuned_color
+        if "llama" in method.lower():
+            color_dict[method] = finetuned_llama_color
+        elif "gemma" in method.lower():
+            color_dict[method] = finetuned_gemma_color
+
     for method in continuation_methods:
-        color_dict[method] = continuation_color
+        if "llama" in method.lower():
+            color_dict[method] = continuation_llama_color
+        elif "gemma" in method.lower():
+            color_dict[method] = continuation_gemma_color
 
     # Define hatch patterns with variations for different methods
     hatch_patterns = ["/", "\\", "x", "+", "*", "o", "O", ".", "|", "-"]
@@ -291,9 +304,9 @@ def plot_results(plot_df: pd.DataFrame) -> None:
             if model_size <= 10:
                 hatch_pattern = "."  # Sparse dots for small models
             elif model_size <= 30:
-                hatch_pattern = ".."  # Medium density dots for medium models
+                hatch_pattern = "o"
             else:
-                hatch_pattern = "..."  # Dense dots for large models
+                hatch_pattern = "O"
 
         elif method.startswith("probe_"):
             method_label = method[6:]  # Remove 'probe_' prefix
