@@ -1,2 +1,2 @@
 name: meta-llama/Llama-3.1-8B-Instruct
-baseline_prompt: prompt_at_end
+baseline_prompt: default
