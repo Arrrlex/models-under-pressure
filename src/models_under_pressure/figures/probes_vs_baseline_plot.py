@@ -168,6 +168,15 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         [m for m in all_methods if m.startswith("continuation_")]
     )
 
+    # Sort finetuned and continuation methods by model name and size
+    finetuned_methods = sorted(
+        finetuned_methods, key=lambda x: (extract_model_name(x), extract_model_size(x))
+    )
+    continuation_methods = sorted(
+        continuation_methods,
+        key=lambda x: (extract_model_name(x), extract_model_size(x)),
+    )
+
     # Order methods with probes first, then finetuned, then continuations
     methods = probe_methods + finetuned_methods + continuation_methods
 
@@ -176,10 +185,10 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     probe_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 
     # Define colors for model families and types
-    finetuned_llama_color = "#8B4513"  # Saddle Brown
-    finetuned_gemma_color = "#CD853F"  # Peru
-    continuation_llama_color = "#228B22"  # Forest Green
-    continuation_gemma_color = "#32CD32"  # Lime Green
+    finetuned_llama_color = "#008000"
+    finetuned_gemma_color = "#32CD32"
+    continuation_llama_color = "#008080"
+    continuation_gemma_color = "#00CED1"
 
     # Create a color dictionary
     color_dict = {}
