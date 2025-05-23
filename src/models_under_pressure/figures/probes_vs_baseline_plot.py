@@ -499,37 +499,37 @@ def plot_results(plot_df: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     probe_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_3.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_1.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_2.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_3.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_1.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_2.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_3.jsonl",
     ]
 
     finetune_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama-8b_test.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_4.jsonl",
     ]
 
     continuation_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-8b_default.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-12b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-27b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-70b.jsonl",
     ]
 
     df_combined = prepare_data(
-        probe_paths=[Path(probe_path) for probe_path in probe_paths],
-        baseline_paths=[Path(baseline_path) for baseline_path in finetune_paths],
-        continuation_paths=[Path(contin_path) for contin_path in continuation_paths],
+        probe_paths=probe_paths,
+        baseline_paths=finetune_paths,
+        continuation_paths=continuation_paths,
     )
 
     df_plot = create_plot_dataframe(df_combined)
