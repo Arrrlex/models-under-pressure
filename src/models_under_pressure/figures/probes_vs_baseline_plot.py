@@ -199,37 +199,20 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         elif "gemma" in method.lower():
             color_dict[method] = continuation_gemma_color
 
-    # Define hatch patterns with variations for different methods
-    hatch_patterns = ["/", "\\", "x", "+", "*", "o", "O", ".", "|", "-"]
-
     # Define hatch patterns - using the same patterns for finetuned and continuation methods with same index
     hatch_dict = {}
     for method in probe_methods:
         hatch_dict[method] = ""  # No hatch for probes
 
-    # Create mappings to match finetuned and continuation methods by model name
-    finetuned_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(finetuned_methods)
-    }
-    continuation_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(continuation_methods)
-    }
-
-    # Assign hatches to finetuned methods
-    for i, method in enumerate(finetuned_methods):
-        hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
-
-    # Assign the same hatch to continuation methods with matching model names when possible
-    for method in continuation_methods:
-        model_name = method.split("_")[1]
-        # Try to find matching finetuned to use same pattern, or fall back to index-based assignment
-        if model_name in finetuned_name_to_index:
-            finetuned_index = finetuned_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[finetuned_index % len(hatch_patterns)]
+    # Assign hatches based on model size
+    for method in finetuned_methods + continuation_methods:
+        model_size = extract_model_size(method)
+        if model_size <= 1:
+            hatch_dict[method] = "-"  # Horizontal lines for 1B models
+        elif 1 < model_size <= 15:
+            hatch_dict[method] = "/"  # Forward slash for 7-15B models
         else:
-            # Fallback if no matching finetuned exists
-            i = continuation_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
+            hatch_dict[method] = "x"  # X pattern for larger models
 
     # Calculate mean performance across all datasets for each method
     mean_performances = {}
@@ -285,14 +268,6 @@ def plot_results(plot_df: pd.DataFrame) -> None:
             # Use model size to determine hatch density for finetuned models
             model_size = extract_model_size(method_label)
 
-            # Assign hatch patterns based on model size
-            if model_size <= 1:
-                hatch_pattern = "/"  # Forward slash for small models
-            elif model_size <= 10:
-                hatch_pattern = "\\"  # Backslash for medium models
-            else:
-                hatch_pattern = "x"  # Combined slashes for large models
-
         elif method.startswith("continuation_"):
             method_label = method[13:]  # Remove 'continuation_' prefix
             method_type = "continuation"
@@ -300,22 +275,12 @@ def plot_results(plot_df: pd.DataFrame) -> None:
             # Use model size to determine hatch density for continuation models
             model_size = extract_model_size(method_label)
 
-            # Assign hatch patterns based on model size
-            if model_size <= 10:
-                hatch_pattern = "."  # Sparse dots for small models
-            elif model_size <= 30:
-                hatch_pattern = "o"
-            else:
-                hatch_pattern = "O"
-
         elif method.startswith("probe_"):
             method_label = method[6:]  # Remove 'probe_' prefix
             method_type = "probe"
-            hatch_pattern = ""  # No hatch for probes
         else:
             method_label = method
             method_type = "other"
-            hatch_pattern = ""
 
         ax.bar(
             position,
@@ -324,7 +289,7 @@ def plot_results(plot_df: pd.DataFrame) -> None:
             # Store method type in the label for later parsing
             label=f"{method_type}:{method_label}",
             color=color_dict.get(method),
-            hatch=hatch_pattern,  # Use the density-based hatch pattern
+            hatch=hatch_dict.get(method),
             alpha=0.8,
             yerr=yerr_list if np.any(mask) else None,
             capsize=5,
