@@ -208,11 +208,11 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     for method in finetuned_methods + continuation_methods:
         model_size = extract_model_size(method)
         if model_size <= 1:
-            hatch_dict[method] = "-"  # Horizontal lines for 1B models
+            hatch_dict[method] = "/"
         elif 1 < model_size <= 15:
-            hatch_dict[method] = "/"  # Forward slash for 7-15B models
+            hatch_dict[method] = "x"
         else:
-            hatch_dict[method] = "x"  # X pattern for larger models
+            hatch_dict[method] = "-"
 
     # Calculate mean performance across all datasets for each method
     mean_performances = {}
@@ -224,15 +224,49 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     all_datasets = np.array(["Mean"] + list(datasets))
 
     # Set up bar positions
-    bar_width = 0.8 / len(methods)  # Adjust bar width based on number of methods
     x = np.arange(len(all_datasets))
+
+    # Calculate the number of methods in each category
+    n_probe_methods = len(probe_methods)
+    n_finetuned_methods = len(finetuned_methods)
+
+    # Calculate total width needed for each category including gaps
+    total_width = 0.8  # Total width available for all bars
+    gap_size = 0.03  # Reduced gap size between categories in bar width units
+    bar_width = (total_width - 2 * gap_size) / len(
+        methods
+    )  # Adjust bar width based on number of methods
+
+    # Calculate widths for each category
+    probe_width = (total_width - 2 * gap_size) * (n_probe_methods / len(methods))
+    finetuned_width = (total_width - 2 * gap_size) * (
+        n_finetuned_methods / len(methods)
+    )
 
     # Plot bars for each method
     for i, method in enumerate(methods):
         method_data = plot_df[plot_df["method"] == method]
 
-        # Position adjustment to center the bar groups
-        position = x + bar_width * (i - len(methods) / 2 + 0.5)
+        # Calculate position based on method type
+        if method.startswith("probe_"):
+            # Position within probe section
+            idx = probe_methods.index(method)
+            position = x - total_width / 2 + idx * bar_width
+        elif method.startswith("baseline_"):
+            # Position within finetuned section
+            idx = finetuned_methods.index(method)
+            position = x - total_width / 2 + probe_width + gap_size + idx * bar_width
+        else:  # continuation methods
+            # Position within continuation section
+            idx = continuation_methods.index(method)
+            position = (
+                x
+                - total_width / 2
+                + probe_width
+                + finetuned_width
+                + 2 * gap_size
+                + idx * bar_width
+            )
 
         # Create arrays aligned with all datasets (including Mean)
         values = np.zeros(len(all_datasets), dtype=float)
@@ -264,17 +298,9 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         if method.startswith("baseline_"):
             method_label = method[9:]  # Remove 'baseline_' prefix
             method_type = "finetuned"
-
-            # Use model size to determine hatch density for finetuned models
-            model_size = extract_model_size(method_label)
-
         elif method.startswith("continuation_"):
             method_label = method[13:]  # Remove 'continuation_' prefix
             method_type = "continuation"
-
-            # Use model size to determine hatch density for continuation models
-            model_size = extract_model_size(method_label)
-
         elif method.startswith("probe_"):
             method_label = method[6:]  # Remove 'probe_' prefix
             method_type = "probe"
