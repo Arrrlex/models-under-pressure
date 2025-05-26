@@ -7,6 +7,7 @@ import seaborn as sns
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import RESULTS_DIR
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.figures.utils import (
     get_baseline_results,
     get_continuation_results,
@@ -97,30 +98,74 @@ def prepare_data(
     return df_combined_results
 
 
-def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_metric(
+    group: pd.DataFrame, metric: str = "auroc", fpr: float = 0.01
+) -> float:
+    """Calculate the specified metric for a group of data.
+
+    Args:
+        group: DataFrame containing the data
+        metric: Metric to calculate, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
+
+    Returns:
+        The calculated metric value
+    """
+    y_true = group["ground_truth_labels"].to_numpy()
+    y_pred = group["scores"].to_numpy()
+
+    metrics = calculate_metrics(np.array(y_true), np.array(y_pred), fpr=fpr)
+
+    if metric == "auroc":
+        return metrics["auroc"]
+    elif metric == "tpr_at_fpr":
+        return metrics["tpr_at_fpr"]
+    else:
+        raise ValueError(f"Unsupported metric: {metric}")
+
+
+def create_plot_dataframe(
+    df: pd.DataFrame, metric: str = "auroc", fpr: float = 0.01
+) -> pd.DataFrame:
     """
     Create the dataframe that will eventually be used to create the plot.
 
+    Args:
+        df: Input DataFrame containing the data
+        metric: Metric to calculate, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
     """
+    # Filter out MTS dataset for TPR at FPR metric
+    if metric == "tpr_at_fpr":
+        df = df[df["dataset_name"] != "MTS"]
 
-    # Calculate the AUROC of a aggregated pandas group
-    def calc_auroc(group: pd.DataFrame) -> float:
-        return float(roc_auc_score(group["ground_truth_labels"], group["scores"]))
-
+    # First calculate the metric for each dataset, method, and load_id
     grp = (
         df.groupby(["dataset_name", "method", "load_id"])
-        .apply(lambda x: float(roc_auc_score(x["ground_truth_labels"], x["scores"])))
+        .apply(lambda x: calculate_metric(x, metric, fpr))
         .reset_index()
-        .rename(columns={0: "auroc"})
+        .rename(columns={0: metric})
     )
 
-    # Now group by the dataset_name and method and calculate the mean auroc and std of the auroc column:
-    plot_df = grp.groupby(["dataset_name", "method"]).agg(
-        auroc=("auroc", "mean"),
-        auroc_std=("auroc", "std"),
+    # Calculate mean and std across load_ids for each dataset and method
+    plot_df = (
+        grp.groupby(["dataset_name", "method"])
+        .agg(
+            metric_mean=(metric, "mean"),
+            metric_std=(metric, "std"),
+        )
+        .reset_index()
     )
 
-    return plot_df.reset_index()
+    # Calculate mean across datasets for each method
+    method_means = plot_df.groupby("method")["metric_mean"].mean().reset_index()
+    method_means["dataset_name"] = "Mean"
+    method_means["metric_std"] = 0  # No std for mean across datasets
+
+    # Combine the dataset-specific results with the method means
+    plot_df = pd.concat([method_means, plot_df], ignore_index=True)
+
+    return plot_df
 
 
 # Global variable for method name mapping
@@ -136,7 +181,13 @@ METHOD_NAME_MAPPING = {
 }
 
 
-def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
+def plot_results(
+    plot_df: pd.DataFrame,
+    metric: str = "auroc",
+    fpr: float = 0.01,
+    fontsize: int = 13,
+    show_legend: bool = True,
+) -> None:
     """
     Plot the results as a grouped bar chart with error bars where available.
     Probe methods are plotted first with distinct colors.
@@ -144,7 +195,10 @@ def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
 
     Args:
         plot_df: DataFrame containing the plot data
+        metric: Metric to plot, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
         fontsize: Font size for the plot elements (default: 13)
+        show_legend: Whether to display the legend (default: True)
     """
     # Set the style
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -245,10 +299,12 @@ def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
     mean_performances = {}
     for method in methods:
         method_data = plot_df[plot_df["method"] == method]
-        mean_performances[method] = method_data["auroc"].mean()
+        mean_performances[method] = method_data[method_data["dataset_name"] == "Mean"][
+            "metric_mean"
+        ].iloc[0]
 
     # Add "Mean" as the first position
-    all_datasets = np.array(["Mean"] + list(datasets))
+    all_datasets = np.array(["Mean"] + list(datasets[datasets != "Mean"]))
 
     # Set up bar positions
     x = np.arange(len(all_datasets))
@@ -305,11 +361,11 @@ def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
         values[0] = mean_performances[method]
 
         # Fill in the values where we have data (starting from position 1)
-        for idx, dataset in enumerate(datasets):
+        for idx, dataset in enumerate(datasets[datasets != "Mean"]):
             dataset_data = method_data[method_data["dataset_name"] == dataset]
             if not dataset_data.empty:
-                values[idx + 1] = dataset_data["auroc"].iloc[0]
-                errors[idx + 1] = dataset_data["auroc_std"].iloc[0]
+                values[idx + 1] = dataset_data["metric_mean"].iloc[0]
+                errors[idx + 1] = dataset_data["metric_std"].iloc[0]
 
         # Only use error bars where std is not NaN and not 0
         mask = (~np.isnan(errors)) & (errors > 0)
@@ -357,20 +413,23 @@ def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
     ax.set_xticks(x)
 
     # Create bold "Mean" and regular dataset labels
-    ticklabels = [r"$\mathbf{Mean}$"] + list(datasets)
+    ticklabels = [r"$\mathbf{Mean}$"] + list(datasets[datasets != "Mean"])
     ax.set_xticklabels(
         ticklabels, ha="center", fontsize=fontsize
     )  # Added fontsize for x-tick labels
 
     # Add a dotted vertical line to separate Mean from individual datasets
-    ax.axvline(x=0.5, color="gray", linestyle=":", alpha=0.7, linewidth=1.5)
+    ax.axvline(x=0.45, color="black", linestyle="--", alpha=0.6, linewidth=2.0)
 
     # Add y-tick labels with fontsize
     ax.tick_params(axis="y", labelsize=fontsize)
 
     # Add labels, title and legend
     ax.set_xlabel("Dataset", fontsize=fontsize)
-    ax.set_ylabel("AUROC", fontsize=fontsize)
+    if metric == "auroc":
+        ax.set_ylabel("AUROC", fontsize=fontsize)
+    else:
+        ax.set_ylabel(f"TPR at {int(fpr * 100)}% FPR", fontsize=fontsize)
 
     # Add a legend with appropriate grouping by method type
     handles, labels = ax.get_legend_handles_labels()
@@ -495,42 +554,48 @@ def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
 
     # No need to add fillers for the last category
 
-    # Create the legend with the sequential structure
-    legend = ax.legend(
-        legend_handles,
-        legend_labels,
-        ncol=3,  # Three columns
-        loc="lower left",
-        frameon=True,
-        facecolor="white",
-        edgecolor="black",
-        fontsize=fontsize,
-        columnspacing=1.0,
-        handletextpad=0.5,
-        handlelength=1.5,
-        borderpad=0.7,
-        shadow=True,
-    )
+    if show_legend:
+        # Create the legend with the sequential structure
+        legend = ax.legend(
+            legend_handles,
+            legend_labels,
+            ncol=3,  # Three columns
+            loc="lower left",
+            frameon=True,
+            facecolor="white",
+            edgecolor="black",
+            fontsize=fontsize,
+            columnspacing=1.0,
+            handletextpad=0.5,
+            handlelength=1.5,
+            borderpad=0.7,
+            shadow=True,
+        )
 
-    # Apply bold formatting only to titles using the tracked indices
-    legend_texts = legend.get_texts()
-    for i in title_indices:
-        if i < len(legend_texts):
-            legend_texts[i].set_fontweight("bold")
-            legend_texts[i].set_fontsize(fontsize)
+        # Apply bold formatting only to titles using the tracked indices
+        legend_texts = legend.get_texts()
+        for i in title_indices:
+            if i < len(legend_texts):
+                legend_texts[i].set_fontweight("bold")
+                legend_texts[i].set_fontsize(fontsize)
 
     # Add grid lines
     ax.grid(True, linestyle="--", alpha=0.7)
 
-    # Set y-axis limits
-    ax.set_ylim(0.55, 1.0)
+    # Set y-axis limits based on metric
+    if metric == "auroc":
+        ax.set_ylim(0.55, 1.0)
+    else:  # tpr_at_fpr
+        ax.set_ylim(0.0, 1.0)
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
 
     # Save the plot
     plt.savefig(
-        RESULTS_DIR / "probes_vs_baseline_plot.png", bbox_inches="tight", dpi=300
+        # RESULTS_DIR / "probes_vs_baseline_plot.png", bbox_inches="tight", dpi=300
+        RESULTS_DIR / f"probes_vs_baseline_plot_{metric}.pdf",
+        bbox_inches="tight",
     )
     plt.close()
 
@@ -570,7 +635,9 @@ if __name__ == "__main__":
         continuation_paths=continuation_paths,
     )
 
-    df_plot = create_plot_dataframe(df_combined)
-
-    # Calculate AUROC for each dataset
-    plot_results(df_plot, fontsize=18)
+    # Calculate metrics for each dataset
+    metric = "tpr_at_fpr"  # or "auroc"
+    # metric = "auroc"
+    fpr = 0.01
+    df_plot = create_plot_dataframe(df_combined, metric=metric, fpr=fpr)
+    plot_results(df_plot, metric=metric, fpr=fpr, fontsize=18, show_legend=False)
