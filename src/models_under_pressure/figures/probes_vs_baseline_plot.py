@@ -7,6 +7,7 @@ import seaborn as sns
 from sklearn.metrics import roc_auc_score
 
 from models_under_pressure.config import RESULTS_DIR
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.figures.utils import (
     get_baseline_results,
     get_continuation_results,
@@ -97,42 +98,117 @@ def prepare_data(
     return df_combined_results
 
 
-def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def calculate_metric(
+    group: pd.DataFrame, metric: str = "auroc", fpr: float = 0.01
+) -> float:
+    """Calculate the specified metric for a group of data.
+
+    Args:
+        group: DataFrame containing the data
+        metric: Metric to calculate, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
+
+    Returns:
+        The calculated metric value
+    """
+    y_true = group["ground_truth_labels"].to_numpy()
+    y_pred = group["scores"].to_numpy()
+
+    metrics = calculate_metrics(np.array(y_true), np.array(y_pred), fpr=fpr)
+
+    if metric == "auroc":
+        return metrics["auroc"]
+    elif metric == "tpr_at_fpr":
+        return metrics["tpr_at_fpr"]
+    else:
+        raise ValueError(f"Unsupported metric: {metric}")
+
+
+def create_plot_dataframe(
+    df: pd.DataFrame, metric: str = "auroc", fpr: float = 0.01
+) -> pd.DataFrame:
     """
     Create the dataframe that will eventually be used to create the plot.
 
+    Args:
+        df: Input DataFrame containing the data
+        metric: Metric to calculate, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
     """
+    # Filter out MTS dataset for TPR at FPR metric
+    # if metric == "tpr_at_fpr":
+    #    df = df[df["dataset_name"] != "MTS"]
 
-    # Calculate the AUROC of a aggregated pandas group
-    def calc_auroc(group: pd.DataFrame) -> float:
-        return float(roc_auc_score(group["ground_truth_labels"], group["scores"]))
-
+    # First calculate the metric for each dataset, method, and load_id
     grp = (
         df.groupby(["dataset_name", "method", "load_id"])
-        .apply(lambda x: float(roc_auc_score(x["ground_truth_labels"], x["scores"])))
+        .apply(lambda x: calculate_metric(x, metric, fpr))
         .reset_index()
-        .rename(columns={0: "auroc"})
+        .rename(columns={0: metric})
     )
 
-    # Now group by the dataset_name and method and calculate the mean auroc and std of the auroc column:
-    plot_df = grp.groupby(["dataset_name", "method"]).agg(
-        auroc=("auroc", "mean"),
-        auroc_std=("auroc", "std"),
+    # Calculate mean and std across load_ids for each dataset and method
+    plot_df = (
+        grp.groupby(["dataset_name", "method"])
+        .agg(
+            metric_mean=(metric, "mean"),
+            metric_std=(metric, "std"),
+        )
+        .reset_index()
     )
 
-    return plot_df.reset_index()
+    # Calculate mean across datasets for each method
+    method_means = plot_df.groupby("method")["metric_mean"].mean().reset_index()
+    method_means["dataset_name"] = "Mean"
+    method_means["metric_std"] = 0  # No std for mean across datasets
+
+    # For TPR at FPR, filter out MTS from the plot but keep it in the mean
+    if metric == "tpr_at_fpr":
+        plot_df = plot_df[plot_df["dataset_name"] != "MTS"]
+
+    # Combine the dataset-specific results with the method means
+    plot_df = pd.concat([method_means, plot_df], ignore_index=True)
+
+    return plot_df
 
 
-def plot_results(plot_df: pd.DataFrame) -> None:
+# Global variable for method name mapping
+METHOD_NAME_MAPPING = {
+    "attention": "Attention",
+    "linear_then_softmax": "Softmax",
+    "gemma-3-1b-it": "Gemma 3 1B",
+    "gemma-3-12b-it": "Gemma 3 12B",
+    "gemma-3-27b-it": "Gemma 3 27B",
+    "Llama-3.2-1B-Instruct": "Llama 3.2 1B",
+    "Llama-3.1-8B-Instruct": "Llama 3.1 8B",
+    "Llama-3.3-70B-Instruct": "Llama 3.3 70B",
+}
+
+
+def plot_results(
+    plot_df: pd.DataFrame,
+    metric: str = "auroc",
+    fpr: float = 0.01,
+    fontsize: int = 13,
+    show_legend: bool = True,
+) -> None:
     """
     Plot the results as a grouped bar chart with error bars where available.
     Probe methods are plotted first with distinct colors.
     Finetuned and continuation methods share colors but have different patterns.
-    """
 
+    Args:
+        plot_df: DataFrame containing the plot data
+        metric: Metric to plot, either "auroc" or "tpr_at_fpr"
+        fpr: False positive rate threshold for TPR calculation (default: 0.01)
+        fontsize: Font size for the plot elements (default: 13)
+        show_legend: Whether to display the legend (default: True)
+    """
     # Set the style
     plt.style.use("seaborn-v0_8-whitegrid")
-    sns.set_context("paper", font_scale=1.5)
+    sns.set_context(
+        "paper", font_scale=fontsize / 10
+    )  # Adjust font_scale based on fontsize
 
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(15, 8))
@@ -168,75 +244,116 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         [m for m in all_methods if m.startswith("continuation_")]
     )
 
+    # Sort finetuned and continuation methods by model name and size
+    finetuned_methods = sorted(
+        finetuned_methods, key=lambda x: (extract_model_name(x), extract_model_size(x))
+    )
+    continuation_methods = sorted(
+        continuation_methods,
+        key=lambda x: (extract_model_name(x), extract_model_size(x)),
+    )
+
     # Order methods with probes first, then finetuned, then continuations
     methods = probe_methods + finetuned_methods + continuation_methods
 
     # Define distinct colors for different method types
     # Use predefined colors for simplicity
     probe_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
-    finetuned_color = "brown"  # Brown for all finetuned methods
-    continuation_color = "green"  # Green for all continuation methods
+
+    # Define colors for model families and types
+    finetuned_llama_color = "#008000"
+    finetuned_gemma_color = "#32CD32"
+    continuation_llama_color = "#008080"
+    continuation_gemma_color = "#00CED1"
 
     # Create a color dictionary
     color_dict = {}
     for i, method in enumerate(probe_methods):
         color_dict[method] = probe_colors[i % len(probe_colors)]
-    for method in finetuned_methods:
-        color_dict[method] = finetuned_color
-    for method in continuation_methods:
-        color_dict[method] = continuation_color
 
-    # Define hatch patterns with variations for different methods
-    hatch_patterns = ["/", "\\", "x", "+", "*", "o", "O", ".", "|", "-"]
+    # Assign colors based on model family and type
+    for method in finetuned_methods:
+        if "llama" in method.lower():
+            color_dict[method] = finetuned_llama_color
+        elif "gemma" in method.lower():
+            color_dict[method] = finetuned_gemma_color
+
+    for method in continuation_methods:
+        if "llama" in method.lower():
+            color_dict[method] = continuation_llama_color
+        elif "gemma" in method.lower():
+            color_dict[method] = continuation_gemma_color
 
     # Define hatch patterns - using the same patterns for finetuned and continuation methods with same index
     hatch_dict = {}
     for method in probe_methods:
         hatch_dict[method] = ""  # No hatch for probes
 
-    # Create mappings to match finetuned and continuation methods by model name
-    finetuned_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(finetuned_methods)
-    }
-    continuation_name_to_index = {
-        method.split("_")[1]: i for i, method in enumerate(continuation_methods)
-    }
-
-    # Assign hatches to finetuned methods
-    for i, method in enumerate(finetuned_methods):
-        hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
-
-    # Assign the same hatch to continuation methods with matching model names when possible
-    for method in continuation_methods:
-        model_name = method.split("_")[1]
-        # Try to find matching finetuned to use same pattern, or fall back to index-based assignment
-        if model_name in finetuned_name_to_index:
-            finetuned_index = finetuned_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[finetuned_index % len(hatch_patterns)]
+    # Assign hatches based on model size
+    for method in finetuned_methods + continuation_methods:
+        model_size = extract_model_size(method)
+        if model_size <= 1:
+            hatch_dict[method] = "/"
+        elif 1 < model_size <= 15:
+            hatch_dict[method] = "x"
         else:
-            # Fallback if no matching finetuned exists
-            i = continuation_name_to_index[model_name]
-            hatch_dict[method] = hatch_patterns[i % len(hatch_patterns)]
+            hatch_dict[method] = "-"
 
     # Calculate mean performance across all datasets for each method
     mean_performances = {}
     for method in methods:
         method_data = plot_df[plot_df["method"] == method]
-        mean_performances[method] = method_data["auroc"].mean()
+        mean_performances[method] = method_data[method_data["dataset_name"] == "Mean"][
+            "metric_mean"
+        ].iloc[0]
 
     # Add "Mean" as the first position
-    all_datasets = np.array(["Mean"] + list(datasets))
+    all_datasets = np.array(["Mean"] + list(datasets[datasets != "Mean"]))
 
     # Set up bar positions
-    bar_width = 0.8 / len(methods)  # Adjust bar width based on number of methods
     x = np.arange(len(all_datasets))
+
+    # Calculate the number of methods in each category
+    n_probe_methods = len(probe_methods)
+    n_finetuned_methods = len(finetuned_methods)
+
+    # Calculate total width needed for each category including gaps
+    total_width = 0.8  # Total width available for all bars
+    gap_size = 0.03  # Reduced gap size between categories in bar width units
+    bar_width = (total_width - 2 * gap_size) / len(
+        methods
+    )  # Adjust bar width based on number of methods
+
+    # Calculate widths for each category
+    probe_width = (total_width - 2 * gap_size) * (n_probe_methods / len(methods))
+    finetuned_width = (total_width - 2 * gap_size) * (
+        n_finetuned_methods / len(methods)
+    )
 
     # Plot bars for each method
     for i, method in enumerate(methods):
         method_data = plot_df[plot_df["method"] == method]
 
-        # Position adjustment to center the bar groups
-        position = x + bar_width * (i - len(methods) / 2 + 0.5)
+        # Calculate position based on method type
+        if method.startswith("probe_"):
+            # Position within probe section
+            idx = probe_methods.index(method)
+            position = x - total_width / 2 + idx * bar_width
+        elif method.startswith("baseline_"):
+            # Position within finetuned section
+            idx = finetuned_methods.index(method)
+            position = x - total_width / 2 + probe_width + gap_size + idx * bar_width
+        else:  # continuation methods
+            # Position within continuation section
+            idx = continuation_methods.index(method)
+            position = (
+                x
+                - total_width / 2
+                + probe_width
+                + finetuned_width
+                + 2 * gap_size
+                + idx * bar_width
+            )
 
         # Create arrays aligned with all datasets (including Mean)
         values = np.zeros(len(all_datasets), dtype=float)
@@ -248,11 +365,11 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         values[0] = mean_performances[method]
 
         # Fill in the values where we have data (starting from position 1)
-        for idx, dataset in enumerate(datasets):
+        for idx, dataset in enumerate(datasets[datasets != "Mean"]):
             dataset_data = method_data[method_data["dataset_name"] == dataset]
             if not dataset_data.empty:
-                values[idx + 1] = dataset_data["auroc"].iloc[0]
-                errors[idx + 1] = dataset_data["auroc_std"].iloc[0]
+                values[idx + 1] = dataset_data["metric_mean"].iloc[0]
+                errors[idx + 1] = dataset_data["metric_std"].iloc[0]
 
         # Only use error bars where std is not NaN and not 0
         mask = (~np.isnan(errors)) & (errors > 0)
@@ -268,50 +385,27 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         if method.startswith("baseline_"):
             method_label = method[9:]  # Remove 'baseline_' prefix
             method_type = "finetuned"
-
-            # Use model size to determine hatch density for finetuned models
-            model_size = extract_model_size(method_label)
-
-            # Assign hatch patterns based on model size
-            if model_size <= 1:
-                hatch_pattern = "/"  # Forward slash for small models
-            elif model_size <= 10:
-                hatch_pattern = "\\"  # Backslash for medium models
-            else:
-                hatch_pattern = "x"  # Combined slashes for large models
-
         elif method.startswith("continuation_"):
             method_label = method[13:]  # Remove 'continuation_' prefix
             method_type = "continuation"
-
-            # Use model size to determine hatch density for continuation models
-            model_size = extract_model_size(method_label)
-
-            # Assign hatch patterns based on model size
-            if model_size <= 10:
-                hatch_pattern = "."  # Sparse dots for small models
-            elif model_size <= 30:
-                hatch_pattern = ".."  # Medium density dots for medium models
-            else:
-                hatch_pattern = "..."  # Dense dots for large models
-
         elif method.startswith("probe_"):
             method_label = method[6:]  # Remove 'probe_' prefix
             method_type = "probe"
-            hatch_pattern = ""  # No hatch for probes
         else:
             method_label = method
             method_type = "other"
-            hatch_pattern = ""
+
+        # Use the mapping for the label if available, otherwise use the original label
+        display_label = METHOD_NAME_MAPPING.get(method_label, method_label)
 
         ax.bar(
             position,
             values_list,
             width=bar_width,
             # Store method type in the label for later parsing
-            label=f"{method_type}:{method_label}",
+            label=f"{method_type}:{display_label}",
             color=color_dict.get(method),
-            hatch=hatch_pattern,  # Use the density-based hatch pattern
+            hatch=hatch_dict.get(method),
             alpha=0.8,
             yerr=yerr_list if np.any(mask) else None,
             capsize=5,
@@ -323,15 +417,23 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     ax.set_xticks(x)
 
     # Create bold "Mean" and regular dataset labels
-    ticklabels = [r"$\mathbf{Mean}$"] + list(datasets)
-    ax.set_xticklabels(ticklabels, rotation=45, ha="right")
+    ticklabels = [r"$\mathbf{Mean}$"] + list(datasets[datasets != "Mean"])
+    ax.set_xticklabels(
+        ticklabels, ha="center", fontsize=fontsize
+    )  # Added fontsize for x-tick labels
 
     # Add a dotted vertical line to separate Mean from individual datasets
-    ax.axvline(x=0.5, color="gray", linestyle=":", alpha=0.7, linewidth=1.5)
+    ax.axvline(x=0.45, color="black", linestyle="--", alpha=0.6, linewidth=2.0)
+
+    # Add y-tick labels with fontsize
+    ax.tick_params(axis="y", labelsize=fontsize)
 
     # Add labels, title and legend
-    ax.set_xlabel("Dataset")
-    ax.set_ylabel("AUROC")
+    ax.set_xlabel("Dataset", fontsize=fontsize)
+    if metric == "auroc":
+        ax.set_ylabel("AUROC", fontsize=fontsize)
+    else:
+        ax.set_ylabel(f"TPR at {int(fpr * 100)}% FPR", fontsize=fontsize)
 
     # Add a legend with appropriate grouping by method type
     handles, labels = ax.get_legend_handles_labels()
@@ -456,83 +558,90 @@ def plot_results(plot_df: pd.DataFrame) -> None:
 
     # No need to add fillers for the last category
 
-    # Create the legend with the sequential structure
-    legend = ax.legend(
-        legend_handles,
-        legend_labels,
-        ncol=3,  # Three columns
-        loc="lower left",
-        # bbox_to_anchor=(0.5, -0.15),
-        frameon=True,
-        facecolor="white",
-        edgecolor="black",
-        fontsize=13,  # Increased from 9 to 11
-        columnspacing=1.0,
-        handletextpad=0.5,
-        handlelength=1.5,
-        borderpad=0.7,
-        shadow=True,
-    )
+    if show_legend:
+        # Create the legend with the sequential structure
+        legend = ax.legend(
+            legend_handles,
+            legend_labels,
+            ncol=3,  # Three columns
+            loc="lower left",
+            frameon=True,
+            facecolor="white",
+            edgecolor="black",
+            fontsize=fontsize,
+            columnspacing=1.0,
+            handletextpad=0.5,
+            handlelength=1.5,
+            borderpad=0.7,
+            shadow=True,
+        )
 
-    # Apply bold formatting only to titles using the tracked indices
-    legend_texts = legend.get_texts()
-    for i in title_indices:
-        if i < len(legend_texts):
-            legend_texts[i].set_fontweight("bold")
-            legend_texts[i].set_fontsize(13)  # Increased from 10 to 13 for titles
+        # Apply bold formatting only to titles using the tracked indices
+        legend_texts = legend.get_texts()
+        for i in title_indices:
+            if i < len(legend_texts):
+                legend_texts[i].set_fontweight("bold")
+                legend_texts[i].set_fontsize(fontsize)
 
     # Add grid lines
     ax.grid(True, linestyle="--", alpha=0.7)
 
-    # Set y-axis limits
-    ax.set_ylim(0.55, 1.0)
+    # Set y-axis limits based on metric
+    if metric == "auroc":
+        ax.set_ylim(0.55, 1.0)
+    else:  # tpr_at_fpr
+        ax.set_ylim(0.0, 1.0)
 
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
 
     # Save the plot
     plt.savefig(
-        RESULTS_DIR / "probes_vs_baseline_plot.png", bbox_inches="tight", dpi=300
+        # RESULTS_DIR / "probes_vs_baseline_plot.png", bbox_inches="tight", dpi=300
+        RESULTS_DIR / f"probes_vs_baseline_plot_{metric}.pdf",
+        bbox_inches="tight",
     )
     plt.close()
 
 
 if __name__ == "__main__":
     probe_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_3.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_1.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_2.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_3.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_1.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_2.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_3.jsonl",
     ]
 
     finetune_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama-8b_test.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_4.jsonl",
     ]
 
     continuation_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-8b_default.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-12b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-27b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-70b.jsonl",
     ]
 
     df_combined = prepare_data(
-        probe_paths=[Path(probe_path) for probe_path in probe_paths],
-        baseline_paths=[Path(baseline_path) for baseline_path in finetune_paths],
-        continuation_paths=[Path(contin_path) for contin_path in continuation_paths],
+        probe_paths=probe_paths,
+        baseline_paths=finetune_paths,
+        continuation_paths=continuation_paths,
     )
 
-    df_plot = create_plot_dataframe(df_combined)
-
-    # Calculate AUROC for each dataset
-    plot_results(df_plot)
+    # Calculate metrics for each dataset
+    metric = "tpr_at_fpr"  # or "auroc"
+    # metric = "auroc"
+    fpr = 0.01
+    df_plot = create_plot_dataframe(df_combined, metric=metric, fpr=fpr)
+    plot_results(df_plot, metric=metric, fpr=fpr, fontsize=18, show_legend=False)
