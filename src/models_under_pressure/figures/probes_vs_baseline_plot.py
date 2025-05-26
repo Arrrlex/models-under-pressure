@@ -123,16 +123,34 @@ def create_plot_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return plot_df.reset_index()
 
 
-def plot_results(plot_df: pd.DataFrame) -> None:
+# Global variable for method name mapping
+METHOD_NAME_MAPPING = {
+    "attention": "Attention",
+    "linear_then_softmax": "Softmax",
+    "gemma-3-1b-it": "Gemma 3 1B",
+    "gemma-3-12b-it": "Gemma 3 12B",
+    "gemma-3-27b-it": "Gemma 3 27B",
+    "Llama-3.2-1B-Instruct": "Llama 3.2 1B",
+    "Llama-3.1-8B-Instruct": "Llama 3.1 8B",
+    "Llama-3.3-70B-Instruct": "Llama 3.3 70B",
+}
+
+
+def plot_results(plot_df: pd.DataFrame, fontsize: int = 13) -> None:
     """
     Plot the results as a grouped bar chart with error bars where available.
     Probe methods are plotted first with distinct colors.
     Finetuned and continuation methods share colors but have different patterns.
-    """
 
+    Args:
+        plot_df: DataFrame containing the plot data
+        fontsize: Font size for the plot elements (default: 13)
+    """
     # Set the style
     plt.style.use("seaborn-v0_8-whitegrid")
-    sns.set_context("paper", font_scale=1.5)
+    sns.set_context(
+        "paper", font_scale=fontsize / 10
+    )  # Adjust font_scale based on fontsize
 
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(15, 8))
@@ -317,12 +335,15 @@ def plot_results(plot_df: pd.DataFrame) -> None:
             method_label = method
             method_type = "other"
 
+        # Use the mapping for the label if available, otherwise use the original label
+        display_label = METHOD_NAME_MAPPING.get(method_label, method_label)
+
         ax.bar(
             position,
             values_list,
             width=bar_width,
             # Store method type in the label for later parsing
-            label=f"{method_type}:{method_label}",
+            label=f"{method_type}:{display_label}",
             color=color_dict.get(method),
             hatch=hatch_dict.get(method),
             alpha=0.8,
@@ -337,14 +358,19 @@ def plot_results(plot_df: pd.DataFrame) -> None:
 
     # Create bold "Mean" and regular dataset labels
     ticklabels = [r"$\mathbf{Mean}$"] + list(datasets)
-    ax.set_xticklabels(ticklabels, rotation=45, ha="right")
+    ax.set_xticklabels(
+        ticklabels, ha="center", fontsize=fontsize
+    )  # Added fontsize for x-tick labels
 
     # Add a dotted vertical line to separate Mean from individual datasets
     ax.axvline(x=0.5, color="gray", linestyle=":", alpha=0.7, linewidth=1.5)
 
+    # Add y-tick labels with fontsize
+    ax.tick_params(axis="y", labelsize=fontsize)
+
     # Add labels, title and legend
-    ax.set_xlabel("Dataset")
-    ax.set_ylabel("AUROC")
+    ax.set_xlabel("Dataset", fontsize=fontsize)
+    ax.set_ylabel("AUROC", fontsize=fontsize)
 
     # Add a legend with appropriate grouping by method type
     handles, labels = ax.get_legend_handles_labels()
@@ -475,11 +501,10 @@ def plot_results(plot_df: pd.DataFrame) -> None:
         legend_labels,
         ncol=3,  # Three columns
         loc="lower left",
-        # bbox_to_anchor=(0.5, -0.15),
         frameon=True,
         facecolor="white",
         edgecolor="black",
-        fontsize=13,  # Increased from 9 to 11
+        fontsize=fontsize,
         columnspacing=1.0,
         handletextpad=0.5,
         handlelength=1.5,
@@ -492,7 +517,7 @@ def plot_results(plot_df: pd.DataFrame) -> None:
     for i in title_indices:
         if i < len(legend_texts):
             legend_texts[i].set_fontweight("bold")
-            legend_texts[i].set_fontsize(13)  # Increased from 10 to 13 for titles
+            legend_texts[i].set_fontsize(fontsize)
 
     # Add grid lines
     ax.grid(True, linestyle="--", alpha=0.7)
@@ -548,4 +573,4 @@ if __name__ == "__main__":
     df_plot = create_plot_dataframe(df_combined)
 
     # Calculate AUROC for each dataset
-    plot_results(df_plot)
+    plot_results(df_plot, fontsize=18)
