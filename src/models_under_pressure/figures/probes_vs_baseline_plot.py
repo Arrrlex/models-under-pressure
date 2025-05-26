@@ -136,8 +136,8 @@ def create_plot_dataframe(
         fpr: False positive rate threshold for TPR calculation (default: 0.01)
     """
     # Filter out MTS dataset for TPR at FPR metric
-    if metric == "tpr_at_fpr":
-        df = df[df["dataset_name"] != "MTS"]
+    # if metric == "tpr_at_fpr":
+    #    df = df[df["dataset_name"] != "MTS"]
 
     # First calculate the metric for each dataset, method, and load_id
     grp = (
@@ -161,6 +161,10 @@ def create_plot_dataframe(
     method_means = plot_df.groupby("method")["metric_mean"].mean().reset_index()
     method_means["dataset_name"] = "Mean"
     method_means["metric_std"] = 0  # No std for mean across datasets
+
+    # For TPR at FPR, filter out MTS from the plot but keep it in the mean
+    if metric == "tpr_at_fpr":
+        plot_df = plot_df[plot_df["dataset_name"] != "MTS"]
 
     # Combine the dataset-specific results with the method means
     plot_df = pd.concat([method_means, plot_df], ignore_index=True)
