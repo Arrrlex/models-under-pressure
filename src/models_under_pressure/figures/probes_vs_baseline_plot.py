@@ -554,7 +554,7 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     sns.set_context("paper", font_scale=1.5)
 
     # Create figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(20, 8), sharey=False)
+    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(15, 5), sharey=False)
 
     # Define utility functions for model name and size extraction
     def extract_model_name(label: str) -> str:
@@ -646,12 +646,12 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
 
     # Define hatch patterns with variations for different methods and sizes
     hatch_patterns = {
-        "small_1": "/",
-        "small_3": "/",
-        "medium_8": "x",
-        "medium_12": "x",
-        "large_27": "-",
-        "large_70": "-",
+        "small_1": "..",
+        "small_3": "..",
+        "medium_8": "o",
+        "medium_12": "o",
+        "large_27": "O",
+        "large_70": "O",
     }
 
     # Store linewidth information for different model sizes
@@ -686,7 +686,7 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
         elif size <= 3:
             hatch_dict[method] = hatch_patterns["small_3"]
             # linewidth_dict[method] = 1.0
-            # hatchdensity_dict[method] = 6  # Dense small circles
+            hatchdensity_dict[method] = 6  # Dense small circles
         elif size <= 8:
             hatch_dict[method] = hatch_patterns["medium_8"]
             # linewidth_dict[method] = 1.2
@@ -761,11 +761,11 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     for i, method in enumerate(methods):
         # Clean hatch pattern for this method
         hatch_pattern = hatch_dict.get(method, "")
-        if hatch_pattern in ["o", "O"]:
-            # Create a pattern with controlled density
-            hatch_pattern = hatch_pattern * max(
-                1, int(10 / hatchdensity_dict.get(method, 6))
-            )
+        # if hatch_pattern in ["o", "O"]:
+        #    # Create a pattern with controlled density
+        #    hatch_pattern = hatch_pattern * max(
+        #        1, int(10 / hatchdensity_dict.get(method, 6))
+        #    )
 
         # Add error bars if available for this method
         yerr = auroc_errors.get(method, None)
@@ -776,7 +776,7 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
             width=bar_width,
             color=color_dict.get(method),
             hatch=hatch_pattern,
-            alpha=0.8,
+            alpha=0.9,
             edgecolor="black",
             linewidth=linewidth_dict.get(method, 1),
             yerr=yerr,
@@ -802,7 +802,7 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
             width=bar_width,
             color=color_dict.get(method),
             hatch=hatch_pattern,
-            alpha=0.8,
+            alpha=0.9,
             edgecolor="black",
             linewidth=linewidth_dict.get(method, 1),
             yerr=yerr,
