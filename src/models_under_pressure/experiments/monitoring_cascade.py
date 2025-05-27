@@ -318,6 +318,8 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
             show_shaded_regions=cfg.analysis.show_shaded_regions,
             plot_file_ending=cfg.analysis.plot_file_ending,
+            show_probe=cfg.analysis.show_probe,
+            add_legend=cfg.analysis.show_legend,
         )
 
 
@@ -430,7 +432,7 @@ def evaluate_two_step_cascade(
         fraction_of_samples: Fraction of samples to use from first step
         merge_strategy: How to merge scores when both steps have results for the same sample
             Options: "baseline", "mean", "max"
-        selection_strategy: How to select samples for first step
+        selection_strategy: How to select samples for first baseline
             Options: "top", "bottom", "mid"
         remaining_strategy: How to handle remaining samples
             Options: "fixed_X" where X is the fixed score, or "first"
@@ -989,6 +991,7 @@ def plot_cascade_results(
     probe_name: str = "Attention",  # TODO Get from config!
     y_min: float = 0.8,
     plot_file_ending: str = "png",  # Default to png if not specified
+    show_probe: bool = True,  # Whether to show probe and break x-axis
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -1002,6 +1005,7 @@ def plot_cascade_results(
         show_title: Whether to show a title on the plot
         show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
         plot_file_ending: File extension for the output plot (e.g. "png", "pdf", "svg")
+        show_probe: Whether to show probe and break x-axis. If False, only shows the main plot without breaking x-axis.
     """
     import json
     from collections import defaultdict
@@ -1072,10 +1076,14 @@ def plot_cascade_results(
                 }
             )
 
-    # Set up the plot with broken x-axis
-    fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [1, 3]}
-    )
+    # Set up the plot with or without broken x-axis
+    if show_probe:
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [1, 3]}
+        )
+    else:
+        fig, ax2 = plt.subplots(1, 1, figsize=figsize)
+        ax1 = None
     sns.set_style("whitegrid")
 
     # Create color palette based on number of unique baseline models
@@ -1349,15 +1357,25 @@ def plot_cascade_results(
             alpha=0.7,
         )
 
-        # Also plot probe performance as a diamond marker
-        _ = ax1.scatter(
-            [mean_probe_flops],  # Position at average probe FLOPs
-            [mean_probe_auroc],
-            marker="D",  # Diamond marker
-            color=model_colors[probe_name],
-            s=100,  # Larger size for visibility
-            zorder=11,  # Make sure it's on top
-        )
+        # Also plot probe performance as a diamond marker if showing probe
+        if show_probe and ax1 is not None:
+            _ = ax1.scatter(
+                [mean_probe_flops],  # Position at average probe FLOPs
+                [mean_probe_auroc],
+                marker="D",  # Diamond marker
+                color=model_colors[probe_name],
+                s=100,  # Larger size for visibility
+                zorder=11,  # Make sure it's on top
+            )
+
+            if show_shaded_regions:
+                ax1.fill_between(
+                    [1e9, 1e11],  # Use fixed x-axis range for left subfigure
+                    mean_probe_auroc - std_probe_auroc,
+                    mean_probe_auroc + std_probe_auroc,
+                    color=model_colors[probe_name],
+                    alpha=0.1,
+                )
 
         legend_entries.insert(
             0,
@@ -1369,15 +1387,6 @@ def plot_cascade_results(
                 "is_baseline_only": False,
             },
         )
-
-        if show_shaded_regions:
-            ax1.fill_between(
-                [1e9, 1e11],  # Use fixed x-axis range for left subfigure
-                mean_probe_auroc - std_probe_auroc,
-                mean_probe_auroc + std_probe_auroc,
-                color=model_colors[probe_name],
-                alpha=0.1,
-            )
 
     # Create legend with sorted entries - handle differently for line and scatter objects
     handles = []
@@ -1399,46 +1408,56 @@ def plot_cascade_results(
 
     # Customize plot
     ax2.set_xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
-    ax1.set_ylabel("Mean AUROC", fontsize=12)
+    if show_probe and ax1 is not None:
+        ax1.set_ylabel("Mean AUROC", fontsize=12)
+    else:
+        ax2.set_ylabel("Mean AUROC", fontsize=12)
     if show_title:
         title = "Monitoring Performance vs Computation Cost"
         if target_dataset:
             title += f" - {target_dataset}"
         else:
             title += " (Averaged across datasets)"
-        ax1.set_title(title, fontsize=14, pad=20)
-    ax1.grid(True, alpha=0.3)
+        if show_probe and ax1 is not None:
+            ax1.set_title(title, fontsize=14, pad=20)
+        else:
+            ax2.set_title(title, fontsize=14, pad=20)
+    if show_probe and ax1 is not None:
+        ax1.grid(True, alpha=0.3)
     ax2.grid(True, alpha=0.3)
 
     # Set y-axis limits for AUROC plot
-    ax1.set_ylim(y_min, 1.0)
+    if show_probe and ax1 is not None:
+        ax1.set_ylim(y_min, 1.0)
+    ax2.set_ylim(y_min, 1.0)
 
     # Set x-axis to log scale
-    ax1.set_xscale("log")
+    if show_probe and ax1 is not None:
+        ax1.set_xscale("log")
     ax2.set_xscale("log")
 
     # Format x-axis ticks to be more readable
-    ax1.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
+    if show_probe and ax1 is not None:
+        ax1.xaxis.set_major_formatter(
+            FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}")
+        )
     ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
 
-    # Add some padding to the x-axis to make room for the legend
-    xmin, xmax = ax1.get_xlim()
-    # ax1.set_xlim(xmin, xmax * 1.1)
+    # Add break in x-axis if showing probe
+    if show_probe and ax1 is not None:
+        ax1.spines["right"].set_visible(False)
+        ax2.spines["left"].set_visible(False)
+        ax2.yaxis.set_ticks_position("none")
+        ax2.tick_params(labelleft=False)
 
-    # Add break in x-axis
-    ax1.spines["right"].set_visible(False)
-    ax2.spines["left"].set_visible(False)
-    ax2.yaxis.set_ticks_position("none")
-    ax2.tick_params(labelleft=False)
-
-    # Add break marks
-    d = 0.015  # how big to make the diagonal lines in axes coordinates
-    kwargs = dict(transform=ax1.transAxes, color="k", clip_on=False)
-    ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-left diagonal
-    ax1.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
-    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
-    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # top-right diagonal
-    ax2.plot((-d, +d), (-d, +d), **kwargs)  # bottom-right diagonal
+        # Add break marks
+        d = 0.015  # how big to make the diagonal lines in axes coordinates
+        kwargs = dict(transform=ax1.transAxes, color="k", clip_on=False)
+        ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-left diagonal
+        ax1.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+        kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+        ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # top-right diagonal
+        ax2.plot((-d, +d), (-d, +d), **kwargs)  # bottom-right diagonal
 
     # Adjust layout to make room for the legend
     plt.tight_layout(rect=(0, 0, 0.85, 1))  # Leave 15% of the width for the legend

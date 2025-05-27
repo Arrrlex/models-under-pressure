@@ -17,8 +17,10 @@ analysis:
     selection_strategy: "mid"
     merge_strategy: "mean"
     remaining_strategy: "first"
+  show_legend: true
   show_strategy_in_legend: false
   show_shaded_regions: false
+  show_probe: true
 
 # Analysis settings
 analyze_cascade: true  # If true, analyzes cascade results and generates plot
