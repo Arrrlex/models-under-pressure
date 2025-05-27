@@ -536,8 +536,8 @@ def plot_results(
     legend_suffix = "_nolegend"  # Always no legend
     output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.pdf"
     png_output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.png"
-    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
-    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
+    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=600)
+    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=600)
     plt.close()
 
 
@@ -833,8 +833,8 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     # Save the plot
     output_filename = "probes_vs_baseline_combined_metrics.pdf"
     png_output_filename = "probes_vs_baseline_combined_metrics.png"
-    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
-    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
+    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=600)
+    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=600)
     plt.close()
 
 
