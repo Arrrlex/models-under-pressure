@@ -201,7 +201,7 @@ def hsv_to_rgb(h, s, v):
 
 
 def plot_results(
-    plot_df: pd.DataFrame, metric: str = "auroc", show_legend: bool = True
+    plot_df: pd.DataFrame, metric: str = "auroc", show_legend: bool = False
 ) -> None:
     """
     Plot the results as a grouped bar chart with error bars where available.
@@ -252,28 +252,8 @@ def plot_results(
         # Remove MTS dataset for TPR@FPR metric
         datasets = np.array([d for d in datasets if "MTS" not in d])
 
-    # Custom sort function to swap "Aya Redteaming" and "MTS" and keep others in order
-    def custom_dataset_sort(datasets_list):
-        # Convert to list for manipulation
-        datasets_list = list(datasets_list)
-
-        # Find indices of Aya Redteaming and MTS
-        aya_idx = next(
-            (i for i, d in enumerate(datasets_list) if "Aya Redteaming" in d), -1
-        )
-        mts_idx = next((i for i, d in enumerate(datasets_list) if "MTS" in d), -1)
-
-        # If both datasets are found, swap them
-        if aya_idx != -1 and mts_idx != -1:
-            datasets_list[aya_idx], datasets_list[mts_idx] = (
-                datasets_list[mts_idx],
-                datasets_list[aya_idx],
-            )
-
-        return datasets_list
-
-    # Apply custom sort to datasets
-    datasets = np.array(custom_dataset_sort(datasets))
+    # Sort alphabetically for consistency
+    datasets = np.array(sorted(datasets))
 
     all_methods = plot_df["method"].unique()
 
@@ -425,61 +405,35 @@ def plot_results(
             linewidth_dict[method] = 2.0
             hatchdensity_dict[method] = 15  # Very few very large circles
 
-    # Calculate mean performance across all datasets for each method
-    auroc_means = {}
-    tpr_means = {}
-    auroc_errors = {}
-    tpr_errors = {}
-
-    for method in methods:
-        method_data = plot_df[plot_df["method"] == method]
-
-        # Calculate means
-        auroc_means[method] = method_data["auroc"].mean()
-        tpr_means[method] = method_data["tpr_at_fpr"].mean()
-
-        # Get the pre-calculated error values (95% confidence intervals)
-        # These were calculated in create_plot_dataframe function
-        auroc_errors[method] = (
-            method_data["auroc_err"].mean()
-            if not method_data["auroc_err"].isna().all()
-            else None
-        )
-        tpr_errors[method] = (
-            method_data["tpr_at_fpr_err"].mean()
-            if not method_data["tpr_at_fpr_err"].isna().all()
-            else None
-        )
-
     # Set up the bar positions
-    bar_width = 0.7
-    total_methods = len(methods)
-    x_positions = np.arange(total_methods)
+    bar_width = 0.8 / len(methods)  # Width of each bar
+    # group_width = bar_width * len(methods)  # Width of each group of bars
 
-    # Create a combined label for each method
-    method_labels = []
-    method_numbers = []
-    for i, method in enumerate(methods):
-        # Create numeric labels for x-axis
-        method_numbers.append(str(i + 1))
+    # Set up positions for each bar within each dataset group
+    group_positions = np.arange(len(datasets))
 
+    # Create a function to generate method labels
+    def get_method_label(method: str) -> str:
         if method.startswith("baseline_"):
-            method_label = f"Finetune: {method.split('_')[1]}"
+            return f"Finetune: {method.split('_')[1]}"
         elif method.startswith("continuation_"):
-            method_label = f"Continue: {method.split('_')[1]}"
+            return f"Continue: {method.split('_')[1]}"
         elif method.startswith("probe_"):
             if "attention" in method:
-                method_label = "Attention Probe"
+                return "Attention Probe"
             elif "softmax" in method:
-                method_label = "Softmax Probe"
+                return "Softmax Probe"
             else:
-                method_label = f"Probe: {method.split('_')[1]}"
+                return f"Probe: {method.split('_')[1]}"
         else:
-            method_label = method
-        method_labels.append(method_label)
+            return method
 
-    # AUROC bars on the first subplot
+    # Create handles for the legend
+    legend_handles = []
+    legend_labels = []
+
     for i, method in enumerate(methods):
+        label = get_method_label(method)
         # Clean hatch pattern for this method
         hatch_pattern = hatch_dict.get(method, "")
         if hatch_pattern in ["o", "O"]:
@@ -488,47 +442,73 @@ def plot_results(
                 1, int(10 / hatchdensity_dict.get(method, 6))
             )
 
-        # Add error bars if available for this method
-        yerr = auroc_errors.get(method, None)
+        # Create a patch for the legend
+        import matplotlib.patches as mpatches
 
-        ax.bar(
-            x_positions[i],
-            auroc_means[method],
-            width=bar_width,
-            color=color_dict.get(method),
+        patch = mpatches.Rectangle(
+            (0, 0),
+            1,
+            1,
+            fc=color_dict.get(method),
             hatch=hatch_pattern,
             alpha=0.8,
             edgecolor="black",
             linewidth=linewidth_dict.get(method, 0.5),
-            yerr=yerr,
-            capsize=5,
         )
+        legend_handles.append(patch)
+        legend_labels.append(label)
 
-    # TPR@1%FPR bars on the second subplot
-    for i, method in enumerate(methods):
-        # Clean hatch pattern for this method
-        hatch_pattern = hatch_dict.get(method, "")
-        if hatch_pattern in ["o", "O"]:
-            # Create a pattern with controlled density
-            hatch_pattern = hatch_pattern * max(
-                1, int(10 / hatchdensity_dict.get(method, 6))
-            )
+    # For each dataset, plot bars for each method
+    for d, dataset in enumerate(datasets):
+        # Filter data for this dataset
+        dataset_data = plot_df[plot_df["dataset_name"] == dataset]
 
-        # Add error bars if available for this method
-        yerr = tpr_errors.get(method, None)
+        # For each method, plot a bar
+        for i, method in enumerate(methods):
+            # Get data for this method
+            method_data = dataset_data[dataset_data["method"] == method]
 
-        ax.bar(
-            x_positions[i],
-            tpr_means[method],
-            width=bar_width,
-            color=color_dict.get(method),
-            hatch=hatch_pattern,
-            alpha=0.8,
-            edgecolor="black",
-            linewidth=linewidth_dict.get(method, 0.5),
-            yerr=yerr,
-            capsize=5,
-        )
+            if not method_data.empty:
+                # Get metric value and error
+                value = (
+                    method_data[metric].values[0]
+                    if not method_data[metric].isna().all()
+                    else 0
+                )
+                error = (
+                    method_data[f"{metric}_err"].values[0]
+                    if not method_data[f"{metric}_err"].isna().all()
+                    else None
+                )
+
+                # Clean hatch pattern for this method
+                hatch_pattern = hatch_dict.get(method, "")
+                if hatch_pattern in ["o", "O"]:
+                    # Create a pattern with controlled density
+                    hatch_pattern = hatch_pattern * max(
+                        1, int(10 / hatchdensity_dict.get(method, 6))
+                    )
+
+                # Calculate position
+                x_pos = group_positions[d] + (i - len(methods) / 2 + 0.5) * bar_width
+
+                # Plot the bar
+                ax.bar(
+                    x_pos,
+                    value,
+                    width=bar_width,
+                    color=color_dict.get(method),
+                    hatch=hatch_pattern,
+                    alpha=0.8,
+                    edgecolor="black",
+                    linewidth=linewidth_dict.get(method, 0.5),
+                    yerr=error,
+                    capsize=3,
+                )
+
+    # Set up x-axis
+    ax.set_xticks(group_positions)
+    ax.set_xticklabels(datasets, rotation=45, ha="right")
 
     # Add labels, title and legend
     ax.set_xlabel("Dataset")
@@ -537,15 +517,14 @@ def plot_results(
     else:  # metric == "tpr_at_fpr"
         ax.set_ylabel("TPR at 1% FPR")
 
-    # Force show_legend to always be False
-    show_legend = False
+    # Legend is disabled by setting show_legend parameter to False by default
 
     # Add grid lines
     ax.grid(True, linestyle="--", alpha=0.7)
 
     # Set y-axis limits
     if metric == "auroc":
-        ax.set_ylim(0.55, 1.0)
+        ax.set_ylim(0.5, 1.0)
     else:  # metric == "tpr_at_fpr"
         ax.set_ylim(0.0, 1.0)
 
@@ -554,7 +533,7 @@ def plot_results(
     plt.subplots_adjust(top=0.9, wspace=0.3)
 
     # Save the plot
-    legend_suffix = "" if show_legend else "_nolegend"
+    legend_suffix = "_nolegend"  # Always no legend
     output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.pdf"
     png_output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.png"
     plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
@@ -884,16 +863,14 @@ if __name__ == "__main__":
 
     continuation_paths = [
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-1b_v2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-1b.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-1b_prompt_at_end.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
         "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-8b_v2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-8b_v3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-8b_v4.jsonl",
+        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-8b_default.jsonl",
     ]
 
     df_combined = prepare_data(
@@ -905,7 +882,7 @@ if __name__ == "__main__":
     df_plot = create_plot_dataframe(df_combined)
 
     # Plot with AUROC metric
-    plot_results(df_plot, metric="auroc", show_legend=True)
+    plot_results(df_plot, metric="auroc", show_legend=False)
 
     # Plot with TPR at 1% FPR metric
     plot_results(df_plot, metric="tpr_at_fpr", show_legend=False)
