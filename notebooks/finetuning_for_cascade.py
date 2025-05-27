@@ -23,7 +23,7 @@ if __name__ == "__main__":
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
             "weight_decay": 0.01,
-            "scheduler_params": None,
+            "scheduler_params": {"name": "step", "step_size": 2, "gamma": 0.5},
             "class_weights": None,
             "label_smoothing": 0.0,
             "optimizer": "adamw8bit",
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         logger=None,
         num_workers=25,
         Trainer={
-            "max_epochs": 5,  # 20,
+            "max_epochs": 10,  # 20,
             # "accelerator": "gpu",
             "accelerator": "gpu",
             "devices": [0],
@@ -43,8 +43,8 @@ if __name__ == "__main__":
             # "strategy": "fsdp",
             # "gradient_clip_val": 1.0,
             "strategy": "ddp",
-            "default_root_dir": "/home/ubuntu/models-under-pressure/.cache",
-            "accumulate_grad_batches": 4,
+            "default_root_dir": "/home/ubuntu/phil/models-under-pressure/.cache",
+            "accumulate_grad_batches": 128,
         },
     )
 

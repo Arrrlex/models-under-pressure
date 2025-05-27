@@ -424,6 +424,20 @@ class ClassifierModule(pl.LightningModule):
             else:
                 raise ValueError(f"Optimizer {self.optimizer} not supported")
 
+        if self.scheduler_params and self.scheduler_params.get("name") == "step":
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=self.scheduler_params.get("step_size", 5),
+                gamma=self.scheduler_params.get("gamma", 0.1),
+            )
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "epoch",
+                    "frequency": 1,
+                },
+            }
         return optimizer
 
     def predict_step(
