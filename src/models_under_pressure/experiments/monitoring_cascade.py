@@ -315,7 +315,6 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             results_file,
             output_file=output_dir / f"cascade_plot.{cfg.analysis.plot_file_ending}",
             target_dataset=cfg.analysis.target_dataset,
-            show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
             show_shaded_regions=cfg.analysis.show_shaded_regions,
             plot_file_ending=cfg.analysis.plot_file_ending,
@@ -983,7 +982,6 @@ def plot_cascade_results(
     figsize: tuple[int, int] = (9, 4),
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
-    show_difference_from_probe: bool = False,
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
@@ -1000,7 +998,6 @@ def plot_cascade_results(
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
-        show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
         show_title: Whether to show a title on the plot
         show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
@@ -1038,11 +1035,6 @@ def plot_cascade_results(
             probe_aurocs[dataset].append(result["auroc"])
             probe_flops[dataset].append(result["avg_flops_per_sample"])
 
-    # Calculate mean probe AUROC for each dataset
-    mean_probe_aurocs = {
-        dataset: float(np.mean(aurocs)) for dataset, aurocs in probe_aurocs.items()
-    }
-
     # Second pass: process cascade results
     for result in results:
         if result["cascade_type"] == "probe":
@@ -1069,14 +1061,9 @@ def plot_cascade_results(
             # Group by fraction_of_samples
             fraction = result["fraction_of_samples"]
             dataset = result.get("dataset_name", "default")
-            probe_auroc = mean_probe_aurocs.get(dataset, 0.0)
 
-            # Calculate AUROC value based on show_difference_from_probe flag
-            auroc_value = (
-                result["auroc"] - probe_auroc
-                if show_difference_from_probe
-                else result["auroc"]
-            )
+            # Calculate AUROC value
+            auroc_value = result["auroc"]
 
             grouped_results[key][fraction].append(
                 {
@@ -1341,22 +1328,7 @@ def plot_cascade_results(
     legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
 
     # Plot probe performance line after all other data
-    if show_difference_from_probe:
-        # For difference plot, show zero line as probe performance
-        probe_line = ax2.axhline(
-            y=0, color="gray", linestyle="--", label="Probe", alpha=0.5
-        )
-        legend_entries.insert(
-            0,
-            {
-                "line": probe_line,
-                "label": "Probe",
-                "model_size": -1,  # Put probe first
-                "cascade_type": -1,
-                "is_baseline_only": False,
-            },
-        )
-    elif probe_aurocs:
+    if probe_aurocs:
         # For absolute plot, show actual probe performance
         mean_probe_auroc = float(
             np.mean([auroc for aurocs in probe_aurocs.values() for auroc in aurocs])
@@ -1427,10 +1399,7 @@ def plot_cascade_results(
 
     # Customize plot
     ax2.set_xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
-    ax1.set_ylabel(
-        "AUROC Difference from Probe" if show_difference_from_probe else "Mean AUROC",
-        fontsize=12,
-    )
+    ax1.set_ylabel("Mean AUROC", fontsize=12)
     if show_title:
         title = "Monitoring Performance vs Computation Cost"
         if target_dataset:
@@ -1442,8 +1411,7 @@ def plot_cascade_results(
     ax2.grid(True, alpha=0.3)
 
     # Set y-axis limits for AUROC plot
-    if not show_difference_from_probe:
-        ax1.set_ylim(y_min, 1.0)
+    ax1.set_ylim(y_min, 1.0)
 
     # Set x-axis to log scale
     ax1.set_xscale("log")
