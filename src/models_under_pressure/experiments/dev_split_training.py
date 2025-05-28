@@ -298,7 +298,7 @@ def run_dev_split_fine_tuning_single_k(
         compute_activations=config.compute_activations,
     )
     train_split = splits["train"]
-    # test_split = splits["test"] if config.validation_dataset else None
+    test_split = splits["test"] if config.validation_dataset else None
 
     results_list = []
 
@@ -361,7 +361,7 @@ def run_dev_split_fine_tuning_single_k(
             model_name=config.model_name,
             layer=config.layer,
             train_dataset=train_split,
-            validation_dataset=None,
+            validation_dataset=test_split,
             use_store=use_store,
         )
         del train_split
