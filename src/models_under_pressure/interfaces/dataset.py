@@ -461,6 +461,157 @@ class BaseDataset(BaseModel, Generic[R]):
 
         return cls(inputs=inputs, ids=ids, other_fields=other_fields)
 
+    def extend_in_place(
+        self, datasets: Sequence[Self], col_conflict: str = "intersection"
+    ) -> None:
+        """
+        Extend this dataset in-place by appending the data from other datasets.
+        Args:
+            datasets: Sequence of datasets to append to this one.
+            col_conflict: 'intersection' to use only common fields, 'error' to require exact match.
+        """
+        if not datasets:
+            return
+
+        if col_conflict not in ["intersection", "error"]:
+            raise ValueError(f"Invalid column conflict strategy: {col_conflict}")
+
+        # Get common fields across all datasets
+        first_fields = set(self.other_fields.keys())
+        if col_conflict == "intersection":
+            cols = first_fields.intersection(
+                *[set(dataset.other_fields.keys()) for dataset in datasets]
+            )
+        else:  # col_conflict == "error"
+            for dataset in datasets:
+                if set(dataset.other_fields.keys()) != first_fields:
+                    raise ValueError(
+                        "All datasets must have the same fields to extend in place"
+                    )
+            cols = first_fields
+
+        # --- Begin: Pad activations, attention_mask, input_ids to max seq_len ---
+        pad_fields = ["activations", "attention_mask", "input_ids"]
+        # Find max seq_len over all fields
+        max_len = 0
+        for field in pad_fields:
+            if field in cols:
+                arrs = []
+                if field in self.other_fields:
+                    arrs.append(self.other_fields[field])
+                for dataset in datasets:
+                    if field in dataset.other_fields:
+                        arrs.append(dataset.other_fields[field])
+                for arr in arrs:
+                    if isinstance(arr, (np.ndarray, torch.Tensor)):
+                        max_len = max(max_len, arr.shape[1])
+
+        # Pad arrays to max_len if needed
+        for field in pad_fields:
+            if field in cols:
+                # Pad self
+                if field in self.other_fields:
+                    arr = self.other_fields[field]
+                    if isinstance(arr, np.ndarray):
+                        pad_width = max_len - arr.shape[1]
+                        if pad_width > 0:
+                            if field == "activations" and arr.ndim == 3:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                arr = np.concatenate([arr, pad_array], axis=1)
+                            elif arr.ndim == 2:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                arr = np.concatenate([arr, pad_array], axis=1)
+                            self.other_fields[field] = arr
+                    elif isinstance(arr, torch.Tensor):
+                        pad_width = max_len - arr.shape[1]
+                        if pad_width > 0:
+                            if field == "activations" and arr.ndim == 3:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_tensor = torch.zeros(
+                                    *pad_shape, dtype=arr.dtype, device=arr.device
+                                )
+                                arr = torch.cat([arr, pad_tensor], dim=1)
+                            elif arr.ndim == 2:
+                                pad_shape = list(arr.shape)
+                                pad_shape[1] = pad_width
+                                pad_tensor = torch.zeros(
+                                    *pad_shape, dtype=arr.dtype, device=arr.device
+                                )
+                                arr = torch.cat([arr, pad_tensor], dim=1)
+                            self.other_fields[field] = arr
+                # Pad others
+                for dataset in datasets:
+                    if field in dataset.other_fields:
+                        arr = dataset.other_fields[field]
+                        if isinstance(arr, np.ndarray):
+                            pad_width = max_len - arr.shape[1]
+                            if pad_width > 0:
+                                if field == "activations" and arr.ndim == 3:
+                                    pad_shape = list(arr.shape)
+                                    pad_shape[1] = pad_width
+                                    pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                    arr = np.concatenate([arr, pad_array], axis=1)
+                                elif arr.ndim == 2:
+                                    pad_shape = list(arr.shape)
+                                    pad_shape[1] = pad_width
+                                    pad_array = np.zeros(pad_shape, dtype=arr.dtype)
+                                    arr = np.concatenate([arr, pad_array], axis=1)
+                                dataset.other_fields[field] = arr
+                        elif isinstance(arr, torch.Tensor):
+                            pad_width = max_len - arr.shape[1]
+                            if pad_width > 0:
+                                if field == "activations" and arr.ndim == 3:
+                                    pad_shape = list(arr.shape)
+                                    pad_shape[1] = pad_width
+                                    pad_tensor = torch.zeros(
+                                        *pad_shape, dtype=arr.dtype, device=arr.device
+                                    )
+                                    arr = torch.cat([arr, pad_tensor], dim=1)
+                                elif arr.ndim == 2:
+                                    pad_shape = list(arr.shape)
+                                    pad_shape[1] = pad_width
+                                    pad_tensor = torch.zeros(
+                                        *pad_shape, dtype=arr.dtype, device=arr.device
+                                    )
+                                    arr = torch.cat([arr, pad_tensor], dim=1)
+                                dataset.other_fields[field] = arr
+        # --- End: Pad activations, attention_mask, input_ids to max seq_len ---
+
+        # Extend inputs and ids
+        for dataset in datasets:
+            self.inputs.extend(dataset.inputs)
+            self.ids.extend(dataset.ids)
+
+        # Extend other fields
+        for key in cols:
+            if key in self.other_fields:
+                first_value = self.other_fields[key]
+                if isinstance(first_value, np.ndarray):
+                    arrays = [self.other_fields[key]] + [
+                        d.other_fields[key] for d in datasets
+                    ]
+                    self.other_fields[key] = np.concatenate(arrays, axis=0)
+                elif isinstance(first_value, torch.Tensor):
+                    tensors = [self.other_fields[key]] + [
+                        d.other_fields[key] for d in datasets
+                    ]
+                    self.other_fields[key] = torch.cat(tensors, dim=0)
+                else:
+                    # Assume list-like
+                    for d in datasets:
+                        self.other_fields[key].extend(d.other_fields[key])
+            else:
+                # If the field is not in self, initialize it from the first dataset that has it
+                for d in datasets:
+                    if key in d.other_fields:
+                        self.other_fields[key] = list(d.other_fields[key])
+                        break
+
     def to_records(self) -> Sequence[R]:
         self._check_tensor_shapes()
 

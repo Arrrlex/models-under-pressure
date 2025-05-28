@@ -24,7 +24,6 @@ from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
 from models_under_pressure.interfaces.results import DatasetResults, DevSplitResult
 from models_under_pressure.probes.base import Probe
 from models_under_pressure.probes.probe_factory import ProbeFactory
-from models_under_pressure.utils import double_check_config
 
 
 def evaluate_probe(
@@ -298,7 +297,7 @@ def run_dev_split_fine_tuning_single_k(
         compute_activations=config.compute_activations,
     )
     train_split = splits["train"]
-    test_split = splits["test"] if config.validation_dataset else None
+    # test_split = splits["test"] if config.validation_dataset else None
 
     results_list = []
 
@@ -327,11 +326,14 @@ def run_dev_split_fine_tuning_single_k(
     dev_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
 
     if config.dev_sample_usage == "combine":
+        print(f"Combining train split and {config.sample_repeats} dev splits")
         # Overwrite train_split to save memory
-        train_split = LabelledDataset.concatenate(
-            [train_split] + [dev_split] * config.sample_repeats,
-            col_conflict="intersection",
-        )
+        train_split.extend_in_place([dev_split] * config.sample_repeats)
+        # train_split = LabelledDataset.concatenate(
+        #    [train_split] + ([dev_split] * config.sample_repeats),
+        #    col_conflict="intersection",
+        # )
+        del dev_split
         probe = ProbeFactory.build(
             probe_spec=config.probe_spec,
             model_name=config.model_name,
@@ -341,7 +343,6 @@ def run_dev_split_fine_tuning_single_k(
             use_store=use_store,
         )
         del train_split
-        del dev_split
     else:
         raise ValueError(
             f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'combine'"
@@ -419,7 +420,7 @@ if __name__ == "__main__":
 
     config = DevSplitFineTuningConfig(
         # fine_tune_epochs=10,
-        dev_sample_usage="fine-tune",
+        dev_sample_usage="combine",
         fine_tune_epochs=20,
         model_name=LOCAL_MODELS["llama-70b"],
         layer=31,
@@ -434,19 +435,35 @@ if __name__ == "__main__":
         validation_dataset=True,
         evaluate_on_test=evaluate_on_test,
         # eval_datasets=[EVAL_DATASETS["anthropic"]],
-        eval_dataset_names=None,
+        eval_dataset_names=["toolace"],
+        # k_values=[4, 8, 16, 32, 64],
+        # On Anthropic crashes after k=2, on MTS crashes after k=64
+        # For MT, immediately crashing, now trying with lower batch size of 64, same!
+        # ToolACE immediately crashing
         output_filename="dev_split_training_neurips.jsonl",
     )
 
-    double_check_config(config)
+    # double_check_config(config)
 
     for _ in range(5):
         print("Running dev split training experiment")
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_dev_split_fine_tuning(config, use_store=False)
-        for result in results:
-            print("-" * 100)
-            print(result.dataset_name)
-            print(result.metrics)
+        for k in config.k_values:
+            for eval_dataset_name in config.eval_dataset_names:
+                results = run_dev_split_fine_tuning_single_k(
+                    config=config,
+                    k=k,
+                    eval_dataset_name=eval_dataset_name,
+                    use_store=False,
+                )
+                for result in results:
+                    print("-" * 100)
+                    print(result.dataset_name)
+                    print(result.metrics)
+        # results = run_dev_split_fine_tuning(config, use_store=False)
+        # for result in results:
+        #    print("-" * 100)
+        #    print(result.dataset_name)
+        #    print(result.metrics)
