@@ -270,6 +270,7 @@ def run_dev_split_fine_tuning_single_k(
     k: int,
     eval_dataset_name: str,
     use_store: bool = True,
+    max_length: int = 2000,
 ) -> List[DevSplitResult]:
     """
     Similar to run_dev_split_fine_tuning, but only runs fine-tuning and evaluation for a single value of k and a single eval dataset.
@@ -324,6 +325,27 @@ def run_dev_split_fine_tuning_single_k(
 
     # Subsample and overwrite dev_split to save memory
     dev_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
+    dev_split.other_fields["activations"] = dev_split.other_fields["activations"][
+        :, :max_length
+    ]
+    dev_split.other_fields["attention_mask"] = dev_split.other_fields["attention_mask"][
+        :, :max_length
+    ]
+    dev_split.other_fields["input_ids"] = dev_split.other_fields["input_ids"][
+        :, :max_length
+    ]
+    print(train_split.other_fields["activations"].shape)
+    print(dev_split.other_fields["activations"].shape)
+    print(dev_split.other_fields["attention_mask"].shape)
+    # Get the number of items in dev_split with at least max_length tokens
+    num_items_with_max_length = sum(
+        mask.sum() >= max_length for mask in dev_split.other_fields["attention_mask"]
+    )
+    if num_items_with_max_length > 0:
+        with open("warnings.txt", "a") as f:
+            f.write(
+                f"Warning: {num_items_with_max_length} items in dev_split have more than {max_length} tokens (k={k}, eval_dataset_name={eval_dataset_name})\n"
+            )
 
     if config.dev_sample_usage == "combine":
         print(f"Combining train split and {config.sample_repeats} dev splits")
