@@ -266,6 +266,125 @@ def run_dev_split_fine_tuning(
     return results_list
 
 
+def run_dev_split_fine_tuning_single_k(
+    config: DevSplitFineTuningConfig,
+    k: int,
+    eval_dataset_name: str,
+    use_store: bool = True,
+) -> List[DevSplitResult]:
+    """
+    Similar to run_dev_split_fine_tuning, but only runs fine-tuning and evaluation for a single value of k and a single eval dataset.
+
+    This function is optimized for using less working memory, so that things don't crash.
+    """
+    assert config.evaluate_on_test, "evaluate_on_test must be True for this function!"
+
+    output_filename = config.output_filename
+    if config.evaluate_on_test and not os.path.splitext(output_filename)[0].endswith(
+        "_test"
+    ):
+        name, ext = os.path.splitext(output_filename)
+        output_filename = f"{name}_test{ext}"
+
+    output_path = EVALUATE_PROBES_DIR / output_filename
+    os.makedirs(os.path.dirname(str(output_path)), exist_ok=True)
+
+    splits = load_splits_lazy(
+        dataset_path=config.dataset_path,
+        dataset_filters=None,
+        n_per_class=config.max_samples // 2 if config.max_samples else None,
+        model_name=config.model_name,
+        layer=config.layer,
+        compute_activations=config.compute_activations,
+    )
+    train_split = splits["train"]
+    test_split = splits["test"] if config.validation_dataset else None
+
+    results_list = []
+
+    # Only run for the provided eval_dataset_name
+    eval_dataset_path = EVAL_DATASETS[eval_dataset_name]
+    print(f"Loading eval dataset {eval_dataset_name} from {eval_dataset_path}")
+    dev_split = load_dataset(
+        dataset_path=eval_dataset_path,
+        model_name=config.model_name,
+        layer=config.layer,
+        compute_activations=config.compute_activations,
+        n_per_class=config.max_samples // 2 if config.max_samples else None,
+    )
+    if "scale_labels" not in dev_split.other_fields:
+        print(
+            f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
+        )
+        return results_list
+
+    # Only run for the provided k
+    if k > len(dev_split):
+        print(f"Skipping k={k} as it's larger than train split size {len(dev_split)}")
+        return results_list
+
+    # Subsample and overwrite dev_split to save memory
+    dev_split = subsample_balanced_subset(dev_split, n_per_class=k // 2)
+
+    if config.dev_sample_usage == "combine":
+        # Overwrite train_split to save memory
+        train_split = LabelledDataset.concatenate(
+            [train_split] + [dev_split] * config.sample_repeats,
+            col_conflict="intersection",
+        )
+        probe = ProbeFactory.build(
+            probe_spec=config.probe_spec,
+            model_name=config.model_name,
+            layer=config.layer,
+            train_dataset=train_split,
+            validation_dataset=None,
+            use_store=use_store,
+        )
+        del train_split
+        del dev_split
+    else:
+        raise ValueError(
+            f"Invalid dev_sample_usage: {config.dev_sample_usage}. Must be one of: 'combine'"
+        )
+
+    # Only now loading test split to save memory
+    test_dataset_path = TEST_DATASETS[eval_dataset_name]
+    print(f"Loading test dataset {eval_dataset_name} from {test_dataset_path}")
+    test_split = load_dataset(
+        dataset_path=test_dataset_path,
+        model_name=config.model_name,
+        layer=config.layer,
+        compute_activations=config.compute_activations,
+        n_per_class=config.max_samples // 2 if config.max_samples else None,
+    )
+    if "scale_labels" not in test_split.other_fields:
+        print(
+            f"Warning: Skipping {eval_dataset_name} because it does not have scale labels"
+        )
+        return results_list
+
+    fine_tuned_scores, fine_tuned_metrics = evaluate_probe(probe, test_split)
+    fine_tuned_result = DevSplitResult(
+        config=config,
+        k=k,
+        metrics=fine_tuned_metrics.metrics,
+        probe_scores=fine_tuned_scores,
+        ground_truth_labels=test_split.labels_numpy().tolist(),
+        ground_truth_scale_labels=test_split.other_fields["scale_labels"],  # type: ignore
+        dataset_name=f"{eval_dataset_name}_k{k}",
+        dataset_path=eval_dataset_path,
+        method="fine_tuned_probe",
+    )
+    results_list.append(fine_tuned_result)
+
+    print(f"Saving finetuned results to {EVALUATE_PROBES_DIR / output_filename}")
+    fine_tuned_result.save_to(EVALUATE_PROBES_DIR / output_filename)
+
+    del test_split
+
+    return results_list
+
+
 if __name__ == "__main__":
     evaluate_on_test = True
 
@@ -321,12 +440,12 @@ if __name__ == "__main__":
 
     double_check_config(config)
 
-    for k in range(5):
+    for _ in range(5):
         print("Running dev split training experiment")
         print(
             f"Results will be saved to {EVALUATE_PROBES_DIR / config.output_filename}"
         )
-        results = run_dev_split_fine_tuning(config, use_store=True)
+        results = run_dev_split_fine_tuning(config, use_store=False)
         for result in results:
             print("-" * 100)
             print(result.dataset_name)
