@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,13 +13,34 @@ from models_under_pressure.interfaces.results import DevSplitResult
 
 BASELINE_COLOR = (0.0, 0.5019607843137255, 0.5019607843137255)
 BASELINE_NAME = "Prompted Llama-70B"
-PROBE_COLORS: dict[str, tuple[float, float, float]] = {
-    "linear_then_softmax": (
-        0.12156862745098039,
-        0.4666666666666667,
-        0.7058823529411765,
-    ),
-    "attention": (1.0, 0.4980392156862745, 0.054901960784313725),
+EVAL_USAGE_MAPPING = {
+    "only": "Dev samples only",
+    "combine": "Synthetic + dev samples",
+    "fine-tune": "Finetuned on dev samples",
+}
+PROBE_COLORS: dict[str, dict[str, Any]] = {
+    "linear_then_softmax": {
+        "default": (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
+        EVAL_USAGE_MAPPING["combine"]: (
+            0.12156862745098039,
+            0.4666666666666667,
+            0.7058823529411765,
+        ),
+        EVAL_USAGE_MAPPING[
+            "fine-tune"
+        ]: "orange",  # (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
+        EVAL_USAGE_MAPPING["only"]: (
+            0.12156862745098039,
+            0.4666666666666667,
+            0.7058823529411765,
+        ),
+    },
+    "attention": {
+        "default": (1.0, 0.4980392156862745, 0.054901960784313725),
+        EVAL_USAGE_MAPPING["combine"]: (1.0, 0.4980392156862745, 0.054901960784313725),
+        EVAL_USAGE_MAPPING["fine-tune"]: "blue",
+        EVAL_USAGE_MAPPING["only"]: (1.0, 0.4980392156862745, 0.054901960784313725),
+    },
 }
 
 # Set style parameters
@@ -79,6 +100,7 @@ def plot_dev_split_results(
     combine_datasets: bool = True,
     baseline_file: Optional[Path] = None,
     line_width: float = 2.0,
+    methods: Optional[list[Literal["combine", "only", "fine-tune"]]] = None,
 ) -> None:
     """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
@@ -93,6 +115,7 @@ def plot_dev_split_results(
                         and line styles.
         baseline_file: Path to a JSONL file containing baseline results to plot as a horizontal line
         line_width: Width of the lines in the plot. Default is 2.0.
+        methods: Optional list of methods to plot. If None, plots all methods. Can include "combine", "only", "fine-tune".
     """
     # Convert single Path to list for consistent handling
     if isinstance(results_files, Path):
@@ -105,8 +128,12 @@ def plot_dev_split_results(
         with open(results_file) as f:
             for line in f:
                 if line.strip():
-                    results.append(DevSplitResult.model_validate_json(line))
-                    probe_names.add(results[-1].config.probe_spec.name)
+                    result = DevSplitResult.model_validate_json(line)
+                    if methods is not None:
+                        if result.config.dev_sample_usage not in methods:
+                            continue
+                    results.append(result)
+                    probe_names.add(result.config.probe_spec.name)
 
     if len(probe_names) > 1:
         raise ValueError(f"Multiple probe types found in results files: {probe_names}")
@@ -117,11 +144,7 @@ def plot_dev_split_results(
     if baseline_file is not None:
         baseline_results = load_baseline_results(baseline_file, metric=metric)
 
-    eval_usage_mapping = {
-        "only": "Dev samples only",
-        "combine": "Synthetic + dev samples",
-        "fine-tune": "Finetuned on dev samples",
-    }
+    eval_usage_mapping = EVAL_USAGE_MAPPING
 
     # Create DataFrame for plotting
     plot_data = []
@@ -306,7 +329,10 @@ def plot_dev_split_results(
                 capsize=5,
                 linewidth=line_width,
                 linestyle=line_styles[usage],
-                color=PROBE_COLORS.get(probe_name, "black"),  # type: ignore
+                color=PROBE_COLORS.get(probe_name, {}).get(
+                    usage,
+                    PROBE_COLORS.get(probe_name, {}).get("default", "black"),
+                ),  # type: ignore
             )
 
             # Print performance values for this usage
@@ -424,7 +450,7 @@ def plot_dev_split_results(
                 label="Synthetic data only",
                 alpha=0.7,
                 linewidth=line_width,
-                color=PROBE_COLORS.get(probe_name, "black"),  # type: ignore
+                color=PROBE_COLORS.get(probe_name, {}).get("default", "black"),  # type: ignore
             )
             # Add error band for k=0
             x_min = 0  # Match the k=0 point position
@@ -470,10 +496,11 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    probe_type = "attention"
+    probe_type = "softmax"
     results_files = [
         EVALUATE_PROBES_DIR / f"dev_split_training_neurips_test_{probe_type}.jsonl",
         EVALUATE_PROBES_DIR / f"dev_split_training_arxiv_test_{probe_type}_val.jsonl",
+        EVALUATE_PROBES_DIR / f"dev_split_training_arxiv_test_{probe_type}.jsonl",
     ]
     baseline_file = (
         RESULTS_DIR / "monitoring_cascade_arxiv" / "baseline_llama-70b.jsonl"
@@ -484,4 +511,5 @@ if __name__ == "__main__":
         # metric="tpr_at_fpr",
         combine_datasets=True,
         baseline_file=baseline_file,
+        methods=["combine", "fine-tune"],
     )
