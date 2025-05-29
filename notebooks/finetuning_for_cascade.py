@@ -12,6 +12,10 @@ from models_under_pressure.config import (
 )
 
 if __name__ == "__main__":
+    import pytorch_lightning as pl
+
+    pl.seed_everything(0)
+
     debugging = False
 
     # Should be defined via a hydra run config file:
