@@ -182,7 +182,7 @@ def plot_calibration(
     else:
         ax1.set_ylabel("Mean Stakes Rating")
     ax1.grid()
-    ax1.legend(title="Probe Calibration")
+    # ax1.legend(title="Probe Calibration")
 
     # Save plot
     print(f"Saving {out_path}")
@@ -389,11 +389,11 @@ if __name__ == "__main__":
                 results_id = results_path.stem
             calibration_jsons[results_id] = results_path
 
-        # plot_path, json_path = run_calibration(
-        #     results_path,
-        #     out_path=calibration_plots_dir / f"calibration_{results_id}.png",
-        #     use_binary_labels=False,
-        # )
+        plot_path, json_path = run_calibration(
+            results_path,
+            out_path=calibration_plots_dir / f"calibration_{results_id}.png",
+            use_binary_labels=False,
+        )
         json_path = calibration_plots_dir / f"calibration_{results_id}.json"
 
         calibration_jsons[results_id] = json_path
