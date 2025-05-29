@@ -315,10 +315,11 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             results_file,
             output_file=output_dir / f"cascade_plot.{cfg.analysis.plot_file_ending}",
             target_dataset=cfg.analysis.target_dataset,
-            show_difference_from_probe=cfg.show_difference_from_probe,
             show_strategy_in_legend=cfg.analysis.show_strategy_in_legend,
             show_shaded_regions=cfg.analysis.show_shaded_regions,
             plot_file_ending=cfg.analysis.plot_file_ending,
+            show_probe=cfg.analysis.show_probe,
+            add_legend=cfg.analysis.show_legend,
         )
 
 
@@ -431,7 +432,7 @@ def evaluate_two_step_cascade(
         fraction_of_samples: Fraction of samples to use from first step
         merge_strategy: How to merge scores when both steps have results for the same sample
             Options: "baseline", "mean", "max"
-        selection_strategy: How to select samples for first step
+        selection_strategy: How to select samples for first baseline
             Options: "top", "bottom", "mid"
         remaining_strategy: How to handle remaining samples
             Options: "fixed_X" where X is the fixed score, or "first"
@@ -983,14 +984,14 @@ def plot_cascade_results(
     figsize: tuple[int, int] = (9, 4),
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
-    show_difference_from_probe: bool = False,
     show_strategy_in_legend: bool = True,
     show_title: bool = False,
     show_shaded_regions: bool = False,
-    add_legend: bool = True,
+    add_legend: bool = False,
     probe_name: str = "Attention",  # TODO Get from config!
     y_min: float = 0.8,
     plot_file_ending: str = "png",  # Default to png if not specified
+    show_probe: bool = True,  # Whether to show probe and break x-axis
 ) -> None:
     """Plot cascade results showing the tradeoff between FLOPs and AUROC.
 
@@ -1000,11 +1001,11 @@ def plot_cascade_results(
         figsize: Figure size as (width, height) in inches
         show_fraction_labels: Whether to show the fraction of samples labels on the plot points
         target_dataset: If specified, only plot results for this dataset
-        show_difference_from_probe: If True, shows AUROC difference from probe performance. If False, shows absolute AUROC.
         show_strategy_in_legend: If True, shows strategy information in the legend. If False, only shows model names.
         show_title: Whether to show a title on the plot
         show_shaded_regions: Whether to show shaded regions for uncertainty. Defaults to False.
         plot_file_ending: File extension for the output plot (e.g. "png", "pdf", "svg")
+        show_probe: Whether to show probe and break x-axis. If False, only shows the main plot without breaking x-axis.
     """
     import json
     from collections import defaultdict
@@ -1029,17 +1030,14 @@ def plot_cascade_results(
     # Group results by method and fraction
     grouped_results = defaultdict(lambda: defaultdict(list))
     probe_aurocs = defaultdict(list)  # Store probe AUROCs by dataset
+    probe_flops = defaultdict(list)  # Store probe FLOPs by dataset
 
-    # First pass: collect probe AUROCs for each dataset
+    # First pass: collect probe AUROCs and FLOPs for each dataset
     for result in results:
         if result["cascade_type"] == "probe":
             dataset = result.get("dataset_name", "default")
             probe_aurocs[dataset].append(result["auroc"])
-
-    # Calculate mean probe AUROC for each dataset
-    mean_probe_aurocs = {
-        dataset: float(np.mean(aurocs)) for dataset, aurocs in probe_aurocs.items()
-    }
+            probe_flops[dataset].append(result["avg_flops_per_sample"])
 
     # Second pass: process cascade results
     for result in results:
@@ -1067,14 +1065,9 @@ def plot_cascade_results(
             # Group by fraction_of_samples
             fraction = result["fraction_of_samples"]
             dataset = result.get("dataset_name", "default")
-            probe_auroc = mean_probe_aurocs.get(dataset, 0.0)
 
-            # Calculate AUROC value based on show_difference_from_probe flag
-            auroc_value = (
-                result["auroc"] - probe_auroc
-                if show_difference_from_probe
-                else result["auroc"]
-            )
+            # Calculate AUROC value
+            auroc_value = result["auroc"]
 
             grouped_results[key][fraction].append(
                 {
@@ -1083,8 +1076,14 @@ def plot_cascade_results(
                 }
             )
 
-    # Set up the plot
-    plt.figure(figsize=figsize)
+    # Set up the plot with or without broken x-axis
+    if show_probe:
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2, figsize=figsize, sharey=True, gridspec_kw={"width_ratios": [1, 3]}
+        )
+    else:
+        fig, ax2 = plt.subplots(1, 1, figsize=figsize)
+        ax1 = None
     sns.set_style("whitegrid")
 
     # Create color palette based on number of unique baseline models
@@ -1117,9 +1116,13 @@ def plot_cascade_results(
         "llama-70b": {
             "baseline": (0.0, 0.5019607843137255, 0.5019607843137255),
         },
+        "Attention": "#FF7F0E",
+        "Softmax": "#1F77B4",
     }
     # Use the same color for probe+baseline combinations
     for model in list(model_colors.keys()):
+        if isinstance(model_colors[model], str):
+            continue
         for cascade_type in list(model_colors[model].keys()):
             model_colors[model][f"probe_{cascade_type}"] = model_colors[model][
                 cascade_type
@@ -1273,7 +1276,7 @@ def plot_cascade_results(
         # Plot differently based on whether it's a baseline-only method or a cascade method
         if is_baseline_only:
             # For baseline-only methods, plot a single point with a larger marker
-            line = plt.scatter(
+            line = ax2.scatter(
                 mean_flops_per_sample,
                 mean_aurocs,
                 marker=marker,
@@ -1284,7 +1287,7 @@ def plot_cascade_results(
             )
         else:
             # For cascade methods, plot a line with markers
-            line = plt.plot(
+            line = ax2.plot(
                 mean_flops_per_sample,
                 mean_aurocs,
                 marker=marker,
@@ -1297,7 +1300,7 @@ def plot_cascade_results(
 
         # Add shaded region for uncertainty if enabled
         if show_shaded_regions and not is_baseline_only:
-            plt.fill_between(
+            ax2.fill_between(
                 mean_flops_per_sample,
                 np.array(mean_aurocs) - np.array(std_aurocs),
                 np.array(mean_aurocs) + np.array(std_aurocs),
@@ -1308,7 +1311,7 @@ def plot_cascade_results(
         # Add fraction labels if enabled
         if show_fraction_labels and not is_baseline_only:
             for x, y, f in zip(mean_flops_per_sample, mean_aurocs, fractions):
-                plt.annotate(
+                ax2.annotate(
                     f"{f:.2f}",
                     (x, y),
                     xytext=(5, 5),
@@ -1333,22 +1336,7 @@ def plot_cascade_results(
     legend_entries.sort(key=lambda x: (x["model_size"], x["cascade_type"]))
 
     # Plot probe performance line after all other data
-    if show_difference_from_probe:
-        # For difference plot, show zero line as probe performance
-        probe_line = plt.axhline(
-            y=0, color="gray", linestyle="--", label="Probe", alpha=0.5
-        )
-        legend_entries.insert(
-            0,
-            {
-                "line": probe_line,
-                "label": "Probe",
-                "model_size": -1,  # Put probe first
-                "cascade_type": -1,
-                "is_baseline_only": False,
-            },
-        )
-    elif probe_aurocs:
+    if probe_aurocs:
         # For absolute plot, show actual probe performance
         mean_probe_auroc = float(
             np.mean([auroc for aurocs in probe_aurocs.values() for auroc in aurocs])
@@ -1356,18 +1344,39 @@ def plot_cascade_results(
         std_probe_auroc = float(
             np.std([auroc for aurocs in probe_aurocs.values() for auroc in aurocs])
         )
-
-        # Get the x-axis limits after plotting all the data
-        x_min, x_max = plt.xlim()
-
-        probe_line = plt.axhline(
-            y=mean_probe_auroc,
-            color="gray",
-            linestyle="--",
-            linewidth=2,
-            label="Probe",
-            alpha=0.9,
+        mean_probe_flops = float(
+            np.mean([flops for flops in probe_flops.values() for flops in flops])
         )
+
+        # Plot probe performance as a horizontal line
+        probe_line = ax2.axhline(
+            y=mean_probe_auroc,
+            color=model_colors[probe_name],
+            linestyle="--",
+            label=f"Probe ({probe_name})",
+            alpha=0.7,
+        )
+
+        # Also plot probe performance as a diamond marker if showing probe
+        if show_probe and ax1 is not None:
+            _ = ax1.scatter(
+                [mean_probe_flops],  # Position at average probe FLOPs
+                [mean_probe_auroc],
+                marker="D",  # Diamond marker
+                color=model_colors[probe_name],
+                s=100,  # Larger size for visibility
+                zorder=11,  # Make sure it's on top
+            )
+
+            if show_shaded_regions:
+                ax1.fill_between(
+                    [1e9, 1e11],  # Use fixed x-axis range for left subfigure
+                    mean_probe_auroc - std_probe_auroc,
+                    mean_probe_auroc + std_probe_auroc,
+                    color=model_colors[probe_name],
+                    alpha=0.1,
+                )
+
         legend_entries.insert(
             0,
             {
@@ -1379,15 +1388,6 @@ def plot_cascade_results(
             },
         )
 
-        if show_shaded_regions:
-            plt.fill_between(
-                [x_min, x_max],  # Use actual x-axis range
-                mean_probe_auroc - std_probe_auroc,
-                mean_probe_auroc + std_probe_auroc,
-                color="gray",
-                alpha=0.1,
-            )
-
     # Create legend with sorted entries - handle differently for line and scatter objects
     handles = []
     labels = []
@@ -1397,7 +1397,7 @@ def plot_cascade_results(
 
     if add_legend:
         # Create legend outside the plot on the right
-        plt.legend(
+        ax2.legend(
             handles=handles,
             labels=labels,
             bbox_to_anchor=(1.05, 1.0),  # Place legend outside to the right
@@ -1407,34 +1407,57 @@ def plot_cascade_results(
         )
 
     # Customize plot
-    plt.xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
-    plt.ylabel(
-        "AUROC Difference from Probe" if show_difference_from_probe else "Mean AUROC",
-        fontsize=12,
-    )
+    ax2.set_xlabel("Average FLOPs per Sample (log scale)", fontsize=12)
+    if show_probe and ax1 is not None:
+        ax1.set_ylabel("Mean AUROC", fontsize=12)
+    else:
+        ax2.set_ylabel("Mean AUROC", fontsize=12)
     if show_title:
         title = "Monitoring Performance vs Computation Cost"
         if target_dataset:
             title += f" - {target_dataset}"
         else:
             title += " (Averaged across datasets)"
-        plt.title(title, fontsize=14, pad=20)
-    plt.grid(True, alpha=0.3)
+        if show_probe and ax1 is not None:
+            ax1.set_title(title, fontsize=14, pad=20)
+        else:
+            ax2.set_title(title, fontsize=14, pad=20)
+    if show_probe and ax1 is not None:
+        ax1.grid(True, alpha=0.3)
+    ax2.grid(True, alpha=0.3)
 
     # Set y-axis limits for AUROC plot
-    if not show_difference_from_probe:
-        plt.ylim(y_min, 1.0)
+    if show_probe and ax1 is not None:
+        ax1.set_ylim(y_min, 1.0)
+    ax2.set_ylim(y_min, 1.0)
 
     # Set x-axis to log scale
-    plt.xscale("log")
+    if show_probe and ax1 is not None:
+        ax1.set_xscale("log")
+    ax2.set_xscale("log")
 
     # Format x-axis ticks to be more readable
-    ax = plt.gca()
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
+    if show_probe and ax1 is not None:
+        ax1.xaxis.set_major_formatter(
+            FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}")
+        )
+    ax2.xaxis.set_major_formatter(FuncFormatter(lambda x, p: f"10^{int(np.log10(x))}"))
 
-    # Add some padding to the x-axis to make room for the legend
-    xmin, xmax = plt.xlim()
-    plt.xlim(xmin, xmax * 1.1)
+    # Add break in x-axis if showing probe
+    if show_probe and ax1 is not None:
+        ax1.spines["right"].set_visible(False)
+        ax2.spines["left"].set_visible(False)
+        ax2.yaxis.set_ticks_position("none")
+        ax2.tick_params(labelleft=False)
+
+        # Add break marks
+        d = 0.015  # how big to make the diagonal lines in axes coordinates
+        kwargs = dict(transform=ax1.transAxes, color="k", clip_on=False)
+        ax1.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-left diagonal
+        ax1.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+        kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+        ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # top-right diagonal
+        ax2.plot((-d, +d), (-d, +d), **kwargs)  # bottom-right diagonal
 
     # Adjust layout to make room for the legend
     plt.tight_layout(rect=(0, 0, 0.85, 1))  # Leave 15% of the width for the legend
