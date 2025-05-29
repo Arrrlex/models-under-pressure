@@ -71,7 +71,7 @@ def load_baseline_results(
 
 
 def plot_dev_split_results(
-    results_file: Path,
+    results_files: list[Path] | Path,
     metric: Literal["auroc", "tpr_at_fpr", "accuracy"] = "auroc",
     output_file: Path | None = None,
     figsize: tuple[int, int] = (6, 6),
@@ -83,7 +83,7 @@ def plot_dev_split_results(
     """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
     Args:
-        results_file: Path to the JSONL file containing k-shot results
+        results_files: Path or list of paths to JSONL files containing k-shot results
         metric: Metric to plot on y-axis. Can be "auroc", "tpr_at_fpr", or "accuracy"
         output_file: Path to save the plot. If None, saves to PLOTS_DIR / "k_shot_results.pdf"
         figsize: Figure size as (width, height) in inches
@@ -94,21 +94,23 @@ def plot_dev_split_results(
         baseline_file: Path to a JSONL file containing baseline results to plot as a horizontal line
         line_width: Width of the lines in the plot. Default is 2.0.
     """
-    # Read results from file
+    # Convert single Path to list for consistent handling
+    if isinstance(results_files, Path):
+        results_files = [results_files]
+
+    # Read results from all files
     results = []
-    probe_name = None
-    with open(results_file) as f:
-        for line in f:
-            if line.strip():
-                results.append(DevSplitResult.model_validate_json(line))
-                result_probe_name = results[-1].config.probe_spec.name
-                if probe_name is None:
-                    probe_name = result_probe_name
-                else:
-                    if probe_name != result_probe_name:
-                        raise ValueError(
-                            f"Probe name mismatch: {probe_name} != {result_probe_name}"
-                        )
+    probe_names = set()
+    for results_file in results_files:
+        with open(results_file) as f:
+            for line in f:
+                if line.strip():
+                    results.append(DevSplitResult.model_validate_json(line))
+                    probe_names.add(results[-1].config.probe_spec.name)
+
+    if len(probe_names) > 1:
+        raise ValueError(f"Multiple probe types found in results files: {probe_names}")
+    probe_name = probe_names.pop()
 
     # Load baseline results if provided
     baseline_results = {}
@@ -176,6 +178,11 @@ def plot_dev_split_results(
         eval_usage_mapping["only"]: "--",
         eval_usage_mapping["combine"]: "-.",
         eval_usage_mapping["fine-tune"]: "-",
+    }
+    marker_styles = {
+        eval_usage_mapping["only"]: "o",
+        eval_usage_mapping["combine"]: "s",
+        eval_usage_mapping["fine-tune"]: "D",
     }
 
     # Add baseline results if provided
@@ -295,11 +302,11 @@ def plot_dev_split_results(
                 y_values,
                 yerr=y_err,
                 label=usage,
-                marker="o",
+                marker=marker_styles[usage],
                 capsize=5,
                 linewidth=line_width,
                 linestyle=line_styles[usage],
-                color=PROBE_COLORS.get(probe_name, "orange"),
+                color=PROBE_COLORS.get(probe_name, "black"),  # type: ignore
             )
 
             # Print performance values for this usage
@@ -378,7 +385,7 @@ def plot_dev_split_results(
                     y_values,
                     yerr=y_err,
                     label=f"{dataset} ({usage})",
-                    marker="o",
+                    marker=marker_styles[usage],
                     capsize=5,
                     color=dataset_colors[dataset],
                     linestyle=line_styles[usage],
@@ -417,7 +424,7 @@ def plot_dev_split_results(
                 label="Synthetic data only",
                 alpha=0.7,
                 linewidth=line_width,
-                color=PROBE_COLORS.get(probe_name, "orange"),  # type: ignore
+                color=PROBE_COLORS.get(probe_name, "black"),  # type: ignore
             )
             # Add error band for k=0
             x_min = 0  # Match the k=0 point position
@@ -463,12 +470,16 @@ def plot_dev_split_results(
 
 
 if __name__ == "__main__":
-    results_file = EVALUATE_PROBES_DIR / "dev_split_training_neurips_test_softmax.jsonl"
+    probe_type = "attention"
+    results_files = [
+        EVALUATE_PROBES_DIR / f"dev_split_training_neurips_test_{probe_type}.jsonl",
+        EVALUATE_PROBES_DIR / f"dev_split_training_arxiv_test_{probe_type}_val.jsonl",
+    ]
     baseline_file = (
-        RESULTS_DIR / "monitoring_cascade_neurips" / "baseline_llama-70b.jsonl"
+        RESULTS_DIR / "monitoring_cascade_arxiv" / "baseline_llama-70b.jsonl"
     )
     plot_dev_split_results(
-        results_file,
+        results_files,
         metric="auroc",
         # metric="tpr_at_fpr",
         combine_datasets=True,
