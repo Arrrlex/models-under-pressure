@@ -176,12 +176,12 @@ def create_plot_dataframe(
 METHOD_NAME_MAPPING = {
     "attention": "Attention",
     "linear_then_softmax": "Softmax",
-    "gemma-3-1b-it": "Gemma 3 1B",
-    "gemma-3-12b-it": "Gemma 3 12B",
-    "gemma-3-27b-it": "Gemma 3 27B",
-    "Llama-3.2-1B-Instruct": "Llama 3.2 1B",
-    "Llama-3.1-8B-Instruct": "Llama 3.1 8B",
-    "Llama-3.3-70B-Instruct": "Llama 3.3 70B",
+    "gemma-3-1b-it": "Gemma-3-1B",
+    "gemma-3-12b-it": "Gemma-3-12B",
+    "gemma-3-27b-it": "Gemma-3-27B",
+    "Llama-3.2-1B-Instruct": "Llama-3.2-1B",
+    "Llama-3.1-8B-Instruct": "Llama-3.1-8B",
+    "Llama-3.3-70B-Instruct": "Llama-3.3-70B",
 }
 
 
@@ -211,7 +211,7 @@ def plot_results(
     )  # Adjust font_scale based on fontsize
 
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(15, 8))
+    fig, ax = plt.subplots(figsize=(15, 6))
 
     # Define utility functions for model name and size extraction
     def extract_model_name(label: str) -> str:
@@ -564,7 +564,7 @@ def plot_results(
             legend_handles,
             legend_labels,
             ncol=3,  # Three columns
-            loc="lower left",
+            loc="lower right",
             frameon=True,
             facecolor="white",
             edgecolor="black",
@@ -615,15 +615,16 @@ if __name__ == "__main__":
     ]
 
     finetune_paths = [
-        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_2.jsonl",
         RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_2.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_3.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_4.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_2.jsonl",
     ]
 
     continuation_paths = [
@@ -640,8 +641,8 @@ if __name__ == "__main__":
     )
 
     # Calculate metrics for each dataset
-    metric = "tpr_at_fpr"  # or "auroc"
-    # metric = "auroc"
+    # metric = "tpr_at_fpr"  # or "auroc"
+    metric = "auroc"
     fpr = 0.01
     df_plot = create_plot_dataframe(df_combined, metric=metric, fpr=fpr)
-    plot_results(df_plot, metric=metric, fpr=fpr, fontsize=18, show_legend=False)
+    plot_results(df_plot, metric=metric, fpr=fpr, fontsize=18, show_legend=True)
