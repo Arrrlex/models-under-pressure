@@ -849,13 +849,13 @@ if __name__ == "__main__":
     ]
 
     finetune_paths = [
-        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_2.jsonl",
         RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_2.jsonl",
         RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_0.jsonl",
         RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_1.jsonl",
         RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_2.jsonl",
