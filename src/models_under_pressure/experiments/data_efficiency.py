@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 
 import torch
+import wandb
 from tqdm import tqdm
 
-import wandb
 from models_under_pressure.baselines.finetune import FinetunedClassifier
 from models_under_pressure.config import (
     RESULTS_DIR,
@@ -382,7 +382,9 @@ if __name__ == "__main__":
             "devices": [0],
             "precision": "bf16-true",
             "default_root_dir": global_settings.PL_DEFAULT_ROOT_DIR,
-            "accumulate_grad_batches": 4,
+            "accumulate_grad_batches": 8,
+            "gradient_clip_val": 1.0,
+            "strategy": "ddp",
         },
     )
 
