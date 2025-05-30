@@ -26,9 +26,9 @@ PROBE_COLORS: dict[str, dict[str, Any]] = {
             0.4666666666666667,
             0.7058823529411765,
         ),
-        EVAL_USAGE_MAPPING[
-            "fine-tune"
-        ]: "orange",  # (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
+        # EVAL_USAGE_MAPPING[
+        #    "fine-tune"
+        # ]: "orange",  # (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
         EVAL_USAGE_MAPPING["only"]: (
             0.12156862745098039,
             0.4666666666666667,
@@ -38,7 +38,7 @@ PROBE_COLORS: dict[str, dict[str, Any]] = {
     "attention": {
         "default": (1.0, 0.4980392156862745, 0.054901960784313725),
         EVAL_USAGE_MAPPING["combine"]: (1.0, 0.4980392156862745, 0.054901960784313725),
-        EVAL_USAGE_MAPPING["fine-tune"]: "blue",
+        # EVAL_USAGE_MAPPING["fine-tune"]: "blue",
         EVAL_USAGE_MAPPING["only"]: (1.0, 0.4980392156862745, 0.054901960784313725),
     },
 }
@@ -101,6 +101,8 @@ def plot_dev_split_results(
     baseline_file: Optional[Path] = None,
     line_width: float = 2.0,
     methods: Optional[list[Literal["combine", "only", "fine-tune"]]] = None,
+    add_error_bars: bool = True,
+    marker_size: float = 6.0,
 ) -> None:
     """Plot k-shot fine-tuning results showing performance vs k for different dev_sample_usage settings.
 
@@ -116,6 +118,8 @@ def plot_dev_split_results(
         baseline_file: Path to a JSONL file containing baseline results to plot as a horizontal line
         line_width: Width of the lines in the plot. Default is 2.0.
         methods: Optional list of methods to plot. If None, plots all methods. Can include "combine", "only", "fine-tune".
+        add_error_bars: Whether to add error bars to the plot. Default is True.
+        marker_size: Size of the markers in the plot. Default is 6.0.
     """
     # Convert single Path to list for consistent handling
     if isinstance(results_files, Path):
@@ -199,12 +203,12 @@ def plot_dev_split_results(
     # Define line styles for different dev_sample_usage settings
     line_styles = {
         eval_usage_mapping["only"]: "--",
-        eval_usage_mapping["combine"]: "-.",
+        eval_usage_mapping["combine"]: "-",
         eval_usage_mapping["fine-tune"]: "-",
     }
     marker_styles = {
         eval_usage_mapping["only"]: "o",
-        eval_usage_mapping["combine"]: "s",
+        eval_usage_mapping["combine"]: "^",
         eval_usage_mapping["fine-tune"]: "D",
     }
 
@@ -323,9 +327,10 @@ def plot_dev_split_results(
             plt.errorbar(
                 x_values,
                 y_values,
-                yerr=y_err,
+                yerr=y_err if add_error_bars else None,
                 label=usage,
                 marker=marker_styles[usage],
+                markersize=marker_size,
                 capsize=5,
                 linewidth=line_width,
                 linestyle=line_styles[usage],
@@ -409,9 +414,10 @@ def plot_dev_split_results(
                 plt.errorbar(
                     x_values,
                     y_values,
-                    yerr=y_err,
+                    yerr=y_err if add_error_bars else None,
                     label=f"{dataset} ({usage})",
                     marker=marker_styles[usage],
+                    markersize=marker_size,
                     capsize=5,
                     color=dataset_colors[dataset],
                     linestyle=line_styles[usage],
@@ -473,8 +479,9 @@ def plot_dev_split_results(
     plt.ylabel(
         "Mean " + (metric.upper() if metric != "tpr_at_fpr" else "TPR at 1% FPR")
     )
-    plt.legend(title="Training Data", bbox_to_anchor=(0.98, 0.02), loc="lower right")
+    plt.legend(bbox_to_anchor=(0.98, 0.02), loc="lower right")
     plt.grid(True, alpha=0.5)
+    # plt.ylim(0.9, 1.0)
 
     # Set x-axis to log scale since k values are powers of 2
     plt.xscale("log", base=2)
@@ -499,8 +506,8 @@ if __name__ == "__main__":
     probe_type = "softmax"
     results_files = [
         EVALUATE_PROBES_DIR / f"dev_split_training_neurips_test_{probe_type}.jsonl",
-        EVALUATE_PROBES_DIR / f"dev_split_training_arxiv_test_{probe_type}_val.jsonl",
-        EVALUATE_PROBES_DIR / f"dev_split_training_arxiv_test_{probe_type}.jsonl",
+        EVALUATE_PROBES_DIR
+        / f"dev_split_training_arxiv_test_{probe_type}_combined.jsonl",
     ]
     baseline_file = (
         RESULTS_DIR / "monitoring_cascade_arxiv" / "baseline_llama-70b.jsonl"
@@ -511,5 +518,7 @@ if __name__ == "__main__":
         # metric="tpr_at_fpr",
         combine_datasets=True,
         baseline_file=baseline_file,
-        methods=["combine", "fine-tune"],
+        # add_error_bars=False,
+        # marker_size=10,
+        methods=["fine-tune", "only"],
     )
