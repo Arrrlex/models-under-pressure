@@ -104,6 +104,7 @@ def plot_calibration(
     out_path: Path,
     n_bins: int = 10,
     use_binary_labels: bool = False,
+    with_legend: bool = True,
 ) -> tuple[Path, Path]:
     fig, ax1 = plt.subplots(
         nrows=1,
@@ -182,7 +183,8 @@ def plot_calibration(
     else:
         ax1.set_ylabel("Mean Stakes Rating")
     ax1.grid()
-    # ax1.legend(title="Probe Calibration")
+    if with_legend:
+        ax1.legend(title="Probe Calibration")
 
     # Save plot
     print(f"Saving {out_path}")
@@ -287,6 +289,7 @@ def run_calibration(
     evaluate_probe_results_path: Path,
     out_path: Path,
     use_binary_labels: bool = False,
+    with_legend: bool = True,
 ):
     """
     Run calibration analysis with the provided EvalRunConfig.
@@ -333,6 +336,7 @@ def run_calibration(
         n_bins=10,
         out_path=out_path,
         use_binary_labels=use_binary_labels,
+        with_legend=with_legend,
     )
 
     return out_path, json_path
@@ -391,10 +395,11 @@ if __name__ == "__main__":
 
         plot_path, json_path = run_calibration(
             results_path,
-            out_path=calibration_plots_dir / f"calibration_{results_id}.png",
+            out_path=calibration_plots_dir
+            / f"calibration_{results_id}_without_legend.png",
             use_binary_labels=False,
+            with_legend=False,
         )
-        json_path = calibration_plots_dir / f"calibration_{results_id}.json"
 
         calibration_jsons[results_id] = json_path
 
