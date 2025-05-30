@@ -424,6 +424,20 @@ class ClassifierModule(pl.LightningModule):
             else:
                 raise ValueError(f"Optimizer {self.optimizer} not supported")
 
+        if self.scheduler_params and self.scheduler_params.get("name") == "step":
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=self.scheduler_params.get("step_size", 5),
+                gamma=self.scheduler_params.get("gamma", 0.1),
+            )
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "epoch",
+                    "frequency": 1,
+                },
+            }
         return optimizer
 
     def predict_step(
@@ -1067,6 +1081,7 @@ def get_finetuned_baseline_results(
     finetune_config: FinetuneBaselineConfig,
     eval_datasets: dict[str, Path],
     results_dir: Path | None = None,
+    results_file: str = "finetuning.jsonl",
     train_dataset_path: Path | None = None,
     checkpoint_path: Path | None = None,
     max_samples: Optional[int] = None,
@@ -1158,10 +1173,8 @@ def get_finetuned_baseline_results(
         del eval_dataset
 
         if results_dir is not None:
-            print(
-                f"Saving results for {dataset_name} to {results_dir / 'finetuning.jsonl'}"
-            )
-            with open(results_dir / "finetuning.jsonl", "a") as f:
+            print(f"Saving results for {dataset_name} to {results_dir / results_file}")
+            with open(results_dir / results_file, "a") as f:
                 f.write(eval_result.model_dump_json() + "\n")
 
     return eval_results
