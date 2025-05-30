@@ -981,7 +981,10 @@ def get_abbreviated_model_name(full_name: str) -> str:
 def plot_cascade_results(
     results_file: Path,
     output_file: Optional[Path] = None,
-    figsize: tuple[int, int] = (9, 4),
+    figsize: tuple[int, int] = (
+        9,
+        4,
+    ),  # (9, 4) for main cascade plot, (9, 5) for full cascade plot
     show_fraction_labels: bool = False,
     target_dataset: Optional[str] = None,
     show_strategy_in_legend: bool = True,
@@ -989,7 +992,7 @@ def plot_cascade_results(
     show_shaded_regions: bool = False,
     add_legend: bool = False,
     probe_name: str = "Attention",  # TODO Get from config!
-    y_min: float = 0.8,
+    y_min: float = 0.8,  # .7 for full cascade plot, .8 for main cascade plot
     plot_file_ending: str = "png",  # Default to png if not specified
     show_probe: bool = True,  # Whether to show probe and break x-axis
 ) -> None:
