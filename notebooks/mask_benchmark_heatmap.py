@@ -1,13 +1,15 @@
 # %%
-from models_under_pressure.interfaces.dataset import LabelledDataset
-from models_under_pressure.config import EVAL_DATASETS_RAW
+import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-import matplotlib.pyplot as plt
+
+from models_under_pressure.config import DATA_DIR
+from models_under_pressure.interfaces.dataset import LabelledDataset
 
 # %%
 
-df = LabelledDataset.load_from(EVAL_DATASETS_RAW["mask"]).to_pandas()
+path = DATA_DIR / "evals/test/mask_samples_raw.jsonl"
+df = LabelledDataset.load_from(path).to_pandas()
 
 
 # Create crosstab
@@ -27,4 +29,33 @@ plt.savefig("mask_benchmark_heatmap.pdf")
 plt.savefig("mask_benchmark_heatmap.png")
 plt.show()
 
+# %%
+
+df.head()
+
+# %%
+
+# Calculate percentage of high pressure responses for each scale label
+pressure_by_scale = (
+    df.groupby("scale_labels")["pressure"]
+    .apply(lambda x: (x == "high").mean() * 100)
+    .reset_index()
+)
+
+# Create line plot
+plt.figure(figsize=(10, 6))
+sns.lineplot(data=pressure_by_scale, x="scale_labels", y="pressure", marker="o")
+
+plt.title("Percentage High-Pressure Responses by Scale Label")
+plt.xlabel("Scale Labels")
+plt.ylabel("Percentage High-Pressure Responses")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig("pressure_by_scale.pdf")
+plt.savefig("pressure_by_scale.png")
+plt.show()
+
+# %%
+
+df["pressure"].value_counts()
 # %%
