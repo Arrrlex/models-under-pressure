@@ -18,7 +18,7 @@ from models_under_pressure.interfaces.dataset import (
     LabelledDataset,
     subsample_balanced_subset,
 )
-from models_under_pressure.interfaces.probes import ProbeSpec, ProbeType
+from models_under_pressure.interfaces.probes import ProbeSpec
 from models_under_pressure.interfaces.results import (
     DataEfficiencyBaselineResults,
     DatasetResults,
@@ -321,34 +321,34 @@ if __name__ == "__main__":
         dataset_path=SYNTHETIC_DATASET_PATH,
         dataset_sizes=[4, 8, 16, 32, 64, 128, 256, 512, 1024, 1910],
         probes=[
-            ProbeSpec(
-                name=ProbeType.sklearn,
-                hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
-            ),
-            ProbeSpec(
-                name=ProbeType.attention,
-                hyperparams={
-                    "name": "attention",
-                    "batch_size": 16,
-                    "epochs": 200,
-                    "optimizer_args": {"lr": 5e-3, "weight_decay": 1e-3},
-                    "final_lr": 5e-4,
-                    "gradient_accumulation_steps": 4,
-                    "patience": 50,
-                },
-            ),
-            ProbeSpec(
-                name=ProbeType.linear_then_softmax,
-                hyperparams={
-                    "temperature": 5,
-                    "batch_size": 16,
-                    "epochs": 200,
-                    "optimizer_args": {"lr": 5e-3, "weight_decay": 1e-3},
-                    "final_lr": 1e-4,
-                    "gradient_accumulation_steps": 4,
-                    "patience": 10,
-                },
-            ),
+            # ProbeSpec(
+            #     name=ProbeType.sklearn,
+            #     hyperparams={"C": 1e-3, "random_state": 42, "fit_intercept": False},
+            # ),
+            # ProbeSpec(
+            #     name=ProbeType.attention,
+            #     hyperparams={
+            #         "name": "attention",
+            #         "batch_size": 16,
+            #         "epochs": 200,
+            #         "optimizer_args": {"lr": 5e-3, "weight_decay": 1e-3},
+            #         "final_lr": 5e-4,
+            #         "gradient_accumulation_steps": 4,
+            #         "patience": 50,
+            #     },
+            # ),
+            # ProbeSpec(
+            #     name=ProbeType.linear_then_softmax,
+            #     hyperparams={
+            #         "temperature": 5,
+            #         "batch_size": 16,
+            #         "epochs": 200,
+            #         "optimizer_args": {"lr": 5e-3, "weight_decay": 1e-3},
+            #         "final_lr": 1e-4,
+            #         "gradient_accumulation_steps": 4,
+            #         "patience": 10,
+            #     },
+            # ),
         ],
         compute_activations=False,
         eval_dataset_paths=EVAL_DATASETS_BALANCED,
