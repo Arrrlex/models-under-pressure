@@ -1,5 +1,6 @@
 # As soon as you've logged into your lambda instance, copy this script,
 # paste it into the terminal, and follow the instructions to set up your instance.
+touch ~/.no_auto_tmux
 
 cat << 'EOF' > setup.sh && chmod +x setup.sh && ./setup.sh && rm setup.sh
 #!/bin/bash
@@ -62,15 +63,14 @@ echo "Please paste your .env file content, then hit enter twice:"
 while IFS= read -r line; do
     [[ -z "$line" ]] && break
     echo "$line"
-done > .env
+done > ~/envfile
 
 
 # Rest of setup
-mkdir -p $name
-cd $name
+mkdir -p ~/$name
 # Set git config for this specific directory before cloning
-git config --global --add includeIf."gitdir:$(pwd)/".path "$(pwd)/.gitconfig"
-cat << GITCONFIG > .gitconfig
+git config --global --add includeIf."gitdir:~/$name/".path "~/$name/.gitconfig"
+cat << GITCONFIG > ~/$name/.gitconfig
 [core]
     sshCommand = "ssh -i ~/.ssh/github_$name"
 [user]
@@ -80,10 +80,12 @@ cat << GITCONFIG > .gitconfig
     autoSetupRemote = true
 GITCONFIG
 
+cd ~/$name
 git clone git@github.com:Arrrlex/models-under-pressure.git
 curl -LsSf https://astral.sh/uv/install.sh | sh
-cd models-under-pressure
-mv ../../.env .
+source ~/.bashrc
+mv ~/envfile ~/$name/models-under-pressure/.env
+cd ~/$name/models-under-pressure
 uv sync
 uv run pre-commit install
 uv run pre-commit run --all
