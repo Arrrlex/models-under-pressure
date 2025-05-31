@@ -71,16 +71,8 @@ def get_method_style(name: str) -> tuple[str, str]:
         else:  # gemma
             color = METHOD_COLORS["finetuned_gemma"]
 
-        # Determine line style based on parameter count
-        if "1b" in name.lower():
-            linestyle = MODEL_LINE_STYLES["1b"]
-        elif "8b" in name.lower():
-            linestyle = MODEL_LINE_STYLES["8b"]
-        elif "12b" in name.lower():
-            linestyle = MODEL_LINE_STYLES["12b"]
-        else:
-            linestyle = "-"  # Default solid
-        return color, linestyle
+        # All finetuned use solid lines now
+        return color, "-"
 
     # Check for prompted baselines
     if "prompted" in name.lower():
@@ -90,14 +82,8 @@ def get_method_style(name: str) -> tuple[str, str]:
         else:  # gemma
             color = METHOD_COLORS["prompted_gemma"]
 
-        # Determine line style based on parameter count
-        if "27b" in name.lower():
-            linestyle = MODEL_LINE_STYLES["27b"]
-        elif "70b" in name.lower():
-            linestyle = MODEL_LINE_STYLES["70b"]
-        else:
-            linestyle = "-"  # Default solid
-        return color, linestyle
+        # All prompted use solid lines now
+        return color, "-"
 
     # Default fallback
     return "#666666", "-"
@@ -287,7 +273,7 @@ def plot_roc_curves(
         output_path: Path to save the plot
         show_legend: Whether to show the legend (default: True)
     """
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 6))  # Square figure
 
     # Add random classifier diagonal line
     plt.plot([0, 1], [0, 1], "k--", label="Random", alpha=0.5, linewidth=2.5)
@@ -305,7 +291,7 @@ def plot_roc_curves(
                     fpr,
                     tpr,
                     label=result_file.name,
-                    linewidth=2.8,
+                    linewidth=3,
                     color=color,
                     linestyle=linestyle,
                 )
@@ -322,6 +308,9 @@ def plot_roc_curves(
     plt.grid(True, alpha=0.3)
     plt.xlim([0, 1])
     plt.ylim([0, 1])
+
+    # Keep ticks but remove labels
+    plt.tick_params(axis="both", which="major", labelbottom=False, labelleft=False)
 
     plt.tight_layout()
     print(f"Saving plot to {output_path}")
@@ -351,24 +340,24 @@ if __name__ == "__main__":
             path=RESULTS_DIR
             / "finetuning_baselines_test_performance_v2/finetuning_gemma_1b_test_optimized_2.jsonl",
         ),
-        ROCCurveFile(
-            name="Llama-1b (finetuned)",
-            type="finetuned_baseline",
-            path=RESULTS_DIR
-            / "finetuning_baselines_test_performance_v2/finetuning_llama_1b_test_optimized_2.jsonl",
-        ),
+        # ROCCurveFile(
+        #     name="Llama-1b (finetuned)",
+        #     type="finetuned_baseline",
+        #     path=RESULTS_DIR
+        #     / "finetuning_baselines_test_performance_v2/finetuning_llama_1b_test_optimized_2.jsonl",
+        # ),
         ROCCurveFile(
             name="Llama-8b (finetuned)",
             type="finetuned_baseline",
             path=RESULTS_DIR
             / "finetuning_baselines_test_performance_v2/finetuning_llama_8b_test_optimized_2.jsonl",
         ),
-        ROCCurveFile(
-            name="Gemma-12b (finetuned)",
-            type="finetuned_baseline",
-            path=RESULTS_DIR
-            / "finetuning_baselines_test_performance/finetuning_gemma_12b_test.jsonl",
-        ),
+        # ROCCurveFile(
+        #     name="Gemma-12b (finetuned)",
+        #     type="finetuned_baseline",
+        #     path=RESULTS_DIR
+        #     / "finetuning_baselines_test_performance/finetuning_gemma_12b_test.jsonl",
+        # ),
         ROCCurveFile(
             name="Attention Probe",
             type="probe",
