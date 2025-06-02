@@ -33,14 +33,11 @@ PROBE_COLORS = {
     "Rolling Mean Max Probe": "#E377C2",  # Pink
 }
 
-# Colors differentiated by model family within method types
 METHOD_COLORS = {
-    # Finetuned: matching probes_vs_baseline_plot.py exactly
-    "finetuned_llama": "#008000",  # Dark green
-    "finetuned_gemma": "#32CD32",  # Lime green
-    # Prompted: matching probes_vs_baseline_plot.py exactly (continuation colors)
-    "prompted_llama": "#008080",  # Teal
-    "prompted_gemma": "#00CED1",  # Dark turquoise
+    "finetuned_llama": "#008000",
+    "finetuned_gemma": "#32CD32",
+    "prompted_llama": "#0D8C8C",
+    "prompted_gemma": "#00CED1",
 }
 
 # Line styles by parameter count - more solid for larger models
@@ -85,8 +82,10 @@ def get_method_style(name: str) -> tuple[str, str]:
         # All prompted use solid lines now
         return color, "-"
 
+    raise ValueError(f"Unknown method: {name}")
+
     # Default fallback
-    return "#666666", "-"
+    # return "#666666", "-"
 
 
 def get_method_color(name: str) -> str:

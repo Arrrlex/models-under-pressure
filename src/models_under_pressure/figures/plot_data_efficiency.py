@@ -123,7 +123,7 @@ def plot_results(df: pd.DataFrame) -> None:
     plot_df = df.reset_index()
 
     # Set up the plot style
-    plt.figure(figsize=(7, 6))
+    plt.figure(figsize=(7, 7))
     sns.set_style("whitegrid")
 
     # Get a list of distinct colors from a colormap
@@ -143,6 +143,11 @@ def plot_results(df: pd.DataFrame) -> None:
 
     # Plot each method as a separate line
     for i, method in enumerate(plot_df["method"].unique()):
+        if method not in method_to_color:
+            print(
+                f"Skipping {method} because it is not in the method_to_color dictionary"
+            )
+            continue
         print(f"Plotting {method}")
         method_df = plot_df[plot_df["method"] == method]
         plt.plot(
@@ -151,7 +156,7 @@ def plot_results(df: pd.DataFrame) -> None:
             label=method,
             marker=markers[i % len(markers)],
             color=method_to_color[method],
-            linewidth=2,
+            linewidth=3,
             markersize=8,
         )
 
@@ -175,6 +180,7 @@ def plot_results(df: pd.DataFrame) -> None:
     # Save the figure
     output_dir = Path("figures")
     output_dir.mkdir(exist_ok=True)
+    print(f"Saving figure to {output_dir / 'data_efficiency.png'}")
     plt.savefig(output_dir / "data_efficiency.png", dpi=600, bbox_inches="tight")
     plt.savefig(output_dir / "data_efficiency.pdf", bbox_inches="tight")
 
@@ -183,7 +189,7 @@ def plot_results(df: pd.DataFrame) -> None:
 
 if __name__ == "__main__":
     # Define the directory containing the results
-    results_dir = RESULTS_DIR / "data_efficiency"
+    results_dir = RESULTS_DIR / "data-efficiency"
 
     # Find all JSONL files in the directory
     all_jsonl_files = list(results_dir.glob("*.jsonl"))
