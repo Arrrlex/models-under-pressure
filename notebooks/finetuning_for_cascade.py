@@ -35,13 +35,13 @@ if __name__ == "__main__":
             "label_smoothing": 0.0,
             "optimizer": "adamw8bit",
         },
-        batch_size=4,
-        test_batch_size=4,
+        batch_size=2,
+        test_batch_size=2,
         shuffle=True,
         logger=None,
         num_workers=25,
         Trainer={
-            "max_epochs": 3,  # 20,
+            "max_epochs": 7,  # 20,
             # "accelerator": "gpu",
             "accelerator": "gpu",
             "devices": [0],
@@ -51,7 +51,7 @@ if __name__ == "__main__":
             "gradient_clip_val": 1.0,
             "strategy": "ddp_find_unused_parameters_true",
             "default_root_dir": "/root/phil/models-under-pressure/.cache",
-            "accumulate_grad_batches": 32,
+            "accumulate_grad_batches": 128,
         },
     )
 
