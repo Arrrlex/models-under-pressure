@@ -5,8 +5,8 @@ input_dir: data/results/monitoring_cascade_arxiv  # Directory containing compute
 first_baseline_model_name: null  # If specified, enables two-step baseline cascades
 
 analysis:
-  baseline_models: ["gemma-12b", "gemma-27b", "llama-70b"]  # If specified, only include these baseline models
-  finetuned_baseline_models: ["gemma-1b"]  # If specified, only include these finetuned baseline models
+  baseline_models: [ "gemma-27b", "llama-70b"]  # If specified, only include these baseline models
+  finetuned_baseline_models: ["gemma-1b", "llama-8b"]  # If specified, only include these finetuned baseline models
   target_dataset: null  # If specified, only analyze results for this dataset
   plot_file_ending: "png"  # File extension for plot output (e.g. "png", "pdf", "svg")
   probe_strategy:
@@ -17,7 +17,7 @@ analysis:
     selection_strategy: "mid"
     merge_strategy: "mean"
     remaining_strategy: "first"
-  show_legend: true
+  show_legend: false
   show_strategy_in_legend: false
   show_shaded_regions: false
   show_probe: true

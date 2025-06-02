@@ -1467,12 +1467,13 @@ def plot_cascade_results(
 
     # Save plot with extra padding for the legend
     if output_file is None:
-        output_file = results_file.parent / f"cascade_plot.{plot_file_ending}"
+        output_file = results_file.parent / f"cascade_plot_.{plot_file_ending}"
         if target_dataset:
             output_file = (
                 results_file.parent
-                / f"cascade_plot_{target_dataset}.{plot_file_ending}"
+                / f"cascade_plot_{target_dataset}_.{plot_file_ending}"
             )
+    print(f"Saving figure to {output_file}")
     plt.savefig(output_file, bbox_inches="tight", dpi=600)
     plt.close()
 

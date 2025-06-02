@@ -6,7 +6,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn.metrics import roc_auc_score
 
-from models_under_pressure.config import RESULTS_DIR
+from models_under_pressure.config import PLOTS_DIR, RESULTS_DIR
 from models_under_pressure.figures.utils import get_baseline_results, get_probe_results
 
 
@@ -134,12 +134,27 @@ def plot_results(df: pd.DataFrame) -> None:
         "attention": "#FF7F0E",
         "linear_then_softmax": "#1F77B4",
         "sklearn": "brown",
+        # "finetuned_gemma-"
         "finetuned_Llama-3.1-8B-Instruct": "#008000",
-        "finetuned_Llama-3.2-1B-Instruct": "#7CFC00",
+        "finetuned_Llama-3.2-1B-Instruct": "#008000",
+        # "finetuned_Llama-3.2-1B-Instruct": "#7CFC00",
     }
 
+    method_to_linestyle = {
+        "attention": "-",
+        "linear_then_softmax": "-",
+        "sklearn": "-",
+        "finetuned_Llama-3.1-8B-Instruct": "--",
+        "finetuned_Llama-3.2-1B-Instruct": ":",
+    }
+
+    # method_to_marker = {
+    #     "probe": "o",
+    #     "finetuned":
+    # }
+
     # Define markers for methods
-    markers = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "h"]
+    # markers = ["o", "s", "^", "D", "v", ">", "<", "p", "*", "h"]
 
     # Plot each method as a separate line
     for i, method in enumerate(plot_df["method"].unique()):
@@ -154,7 +169,9 @@ def plot_results(df: pd.DataFrame) -> None:
             method_df["train_dataset_size"],
             method_df["auroc"],
             label=method,
-            marker=markers[i % len(markers)],
+            marker="o",
+            linestyle=method_to_linestyle[method],
+            # marker=markers[i % len(markers)],
             color=method_to_color[method],
             linewidth=3,
             markersize=8,
@@ -178,11 +195,10 @@ def plot_results(df: pd.DataFrame) -> None:
     plt.tight_layout()
 
     # Save the figure
-    output_dir = Path("figures")
-    output_dir.mkdir(exist_ok=True)
-    print(f"Saving figure to {output_dir / 'data_efficiency.png'}")
-    plt.savefig(output_dir / "data_efficiency.png", dpi=600, bbox_inches="tight")
-    plt.savefig(output_dir / "data_efficiency.pdf", bbox_inches="tight")
+    print(f"Saving figure to {PLOTS_DIR / 'data_efficiency.png'}")
+    plt.savefig(PLOTS_DIR / "data_efficiency.png", dpi=600, bbox_inches="tight")
+    print(f"Saving figure to {PLOTS_DIR / 'data_efficiency.pdf'}")
+    plt.savefig(PLOTS_DIR / "data_efficiency.pdf", bbox_inches="tight")
 
     plt.show()
 
