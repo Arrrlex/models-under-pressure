@@ -571,7 +571,7 @@ class StakesDataset(torch.utils.data.Dataset):
 
 
 def create_collate_fn(
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 2048
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 512
 ):
     """
     Create a collate function for a pytorch dataloader.
@@ -684,6 +684,7 @@ class FinetunedClassifier:
             cache_dir=cache_dir,  # type: ignore
         )
         self._tokenizer.padding_side = "right"  # see if this helps, as llama is working
+        print("Tokenizer padding side: ", self._tokenizer.padding_side)
         if self._tokenizer.pad_token_id is None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
         self._model = LLMModel(
@@ -701,6 +702,8 @@ class FinetunedClassifier:
             trainer_args=self.finetune_config.get("Trainer", {}),
             **self.finetune_config.get("ClassifierModule", {}),
         )
+        # Ensure all submodules are in train mode
+        self._classifier.train()
 
     def train(
         self, dataset: LabelledDataset, val_dataset: Optional[LabelledDataset] = None
