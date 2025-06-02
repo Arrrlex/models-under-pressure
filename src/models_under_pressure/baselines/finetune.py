@@ -683,6 +683,7 @@ class FinetunedClassifier:
             model_name_or_path,
             cache_dir=cache_dir,  # type: ignore
         )
+        self._tokenizer.padding_side = "right"  # see if this helps, as llama is working
         if self._tokenizer.pad_token_id is None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
         self._model = LLMModel(

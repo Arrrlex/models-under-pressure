@@ -13,6 +13,10 @@ from models_under_pressure.config import (
 
 if __name__ == "__main__":
     import pytorch_lightning as pl
+    import torch
+
+    # In a log message it was recommended to specify this precision for H200 SXM
+    torch.set_float32_matmul_precision("medium")
 
     pl.seed_everything(0)
 
@@ -21,6 +25,7 @@ if __name__ == "__main__":
     # Should be defined via a hydra run config file:
     finetune_config = FinetuneBaselineConfig(
         model_name_or_path=LOCAL_MODELS["gemma-12b"],
+        # model_name_or_path=LOCAL_MODELS["llama-8b"],
         num_classes=2,
         ClassifierModule={  # set here to the default values
             "learning_rate": 1e-5,
@@ -30,23 +35,23 @@ if __name__ == "__main__":
             "label_smoothing": 0.0,
             "optimizer": "adamw8bit",
         },
-        batch_size=2,
-        test_batch_size=2,
+        batch_size=4,
+        test_batch_size=4,
         shuffle=True,
         logger=None,
         num_workers=25,
         Trainer={
-            "max_epochs": 7,  # 20,
+            "max_epochs": 3,  # 20,
             # "accelerator": "gpu",
             "accelerator": "gpu",
-            "devices": [0, 1],
+            "devices": [0],
             "precision": "bf16-true",
-            "strategy": "deepspeed_stage_2_offload",
+            # "strategy": "deepspeed_stage_2_offload",
             # "strategy": "fsdp",
             "gradient_clip_val": 1.0,
-            # "strategy": "ddp",
-            "default_root_dir": "/home/ubuntu/phil/models-under-pressure/.cache",
-            "accumulate_grad_batches": 128,
+            "strategy": "ddp_find_unused_parameters_true",
+            "default_root_dir": "/root/phil/models-under-pressure/.cache",
+            "accumulate_grad_batches": 32,
         },
     )
 
