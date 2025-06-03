@@ -553,11 +553,28 @@ class StakesDataset(torch.utils.data.Dataset):
         df: A pandas dataframe containing the inputs and labels.
     """
 
-    def __init__(self, dataset: LabelledDataset):
+    def __init__(self, dataset: LabelledDataset, max_char_length: int | None = None):
         df = dataset.to_pandas()
         self.inputs = df["inputs"].values
         self.labels = (df["labels"] == "high-stakes").astype(int).values
         self.ids = [str(i) for i in df["ids"].values]
+        self.max_char_length = max_char_length
+
+        if max_char_length is not None:
+            print(f"Before filtering: {len(self.inputs)} samples")
+            filtered = [
+                (inp, label, id_)
+                for inp, label, id_ in zip(self.inputs, self.labels, self.ids)
+                if len(inp) <= max_char_length
+            ]
+            if filtered:
+                self.inputs, self.labels, self.ids = zip(*filtered)
+                self.inputs = list(self.inputs)
+                self.labels = list(self.labels)
+                self.ids = list(self.ids)
+            else:
+                self.inputs, self.labels, self.ids = [], [], []
+            print(f"After filtering: {len(self.inputs)} samples")
 
     def __len__(self):
         return len(self.inputs)
@@ -571,7 +588,7 @@ class StakesDataset(torch.utils.data.Dataset):
 
 
 def create_collate_fn(
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 512
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 1024
 ):
     """
     Create a collate function for a pytorch dataloader.

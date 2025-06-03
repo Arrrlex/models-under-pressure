@@ -53,11 +53,22 @@ def main():
     token_lengths = [len(tokenize(tokenizer, input)) for input in dataset.inputs]
     token_lengths = np.array(token_lengths)
 
+    # Compute character lengths
+    char_lengths = [len(str(input)) for input in dataset.inputs]
+    char_lengths = np.array(char_lengths)
+
     print(f"\nNumber of samples: {len(token_lengths)}")
     print(f"Longest sample: {token_lengths.max()} tokens")
     for k in [99.99, 99.9, 99.5, 99, 97, 95, 90, 80]:
         print(
             f"{k}% of samples are shorter than: {int(np.percentile(token_lengths, k))} tokens"
+        )
+
+    print("\nCharacter length statistics:")
+    print(f"Longest sample: {char_lengths.max()} characters")
+    for k in [99.99, 99.9, 99.5, 99, 97, 95, 90, 80]:
+        print(
+            f"{k}% of samples are shorter than: {int(np.percentile(char_lengths, k))} characters"
         )
 
 

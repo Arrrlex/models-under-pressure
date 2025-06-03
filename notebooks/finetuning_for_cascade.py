@@ -16,7 +16,7 @@ if __name__ == "__main__":
     import torch
 
     # In a log message it was recommended to specify this precision for H200 SXM
-    torch.set_float32_matmul_precision("medium")
+    torch.set_float32_matmul_precision("high")
 
     pl.seed_everything(0)
 
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         logger=None,
         num_workers=25,
         Trainer={
-            "max_epochs": 7,  # 20,
+            "max_epochs": 10,  # 20,
             # "accelerator": "gpu",
             "accelerator": "gpu",
             "devices": [0],
@@ -49,7 +49,7 @@ if __name__ == "__main__":
             # "strategy": "deepspeed_stage_2_offload",
             # "strategy": "fsdp",
             "gradient_clip_val": 1.0,
-            "strategy": "ddp_find_unused_parameters_true",
+            # "strategy": "ddp_find_unused_parameters_true",
             "default_root_dir": "/root/phil/models-under-pressure/.cache",
             "accumulate_grad_batches": 128,
         },
