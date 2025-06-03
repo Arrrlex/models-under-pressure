@@ -42,7 +42,7 @@ if __name__ == "__main__":
             logger=None,
             num_workers=25,
             Trainer={
-                "max_epochs": 7,  # 20,
+                "max_epochs": 5,  # 20,
                 # "accelerator": "gpu",
                 "accelerator": "gpu",
                 "devices": [0],
@@ -52,7 +52,7 @@ if __name__ == "__main__":
                 "gradient_clip_val": 1.0,
                 # "strategy": "ddp_find_unused_parameters_true",
                 "default_root_dir": "/root/phil/models-under-pressure/.cache",
-                "accumulate_grad_batches": 128,
+                "accumulate_grad_batches": 2,
             },
         )
 
