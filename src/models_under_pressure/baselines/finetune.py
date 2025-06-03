@@ -503,6 +503,7 @@ class LLMModel(nn.Module):
             model_name_or_path,
             cache_dir=cache_dir,
             torch_dtype=torch.bfloat16,  # Doesn't seem to make a difference
+            attn_implementation="eager",
         )
 
         def _get_hidden_size(model):
@@ -588,7 +589,7 @@ class StakesDataset(torch.utils.data.Dataset):
 
 
 def create_collate_fn(
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 1024
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, max_length: int = 2048
 ):
     """
     Create a collate function for a pytorch dataloader.
