@@ -52,7 +52,7 @@ if __name__ == "__main__":
                 "gradient_clip_val": 1.0,
                 # "strategy": "ddp_find_unused_parameters_true",
                 "default_root_dir": "/root/phil/models-under-pressure/.cache",
-                "accumulate_grad_batches": 2,
+                "accumulate_grad_batches": 4,
             },
         )
 
