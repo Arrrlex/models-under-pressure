@@ -292,18 +292,18 @@ def plot_results(
         "probe_softmax": "#1f77b4",  # Blue for softmax probe
     }
     finetuned_colors = [
-        "limegreen",
-        "limegreen",
-        "green",
-        "green",
-    ]  # Shades of purple/pink for finetuned methods
+        "#7CFC00",
+        "#7CFC00",
+        "#006400",
+        "#006400",
+    ]
     continuation_colors = [
-        "darkturquoise",
-        "darkturquoise",
-        "teal",
-        "teal",
-        "teal",
-    ]  # New colors for continuation methods
+        "#9999FF",
+        "#9999FF",
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+    ]
 
     # Print HSV values for all colors
     print("\n=== COLOR INFORMATION ===")
@@ -536,8 +536,8 @@ def plot_results(
     legend_suffix = "_nolegend"  # Always no legend
     output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.pdf"
     png_output_filename = f"probes_vs_baseline_plot_{metric}{legend_suffix}.png"
-    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
-    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
+    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=600)
+    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=600)
     plt.close()
 
 
@@ -554,7 +554,7 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     sns.set_context("paper", font_scale=1.5)
 
     # Create figure with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(20, 8), sharey=False)
+    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(15, 5), sharey=False)
 
     # Define utility functions for model name and size extraction
     def extract_model_name(label: str) -> str:
@@ -610,19 +610,19 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
         "probe_softmax": "#1f77b4",  # Blue for softmax probe
     }
     finetuned_colors = [
-        "limegreen",
-        "limegreen",
-        "green",
-        "green",
-    ]  # Shades of green for finetuned methods
+        "#32CD32",
+        "#32CD32",
+        "#006400",
+        "#006400",
+    ]
     continuation_colors = [
-        "darkturquoise",
-        "darkturquoise",
-        "darkturquoise",
-        "teal",
-        "teal",
-        "teal",
-    ]  # Blue/teal for continuation methods
+        "#00DEE1",
+        "#00DEE1",
+        "#00DEE1",
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+        (0.0, 0.5019607843137255, 0.5019607843137255),
+    ]
 
     # Create a color dictionary
     color_dict = {}
@@ -646,12 +646,12 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
 
     # Define hatch patterns with variations for different methods and sizes
     hatch_patterns = {
-        "small_1": ".",  # Tiny dots for 1b
-        "small_3": ".",  # Small circles for 3b
-        "medium_8": "o",  # Medium circles for 8b
-        "medium_12": "o",  # Larger circles for 12b
-        "large_27": "O",  # Large circles for 27b
-        "large_70": "O",  # Largest circles for 70b
+        "small_1": "..",
+        "small_3": "..",
+        "medium_8": "o",
+        "medium_12": "o",
+        "large_27": "O",
+        "large_70": "O",
     }
 
     # Store linewidth information for different model sizes
@@ -681,28 +681,28 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
         # Assign pattern based on exact size for specific thickness
         if size == 1:
             hatch_dict[method] = hatch_patterns["small_1"]
-            linewidth_dict[method] = 0.8
-            hatchdensity_dict[method] = 4  # More dense (many small dots)
+            # linewidth_dict[method] = 0.8
+            # hatchdensity_dict[method] = 4  # More dense (many small dots)
         elif size <= 3:
             hatch_dict[method] = hatch_patterns["small_3"]
-            linewidth_dict[method] = 1.0
+            # linewidth_dict[method] = 1.0
             hatchdensity_dict[method] = 6  # Dense small circles
         elif size <= 8:
             hatch_dict[method] = hatch_patterns["medium_8"]
-            linewidth_dict[method] = 1.2
-            hatchdensity_dict[method] = 8  # Medium spacing
+            # linewidth_dict[method] = 1.2
+            # hatchdensity_dict[method] = 8  # Medium spacing
         elif size <= 12 or "gemma-12b" in model_name.lower():
             hatch_dict[method] = hatch_patterns["medium_12"]
-            linewidth_dict[method] = 1.5
-            hatchdensity_dict[method] = 10  # Fewer medium circles
+            # linewidth_dict[method] = 1.5
+            # hatchdensity_dict[method] = 10  # Fewer medium circles
         elif size <= 27:
             hatch_dict[method] = hatch_patterns["large_27"]
-            linewidth_dict[method] = 1.8
-            hatchdensity_dict[method] = 12  # Few large circles
+            # linewidth_dict[method] = 1.8
+            # hatchdensity_dict[method] = 12  # Few large circles
         else:  # > 27b (like 70b)
             hatch_dict[method] = hatch_patterns["large_70"]
-            linewidth_dict[method] = 2.0
-            hatchdensity_dict[method] = 15  # Very few very large circles
+            # linewidth_dict[method] = 2.0
+            # hatchdensity_dict[method] = 15  # Very few very large circles
 
     # Calculate mean performance across all datasets for each method
     auroc_means = {}
@@ -761,11 +761,11 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     for i, method in enumerate(methods):
         # Clean hatch pattern for this method
         hatch_pattern = hatch_dict.get(method, "")
-        if hatch_pattern in ["o", "O"]:
-            # Create a pattern with controlled density
-            hatch_pattern = hatch_pattern * max(
-                1, int(10 / hatchdensity_dict.get(method, 6))
-            )
+        # if hatch_pattern in ["o", "O"]:
+        #    # Create a pattern with controlled density
+        #    hatch_pattern = hatch_pattern * max(
+        #        1, int(10 / hatchdensity_dict.get(method, 6))
+        #    )
 
         # Add error bars if available for this method
         yerr = auroc_errors.get(method, None)
@@ -776,9 +776,9 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
             width=bar_width,
             color=color_dict.get(method),
             hatch=hatch_pattern,
-            alpha=0.8,
+            alpha=0.9,
             edgecolor="black",
-            linewidth=linewidth_dict.get(method, 0.5),
+            linewidth=linewidth_dict.get(method, 1),
             yerr=yerr,
             capsize=5,
         )
@@ -802,9 +802,9 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
             width=bar_width,
             color=color_dict.get(method),
             hatch=hatch_pattern,
-            alpha=0.8,
+            alpha=0.9,
             edgecolor="black",
-            linewidth=linewidth_dict.get(method, 0.5),
+            linewidth=linewidth_dict.get(method, 1),
             yerr=yerr,
             capsize=5,
         )
@@ -833,50 +833,49 @@ def plot_combined_metrics(plot_df: pd.DataFrame) -> None:
     # Save the plot
     output_filename = "probes_vs_baseline_combined_metrics.pdf"
     png_output_filename = "probes_vs_baseline_combined_metrics.png"
-    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=300)
-    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=300)
+    plt.savefig(RESULTS_DIR / output_filename, bbox_inches="tight", dpi=600)
+    plt.savefig(RESULTS_DIR / png_output_filename, bbox_inches="tight", dpi=600)
     plt.close()
 
 
 if __name__ == "__main__":
     probe_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_attention_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/evaluate_probes/results_softmax_test_3.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_1.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_2.jsonl",
+        RESULTS_DIR / "probes/results_attention_test_3.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_1.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_2.jsonl",
+        RESULTS_DIR / "probes/results_softmax_test_3.jsonl",
     ]
 
     finetune_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_gemma_12b_test.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_1.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_1b_test_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/finetuned_baselines/finetuning_llama_8b_test_3.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_1b_test_optimized_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_gemma_12b_test_optimized_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_1b_test_optimized_2.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_0.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_1.jsonl",
+        RESULTS_DIR / "finetuned_baselines/finetuning_llama_8b_test_optimized_2.jsonl",
     ]
 
     continuation_paths = [
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-1b_v2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-1b_prompt_at_end.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-12b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_gemma-27b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_2.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-70b_3.jsonl",
-        "/home/ucabwjn/models-under-pressure/data/results/continuation_baselines/baseline_llama-8b_default.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-1b_v2.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-1b_prompt_at_end.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-12b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_gemma-27b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-70b.jsonl",
+        RESULTS_DIR / "continuation_baselines/baseline_llama-8b_default.jsonl",
     ]
 
     df_combined = prepare_data(
-        probe_paths=[Path(probe_path) for probe_path in probe_paths],
-        baseline_paths=[Path(baseline_path) for baseline_path in finetune_paths],
-        continuation_paths=[Path(contin_path) for contin_path in continuation_paths],
+        probe_paths=probe_paths,
+        baseline_paths=finetune_paths,
+        continuation_paths=continuation_paths,
     )
 
     df_plot = create_plot_dataframe(df_combined)
