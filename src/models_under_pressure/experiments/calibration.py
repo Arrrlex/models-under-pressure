@@ -354,9 +354,9 @@ if __name__ == "__main__":
 
     results_paths = [
         *probes_dir.glob("*test_1.jsonl"),
-        finetuned_dir / "finetuning_gemma_1b_test_1.jsonl",
+        finetuned_v2_dir / "finetuning_gemma_1b_test_optimized_2.jsonl",
         finetuned_dir / "finetuning_gemma_12b_test.jsonl",
-        finetuned_dir / "finetuning_llama_1b_test_1.jsonl",
+        finetuned_v2_dir / "finetuning_llama_1b_test_optimized_2.jsonl",
         finetuned_v2_dir / "finetuning_llama_8b_test_optimized_2.jsonl",
         prompting_dir / "baseline_gemma-1b_prompt_at_end.jsonl",
         prompting_dir / "baseline_gemma-12b.jsonl",

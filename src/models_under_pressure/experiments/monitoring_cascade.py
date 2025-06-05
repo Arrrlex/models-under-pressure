@@ -1473,6 +1473,7 @@ def plot_cascade_results(
                 results_file.parent
                 / f"cascade_plot_{target_dataset}.{plot_file_ending}"
             )
+    print(f"Saving figure to {output_file}")
     plt.savefig(output_file, bbox_inches="tight", dpi=600)
     plt.close()
 
