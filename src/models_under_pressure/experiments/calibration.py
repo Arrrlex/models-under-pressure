@@ -344,6 +344,7 @@ def run_calibration(
 
 # Main execution
 if __name__ == "__main__":
+    WITH_LEGEND = False
     calibration_plots_dir = PLOTS_DIR / "calibration_plots"
     calibration_plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -355,7 +356,7 @@ if __name__ == "__main__":
     results_paths = [
         *probes_dir.glob("*test_1.jsonl"),
         finetuned_v2_dir / "finetuning_gemma_1b_test_optimized_2.jsonl",
-        finetuned_dir / "finetuning_gemma_12b_test.jsonl",
+        finetuned_v2_dir / "finetuning_gemma_12b_test_optimized_2.jsonl",
         finetuned_v2_dir / "finetuning_llama_1b_test_optimized_2.jsonl",
         finetuned_v2_dir / "finetuning_llama_8b_test_optimized_2.jsonl",
         prompting_dir / "baseline_gemma-1b_prompt_at_end.jsonl",
@@ -393,12 +394,17 @@ if __name__ == "__main__":
                 results_id = results_path.stem
             calibration_jsons[results_id] = results_path
 
+        if WITH_LEGEND:
+            legend_suffix = "with_legend"
+        else:
+            legend_suffix = "without_legend"
+
         plot_path, json_path = run_calibration(
             results_path,
             out_path=calibration_plots_dir
-            / f"calibration_{results_id}_without_legend.png",
+            / f"calibration_{results_id}_{legend_suffix}.png",
             use_binary_labels=False,
-            with_legend=False,
+            with_legend=WITH_LEGEND,
         )
 
         calibration_jsons[results_id] = json_path
