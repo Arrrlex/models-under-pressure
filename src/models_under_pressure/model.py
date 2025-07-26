@@ -568,6 +568,15 @@ class LLMModel:
         try:
             inputs = self.tokenize(dialogues, add_generation_prompt=True)
 
+            # Clear any existing cache to avoid inconsistent cache lengths
+            if hasattr(self.model, "_clear_cache"):
+                self.model._clear_cache()
+            if hasattr(self.model, "clear_cache"):
+                self.model.clear_cache()
+            # Force cache reset by setting past_key_values to None
+            generation_kwargs["past_key_values"] = None
+            generation_kwargs["use_cache"] = False  # Disable caching to avoid issues
+
             # Generate answers for the batch
             outputs = self.model.generate(  # type: ignore
                 **inputs,
