@@ -103,7 +103,7 @@ class Activation:
             self.input_ids.shape == shape
         ), f"Input ids shape {self.input_ids.shape} doesn't agree with {shape}"
 
-        self.activations *= self.attention_mask[:, :, None]
+        self.activations *= self.attention_mask[:, :, None].to(self.activations.device)
 
     def to(self, device: torch.device | str, dtype: torch.dtype) -> "Activation":
         return Activation(
