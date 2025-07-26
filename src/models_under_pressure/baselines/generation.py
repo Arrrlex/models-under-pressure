@@ -42,41 +42,68 @@ def parse_score_from_response(response: str) -> tuple[float, bool]:
     """
     Parse a numerical score between 0 and 1 from the model's response.
 
-    Handles scratchpad format by looking for scores after </scratchpad>.
+    Handles the following cases in order of priority:
+    1. Both tags present: score after </scratchpad>
+    2. Both tags present: score right before </scratchpad> (ignoring whitespace)
+    3. Only opening tag present: score at the very end of response
 
     Returns:
         tuple[float, bool]: (score, is_valid)
         score: parsed score, defaults to 0.5 if invalid
         is_valid: whether parsing was successful
     """
-    # Clean the response
+    # Clean the response and convert to lower case
     response = response.strip()
+    response_lower = response.lower()
 
-    # If scratchpad format is used, look for content after </scratchpad>
-    if "</scratchpad>" in response.lower():
-        # Extract content after </scratchpad>
-        post_scratchpad = response.lower().split("</scratchpad>")[-1]
-        response = post_scratchpad
-
-    response = response.lower()
-
-    # Try to find decimal numbers in the response
+    # Define pattern for finding decimal numbers
     decimal_pattern = r"\b(0?\.\d+|1\.0+|0\.0+|1)\b"
-    matches = re.findall(decimal_pattern, response)
 
-    if matches:
-        try:
-            # We get the last match, as the model might include other numbers when reasoning
-            score = float(matches[-1])
-            # Ensure score is in valid range
-            if 0.0 <= score <= 1.0:
-                return score, True
-        except ValueError:
-            pass
+    # Case 1 & 2: Both opening and closing scratchpad tags present
+    if "<scratchpad>" in response_lower and "</scratchpad>" in response_lower:
+        # First try to find score after </scratchpad>
+        post_scratchpad = response_lower.split("</scratchpad>")[-1]
+        matches = re.findall(decimal_pattern, post_scratchpad)
+        if matches:
+            try:
+                score = float(matches[-1])
+                if 0.0 <= score <= 1.0:
+                    return score, True
+            except ValueError:
+                pass
 
-    # Try to find just "0" or "1"
-    if response.strip() in ["0", "1"]:
-        return float(response.strip()), True
+        # If no valid score found after tag, try right before the closing tag
+        pre_scratchpad = response_lower.split("</scratchpad>")[0]
+        matches = re.findall(decimal_pattern, pre_scratchpad)
+
+        if matches:
+            try:
+                # Get the last number before the closing tag
+                score = float(matches[-1])
+                if 0.0 <= score <= 1.0:
+                    # Verify this score appears at the end (ignoring whitespace)
+                    score_str = str(score)
+                    pre_scratchpad_trimmed = pre_scratchpad.rstrip()
+                    if pre_scratchpad_trimmed.endswith(score_str):
+                        return score, True
+            except ValueError:
+                pass
+
+    # Case 3: Only opening tag present, look for score at the very end
+    elif "<scratchpad>" in response_lower and "</scratchpad>" not in response_lower:
+        matches = re.findall(decimal_pattern, response_lower)
+        if matches:
+            try:
+                # Get the last number in the response
+                score = float(matches[-1])
+                if 0.0 <= score <= 1.0:
+                    # Verify this score appears at the end (ignoring whitespace)
+                    score_str = str(score)
+                    response_trimmed = response_lower.rstrip()
+                    if response_trimmed.endswith(score_str):
+                        return score, True
+            except ValueError:
+                pass
 
     # If no valid score found, return 0.5 as default (ambiguous)
     return 0.5, False
@@ -132,6 +159,8 @@ class GenerationBaseline:
             "valid_response": [],
             "model": [],
         }
+
+        print(f"DEBUG: Dataset has {len(dataset.ids)} samples")
 
         # Process in batches
         for i in tqdm(range(0, len(dataset.ids), self.batch_size)):

@@ -507,27 +507,35 @@ class LLMModel:
         Returns:
             Generated text
         """
-        inputs = self.tokenize([dialogue], add_generation_prompt=True)
+        # Set padding side to left for decoder-only models during generation
+        original_padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = "left"
 
-        # Generate the answer
-        outputs = self.model.generate(  # type: ignore
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=do_sample,
-            top_p=top_p,
-            **generation_kwargs,
-        )
+        try:
+            inputs = self.tokenize([dialogue], add_generation_prompt=True)
 
-        if return_full_output:
-            out_tokens = outputs[0]
-        else:
-            # Only get the newly generated tokens by slicing from the input length
-            out_tokens = outputs[0][inputs["input_ids"].shape[1] :]
+            # Generate the answer
+            outputs = self.model.generate(  # type: ignore
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=do_sample,
+                top_p=top_p,
+                **generation_kwargs,
+            )
 
-        return self.tokenizer.decode(
-            out_tokens, skip_special_tokens=skip_special_tokens
-        )
+            if return_full_output:
+                out_tokens = outputs[0]
+            else:
+                # Only get the newly generated tokens by slicing from the input length
+                out_tokens = outputs[0][inputs["input_ids"].shape[1] :]
+
+                return self.tokenizer.decode(
+                    out_tokens, skip_special_tokens=skip_special_tokens
+                )
+        finally:
+            # Restore original padding side
+            self.tokenizer.padding_side = original_padding_side
 
     def generate_batch(
         self,
@@ -553,34 +561,42 @@ class LLMModel:
         Returns:
             List of generated texts
         """
-        inputs = self.tokenize(dialogues, add_generation_prompt=True)
+        # Set padding side to left for decoder-only models during generation
+        original_padding_side = self.tokenizer.padding_side
+        self.tokenizer.padding_side = "left"
 
-        # Generate answers for the batch
-        outputs = self.model.generate(  # type: ignore
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=do_sample,
-            top_p=top_p,
-            **generation_kwargs,
-        )
+        try:
+            inputs = self.tokenize(dialogues, add_generation_prompt=True)
 
-        # Process each output
-        results = []
-        input_length = inputs["input_ids"].shape[1]
-        for output in outputs:
-            if return_full_output:
-                out_tokens = output
-            else:
-                # Only get the newly generated tokens
-                out_tokens = output[input_length:]
-
-            result = self.tokenizer.decode(
-                out_tokens, skip_special_tokens=skip_special_tokens
+            # Generate answers for the batch
+            outputs = self.model.generate(  # type: ignore
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=do_sample,
+                top_p=top_p,
+                **generation_kwargs,
             )
-            results.append(result)
 
-        return results
+            # Process each output
+            results = []
+            input_length = inputs["input_ids"].shape[1]
+            for output in outputs:
+                if return_full_output:
+                    out_tokens = output
+                else:
+                    # Only get the newly generated tokens
+                    out_tokens = output[input_length:]
+
+                result = self.tokenizer.decode(
+                    out_tokens, skip_special_tokens=skip_special_tokens
+                )
+                results.append(result)
+
+            return results
+        finally:
+            # Restore original padding side
+            self.tokenizer.padding_side = original_padding_side
 
 
 def get_batches(
