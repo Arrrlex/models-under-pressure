@@ -53,6 +53,17 @@ class ModelArchitecture(ABC):
         pass
 
 
+class Gemma327Arch(ModelArchitecture):
+    def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
+        return model.language_model.layers[layer_idx].input_layernorm  # type: ignore
+
+    def get_layers(self, model: torch.nn.Module) -> list[torch.nn.Module]:
+        return model.language_model.layers  # type: ignore
+
+    def set_layers(self, model: torch.nn.Module, layers: list[torch.nn.Module]) -> None:
+        model.language_model.layers = layers  # type: ignore
+
+
 class Gemma3Arch(ModelArchitecture):
     def get_layer_norm(self, model: torch.nn.Module, layer_idx: int) -> torch.nn.Module:
         return model.language_model.model.layers[layer_idx].input_layernorm  # type: ignore
@@ -90,6 +101,7 @@ class ArchitectureRegistry:
     """Registry for mapping model types to their architecture handlers."""
 
     _architectures: dict[str, Type[ModelArchitecture]] = {
+        "gemma327": Gemma327Arch,
         "gemma3": Gemma3Arch,
         "llama": LlamaArch,
         "gpt": GPTArch,
