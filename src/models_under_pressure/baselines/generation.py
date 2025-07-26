@@ -491,10 +491,15 @@ if __name__ == "__main__":
     from models_under_pressure.config import LOCAL_MODELS
 
     # Toggle between running baseline evaluation or just analyzing existing results
-    RUN_EVALUATION = True  # Set to True to run evaluation, False to only show analysis
+    RUN_EVALUATION = False  # Set to True to run evaluation, False to only show analysis
 
-    model = LLMModel.load(LOCAL_MODELS["llama-8b"])
+    model_name = LOCAL_MODELS["llama-8b"]
     max_samples = None
+    num_invalid_examples = 1
+
+    model_short_name = model_name.split("/")[-1]
+    if RUN_EVALUATION:
+        model = LLMModel.load(model_name)
 
     for dataset_name in [
         "anthropic",
@@ -505,7 +510,6 @@ if __name__ == "__main__":
         "redteaming",
     ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
-        model_short_name = model.name.split("/")[-1]
         results_file = (
             output_dir / f"{model_short_name}_{dataset_name}_generation_baseline.jsonl"
         )
@@ -540,7 +544,9 @@ if __name__ == "__main__":
 
         # Analyze existing results (either just created or from previous runs)
         if results_file.exists():
-            analyze_generation_baseline_results(results_file, num_invalid_examples=5)
+            analyze_generation_baseline_results(
+                results_file, num_invalid_examples=num_invalid_examples
+            )
         else:
             print(f"Results file not found: {results_file}")
             if not RUN_EVALUATION:
