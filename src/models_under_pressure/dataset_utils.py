@@ -203,8 +203,10 @@ def load_dataset(
         activations = model.get_batched_activations(dataset, layer=layer)
         dataset = dataset.assign(
             activations=activations.activations,
-            attention_mask=activations.attention_mask,
-            input_ids=activations.input_ids,
+            attention_mask=activations.attention_mask.to(
+                activations.activations.device
+            ),
+            input_ids=activations.input_ids.to(activations.activations.device),
         )
 
     return dataset
