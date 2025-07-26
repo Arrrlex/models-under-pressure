@@ -42,7 +42,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "spacy>=3.8.4",
     "streamlit>=1.42.1",
-    "torch>=2.2,<2.3",
+    "torch==2.4",
     "torchvision>=0.17.2",
     "transformers>=4.50.0",
     "tqdm>=4.67.1",

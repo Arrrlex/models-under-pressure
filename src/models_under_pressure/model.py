@@ -529,6 +529,59 @@ class LLMModel:
             out_tokens, skip_special_tokens=skip_special_tokens
         )
 
+    def generate_batch(
+        self,
+        dialogues: list[Dialogue],
+        max_new_tokens: int | None = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        **generation_kwargs: Any,
+    ) -> list[str]:
+        """
+        Generate text continuations for a batch of dialogues.
+
+        Similar to generate() but processes multiple inputs at once.
+        See generate() for parameter descriptions.
+
+        Args:
+            dialogues: List of input dialogues
+            [other args same as generate()]
+
+        Returns:
+            List of generated texts
+        """
+        inputs = self.tokenize(dialogues, add_generation_prompt=True)
+
+        # Generate answers for the batch
+        outputs = self.model.generate(  # type: ignore
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=do_sample,
+            top_p=top_p,
+            **generation_kwargs,
+        )
+
+        # Process each output
+        results = []
+        input_length = inputs["input_ids"].shape[1]
+        for output in outputs:
+            if return_full_output:
+                out_tokens = output
+            else:
+                # Only get the newly generated tokens
+                out_tokens = output[input_length:]
+
+            result = self.tokenizer.decode(
+                out_tokens, skip_special_tokens=skip_special_tokens
+            )
+            results.append(result)
+
+        return results
+
 
 def get_batches(
     inputs: dict[str, torch.Tensor],
