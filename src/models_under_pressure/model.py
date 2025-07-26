@@ -480,7 +480,7 @@ class LLMModel:
     def generate(
         self,
         dialogue: Dialogue,
-        max_new_tokens: int = 10,
+        max_new_tokens: int | None = 10,
         temperature: float | None = None,
         do_sample: bool = False,
         top_p: float = 1.0,
