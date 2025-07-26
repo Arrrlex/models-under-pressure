@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 
 from models_under_pressure.config import (
-    EVAL_DATASETS,
+    TEST_DATASETS,
     RESULTS_DIR,
 )
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
@@ -496,7 +496,14 @@ if __name__ == "__main__":
     model = LLMModel.load(LOCAL_MODELS["llama-8b"])
     max_samples = None
 
-    for dataset_name in ["anthropic"]:
+    for dataset_name in [
+        "anthropic",
+        "mt",
+        "mts",
+        "toolace",
+        "mental_health",
+        "redteaming",
+    ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
         model_short_name = model.name.split("/")[-1]
         results_file = (
@@ -509,12 +516,12 @@ if __name__ == "__main__":
                 model,
                 prompt_config=generation_prompts["default"],
                 dataset_name=dataset_name,
-                dataset_path=EVAL_DATASETS[dataset_name],
+                dataset_path=TEST_DATASETS[dataset_name],
                 max_samples=max_samples,
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
-                batch_size=32,
+                batch_size=8,
             )
             print(f"\n=== Results for {dataset_name} ===")
             print(f"Accuracy: {results.accuracy:.3f}")
