@@ -21,7 +21,7 @@ baselines:
     - single_word
 
 cv:
-  layers: [5, 10, 15]
+  layers: [5, 10, 15, 20, 25, 30]
   folds: 4
 
 generalisation_heatmap:

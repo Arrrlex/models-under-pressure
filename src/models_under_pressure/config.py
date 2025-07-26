@@ -288,7 +288,7 @@ class ChooseLayerConfig(BaseModel):
     max_samples: int | None = None
     layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
-    layer_batch_size: int = 4
+    layer_batch_size: int = 2
 
     @property
     def output_path(self) -> Path:

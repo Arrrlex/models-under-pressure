@@ -29,6 +29,7 @@ from models_under_pressure.interfaces.results import (
 from models_under_pressure.model import LLMModel
 from models_under_pressure.probes.probe_factory import ProbeFactory
 from models_under_pressure.utils import batched_range, double_check_config
+from models_under_pressure.dataset_utils import load_splits_lazy
 
 
 @dataclass
@@ -135,8 +136,7 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
 
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-    dataset = LabelledDataset.load_from(config.dataset_path)
-    dataset = dataset.filter(lambda x: x.other_fields.get("split", "train") == "train")
+    dataset = load_splits_lazy(config.dataset_path)["train"]
 
     if config.max_samples is not None:
         dataset = dataset.sample(config.max_samples)

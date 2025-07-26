@@ -163,6 +163,9 @@ class ActivationStore:
 
     def __post_init__(self):
         self.manifest = self.load_manifest()
+        (self.path / "activations").mkdir(parents=True, exist_ok=True)
+        (self.path / "input_ids").mkdir(parents=True, exist_ok=True)
+        (self.path / "attention_masks").mkdir(parents=True, exist_ok=True)
 
     def load_manifest(self) -> Manifest:
         download_file(self.bucket, "manifest.json", self.manifest_path)
