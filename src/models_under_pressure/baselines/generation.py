@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel
 from tqdm import tqdm
 
@@ -452,6 +453,194 @@ def analyze_generation_baseline_results(
             print("-" * 50)
 
 
+def create_results_overview_table(
+    results_dict: dict[str, GenerationBaselineResults],
+    include_invalid_responses: bool = False,
+) -> pd.DataFrame:
+    """
+    Create an overview table from generation baseline results across multiple datasets.
+
+    Args:
+        results_dict: Dictionary mapping dataset names to GenerationBaselineResults
+        include_invalid_responses: If True, compute metrics on all samples including invalid
+                                 responses (assumed score 0.5). If False, only use valid responses.
+
+    Returns:
+        DataFrame with datasets as rows and metrics as columns, plus a mean row
+    """
+    if not results_dict:
+        print("No results provided.")
+        return pd.DataFrame()
+
+    # Prepare data for the table
+    table_data = []
+
+    for dataset_name, results in results_dict.items():
+        # Calculate total and valid response counts
+        total_responses = len(results.valid_response)
+        valid_responses = sum(results.valid_response)
+        fraction_valid = (
+            valid_responses / total_responses if total_responses > 0 else 0.0
+        )
+
+        # Get FPR from original metrics to use same threshold
+        fpr = results.metrics.get("fpr", 0.01)
+
+        # Import here to avoid circular imports
+        from models_under_pressure.experiments.evaluate_probes import calculate_metrics
+
+        if include_invalid_responses:
+            # Use all samples - scores already include 0.5 for invalid responses
+            ground_truth = np.array(results.ground_truth)
+            scores = np.array(results.scores)
+            samples_considered = len(ground_truth)
+
+            # Recalculate metrics on all samples
+            all_metrics = calculate_metrics(ground_truth, scores, fpr)
+
+            auroc = all_metrics.get("auroc", 0.0)
+            accuracy = all_metrics.get("accuracy", 0.0)
+            tpr_at_fpr = all_metrics.get("tpr_at_fpr", 0.0)
+        else:
+            # Use only valid responses - filter data appropriately
+            ground_truth = np.array(results.ground_truth)
+            scores = np.array(results.scores)
+            valid_mask = np.array(results.valid_response)
+
+            # Filter to only valid responses
+            valid_ground_truth = ground_truth[valid_mask]
+            valid_scores = scores[valid_mask]
+            samples_considered = len(valid_ground_truth)
+
+            # Recalculate metrics on valid responses only
+            if samples_considered > 0:
+                valid_metrics = calculate_metrics(valid_ground_truth, valid_scores, fpr)
+                auroc = valid_metrics.get("auroc", 0.0)
+                accuracy = valid_metrics.get("accuracy", 0.0)
+                tpr_at_fpr = valid_metrics.get("tpr_at_fpr", 0.0)
+            else:
+                # No valid responses
+                auroc = accuracy = tpr_at_fpr = 0.0
+
+        table_data.append(
+            {
+                "Dataset": dataset_name,
+                "Samples Considered": samples_considered,
+                "AUROC": auroc,
+                "Accuracy": accuracy,
+                "TPR": tpr_at_fpr,
+                "Fraction Valid": fraction_valid,
+            }
+        )
+
+    # Create DataFrame
+    df = pd.DataFrame(table_data)
+
+    # Calculate mean row (excluding Dataset column)
+    mean_row = {
+        "Dataset": "Mean",
+        "Samples Considered": df[
+            "Samples Considered"
+        ].sum(),  # Total samples across all datasets
+        "AUROC": df["AUROC"].mean(),
+        "Accuracy": df["Accuracy"].mean(),
+        "TPR": df["TPR"].mean(),
+        "Fraction Valid": df["Fraction Valid"].mean(),
+    }
+
+    # Add mean row to DataFrame
+    df = pd.concat([df, pd.DataFrame([mean_row])], ignore_index=True)
+
+    return df
+
+
+def print_results_overview_table(
+    results_dict: dict[str, GenerationBaselineResults], show_both_versions: bool = True
+) -> None:
+    """
+    Print a formatted overview table from generation baseline results across multiple datasets.
+
+    Args:
+        results_dict: Dictionary mapping dataset names to GenerationBaselineResults
+        show_both_versions: If True, show both valid-only and all-samples tables.
+                          If False, show only valid-only table.
+    """
+    if not results_dict:
+        return
+
+    # Format the DataFrame for better display
+    pd.set_option("display.float_format", "{:.3f}".format)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", None)
+
+    print(f"\n{'=' * 80}")
+    print("GENERATION BASELINE RESULTS OVERVIEW")
+    print(f"{'=' * 80}")
+    print(f"Model: {list(results_dict.values())[0].model_name}")
+    print(f"Total datasets: {len(results_dict)}")
+    print(f"{'=' * 80}")
+
+    # Show valid responses only table
+    df_valid = create_results_overview_table(
+        results_dict, include_invalid_responses=False
+    )
+    if not df_valid.empty:
+        print("\nMETRICS COMPUTED ON VALID RESPONSES ONLY:")
+        print("-" * 50)
+        print(df_valid.to_string(index=False))
+
+    # Show all samples table if requested
+    if show_both_versions:
+        df_all = create_results_overview_table(
+            results_dict, include_invalid_responses=True
+        )
+        if not df_all.empty:
+            print(
+                "\nMETRICS COMPUTED ON ALL SAMPLES (invalid responses assumed score 0.5):"
+            )
+            print("-" * 70)
+            print(df_all.to_string(index=False))
+
+    print(f"{'=' * 80}")
+
+
+def print_results_overview_table_all_samples(
+    results_dict: dict[str, GenerationBaselineResults],
+) -> None:
+    """
+    Print overview table with metrics computed on all samples (including invalid responses).
+    Invalid responses are assumed to have score 0.5.
+
+    Args:
+        results_dict: Dictionary mapping dataset names to GenerationBaselineResults
+    """
+    if not results_dict:
+        return
+
+    # Format the DataFrame for better display
+    pd.set_option("display.float_format", "{:.3f}".format)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", None)
+
+    print(f"\n{'=' * 80}")
+    print("GENERATION BASELINE RESULTS OVERVIEW - ALL SAMPLES")
+    print(f"{'=' * 80}")
+    print(f"Model: {list(results_dict.values())[0].model_name}")
+    print(f"Total datasets: {len(results_dict)}")
+    print(f"{'=' * 80}")
+
+    # Show all samples table
+    df_all = create_results_overview_table(results_dict, include_invalid_responses=True)
+    if not df_all.empty:
+        print(
+            "\nMETRICS COMPUTED ON ALL SAMPLES (invalid responses assumed score 0.5):"
+        )
+        print("-" * 70)
+        print(df_all.to_string(index=False))
+
+    print(f"{'=' * 80}")
+
+
 # Predefined prompt configurations
 generation_prompts = {
     "simple": GenerationPrompt(
@@ -501,6 +690,7 @@ if __name__ == "__main__":
     if RUN_EVALUATION:
         model = LLMModel.load(model_name)
 
+    results_dict = {}
     for dataset_name in [
         "anthropic",
         "mt",
@@ -527,6 +717,7 @@ if __name__ == "__main__":
                 max_new_tokens=2048,
                 batch_size=8,
             )
+            results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")
             print(f"Accuracy: {results.accuracy:.3f}")
             print(f"AUROC: {results.metrics['auroc']:.3f}")
@@ -544,6 +735,18 @@ if __name__ == "__main__":
 
         # Analyze existing results (either just created or from previous runs)
         if results_file.exists():
+            # Load results from file for overview table
+            if not RUN_EVALUATION:
+                import json
+
+                with open(results_file, "r") as f:
+                    lines = f.readlines()
+                if lines:
+                    result_data = json.loads(lines[-1])
+                    # Create a GenerationBaselineResults object from the data
+                    loaded_results = GenerationBaselineResults(**result_data)
+                    results_dict[dataset_name] = loaded_results
+
             analyze_generation_baseline_results(
                 results_file, num_invalid_examples=num_invalid_examples
             )
@@ -551,6 +754,10 @@ if __name__ == "__main__":
             print(f"Results file not found: {results_file}")
             if not RUN_EVALUATION:
                 print("Set RUN_EVALUATION=True to generate new results.")
+
+    # Show overview table if we have results
+    if results_dict:
+        print_results_overview_table(results_dict)
 
     # Example of how to analyze existing results
     print(f"\n{'=' * 60}")
