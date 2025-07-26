@@ -258,6 +258,7 @@ def evaluate_generation_baseline(
     output_dir: Path | None = None,
     save_results: bool = True,
     max_new_tokens: int | None = 1024,
+    batch_size: int = 8,
 ) -> GenerationBaselineResults:
     """Evaluate the generation baseline on a dataset."""
     if dataset is None:
@@ -267,7 +268,9 @@ def evaluate_generation_baseline(
             print(f"Sampling {max_samples} samples")
             dataset = subsample_balanced_subset(dataset, n_per_class=max_samples // 2)
 
-    classifier = GenerationBaseline(model, prompt_config, max_new_tokens=max_new_tokens)
+    classifier = GenerationBaseline(
+        model, prompt_config, max_new_tokens=max_new_tokens, batch_size=batch_size
+    )
     results = classifier.score_classify_dataset(dataset)
 
     labels = [label.to_int() for label in list(results.labels)]
@@ -491,7 +494,7 @@ if __name__ == "__main__":
     RUN_EVALUATION = True  # Set to True to run evaluation, False to only show analysis
 
     model = LLMModel.load(LOCAL_MODELS["llama-8b"])
-    max_samples = 12
+    max_samples = None
 
     for dataset_name in ["anthropic"]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
@@ -511,6 +514,7 @@ if __name__ == "__main__":
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
+                batch_size=32,
             )
             print(f"\n=== Results for {dataset_name} ===")
             print(f"Accuracy: {results.accuracy:.3f}")
