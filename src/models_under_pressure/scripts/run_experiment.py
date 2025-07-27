@@ -75,6 +75,7 @@ def run_experiment(config: DictConfig):
             batch_size=config.batch_size,
             max_samples=config.max_samples,
             layers_stride=config.cv.layers_stride,
+            layers=config.cv.layers,
             probe_spec=config.probe,
         )
         double_check_config(

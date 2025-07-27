@@ -59,7 +59,6 @@ class CVSplits:
         pair_ids = list(set(dataset.other_fields["pair_id"]))
 
         # Randomly shuffle pair IDs
-        import numpy as np
 
         np.random.shuffle(pair_ids)
 
@@ -127,8 +126,8 @@ def get_cross_validation_accuracies(
             model_name=model_name,
             layer=layer,
         )
-        test_scores = probe.predict(test)
-        results.append((np.array(test_scores) == test.labels_numpy()).mean())
+        test_scores = probe.predict_proba(test) > 0.5
+        results.append((test_scores == test.labels_numpy()).mean())
 
     return results
 
@@ -145,7 +144,14 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
 
     llm = LLMModel.load(config.model_name)
 
-    layers = list(range(0, llm.n_layers, config.layers_stride))
+    if config.layers is not None:
+        layers = config.layers
+        if any(layer < 0 or layer >= llm.n_layers for layer in layers):
+            raise ValueError(
+                f"Layers must be between 0 and {llm.n_layers - 1}. Got {layers}"
+            )
+    else:
+        layers = list(range(0, llm.n_layers, config.layers_stride))
 
     results = CVIntermediateResults(config=config)
 

@@ -22,6 +22,7 @@ baselines:
 
 cv:
   layers_stride: 5
+  layers: [20, 25, 30, 35, 40, 45, 50, 55, 60]
   folds: 4
 
 generalisation_heatmap:

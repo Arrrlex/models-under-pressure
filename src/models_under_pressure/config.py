@@ -286,7 +286,8 @@ class ChooseLayerConfig(BaseModel):
     batch_size: int
     probe_spec: ProbeSpec
     max_samples: int | None = None
-    layers_stride: int = 1
+    layers_stride: int | None = 1
+    layers: list[int] | None = None
     output_dir: Path = RESULTS_DIR / "cross_validation"
     layer_batch_size: int = 1
 
