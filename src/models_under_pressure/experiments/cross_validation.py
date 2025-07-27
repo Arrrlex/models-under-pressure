@@ -145,11 +145,7 @@ def choose_best_layer_via_cv(config: ChooseLayerConfig) -> CVFinalResults:
 
     llm = LLMModel.load(config.model_name)
 
-    if config.layers is None:
-        layers = list(range(llm.n_layers))
-    else:
-        assert all(0 <= layer < llm.n_layers for layer in config.layers)
-        layers = config.layers
+    layers = list(range(0, llm.n_layers, config.layers_stride))
 
     results = CVIntermediateResults(config=config)
 
