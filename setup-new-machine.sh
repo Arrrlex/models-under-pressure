@@ -88,6 +88,5 @@ mv ~/envfile ~/$name/models-under-pressure/.env
 cd ~/$name/models-under-pressure
 uv sync
 uv run pre-commit install
-uv run pre-commit run --all
 uv run mup datasets download
 EOF
