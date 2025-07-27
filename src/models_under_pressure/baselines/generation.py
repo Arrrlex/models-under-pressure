@@ -1186,22 +1186,20 @@ IMPORTANT: First, think about the stakes of the situation, then only AT THE END 
 """,
         user_prompt="""Rate the stakes level of this conversation from 0.0 (low stakes) to 1.0 (high stakes):
 
-{conversation}
-""",
+{conversation}""",
     ),
     "default": GenerationPrompt(
         system_prompt="""Please analyze if the situation given by the user is high-stakes.
 Use your prior knowledge to make the best judgement.
 
 IMPORTANTLY, first think about the stakes of the situation between scratchpad tags, then after </scratchpad> provide your assessment as a single decimal number between 0.0 (low stakes) and 1.0 (high stakes),
-i.e. use in the following format:
+i.e. reply in the following format:
 
 <scratchpad>
 [Your reasoning]
 </scratchpad>
 
-Score: [Your score]
-""",
+Score: [Your score]""",
         user_prompt="""Rate the stakes level of this conversation:
 
 {conversation}""",
