@@ -337,7 +337,7 @@ def evaluate_generation_baseline(
 
 
 def analyze_generation_baseline_results(
-    results_file: Path, num_invalid_examples: int = 3
+    results_file: Path, num_invalid_examples: int = 3, use_lenient_reparse: bool = False
 ) -> None:
     """
     Read generation baseline results from file and print detailed analysis.
@@ -345,11 +345,14 @@ def analyze_generation_baseline_results(
     Args:
         results_file: Path to the JSONL file containing GenerationBaselineResults
         num_invalid_examples: Number of invalid response examples to show
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
     """
     import json
     import random
 
     print(f"\n=== Analyzing results from {results_file} ===")
+    if use_lenient_reparse:
+        print("Using lenient reparsing for invalid responses")
 
     # Read the results from file
     with open(results_file, "r") as f:
@@ -364,10 +367,27 @@ def analyze_generation_baseline_results(
 
     # Extract data
     ground_truth = np.array(result_data["ground_truth"])
-    scores = np.array(result_data["scores"])
-    valid_response = np.array(result_data["valid_response"])
+    original_scores = np.array(result_data["scores"])
+    original_valid_response = np.array(result_data["valid_response"])
     full_response = result_data["full_response"]
     fpr = result_data["metrics"]["fpr"]
+
+    # Apply lenient reparsing if requested
+    if use_lenient_reparse:
+        scores, valid_response = reparse_invalid_responses_lenient(
+            full_response, original_scores.tolist(), original_valid_response.tolist()
+        )
+        scores = np.array(scores)
+        valid_response = np.array(valid_response)
+
+        # Report reparsing results
+        original_valid_count = np.sum(original_valid_response)
+        new_valid_count = np.sum(valid_response)
+        reparsed_count = new_valid_count - original_valid_count
+        print(f"Lenient reparsing rescued {reparsed_count} additional responses")
+    else:
+        scores = original_scores
+        valid_response = original_valid_response
 
     print(f"Dataset: {result_data['dataset_name']}")
     print(f"Model: {result_data['model_name']}")
@@ -387,7 +407,21 @@ def analyze_generation_baseline_results(
     valid_percentage = (valid_count / total_count) * 100
 
     print("\n--- Response validity analysis ---")
-    print(f"Valid responses: {valid_count}/{total_count} ({valid_percentage:.1f}%)")
+    if use_lenient_reparse:
+        original_valid_count = np.sum(original_valid_response)
+        original_percentage = (original_valid_count / total_count) * 100
+        print(
+            f"Original valid responses: {original_valid_count}/{total_count} ({original_percentage:.1f}%)"
+        )
+        print(
+            f"After lenient reparse: {valid_count}/{total_count} ({valid_percentage:.1f}%)"
+        )
+        print(
+            f"Improvement: +{valid_count - original_valid_count} responses ({valid_percentage - original_percentage:.1f}%)"
+        )
+    else:
+        print(f"Valid responses: {valid_count}/{total_count} ({valid_percentage:.1f}%)")
+
     print(
         f"Invalid responses: {total_count - valid_count}/{total_count} ({100 - valid_percentage:.1f}%)"
     )
@@ -465,6 +499,12 @@ def analyze_generation_baseline_results(
                 f"True label: {'high-stakes' if ground_truth[idx] == 1 else 'low-stakes'}"
             )
             print(f"Assigned score: {scores[idx]:.3f}")
+
+            # Show if this was originally invalid or became invalid after lenient parsing
+            if use_lenient_reparse:
+                was_originally_invalid = not original_valid_response[idx]
+                print(f"Originally invalid: {was_originally_invalid}")
+
             print("Full response:")
             print(f"'{full_response[idx]}'")
             print("-" * 50)
@@ -473,6 +513,7 @@ def analyze_generation_baseline_results(
 def create_results_overview_table(
     results_dict: dict[str, GenerationBaselineResults],
     include_invalid_responses: bool = False,
+    use_lenient_reparse: bool = False,
 ) -> pd.DataFrame:
     """
     Create an overview table from generation baseline results across multiple datasets.
@@ -481,6 +522,7 @@ def create_results_overview_table(
         results_dict: Dictionary mapping dataset names to GenerationBaselineResults
         include_invalid_responses: If True, compute metrics on all samples including invalid
                                  responses (assumed score 0.5). If False, only use valid responses.
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
 
     Returns:
         DataFrame with datasets as rows and metrics as columns, plus a mean row
@@ -493,9 +535,27 @@ def create_results_overview_table(
     table_data = []
 
     for dataset_name, results in results_dict.items():
+        # Get original data
+        ground_truth = np.array(results.ground_truth)
+        original_scores = np.array(results.scores)
+        original_valid_response = np.array(results.valid_response)
+
+        # Apply lenient reparsing if requested
+        if use_lenient_reparse:
+            scores, valid_response = reparse_invalid_responses_lenient(
+                results.full_response,
+                original_scores.tolist(),
+                original_valid_response.tolist(),
+            )
+            scores = np.array(scores)
+            valid_response = np.array(valid_response)
+        else:
+            scores = original_scores
+            valid_response = original_valid_response
+
         # Calculate total and valid response counts
-        total_responses = len(results.valid_response)
-        valid_responses = sum(results.valid_response)
+        total_responses = len(valid_response)
+        valid_responses = sum(valid_response)
         fraction_valid = (
             valid_responses / total_responses if total_responses > 0 else 0.0
         )
@@ -508,8 +568,6 @@ def create_results_overview_table(
 
         if include_invalid_responses:
             # Use all samples - scores already include 0.5 for invalid responses
-            ground_truth = np.array(results.ground_truth)
-            scores = np.array(results.scores)
             samples_considered = len(ground_truth)
 
             # Recalculate metrics on all samples
@@ -520,9 +578,7 @@ def create_results_overview_table(
             tpr_at_fpr = all_metrics.get("tpr_at_fpr", 0.0)
         else:
             # Use only valid responses - filter data appropriately
-            ground_truth = np.array(results.ground_truth)
-            scores = np.array(results.scores)
-            valid_mask = np.array(results.valid_response)
+            valid_mask = valid_response
 
             # Filter to only valid responses
             valid_ground_truth = ground_truth[valid_mask]
@@ -539,6 +595,16 @@ def create_results_overview_table(
                 # No valid responses
                 auroc = accuracy = tpr_at_fpr = 0.0
 
+        # Calculate reparsing improvement if applicable
+        if use_lenient_reparse:
+            original_valid_count = sum(original_valid_response)
+            reparsed_count = valid_responses - original_valid_count
+            improvement_text = (
+                f"{original_valid_count}→{valid_responses} (+{reparsed_count})"
+            )
+        else:
+            improvement_text = str(valid_responses)
+
         table_data.append(
             {
                 "Dataset": dataset_name,
@@ -547,13 +613,16 @@ def create_results_overview_table(
                 "Accuracy": accuracy,
                 "TPR": tpr_at_fpr,
                 "Fraction Valid": fraction_valid,
+                "Valid Responses": improvement_text
+                if use_lenient_reparse
+                else valid_responses,
             }
         )
 
     # Create DataFrame
     df = pd.DataFrame(table_data)
 
-    # Calculate mean row (excluding Dataset column)
+    # Calculate mean row (excluding Dataset column and Valid Responses column)
     mean_row = {
         "Dataset": "Mean",
         "Samples Considered": df[
@@ -563,6 +632,9 @@ def create_results_overview_table(
         "Accuracy": df["Accuracy"].mean(),
         "TPR": df["TPR"].mean(),
         "Fraction Valid": df["Fraction Valid"].mean(),
+        "Valid Responses": "N/A"
+        if use_lenient_reparse
+        else df["Valid Responses"].sum(),
     }
 
     # Add mean row to DataFrame
@@ -572,7 +644,9 @@ def create_results_overview_table(
 
 
 def print_results_overview_table(
-    results_dict: dict[str, GenerationBaselineResults], show_both_versions: bool = True
+    results_dict: dict[str, GenerationBaselineResults],
+    show_both_versions: bool = True,
+    use_lenient_reparse: bool = False,
 ) -> None:
     """
     Print a formatted overview table from generation baseline results across multiple datasets.
@@ -581,6 +655,7 @@ def print_results_overview_table(
         results_dict: Dictionary mapping dataset names to GenerationBaselineResults
         show_both_versions: If True, show both valid-only and all-samples tables.
                           If False, show only valid-only table.
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
     """
     if not results_dict:
         return
@@ -590,32 +665,41 @@ def print_results_overview_table(
     pd.set_option("display.max_columns", None)
     pd.set_option("display.width", None)
 
+    reparse_suffix = " (WITH LENIENT REPARSE)" if use_lenient_reparse else ""
     print(f"\n{'=' * 80}")
-    print("GENERATION BASELINE RESULTS OVERVIEW")
+    print(f"GENERATION BASELINE RESULTS OVERVIEW{reparse_suffix}")
     print(f"{'=' * 80}")
     print(f"Model: {list(results_dict.values())[0].model_name}")
     print(f"Total datasets: {len(results_dict)}")
+    if use_lenient_reparse:
+        print("Using lenient reparsing for invalid responses")
     print(f"{'=' * 80}")
 
     # Show valid responses only table
     df_valid = create_results_overview_table(
-        results_dict, include_invalid_responses=False
+        results_dict,
+        include_invalid_responses=False,
+        use_lenient_reparse=use_lenient_reparse,
     )
     if not df_valid.empty:
-        print("\nMETRICS COMPUTED ON VALID RESPONSES ONLY:")
-        print("-" * 50)
+        reparse_note = " (after lenient reparse)" if use_lenient_reparse else ""
+        print(f"\nMETRICS COMPUTED ON VALID RESPONSES ONLY{reparse_note}:")
+        print("-" * 60)
         print(df_valid.to_string(index=False))
 
     # Show all samples table if requested
     if show_both_versions:
         df_all = create_results_overview_table(
-            results_dict, include_invalid_responses=True
+            results_dict,
+            include_invalid_responses=True,
+            use_lenient_reparse=use_lenient_reparse,
         )
         if not df_all.empty:
+            reparse_note = " (after lenient reparse)" if use_lenient_reparse else ""
             print(
-                "\nMETRICS COMPUTED ON ALL SAMPLES (invalid responses assumed score 0.5):"
+                f"\nMETRICS COMPUTED ON ALL SAMPLES{reparse_note} (invalid responses assumed score 0.5):"
             )
-            print("-" * 70)
+            print("-" * 80)
             print(df_all.to_string(index=False))
 
     print(f"{'=' * 80}")
@@ -658,6 +742,441 @@ def print_results_overview_table_all_samples(
     print(f"{'=' * 80}")
 
 
+def parse_score_lenient(response: str) -> tuple[float, bool]:
+    """
+    Parse a numerical score between 0 and 1 from the model's response using a lenient method.
+    This method ignores scratchpad tags completely and takes the first valid decimal number found.
+
+    Returns:
+        tuple[float, bool]: (score, is_valid)
+        score: parsed score, defaults to 0.5 if invalid
+        is_valid: whether parsing was successful
+    """
+    # Clean the response
+    response = response.strip()
+
+    # Define pattern for finding decimal numbers (more permissive)
+    decimal_pattern = r"\b(0?\.\d+|1\.0+|0\.0+|1)\b"
+
+    # Find all matches in the response
+    matches = re.findall(decimal_pattern, response)
+
+    if matches:
+        # Try each match in order until we find a valid score
+        for match in matches:
+            try:
+                score = float(match)
+                if 0.0 <= score <= 1.0:
+                    return score, True
+            except ValueError:
+                continue
+
+    # If no valid score found, return 0.5 as default (ambiguous)
+    return 0.5, False
+
+
+def reparse_invalid_responses_lenient(
+    full_responses: list[str], original_scores: list[float], original_valid: list[bool]
+) -> tuple[list[float], list[bool]]:
+    """
+    Reparse invalid responses using a more lenient method.
+
+    Args:
+        full_responses: List of full response strings
+        original_scores: List of original parsed scores
+        original_valid: List of original validity flags
+
+    Returns:
+        tuple of (new_scores, new_valid_flags)
+    """
+    new_scores = original_scores.copy()
+    new_valid = original_valid.copy()
+
+    for i, (response, is_valid) in enumerate(zip(full_responses, original_valid)):
+        if not is_valid:  # Only reparse originally invalid responses
+            new_score, new_is_valid = parse_score_lenient(response)
+            if new_is_valid:  # If lenient parsing found a valid score
+                new_scores[i] = new_score
+                new_valid[i] = True
+
+    return new_scores, new_valid
+
+
+def analyze_generation_baseline_results_with_reparse(
+    results_file: Path, num_invalid_examples: int = 3, use_lenient_reparse: bool = True
+) -> None:
+    """
+    Read generation baseline results from file and print detailed analysis.
+    Optionally uses lenient reparsing for invalid responses.
+
+    Args:
+        results_file: Path to the JSONL file containing GenerationBaselineResults
+        num_invalid_examples: Number of invalid response examples to show
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
+    """
+    import json
+    import random
+
+    print(f"\n=== Analyzing results from {results_file} ===")
+    if use_lenient_reparse:
+        print("Using lenient reparsing for invalid responses")
+
+    # Read the results from file
+    with open(results_file, "r") as f:
+        lines = f.readlines()
+
+    if not lines:
+        print("No results found in file.")
+        return
+
+    # Parse the last result (most recent)
+    result_data = json.loads(lines[-1])
+
+    # Extract data
+    ground_truth = np.array(result_data["ground_truth"])
+    original_scores = np.array(result_data["scores"])
+    original_valid_response = np.array(result_data["valid_response"])
+    full_response = result_data["full_response"]
+    fpr = result_data["metrics"]["fpr"]
+
+    # Apply lenient reparsing if requested
+    if use_lenient_reparse:
+        scores, valid_response = reparse_invalid_responses_lenient(
+            full_response, original_scores.tolist(), original_valid_response.tolist()
+        )
+        scores = np.array(scores)
+        valid_response = np.array(valid_response)
+
+        # Report reparsing results
+        original_valid_count = np.sum(original_valid_response)
+        new_valid_count = np.sum(valid_response)
+        reparsed_count = new_valid_count - original_valid_count
+        print(f"Lenient reparsing rescued {reparsed_count} additional responses")
+    else:
+        scores = original_scores
+        valid_response = original_valid_response
+
+    print(f"Dataset: {result_data['dataset_name']}")
+    print(f"Model: {result_data['model_name']}")
+    print(f"Total samples: {len(ground_truth)}")
+    print(f"Max samples used: {result_data['max_samples']}")
+
+    # Overall metrics (all samples)
+    print("\n--- Metrics for ALL samples ---")
+    all_metrics = calculate_metrics(ground_truth, scores, fpr)
+    print(f"Accuracy: {all_metrics['accuracy']:.3f}")
+    print(f"AUROC: {all_metrics['auroc']:.3f}")
+    print(f"TPR at FPR={all_metrics['fpr']}: {all_metrics['tpr_at_fpr']:.3f}")
+
+    # Valid response analysis
+    valid_count = np.sum(valid_response)
+    total_count = len(valid_response)
+    valid_percentage = (valid_count / total_count) * 100
+
+    print("\n--- Response validity analysis ---")
+    if use_lenient_reparse:
+        original_valid_count = np.sum(original_valid_response)
+        original_percentage = (original_valid_count / total_count) * 100
+        print(
+            f"Original valid responses: {original_valid_count}/{total_count} ({original_percentage:.1f}%)"
+        )
+        print(
+            f"After lenient reparse: {valid_count}/{total_count} ({valid_percentage:.1f}%)"
+        )
+        print(
+            f"Improvement: +{valid_count - original_valid_count} responses ({valid_percentage - original_percentage:.1f}%)"
+        )
+    else:
+        print(f"Valid responses: {valid_count}/{total_count} ({valid_percentage:.1f}%)")
+
+    print(
+        f"Invalid responses: {total_count - valid_count}/{total_count} ({100 - valid_percentage:.1f}%)"
+    )
+
+    # Metrics for valid responses only
+    if valid_count > 0:
+        valid_ground_truth = ground_truth[valid_response]
+        valid_scores = scores[valid_response]
+
+        print("\n--- Metrics for VALID responses only ---")
+        valid_metrics = calculate_metrics(valid_ground_truth, valid_scores, fpr)
+        print(f"Accuracy: {valid_metrics['accuracy']:.3f}")
+        print(f"AUROC: {valid_metrics['auroc']:.3f}")
+        print(f"TPR at FPR={valid_metrics['fpr']}: {valid_metrics['tpr_at_fpr']:.3f}")
+        print(f"Average score: {np.mean(valid_scores):.3f}")
+        print(f"Score range: [{np.min(valid_scores):.3f}, {np.max(valid_scores):.3f}]")
+    else:
+        print("No valid responses to analyze!")
+
+    # Label distribution analysis
+    print("\n--- True label distribution analysis ---")
+
+    # Overall distribution
+    total_high_stakes = np.sum(ground_truth)
+    total_low_stakes = len(ground_truth) - total_high_stakes
+    print(
+        f"Overall: {total_high_stakes} high-stakes ({total_high_stakes / len(ground_truth) * 100:.1f}%), {total_low_stakes} low-stakes ({total_low_stakes / len(ground_truth) * 100:.1f}%)"
+    )
+
+    # Distribution for valid responses
+    if valid_count > 0:
+        valid_ground_truth = ground_truth[valid_response]
+        valid_high_stakes = np.sum(valid_ground_truth)
+        valid_low_stakes = len(valid_ground_truth) - valid_high_stakes
+        print(
+            f"Valid responses: {valid_high_stakes} high-stakes ({valid_high_stakes / len(valid_ground_truth) * 100:.1f}%), {valid_low_stakes} low-stakes ({valid_low_stakes / len(valid_ground_truth) * 100:.1f}%)"
+        )
+
+    # Distribution for invalid responses
+    invalid_count = total_count - valid_count
+    if invalid_count > 0:
+        invalid_ground_truth = ground_truth[~valid_response]
+        invalid_high_stakes = np.sum(invalid_ground_truth)
+        invalid_low_stakes = len(invalid_ground_truth) - invalid_high_stakes
+        print(
+            f"Invalid responses: {invalid_high_stakes} high-stakes ({invalid_high_stakes / len(invalid_ground_truth) * 100:.1f}%), {invalid_low_stakes} low-stakes ({invalid_low_stakes / len(invalid_ground_truth) * 100:.1f}%)"
+        )
+
+    # Score distribution for valid vs invalid
+    if valid_count > 0 and invalid_count > 0:
+        print("\n--- Score analysis ---")
+        valid_scores_arr = scores[valid_response]
+        invalid_scores_arr = scores[~valid_response]
+        print(
+            f"Valid responses - mean score: {np.mean(valid_scores_arr):.3f}, std: {np.std(valid_scores_arr):.3f}"
+        )
+        print(
+            f"Invalid responses - mean score: {np.mean(invalid_scores_arr):.3f}, std: {np.std(invalid_scores_arr):.3f}"
+        )
+
+    # Show examples of invalid responses
+    if invalid_count > 0 and num_invalid_examples > 0:
+        print(f"\n--- Examples of invalid responses (up to {num_invalid_examples}) ---")
+
+        # Get indices of invalid responses
+        invalid_indices = np.where(~valid_response)[0]
+
+        # Randomly sample up to num_invalid_examples
+        num_to_show = min(num_invalid_examples, len(invalid_indices))
+        sampled_indices = random.sample(list(invalid_indices), num_to_show)
+
+        for i, idx in enumerate(sampled_indices, 1):
+            print(f"\n--- Invalid Example {i} ---")
+            print(
+                f"True label: {'high-stakes' if ground_truth[idx] == 1 else 'low-stakes'}"
+            )
+            print(f"Assigned score: {scores[idx]:.3f}")
+
+            # Show if this was originally invalid or became invalid after lenient parsing
+            if use_lenient_reparse:
+                was_originally_invalid = not original_valid_response[idx]
+                print(f"Originally invalid: {was_originally_invalid}")
+
+            print("Full response:")
+            print(f"'{full_response[idx]}'")
+            print("-" * 50)
+
+
+def create_results_overview_table_with_reparse(
+    results_dict: dict[str, GenerationBaselineResults],
+    include_invalid_responses: bool = False,
+    use_lenient_reparse: bool = True,
+) -> pd.DataFrame:
+    """
+    Create an overview table from generation baseline results across multiple datasets.
+    Optionally uses lenient reparsing for invalid responses.
+
+    Args:
+        results_dict: Dictionary mapping dataset names to GenerationBaselineResults
+        include_invalid_responses: If True, compute metrics on all samples including invalid
+                                 responses (assumed score 0.5). If False, only use valid responses.
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
+
+    Returns:
+        DataFrame with datasets as rows and metrics as columns, plus a mean row
+    """
+    if not results_dict:
+        print("No results provided.")
+        return pd.DataFrame()
+
+    # Prepare data for the table
+    table_data = []
+
+    for dataset_name, results in results_dict.items():
+        # Get original data
+        ground_truth = np.array(results.ground_truth)
+        original_scores = np.array(results.scores)
+        original_valid_response = np.array(results.valid_response)
+
+        # Apply lenient reparsing if requested
+        if use_lenient_reparse:
+            scores, valid_response = reparse_invalid_responses_lenient(
+                results.full_response,
+                original_scores.tolist(),
+                original_valid_response.tolist(),
+            )
+            scores = np.array(scores)
+            valid_response = np.array(valid_response)
+        else:
+            scores = original_scores
+            valid_response = original_valid_response
+
+        # Calculate total and valid response counts
+        total_responses = len(valid_response)
+        valid_responses = sum(valid_response)
+        fraction_valid = (
+            valid_responses / total_responses if total_responses > 0 else 0.0
+        )
+
+        # Get FPR from original metrics to use same threshold
+        fpr = results.metrics.get("fpr", 0.01)
+
+        # Import here to avoid circular imports
+        from models_under_pressure.experiments.evaluate_probes import calculate_metrics
+
+        if include_invalid_responses:
+            # Use all samples - scores already include 0.5 for invalid responses
+            samples_considered = len(ground_truth)
+
+            # Recalculate metrics on all samples
+            all_metrics = calculate_metrics(ground_truth, scores, fpr)
+
+            auroc = all_metrics.get("auroc", 0.0)
+            accuracy = all_metrics.get("accuracy", 0.0)
+            tpr_at_fpr = all_metrics.get("tpr_at_fpr", 0.0)
+        else:
+            # Use only valid responses - filter data appropriately
+            valid_mask = valid_response
+
+            # Filter to only valid responses
+            valid_ground_truth = ground_truth[valid_mask]
+            valid_scores = scores[valid_mask]
+            samples_considered = len(valid_ground_truth)
+
+            # Recalculate metrics on valid responses only
+            if samples_considered > 0:
+                valid_metrics = calculate_metrics(valid_ground_truth, valid_scores, fpr)
+                auroc = valid_metrics.get("auroc", 0.0)
+                accuracy = valid_metrics.get("accuracy", 0.0)
+                tpr_at_fpr = valid_metrics.get("tpr_at_fpr", 0.0)
+            else:
+                # No valid responses
+                auroc = accuracy = tpr_at_fpr = 0.0
+
+        # Calculate reparsing improvement if applicable
+        if use_lenient_reparse:
+            original_valid_count = sum(original_valid_response)
+            reparsed_count = valid_responses - original_valid_count
+            improvement_text = (
+                f"{original_valid_count}→{valid_responses} (+{reparsed_count})"
+            )
+        else:
+            improvement_text = str(valid_responses)
+
+        table_data.append(
+            {
+                "Dataset": dataset_name,
+                "Samples Considered": samples_considered,
+                "AUROC": auroc,
+                "Accuracy": accuracy,
+                "TPR": tpr_at_fpr,
+                "Fraction Valid": fraction_valid,
+                "Valid Responses": improvement_text
+                if use_lenient_reparse
+                else valid_responses,
+            }
+        )
+
+    # Create DataFrame
+    df = pd.DataFrame(table_data)
+
+    # Calculate mean row (excluding Dataset column and Valid Responses column)
+    numeric_columns = [
+        "Samples Considered",
+        "AUROC",
+        "Accuracy",
+        "TPR",
+        "Fraction Valid",
+    ]
+    mean_row = {
+        "Dataset": "Mean",
+        "Samples Considered": df["Samples Considered"].sum(),
+        "AUROC": df["AUROC"].mean(),
+        "Accuracy": df["Accuracy"].mean(),
+        "TPR": df["TPR"].mean(),
+        "Fraction Valid": df["Fraction Valid"].mean(),
+        "Valid Responses": "N/A",
+    }
+
+    # Add mean row to DataFrame
+    df = pd.concat([df, pd.DataFrame([mean_row])], ignore_index=True)
+
+    return df
+
+
+def print_results_overview_table_with_reparse(
+    results_dict: dict[str, GenerationBaselineResults],
+    show_both_versions: bool = True,
+    use_lenient_reparse: bool = True,
+) -> None:
+    """
+    Print a formatted overview table from generation baseline results across multiple datasets.
+    Optionally uses lenient reparsing for invalid responses.
+
+    Args:
+        results_dict: Dictionary mapping dataset names to GenerationBaselineResults
+        show_both_versions: If True, show both valid-only and all-samples tables.
+                          If False, show only valid-only table.
+        use_lenient_reparse: If True, attempt to reparse invalid responses with lenient method
+    """
+    if not results_dict:
+        return
+
+    # Format the DataFrame for better display
+    pd.set_option("display.float_format", "{:.3f}".format)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", None)
+
+    reparse_suffix = " (WITH LENIENT REPARSE)" if use_lenient_reparse else ""
+    print(f"\n{'=' * 80}")
+    print(f"GENERATION BASELINE RESULTS OVERVIEW{reparse_suffix}")
+    print(f"{'=' * 80}")
+    print(f"Model: {list(results_dict.values())[0].model_name}")
+    print(f"Total datasets: {len(results_dict)}")
+    if use_lenient_reparse:
+        print("Using lenient reparsing for invalid responses")
+    print(f"{'=' * 80}")
+
+    # Show valid responses only table
+    df_valid = create_results_overview_table_with_reparse(
+        results_dict,
+        include_invalid_responses=False,
+        use_lenient_reparse=use_lenient_reparse,
+    )
+    if not df_valid.empty:
+        reparse_note = " (after lenient reparse)" if use_lenient_reparse else ""
+        print(f"\nMETRICS COMPUTED ON VALID RESPONSES ONLY{reparse_note}:")
+        print("-" * 60)
+        print(df_valid.to_string(index=False))
+
+    # Show all samples table if requested
+    if show_both_versions:
+        df_all = create_results_overview_table_with_reparse(
+            results_dict,
+            include_invalid_responses=True,
+            use_lenient_reparse=use_lenient_reparse,
+        )
+        if not df_all.empty:
+            reparse_note = " (after lenient reparse)" if use_lenient_reparse else ""
+            print(
+                f"\nMETRICS COMPUTED ON ALL SAMPLES{reparse_note} (invalid responses assumed score 0.5):"
+            )
+            print("-" * 80)
+            print(df_all.to_string(index=False))
+
+    print(f"{'=' * 80}")
+
+
 # Predefined prompt configurations
 generation_prompts = {
     "simple": GenerationPrompt(
@@ -694,9 +1213,10 @@ if __name__ == "__main__":
     from models_under_pressure.config import LOCAL_MODELS
 
     # Toggle between running baseline evaluation or just analyzing existing results
-    RUN_EVALUATION = True  # Set to True to run evaluation, False to only show analysis
+    RUN_EVALUATION = False  # Set to True to run evaluation, False to only show analysis
+    USE_LENIENT_REPARSE = True
 
-    model_name = LOCAL_MODELS["gemma-12b"]
+    model_name = LOCAL_MODELS["llama-1b"]
     max_samples = None
     num_invalid_examples = 1
 
@@ -771,7 +1291,9 @@ if __name__ == "__main__":
 
     # Show overview table if we have results
     if results_dict:
-        print_results_overview_table(results_dict)
+        print_results_overview_table(
+            results_dict, use_lenient_reparse=USE_LENIENT_REPARSE
+        )
 
     # Example of how to analyze existing results
     print(f"\n{'=' * 60}")
