@@ -314,6 +314,7 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
             target_dataset=cfg.analysis.target_dataset,
             baseline_models=cfg.analysis.baseline_models,
             finetuned_baseline_models=cfg.analysis.finetuned_baseline_models,
+            generation_baseline_models=cfg.analysis.generation_baseline_models,
         )
         # Always generate plot after analyzing cascade results
         plot_cascade_results(
