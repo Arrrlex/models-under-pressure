@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Script to convert generation baseline results to aggregated format.
+Script to convert generation baseline results to GenerationBaselineResults format.
 
-This script takes generation baseline results and converts them to the same format
-as continuation baseline results, with token counts calculated from actual input
+This script takes generation baseline results and converts them to the proper
+GenerationBaselineResults format, with token counts calculated from actual input
 conversations and output responses.
 
 Usage:
-    python convert_generation_to_continuation_format.py <model_name>
+    python aggregate_generation_baseline_results.py <model_name>
 
 Example:
-    python convert_generation_to_continuation_format.py gemma-12b
+    python aggregate_generation_baseline_results.py gemma-12b
 """
 
 import argparse
@@ -26,6 +26,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizer
 from models_under_pressure.config import LOCAL_MODELS, RESULTS_DIR, TEST_DATASETS
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import LabelledDataset, Message
+from models_under_pressure.interfaces.results import GenerationBaselineResults
 
 
 def count_tokens_for_text(
@@ -140,8 +141,8 @@ def convert_generation_result_to_aggregated_format(
     generation_result: dict,
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
     model_name: str,
-) -> dict:
-    """Convert a single generation baseline result to aggregated format."""
+) -> GenerationBaselineResults:
+    """Convert a single generation baseline result to GenerationBaselineResults format."""
 
     # Extract data from generation result
     ids = generation_result["ids"]
@@ -174,6 +175,7 @@ def convert_generation_result_to_aggregated_format(
         print("  Will use existing ground_truth for metrics")
 
     # Recalculate metrics using original dataset binary labels if available
+    metrics = None
     if original_dataset is not None:
         try:
             # Get binary labels from original dataset
@@ -193,6 +195,9 @@ def convert_generation_result_to_aggregated_format(
                 print(f"    AUROC: {recalculated_metrics['auroc']:.4f}")
                 print(f"    Accuracy: {recalculated_metrics['accuracy']:.4f}")
                 print(f"    TPR at FPR=0.01: {recalculated_metrics['tpr_at_fpr']:.4f}")
+
+                # Store metrics for the GenerationBaselineResults
+                metrics = recalculated_metrics
 
                 # Update ground_truth with original binary labels
                 ground_truth = original_binary_labels.tolist()
@@ -235,63 +240,35 @@ def convert_generation_result_to_aggregated_format(
         total_tokens = input_tokens + output_tokens
         token_counts.append(total_tokens)
 
-    # Create aggregated prompt configuration (following continuation baseline format)
-    aggregated_prompt = {
-        "high_stakes_completion": "",
-        "low_stakes_completion": "",
-        "system_prompt": prompt_config.get("system_prompt"),
-        "user_prompt": prompt_config["user_prompt"],
-        "conversation_input_key": prompt_config.get(
-            "conversation_input_key", "user_prompt"
-        ),
-    }
+    # Create the GenerationBaselineResults instance
+    generation_baseline_result = GenerationBaselineResults(
+        ids=ids,
+        accuracy=accuracy,
+        labels=labels,
+        ground_truth=ground_truth,
+        ground_truth_scale_labels=ground_truth_scale_labels,
+        dataset_name=dataset_name,
+        dataset_path=dataset_path,
+        model_name=model_name,
+        max_samples=max_samples,
+        scores=scores,
+        metrics=metrics,
+        token_counts=token_counts,
+    )
 
-    # Convert scores to high/low stakes scores (dummy values based on the single score)
-    high_stakes_scores = [
-        score if label == 1 else 1.0 - score for score, label in zip(scores, labels)
-    ]
-    low_stakes_scores = [
-        1.0 - score if label == 1 else score for score, label in zip(scores, labels)
-    ]
-
-    # Create dummy log likelihoods (not available from generation baseline)
-    high_stakes_log_likelihoods = [
-        np.log(max(score, 1e-10)) for score in high_stakes_scores
-    ]
-    low_stakes_log_likelihoods = [
-        np.log(max(score, 1e-10)) for score in low_stakes_scores
-    ]
-
-    # Create the aggregated format result
-    aggregated_result = {
-        "ids": ids,
-        "accuracy": accuracy,
-        "labels": labels,
-        "ground_truth": ground_truth,
-        "ground_truth_scale_labels": ground_truth_scale_labels,
-        "dataset_name": dataset_name,
-        "dataset_path": str(
-            TEST_DATASETS.get(dataset_name, dataset_path)
-        ),  # Use TEST_DATASETS path
-        "model_name": model_name,
-        "max_samples": max_samples,
-        "timestamp": generation_result.get("timestamp"),
-        "high_stakes_scores": high_stakes_scores,
-        "low_stakes_scores": low_stakes_scores,
-        "high_stakes_log_likelihoods": high_stakes_log_likelihoods,
-        "low_stakes_log_likelihoods": low_stakes_log_likelihoods,
-        "token_counts": token_counts,
-        "prompt_config": aggregated_prompt,
-    }
-
-    return aggregated_result
+    return generation_baseline_result
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert generation baseline results to aggregated format"
+        description="Convert generation baseline results to GenerationBaselineResults format"
     )
-    parser.add_argument("model_name", help="Model name (e.g., 'gemma-12b', 'llama-8b')")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="gemma-12b",
+        help="Model name (e.g., 'gemma-12b', 'llama-8b'). Defaults to 'gemma-12b'.",
+    )
     parser.add_argument(
         "--input_dir",
         type=Path,
@@ -339,9 +316,11 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     # Output file
-    output_file = args.output_dir / f"generation_baseline_{args.model_name}.jsonl"
+    output_file = (
+        args.output_dir / f"generation_baseline_results_{args.model_name}.jsonl"
+    )
 
-    # Process each file and convert to aggregated format
+    # Process each file and convert to GenerationBaselineResults format
     converted_results = []
 
     for input_file in input_files:
@@ -358,36 +337,45 @@ def main():
         # Process the last (most recent) result in the file
         generation_result = json.loads(lines[-1])
 
-        # Convert to aggregated format
+        # Convert to GenerationBaselineResults format
         aggregated_result = convert_generation_result_to_aggregated_format(
             generation_result, tokenizer, model_path
         )
 
         converted_results.append(aggregated_result)
         print(f"  Converted {len(generation_result['ids'])} samples")
-        print(
-            f"  Average tokens per sample: {np.mean(aggregated_result['token_counts']):.1f}"
-        )
+        if aggregated_result.token_counts:
+            print(
+                f"  Average tokens per sample: {np.mean(aggregated_result.token_counts):.1f}"
+            )
+        else:
+            print("  No token counts available")
 
     # Write all results to output file
     print(f"\nWriting {len(converted_results)} dataset results to {output_file}")
     with open(output_file, "w") as f:
         for result in converted_results:
-            f.write(json.dumps(result) + "\n")
+            f.write(result.model_dump_json() + "\n")
 
     print("Conversion completed successfully!")
 
     # Print summary
-    total_samples = sum(len(result["ids"]) for result in converted_results)
+    total_samples = sum(len(result.ids) for result in converted_results)
     all_token_counts = []
     for result in converted_results:
-        all_token_counts.extend(result["token_counts"])
+        if result.token_counts:
+            all_token_counts.extend(result.token_counts)
 
     print("\nSummary:")
     print(f"  Total datasets: {len(converted_results)}")
     print(f"  Total samples: {total_samples}")
-    print(f"  Average tokens per sample: {np.mean(all_token_counts):.1f}")
-    print(f"  Token count range: [{min(all_token_counts)}, {max(all_token_counts)}]")
+    if all_token_counts:
+        print(f"  Average tokens per sample: {np.mean(all_token_counts):.1f}")
+        print(
+            f"  Token count range: [{min(all_token_counts)}, {max(all_token_counts)}]"
+        )
+    else:
+        print("  No token counts available")
 
 
 if __name__ == "__main__":

@@ -181,6 +181,12 @@ class FinetunedBaselineResults(BaselineResults):
     finetune_config: FinetuneBaselineConfig | None = None
 
 
+class GenerationBaselineResults(BaselineResults):
+    scores: list[float]
+    metrics: dict[str, float] | None = None
+    token_counts: list[int] | None = None
+
+
 class FinetunedBaselineDataEfficiencyResults(FinetunedBaselineResults):
     """Results for a data efficiency experiment with finetuned baseline."""
 

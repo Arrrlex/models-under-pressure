@@ -38,6 +38,7 @@ from models_under_pressure.interfaces.results import (
     EvalRunConfig,
     EvaluationResult,
     FinetunedBaselineResults,
+    GenerationBaselineResults,
     LikelihoodBaselineResults,
 )
 from models_under_pressure.model import LLMModel, tokenize_inputs
@@ -552,7 +553,9 @@ def evaluate_two_step_cascade(
 
 
 def evaluate_single_baseline_cascade(
-    baseline_results: LikelihoodBaselineResults | FinetunedBaselineResults,
+    baseline_results: LikelihoodBaselineResults
+    | FinetunedBaselineResults
+    | GenerationBaselineResults,
     fraction_of_samples: float = 1.0,
     cascade_type_override: str | None = None,
 ) -> CascadeResults:
@@ -579,8 +582,15 @@ def evaluate_single_baseline_cascade(
             for i in sampled_indices
         ]
         scores = [baseline_results.high_stakes_scores[i] for i in sampled_indices]
-    else:  # FinetunedBaselineResults
+    elif isinstance(baseline_results, FinetunedBaselineResults):
         # For finetuned baselines, we don't have token counts, so use a fixed value
+        sampled_flops = [
+            int(per_token_flops) * baseline_results.token_counts[i]
+            for i in sampled_indices
+        ]
+        scores = [baseline_results.scores[i] for i in sampled_indices]
+    else:  # GenerationBaselineResults
+        assert baseline_results.token_counts is not None
         sampled_flops = [
             int(per_token_flops) * baseline_results.token_counts[i]
             for i in sampled_indices
@@ -750,7 +760,7 @@ def write_cascade_results_to_file(
 
 def compute_cascade_results(
     baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
-    generation_baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
+    generation_baseline_results_by_dataset: dict[str, List[GenerationBaselineResults]],
     finetuned_baseline_results_by_dataset: dict[str, List[FinetunedBaselineResults]],
     probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
@@ -1600,7 +1610,7 @@ def load_existing_results(
     use_test: bool = False,
 ) -> tuple[
     dict[str, List[LikelihoodBaselineResults]],
-    dict[str, List[LikelihoodBaselineResults]],
+    dict[str, List[GenerationBaselineResults]],
     dict[str, List[FinetunedBaselineResults]],
     dict[str, EvaluationResult],
 ]:
@@ -1631,13 +1641,13 @@ def load_existing_results(
                             "/evals/test/" in str(result.dataset_path)
                         ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {baseline_file}"
 
-    # Read all generation baseline files (aggregated format)
-    for baseline_file in output_dir.glob("generation_baseline_*.jsonl"):
+    # Read all generation baseline files (GenerationBaselineResults format)
+    for baseline_file in output_dir.glob("generation_baseline_results_*.jsonl"):
         print(f"Loading generation baseline results from {baseline_file}")
         with open(baseline_file) as f:
             for line in f:
                 if line.strip():  # Skip empty lines
-                    result = LikelihoodBaselineResults.model_validate_json(line.strip())
+                    result = GenerationBaselineResults.model_validate_json(line.strip())
                     generation_baseline_results_by_dataset[result.dataset_name].append(
                         result
                     )
@@ -1720,8 +1730,12 @@ def load_existing_results(
 
 
 def evaluate_two_baselines_cascade(
-    first_baseline_results: LikelihoodBaselineResults | FinetunedBaselineResults,
-    second_baseline_results: LikelihoodBaselineResults | FinetunedBaselineResults,
+    first_baseline_results: LikelihoodBaselineResults
+    | FinetunedBaselineResults
+    | GenerationBaselineResults,
+    second_baseline_results: LikelihoodBaselineResults
+    | FinetunedBaselineResults
+    | GenerationBaselineResults,
     fraction_of_samples: float = 0.2,
     merge_strategy: str = "baseline",
     selection_strategy: str = "top",
@@ -1763,10 +1777,14 @@ def evaluate_two_baselines_cascade(
     first_baseline_flops = [
         int(first_per_token_flops) * count for count in first_token_counts
     ]
+    # Get scores based on baseline type
+    if isinstance(first_baseline_results, LikelihoodBaselineResults):
+        first_scores = first_baseline_results.high_stakes_scores
+    else:  # FinetunedBaselineResults or GenerationBaselineResults
+        first_scores = first_baseline_results.scores
+
     first_baseline_cascade = CascadeResults(
-        scores=first_baseline_results.high_stakes_scores
-        if isinstance(first_baseline_results, LikelihoodBaselineResults)
-        else first_baseline_results.scores,
+        scores=first_scores,
         labels=first_baseline_results.labels,
         ground_truth_labels=first_baseline_results.ground_truth,
         ground_truth_scores=first_baseline_results.ground_truth_scale_labels,
@@ -1777,10 +1795,14 @@ def evaluate_two_baselines_cascade(
     second_baseline_flops = [
         int(second_per_token_flops) * count for count in second_token_counts
     ]
+    # Get scores based on baseline type
+    if isinstance(second_baseline_results, LikelihoodBaselineResults):
+        second_scores = second_baseline_results.high_stakes_scores
+    else:  # FinetunedBaselineResults or GenerationBaselineResults
+        second_scores = second_baseline_results.scores
+
     second_baseline_cascade = CascadeResults(
-        scores=second_baseline_results.high_stakes_scores
-        if isinstance(second_baseline_results, LikelihoodBaselineResults)
-        else second_baseline_results.scores,
+        scores=second_scores,
         labels=second_baseline_results.labels,
         ground_truth_labels=second_baseline_results.ground_truth,
         ground_truth_scores=second_baseline_results.ground_truth_scale_labels,
@@ -1799,7 +1821,9 @@ def evaluate_two_baselines_cascade(
 
 
 def evaluate_probe_baseline_cascade(
-    baseline_results: LikelihoodBaselineResults | FinetunedBaselineResults,
+    baseline_results: LikelihoodBaselineResults
+    | FinetunedBaselineResults
+    | GenerationBaselineResults,
     probe_results: EvaluationResult,
     fraction_of_samples: float = 0.2,
     merge_strategy: str = "baseline",
@@ -1835,7 +1859,9 @@ def evaluate_probe_baseline_cascade(
     ]
     if isinstance(baseline_results, LikelihoodBaselineResults):
         scores = baseline_results.high_stakes_scores
-    else:  # FinetunedBaselineResults
+    elif isinstance(baseline_results, FinetunedBaselineResults):
+        scores = baseline_results.scores
+    else:  # GenerationBaselineResults
         scores = baseline_results.scores
 
     baseline_cascade = CascadeResults(
