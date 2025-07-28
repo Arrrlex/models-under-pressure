@@ -292,14 +292,18 @@ def run_monitoring_cascade(cfg: DictConfig) -> None:
     if cfg.analyze_cascade:
         results_file = output_dir / "cascade_results.jsonl"
         # Load existing results if needed
-        baseline_results, finetuned_baseline_results, probe_results = (
-            load_existing_results(output_dir, cfg.use_test)
-        )
+        (
+            baseline_results,
+            generation_baseline_results,
+            finetuned_baseline_results,
+            probe_results,
+        ) = load_existing_results(output_dir, cfg.use_test)
         # Remove existing results file if it exists
         if results_file.exists():
             results_file.unlink()
         compute_cascade_results(
             baseline_results_by_dataset=baseline_results,
+            generation_baseline_results_by_dataset=generation_baseline_results,
             finetuned_baseline_results_by_dataset=finetuned_baseline_results,
             probe_results_by_dataset=probe_results,
             results_file=results_file,
@@ -550,6 +554,7 @@ def evaluate_two_step_cascade(
 def evaluate_single_baseline_cascade(
     baseline_results: LikelihoodBaselineResults | FinetunedBaselineResults,
     fraction_of_samples: float = 1.0,
+    cascade_type_override: str | None = None,
 ) -> CascadeResults:
     assert baseline_results.ground_truth_scale_labels is not None
     assert baseline_results.ground_truth is not None
@@ -745,6 +750,7 @@ def write_cascade_results_to_file(
 
 def compute_cascade_results(
     baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
+    generation_baseline_results_by_dataset: dict[str, List[LikelihoodBaselineResults]],
     finetuned_baseline_results_by_dataset: dict[str, List[FinetunedBaselineResults]],
     probe_results_by_dataset: dict[str, EvaluationResult],
     results_file: Path,
@@ -754,6 +760,7 @@ def compute_cascade_results(
     target_dataset: Optional[str] = None,
     baseline_models: Optional[List[str]] = None,
     finetuned_baseline_models: Optional[List[str]] = None,
+    generation_baseline_models: Optional[List[str]] = None,
 ):
     """Compute cascade results for all datasets or a specific dataset.
 
@@ -776,12 +783,19 @@ def compute_cascade_results(
 
     for dataset_name in datasets:
         baseline_results = baseline_results_by_dataset.get(dataset_name, [])
+        generation_baseline_results = generation_baseline_results_by_dataset.get(
+            dataset_name, []
+        )
         finetuned_baseline_results = finetuned_baseline_results_by_dataset.get(
             dataset_name, []
         )
         probe_results = probe_results_by_dataset.get(dataset_name)
 
-        if not baseline_results and not finetuned_baseline_results:
+        if (
+            not baseline_results
+            and not generation_baseline_results
+            and not finetuned_baseline_results
+        ):
             print(f"No baseline results found for dataset {dataset_name}")
             continue
 
@@ -800,7 +814,20 @@ def compute_cascade_results(
                 if get_abbreviated_model_name(result.model_name)
                 in finetuned_baseline_models
             ]
-        if not baseline_results and not finetuned_baseline_results:
+
+        if generation_baseline_models is not None:
+            generation_baseline_results = [
+                result
+                for result in generation_baseline_results
+                if get_abbreviated_model_name(result.model_name)
+                in generation_baseline_models
+            ]
+
+        if (
+            not baseline_results
+            and not generation_baseline_results
+            and not finetuned_baseline_results
+        ):
             print(
                 f"No baseline results found for specified models in dataset {dataset_name}"
             )
@@ -823,6 +850,29 @@ def compute_cascade_results(
                 results=cascade_results,
                 output_file=results_file,
                 cascade_type="baseline",
+                model_name=result.model_name,
+                probe_model_name=None,
+                fraction_of_samples=fraction_of_samples,
+                dataset_name=dataset_name,
+            )
+
+        # Evaluate generation baseline cascades - only use 100% for baseline-only methods
+        print(f"\nGeneration Baseline Results for {dataset_name}:")
+        for result in generation_baseline_results:
+            # Only use 100% for baseline-only methods
+            fraction_of_samples = 1.0
+            print(f"Model: {result.model_name}, Fraction: {fraction_of_samples}")
+            cascade_results = evaluate_single_baseline_cascade(
+                result, fraction_of_samples=fraction_of_samples
+            )
+            print(f"- AUROC: {cascade_results.auroc:.3f}")
+            print(f"- Total FLOPs: {sum(cascade_results.flops)}")
+
+            # Write results to file
+            write_cascade_results_to_file(
+                results=cascade_results,
+                output_file=results_file,
+                cascade_type="generation_baseline",
                 model_name=result.model_name,
                 probe_model_name=None,
                 fraction_of_samples=fraction_of_samples,
@@ -876,8 +926,14 @@ def compute_cascade_results(
             print(f"\nProbe+Baseline Cascade Results for {dataset_name}:")
             for is_finetuned, baseline_result in zip(
                 [False] * len(baseline_results)
+                + [False]
+                * len(
+                    generation_baseline_results
+                )  # Generation baselines are not finetuned
                 + [True] * len(finetuned_baseline_results),
-                baseline_results + finetuned_baseline_results,
+                baseline_results
+                + generation_baseline_results
+                + finetuned_baseline_results,
             ):
                 for fraction_of_samples in fraction_of_sample_options:
                     for strategy in strategies:
@@ -899,13 +955,19 @@ def compute_cascade_results(
                             f"- Total FLOPs: {sum(probe_baseline_cascade_results.flops)}"
                         )
 
+                        # Determine cascade type based on whether it's a generation baseline
+                        if baseline_result in generation_baseline_results:
+                            cascade_type_name = "probe_generation_baseline"
+                        elif is_finetuned:
+                            cascade_type_name = "probe_finetuned_baseline"
+                        else:
+                            cascade_type_name = "probe_baseline"
+
                         # Write probe baseline cascade results to file
                         write_cascade_results_to_file(
                             results=probe_baseline_cascade_results,
                             output_file=results_file,
-                            cascade_type="probe_baseline"
-                            if not is_finetuned
-                            else "probe_finetuned_baseline",
+                            cascade_type=cascade_type_name,
                             model_name=baseline_result.model_name,
                             probe_model_name=probe_results.config.model_name,
                             fraction_of_samples=fraction_of_samples,
@@ -922,7 +984,9 @@ def compute_cascade_results(
             first_baseline_result = next(
                 (
                     r
-                    for r in baseline_results + finetuned_baseline_results
+                    for r in baseline_results
+                    + generation_baseline_results
+                    + finetuned_baseline_results
                     if get_abbreviated_model_name(r.model_name)
                     == first_baseline_model_name
                 ),
@@ -931,7 +995,9 @@ def compute_cascade_results(
             if first_baseline_result:
                 # For each other baseline, create a two-step cascade
                 for second_baseline_result in (
-                    baseline_results + finetuned_baseline_results
+                    baseline_results
+                    + generation_baseline_results
+                    + finetuned_baseline_results
                 ):
                     if (
                         get_abbreviated_model_name(second_baseline_result.model_name)
@@ -1052,6 +1118,7 @@ def plot_cascade_results(
             # Create a unique key for each method
             if result["cascade_type"] in [
                 "probe_baseline",
+                "probe_generation_baseline",
                 "two_step_baseline",
                 "probe_finetuned_baseline",
             ]:
@@ -1062,7 +1129,7 @@ def plot_cascade_results(
                     result.get("remaining_strategy", "fixed_0"),
                     result.get("merge_strategy", "baseline"),
                 )
-            else:  # baseline or finetuned_baseline
+            else:  # baseline, generation_baseline, or finetuned_baseline
                 key = (baseline_model, result["cascade_type"])
 
             # Group by fraction_of_samples
@@ -1091,7 +1158,7 @@ def plot_cascade_results(
 
     # Create color palette based on number of unique baseline models
     baseline_models = sorted(set(key[0] for key in grouped_results.keys()))
-    # Finetuned baselines are green, prompted baselines are blue
+    # Finetuned baselines are green, prompted baselines are blue, generation baselines are orange
     model_colors = {
         "gemma-1b": {
             "finetuned_baseline": (
@@ -1100,24 +1167,30 @@ def plot_cascade_results(
                 0.19607843137254902,
             ),
             "baseline": "#5555FF",
+            "generation_baseline": "#FF8C00",  # Dark orange
         },
         "gemma-12b": {
             "baseline": (0.0, 0.807843137254902, 0.8196078431372549),
             "finetuned_baseline": "#006400",
+            "generation_baseline": "#FFA500",  # Orange
         },
         "gemma-27b": {
             "baseline": (0.0, 0.654902, 0.660784),
+            "generation_baseline": "#FF7F00",  # Dark orange
         },
         "llama-1b": {
             "finetuned_baseline": "#7CFC00",
             "baseline": "#9999FF",
+            "generation_baseline": "#FFB347",  # Pastel orange
         },
         "llama-8b": {
             "finetuned_baseline": "#008000",
             "baseline": "#0000FF",
+            "generation_baseline": "#FF8C42",  # Tomato orange
         },
         "llama-70b": {
             "baseline": (0.0, 0.5019607843137255, 0.5019607843137255),
+            "generation_baseline": "#FF6347",  # Tomato
         },
         "Attention": "#FF7F0E",
         "Softmax": "#1F77B4",
@@ -1139,8 +1212,14 @@ def plot_cascade_results(
     # Define line styles
     line_styles = {
         "baseline": "-",
+        "generation_baseline": "-",
         "finetuned_baseline": "-",
         "probe_baseline": {
+            "top": "--",
+            "bottom": ":",
+            "mid": "-",
+        },
+        "probe_generation_baseline": {
             "top": "--",
             "bottom": ":",
             "mid": "-",
@@ -1160,16 +1239,20 @@ def plot_cascade_results(
     # Define marker styles and sizes
     marker_styles = {
         "baseline": "P",
+        "generation_baseline": "s",  # Square marker for generation baselines
         "finetuned_baseline": "X",
         "probe_baseline": "o",
+        "probe_generation_baseline": "o",
         "probe_finetuned_baseline": "o",
         "two_step_baseline": "o",
     }
 
     marker_sizes = {
         "baseline": 10,  # Larger marker for baseline-only methods
+        "generation_baseline": 10,  # Larger marker for baseline-only methods
         "finetuned_baseline": 10,  # Larger marker for baseline-only methods
         "probe_baseline": 7,
+        "probe_generation_baseline": 7,
         "probe_finetuned_baseline": 7,
         "two_step_baseline": 7,
     }
@@ -1188,10 +1271,12 @@ def plot_cascade_results(
     # Define cascade type order within each model group
     cascade_type_order = {
         "baseline": 0,
-        "finetuned_baseline": 1,
-        "probe_baseline": 2,
-        "probe_finetuned_baseline": 2,
-        "two_step_baseline": 2,
+        "generation_baseline": 1,
+        "finetuned_baseline": 2,
+        "probe_baseline": 3,
+        "probe_generation_baseline": 3,
+        "probe_finetuned_baseline": 3,
+        "two_step_baseline": 3,
     }
 
     # Collect all legend entries
@@ -1206,7 +1291,11 @@ def plot_cascade_results(
         markersize = marker_sizes[cascade_type]
 
         # For baseline-only methods, we'll use scatter plots without lines
-        is_baseline_only = cascade_type in ["baseline", "finetuned_baseline"]
+        is_baseline_only = cascade_type in [
+            "baseline",
+            "generation_baseline",
+            "finetuned_baseline",
+        ]
 
         if is_baseline_only:
             # Single point for baseline-only methods, no line
@@ -1215,6 +1304,7 @@ def plot_cascade_results(
             # Get line style for cascade methods
             if (
                 cascade_type == "probe_baseline"
+                or cascade_type == "probe_generation_baseline"
                 or cascade_type == "probe_finetuned_baseline"
                 or cascade_type == "two_step_baseline"
             ):
@@ -1247,8 +1337,13 @@ def plot_cascade_results(
             label = f"Prompted Baseline ({get_abbreviated_model_name(baseline_model)})"
         elif cascade_type == "finetuned_baseline":
             label = f"Finetuned Baseline ({get_abbreviated_model_name(baseline_model)})"
+        elif cascade_type == "generation_baseline":
+            label = (
+                f"Generation Baseline ({get_abbreviated_model_name(baseline_model)})"
+            )
         elif cascade_type in [
             "probe_baseline",
+            "probe_generation_baseline",
             "probe_finetuned_baseline",
             "two_step_baseline",
         ]:
@@ -1268,6 +1363,8 @@ def plot_cascade_results(
                     cascade_name = "Baseline + Baseline"
                 elif cascade_type == "probe_baseline":
                     cascade_name = "Probe + Pr. Baseline"
+                elif cascade_type == "probe_generation_baseline":
+                    cascade_name = "Probe + Gen. Baseline"
                 elif cascade_type == "probe_finetuned_baseline":
                     cascade_name = "Probe + Ft. Baseline"
                 else:
@@ -1503,6 +1600,7 @@ def load_existing_results(
     use_test: bool = False,
 ) -> tuple[
     dict[str, List[LikelihoodBaselineResults]],
+    dict[str, List[LikelihoodBaselineResults]],
     dict[str, List[FinetunedBaselineResults]],
     dict[str, EvaluationResult],
 ]:
@@ -1513,19 +1611,36 @@ def load_existing_results(
         use_test: Whether test datasets were used. If True, asserts that dataset paths include "/evals/test/"
 
     Returns:
-        Tuple of (baseline_results_by_dataset, finetuned_baseline_results_by_dataset, probe_results_by_dataset)
+        Tuple of (baseline_results_by_dataset, generation_baseline_results_by_dataset, finetuned_baseline_results_by_dataset, probe_results_by_dataset)
     """
     baseline_results_by_dataset = defaultdict(list)
+    generation_baseline_results_by_dataset = defaultdict(list)
     finetuned_baseline_results_by_dataset = defaultdict(list)
     probe_results_by_dataset = {}
 
-    # Read all baseline files
+    # Read all baseline files (continuation baselines)
     for baseline_file in output_dir.glob("baseline_*.jsonl"):
         with open(baseline_file) as f:
             for line in f:
                 if line.strip():  # Skip empty lines
                     result = LikelihoodBaselineResults.model_validate_json(line.strip())
                     baseline_results_by_dataset[result.dataset_name].append(result)
+
+                    if use_test:
+                        assert (
+                            "/evals/test/" in str(result.dataset_path)
+                        ), f"Expected test dataset path for {result.dataset_name}, got {result.dataset_path} in {baseline_file}"
+
+    # Read all generation baseline files (aggregated format)
+    for baseline_file in output_dir.glob("generation_baseline_*.jsonl"):
+        print(f"Loading generation baseline results from {baseline_file}")
+        with open(baseline_file) as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    result = LikelihoodBaselineResults.model_validate_json(line.strip())
+                    generation_baseline_results_by_dataset[result.dataset_name].append(
+                        result
+                    )
 
                     if use_test:
                         assert (
@@ -1598,6 +1713,7 @@ def load_existing_results(
 
     return (
         dict(baseline_results_by_dataset),
+        dict(generation_baseline_results_by_dataset),
         dict(finetuned_baseline_results_by_dataset),
         probe_results_by_dataset,
     )

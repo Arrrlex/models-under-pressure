@@ -1,3 +1,5 @@
+# Disable torch._dynamo compilation completely to avoid compatibility issues
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -6,9 +8,6 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 from tqdm import tqdm
-
-# Disable torch._dynamo compilation completely to avoid compatibility issues
-import os
 
 os.environ["TORCH_COMPILE_MODE"] = "none"
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
@@ -25,8 +24,8 @@ torch.set_default_dtype(torch.float32)  # Ensure consistent dtype
 torch.backends.cuda.matmul.allow_tf32 = True  # Allow TF32 for better performance
 
 from models_under_pressure.config import (
-    TEST_DATASETS,
     RESULTS_DIR,
+    TEST_DATASETS,
 )
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import (
@@ -1212,9 +1211,9 @@ if __name__ == "__main__":
 
     # Toggle between running baseline evaluation or just analyzing existing results
     RUN_EVALUATION = False  # Set to True to run evaluation, False to only show analysis
-    USE_LENIENT_REPARSE = True
+    USE_LENIENT_REPARSE = False
 
-    model_name = LOCAL_MODELS["llama-1b"]
+    model_name = LOCAL_MODELS["gemma-12b"]
     max_samples = None
     num_invalid_examples = 1
 

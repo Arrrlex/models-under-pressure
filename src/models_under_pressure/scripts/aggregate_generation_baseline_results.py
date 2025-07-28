@@ -23,8 +23,9 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from src.models_under_pressure.config import LOCAL_MODELS, RESULTS_DIR, TEST_DATASETS
-from src.models_under_pressure.interfaces.dataset import LabelledDataset, Message
+from models_under_pressure.config import LOCAL_MODELS, RESULTS_DIR, TEST_DATASETS
+from models_under_pressure.experiments.evaluate_probes import calculate_metrics
+from models_under_pressure.interfaces.dataset import LabelledDataset, Message
 
 
 def count_tokens_for_text(
@@ -158,6 +159,51 @@ def convert_generation_result_to_aggregated_format(
     prompt_config = generation_result["prompt_config"]
 
     print(f"Processing {len(ids)} samples for dataset {dataset_name}...")
+
+    # Load the original dataset to get binary labels for metric recalculation
+    original_dataset = None
+    if dataset_name in TEST_DATASETS:
+        try:
+            original_dataset = LabelledDataset.load_from(TEST_DATASETS[dataset_name])
+            print(f"  Loaded original dataset with {len(original_dataset)} samples")
+        except Exception as e:
+            print(f"  Warning: Failed to load original dataset: {e}")
+            print("  Will use existing ground_truth for metrics")
+    else:
+        print(f"  Warning: Dataset '{dataset_name}' not found in TEST_DATASETS")
+        print("  Will use existing ground_truth for metrics")
+
+    # Recalculate metrics using original dataset binary labels if available
+    if original_dataset is not None:
+        try:
+            # Get binary labels from original dataset
+            original_binary_labels = original_dataset.labels_numpy()
+
+            # Ensure we have the same number of samples
+            if len(original_binary_labels) == len(scores):
+                # Recalculate metrics using calculate_metrics function
+                recalculated_metrics = calculate_metrics(
+                    y_true=original_binary_labels, y_pred=np.array(scores), fpr=0.01
+                )
+
+                # Update accuracy with recalculated value
+                accuracy = recalculated_metrics["accuracy"]
+
+                print("  Recalculated metrics:")
+                print(f"    AUROC: {recalculated_metrics['auroc']:.4f}")
+                print(f"    Accuracy: {recalculated_metrics['accuracy']:.4f}")
+                print(f"    TPR at FPR=0.01: {recalculated_metrics['tpr_at_fpr']:.4f}")
+
+                # Update ground_truth with original binary labels
+                ground_truth = original_binary_labels.tolist()
+            else:
+                print(
+                    f"  Warning: Sample count mismatch - original: {len(original_binary_labels)}, scores: {len(scores)}"
+                )
+                print("  Using existing ground_truth for metrics")
+        except Exception as e:
+            print(f"  Warning: Failed to recalculate metrics: {e}")
+            print("  Using existing ground_truth for metrics")
 
     # Load actual conversations from the dataset using TEST_DATASETS
     id_to_conversation = load_conversations_from_dataset(dataset_name)
