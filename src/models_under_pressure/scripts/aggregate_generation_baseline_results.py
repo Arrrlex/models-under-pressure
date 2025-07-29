@@ -141,7 +141,7 @@ def convert_generation_result_to_aggregated_format(
     generation_result: dict,
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
     model_name: str,
-) -> GenerationBaselineResults:
+) -> tuple[GenerationBaselineResults, list[int], list[int]]:
     """Convert a single generation baseline result to GenerationBaselineResults format."""
 
     # Extract data from generation result
@@ -215,6 +215,8 @@ def convert_generation_result_to_aggregated_format(
 
     # Calculate token counts for each sample
     token_counts = []
+    input_token_counts = []
+    output_token_counts = []
 
     for i, (sample_id, response, score) in enumerate(zip(ids, full_responses, scores)):
         if i % 100 == 0:
@@ -232,9 +234,11 @@ def convert_generation_result_to_aggregated_format(
 
         # Count input tokens
         input_tokens = count_tokens_for_dialogue(tokenizer, input_messages)
+        input_token_counts.append(input_tokens)
 
         # Count output tokens
         output_tokens = count_tokens_for_text(tokenizer, response)
+        output_token_counts.append(output_tokens)
 
         # Total tokens = input + output
         total_tokens = input_tokens + output_tokens
@@ -256,7 +260,8 @@ def convert_generation_result_to_aggregated_format(
         token_counts=token_counts,
     )
 
-    return generation_baseline_result
+    # Return both the result and the token count breakdowns
+    return generation_baseline_result, input_token_counts, output_token_counts
 
 
 def main():
@@ -341,15 +346,23 @@ def main():
         generation_result = json.loads(lines[-1])
 
         # Convert to GenerationBaselineResults format
-        aggregated_result = convert_generation_result_to_aggregated_format(
-            generation_result, tokenizer, model_path
+        aggregated_result, input_token_counts, output_token_counts = (
+            convert_generation_result_to_aggregated_format(
+                generation_result, tokenizer, model_path
+            )
         )
 
         converted_results.append(aggregated_result)
         print(f"  Converted {len(generation_result['ids'])} samples")
         if aggregated_result.token_counts:
             print(
-                f"  Average tokens per sample: {np.mean(aggregated_result.token_counts):.1f}"
+                f"  Average total tokens per sample: {np.mean(aggregated_result.token_counts):.1f}"
+            )
+            print(
+                f"  Average input tokens per sample: {np.mean(input_token_counts):.1f}"
+            )
+            print(
+                f"  Average response tokens per sample: {np.mean(output_token_counts):.1f}"
             )
         else:
             print("  No token counts available")
@@ -365,17 +378,55 @@ def main():
     # Print summary
     total_samples = sum(len(result.ids) for result in converted_results)
     all_token_counts = []
-    for result in converted_results:
-        if result.token_counts:
-            all_token_counts.extend(result.token_counts)
+    all_input_token_counts = []
+    all_output_token_counts = []
+
+    # Collect all token counts from all datasets
+    for input_file in input_files:
+        print(f"\nProcessing {input_file.name} for summary...")
+
+        # Read the generation baseline results
+        with open(input_file, "r") as f:
+            lines = f.readlines()
+
+        if not lines:
+            continue
+
+        # Process the last (most recent) result in the file
+        generation_result = json.loads(lines[-1])
+
+        # Convert to get token counts
+        _, input_token_counts, output_token_counts = (
+            convert_generation_result_to_aggregated_format(
+                generation_result, tokenizer, model_path
+            )
+        )
+
+        all_input_token_counts.extend(input_token_counts)
+        all_output_token_counts.extend(output_token_counts)
+        all_token_counts.extend(
+            [i + o for i, o in zip(input_token_counts, output_token_counts)]
+        )
 
     print("\nSummary:")
     print(f"  Total datasets: {len(converted_results)}")
     print(f"  Total samples: {total_samples}")
     if all_token_counts:
-        print(f"  Average tokens per sample: {np.mean(all_token_counts):.1f}")
+        print(f"  Average total tokens per sample: {np.mean(all_token_counts):.1f}")
         print(
-            f"  Token count range: [{min(all_token_counts)}, {max(all_token_counts)}]"
+            f"  Average input tokens per sample: {np.mean(all_input_token_counts):.1f}"
+        )
+        print(
+            f"  Average response tokens per sample: {np.mean(all_output_token_counts):.1f}"
+        )
+        print(
+            f"  Total token count range: [{min(all_token_counts)}, {max(all_token_counts)}]"
+        )
+        print(
+            f"  Input token count range: [{min(all_input_token_counts)}, {max(all_input_token_counts)}]"
+        )
+        print(
+            f"  Response token count range: [{min(all_output_token_counts)}, {max(all_output_token_counts)}]"
         )
     else:
         print("  No token counts available")
