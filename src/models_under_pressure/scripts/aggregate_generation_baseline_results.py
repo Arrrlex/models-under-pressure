@@ -302,6 +302,9 @@ def main():
     # Find all generation baseline result files for this model
     pattern = f"{model_path.split('/')[-1]}_*_generation_baseline.jsonl"
     input_files = list(args.input_dir.glob(pattern))
+    if not input_files:
+        # Try with lower case
+        input_files = list(args.input_dir.glob(pattern.lower()))
 
     if not input_files:
         print(f"No generation baseline files found matching pattern: {pattern}")
