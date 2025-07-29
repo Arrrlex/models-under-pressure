@@ -2,7 +2,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -37,7 +37,7 @@ from models_under_pressure.interfaces.dataset import (
     subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.results import BaselineResults
-from models_under_pressure.model import LLMModel
+from models_under_pressure.model import LLMModel, OpenRouterModel
 
 
 def format_conversation(input_: Input) -> str:
@@ -149,7 +149,7 @@ class GenerationBaseline:
 
     def __init__(
         self,
-        model: LLMModel,
+        model: Union[LLMModel, OpenRouterModel],
         prompt_config: GenerationPrompt,
         max_new_tokens: int | None = 1024,
         batch_size: int = 8,
@@ -265,7 +265,7 @@ class GenerationBaseline:
 
 
 def evaluate_generation_baseline(
-    model: LLMModel,
+    model: Union[LLMModel, OpenRouterModel],
     prompt_config: GenerationPrompt,
     dataset_name: str,
     dataset_path: Path,
@@ -1210,25 +1210,39 @@ if __name__ == "__main__":
     from models_under_pressure.config import LOCAL_MODELS
 
     # Toggle between running baseline evaluation or just analyzing existing results
-    RUN_EVALUATION = False  # Set to True to run evaluation, False to only show analysis
+    RUN_EVALUATION = True  # Set to True to run evaluation, False to only show analysis
     USE_LENIENT_REPARSE = False
 
-    model_name = LOCAL_MODELS["gemma-12b"]
-    max_samples = None
+    # Toggle between local models and OpenRouter API
+    USE_OPENROUTER = True  # Set to True to use OpenRouter API, False for local models
+
+    # Model configuration
+    if USE_OPENROUTER:
+        # OpenRouter model names (examples)
+        model_name = "meta-llama/llama-3.3-70b-instruct"
+        model = OpenRouterModel.load(model_name)
+    else:
+        # Local model names
+        model_name = LOCAL_MODELS["gemma-12b"]
+        model = LLMModel.load(model_name)
+
+    max_samples = 5
     num_invalid_examples = 1
 
     model_short_name = model_name.split("/")[-1]
     if RUN_EVALUATION:
-        model = LLMModel.load(model_name)
+        print(
+            f"Using {'OpenRouter API' if USE_OPENROUTER else 'local model'}: {model_name}"
+        )
 
     results_dict = {}
     for dataset_name in [
         "anthropic",
-        "mt",
-        "mts",
-        "toolace",
-        "mental_health",
-        "redteaming",
+        # "mt",
+        # "mts",
+        # "toolace",
+        # "mental_health",
+        # "redteaming",
     ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
         results_file = (
@@ -1246,7 +1260,7 @@ if __name__ == "__main__":
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
-                batch_size=4,
+                batch_size=4 if not USE_OPENROUTER else 1,
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")

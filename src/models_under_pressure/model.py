@@ -30,7 +30,11 @@ from models_under_pressure.interfaces.dataset import (
     Input,
     to_dialogue,
 )
-from models_under_pressure.utils import batched_range, hf_login
+from models_under_pressure.utils import (
+    batched_range,
+    call_openrouter_sync,
+    hf_login,
+)
 
 
 # type: ignore
@@ -638,3 +642,130 @@ def get_batches(
         else:
             raise ValueError(f"Unknown padding side: {tokenizer.padding_side}")
         yield batch_inputs, batch_indices
+
+
+@dataclass
+class OpenRouterModel:
+    """
+    High-level interface for working with OpenRouter API models.
+
+    Provides unified access to:
+    - Text generation via OpenRouter API
+    - Compatible interface with LLMModel for generation tasks
+
+    Note: This is a simplified version that only supports generation,
+    not activation extraction or other LLMModel features.
+    """
+
+    name: str
+    batch_size: int = 1  # OpenRouter doesn't support true batching
+
+    @classmethod
+    def load(
+        cls,
+        model_name: str,
+        batch_size: int = 1,
+        **kwargs: Any,
+    ) -> Self:
+        """
+        Create an OpenRouter model instance.
+
+        Args:
+            model_name: OpenRouter model name (e.g., "anthropic/claude-3-5-sonnet")
+            batch_size: Batch size (not used for API calls, kept for compatibility)
+            **kwargs: Additional arguments (ignored)
+
+        Returns:
+            Initialized OpenRouterModel instance
+        """
+        return cls(name=model_name, batch_size=batch_size)
+
+    def generate(
+        self,
+        dialogue: Dialogue,
+        max_new_tokens: int | None = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        **generation_kwargs: Any,
+    ) -> str:
+        """
+        Generate text continuation for a dialogue using OpenRouter API.
+
+        Args:
+            dialogue: Input dialogue
+            max_new_tokens: Max tokens to generate
+            temperature: Sampling temperature (None for greedy)
+            do_sample: Use sampling instead of greedy
+            top_p: Top-p sampling parameter
+            skip_special_tokens: Skip special tokens in output (not applicable for API)
+            return_full_output: Return full dialogue or just continuation
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            Generated text
+        """
+        # Convert dialogue to messages format
+        messages = [msg.model_dump() for msg in dialogue]
+
+        # Set temperature (default to 0.0 for deterministic if not sampling)
+        temp = temperature if temperature is not None else (0.7 if do_sample else 0.0)
+
+        # Call OpenRouter API
+        response = call_openrouter_sync(
+            messages=messages,
+            model=self.name,
+            temperature=temp,
+            max_tokens=max_new_tokens,
+        )
+
+        return response
+
+    def generate_batch(
+        self,
+        dialogues: list[Dialogue],
+        max_new_tokens: int | None = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        **generation_kwargs: Any,
+    ) -> list[str]:
+        """
+        Generate text continuations for multiple dialogues using OpenRouter API.
+
+        Note: This processes dialogues sequentially since OpenRouter doesn't support
+        true batch processing. For better performance, consider using async methods.
+
+        Args:
+            dialogues: List of input dialogues
+            max_new_tokens: Max tokens to generate
+            temperature: Sampling temperature (None for greedy)
+            do_sample: Use sampling instead of greedy
+            top_p: Top-p sampling parameter
+            skip_special_tokens: Skip special tokens in output (not applicable for API)
+            return_full_output: Return full dialogue or just continuation
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            List of generated texts
+        """
+        results = []
+
+        for dialogue in tqdm(dialogues, desc="Generating with OpenRouter"):
+            result = self.generate(
+                dialogue=dialogue,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=do_sample,
+                top_p=top_p,
+                skip_special_tokens=skip_special_tokens,
+                return_full_output=return_full_output,
+                **generation_kwargs,
+            )
+            results.append(result)
+
+        return results

@@ -105,6 +105,19 @@ def _get_async_client() -> AsyncOpenAI:
     return _get_async_client._instance
 
 
+def _get_openrouter_async_client() -> AsyncOpenAI:
+    """Get async OpenRouter client with proper configuration."""
+    if not hasattr(_get_openrouter_async_client, "_instance"):
+        api_key = os.getenv("OPEN_ROUTER_API_KEY")
+        if not api_key:
+            raise ValueError("OPEN_ROUTER_API_KEY environment variable not set")
+
+        _get_openrouter_async_client._instance = AsyncOpenAI(
+            api_key=api_key, base_url="https://openrouter.ai/api/v1"
+        )
+    return _get_openrouter_async_client._instance
+
+
 # TODO Change messages type to Dialogue type?
 def call_llm(messages: List[Any], model: str) -> Dict[str, Any] | None:
     response = openai.chat.completions.create(
@@ -142,6 +155,89 @@ async def call_llm_async(
     if content is None:
         raise ValueError("No content returned from LLM")
     return json.loads(content)
+
+
+async def call_openrouter_async(
+    messages: List[Any],
+    model: str,
+    json_schema: Optional[Dict[str, Any]] = None,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Async version of call_llm using OpenRouter API"""
+    client = _get_openrouter_async_client()
+
+    if json_schema is not None:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": json_schema,
+        }
+    else:
+        response_format = {"type": "json_object"}
+
+    # Prepare request parameters
+    request_params = {
+        "model": model,
+        "messages": messages,
+        "response_format": response_format,
+        "temperature": temperature,
+    }
+
+    if max_tokens is not None:
+        request_params["max_tokens"] = max_tokens
+
+    response = await client.chat.completions.create(**request_params)
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError("No content returned from OpenRouter LLM")
+    return json.loads(content)
+
+
+def call_openrouter_sync(
+    messages: List[Any],
+    model: str,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
+) -> str:
+    """Synchronous version of OpenRouter API call for text generation (not JSON)"""
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPEN_ROUTER_API_KEY environment variable not set")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/Arrrlex/models-under-pressure",
+        "X-Title": "Models Under Pressure",
+    }
+
+    data = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+
+    if max_tokens is not None:
+        data["max_tokens"] = max_tokens
+
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json=data,
+        timeout=60,
+    )
+
+    if response.status_code != 200:
+        raise ValueError(
+            f"OpenRouter API error: {response.status_code} - {response.text}"
+        )
+
+    result = response.json()
+    content = result["choices"][0]["message"]["content"]
+    if content is None:
+        raise ValueError("No content returned from OpenRouter LLM")
+
+    return content
 
 
 def generate_completions(
