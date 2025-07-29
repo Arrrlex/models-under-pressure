@@ -24,8 +24,8 @@ torch.set_default_dtype(torch.float32)  # Ensure consistent dtype
 torch.backends.cuda.matmul.allow_tf32 = True  # Allow TF32 for better performance
 
 from models_under_pressure.config import (
+    EVAL_DATASETS,
     RESULTS_DIR,
-    TEST_DATASETS,
 )
 from models_under_pressure.experiments.evaluate_probes import calculate_metrics
 from models_under_pressure.interfaces.dataset import (
@@ -134,6 +134,16 @@ class GenerationPrompt(BaseModel):
     conversation_input_key: str = "user_prompt"
 
 
+class GenerationHyperparams(BaseModel):
+    """Hyperparameters for generation baseline."""
+
+    max_new_tokens: int | None = 1024
+    temperature: float | None = None
+    quantization: str | None = None  # For OpenRouter models
+    batch_size: int = 8
+    max_concurrent: int = 10
+
+
 class GenerationBaselineResults(BaselineResults):
     """Results from generation-based baseline evaluation."""
 
@@ -142,6 +152,7 @@ class GenerationBaselineResults(BaselineResults):
     scores: list[float]
     prompt_config: GenerationPrompt
     metrics: dict[str, float]
+    hyperparams: GenerationHyperparams
 
 
 class GenerationBaseline:
@@ -151,15 +162,11 @@ class GenerationBaseline:
         self,
         model: Union[LLMModel, OpenRouterModel],
         prompt_config: GenerationPrompt,
-        max_new_tokens: int | None = 1024,
-        batch_size: int = 8,
-        max_concurrent: int = 10,
+        hyperparams: GenerationHyperparams,
     ):
         self.model = model
         self.prompt_config = prompt_config
-        self.max_new_tokens = max_new_tokens
-        self.batch_size = batch_size
-        self.max_concurrent = max_concurrent
+        self.hyperparams = hyperparams
 
     def predict(self, dataset: Dataset) -> list[Label]:
         """Predict labels for a dataset."""
@@ -182,9 +189,9 @@ class GenerationBaseline:
         print(f"DEBUG: Dataset has {len(dataset.ids)} samples")
 
         # Process in batches
-        for i in tqdm(range(0, len(dataset.ids), self.batch_size)):
-            batch_ids = dataset.ids[i : i + self.batch_size]
-            batch_inputs = dataset.inputs[i : i + self.batch_size]
+        for i in tqdm(range(0, len(dataset.ids), self.hyperparams.batch_size)):
+            batch_ids = dataset.ids[i : i + self.hyperparams.batch_size]
+            batch_inputs = dataset.inputs[i : i + self.hyperparams.batch_size]
 
             # Convert inputs to Message lists if needed
             batch_dialogues = [
@@ -205,6 +212,17 @@ class GenerationBaseline:
             other_fields["full_response"].extend(batch_results["responses"])
             other_fields["valid_response"].extend(batch_results["valid_responses"])
             other_fields["model"].extend([self.model.name] * len(batch_ids))
+
+        # Assert that all fields have the same length
+        assert (
+            len(ids)
+            == len(inputs)
+            == len(other_fields["scores"])
+            == len(other_fields["labels"])
+            == len(other_fields["full_response"])
+            == len(other_fields["valid_response"])
+        )
+        assert len(other_fields["model"]) == len(ids)
 
         return LabelledDataset(inputs=inputs, ids=ids, other_fields=other_fields)
 
@@ -234,15 +252,17 @@ class GenerationBaseline:
             # Use async batch processing for OpenRouter models
             responses = self.model.generate_batch(
                 batch_dialogues,
-                max_new_tokens=self.max_new_tokens,
+                max_new_tokens=self.hyperparams.max_new_tokens,
+                temperature=self.hyperparams.temperature,
                 skip_special_tokens=True,
-                max_concurrent=self.max_concurrent,
+                max_concurrent=self.hyperparams.max_concurrent,
             )
         else:
             # Use regular batch processing for local models
             responses = self.model.generate_batch(
                 batch_dialogues,
-                max_new_tokens=self.max_new_tokens,
+                max_new_tokens=self.hyperparams.max_new_tokens,
+                temperature=self.hyperparams.temperature,
                 skip_special_tokens=True,
             )
 
@@ -289,6 +309,8 @@ def evaluate_generation_baseline(
     max_new_tokens: int | None = 1024,
     batch_size: int = 8,
     max_concurrent: int = 10,
+    temperature: float | None = None,
+    quantization: str | None = None,
 ) -> GenerationBaselineResults:
     """Evaluate the generation baseline on a dataset."""
     if dataset is None:
@@ -301,9 +323,13 @@ def evaluate_generation_baseline(
     classifier = GenerationBaseline(
         model,
         prompt_config,
-        max_new_tokens=max_new_tokens,
-        batch_size=batch_size,
-        max_concurrent=max_concurrent,
+        hyperparams=GenerationHyperparams(
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            quantization=quantization,
+            batch_size=batch_size,
+            max_concurrent=max_concurrent,
+        ),
     )
 
     # For OpenRouter models, we'll use the async batch processing automatically
@@ -336,6 +362,13 @@ def evaluate_generation_baseline(
         scores=results.other_fields["scores"],  # type: ignore
         prompt_config=prompt_config,
         metrics=metrics,
+        hyperparams=GenerationHyperparams(
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            quantization=quantization,
+            batch_size=batch_size,
+            max_concurrent=max_concurrent,
+        ),
     )
 
     # Save results if requested
@@ -1111,13 +1144,6 @@ def create_results_overview_table_with_reparse(
     df = pd.DataFrame(table_data)
 
     # Calculate mean row (excluding Dataset column and Valid Responses column)
-    numeric_columns = [
-        "Samples Considered",
-        "AUROC",
-        "Accuracy",
-        "TPR",
-        "Fraction Valid",
-    ]
     mean_row = {
         "Dataset": "Mean",
         "Samples Considered": df["Samples Considered"].sum(),
@@ -1237,17 +1263,29 @@ if __name__ == "__main__":
     # Toggle between local models and OpenRouter API
     USE_OPENROUTER = True  # Set to True to use OpenRouter API, False for local models
 
+    # Quantization options for OpenRouter:
+    # - "fp16": 16-bit floating point (faster, less memory)
+    # - "q4_k_m": 4-bit quantization (fastest, least memory)
+    # - "q8_0": 8-bit quantization (balanced)
+    # - None: Use default quantization
+    QUANTIZATION = "fp16"
+
     # Model configuration
     if USE_OPENROUTER:
-        # OpenRouter model names (examples)
+        # model_name = "meta-llama/llama-3.1-8b-instruct"
         model_name = "meta-llama/llama-3.3-70b-instruct"
-        model = OpenRouterModel.load(model_name)
+        # model_name = "google/gemma-3-12b-it"
+        # model_name = "google/gemma-3-27b-it"
+        model = OpenRouterModel.load(
+            model_name,
+            quantization=QUANTIZATION,  # Use quantization level directly
+        )
     else:
         # Local model names
         model_name = LOCAL_MODELS["gemma-12b"]
         model = LLMModel.load(model_name)
 
-    max_samples = 10
+    max_samples = 100
     num_invalid_examples = 1
 
     model_short_name = model_name.split("/")[-1]
@@ -1258,8 +1296,8 @@ if __name__ == "__main__":
 
     results_dict = {}
     for dataset_name in [
-        "anthropic",
-        # "mt",
+        # "anthropic",
+        "mt",
         # "mts",
         # "toolace",
         # "mental_health",
@@ -1276,13 +1314,15 @@ if __name__ == "__main__":
                 model,
                 prompt_config=generation_prompts["default"],
                 dataset_name=dataset_name,
-                dataset_path=TEST_DATASETS[dataset_name],
+                dataset_path=EVAL_DATASETS[dataset_name],
                 max_samples=max_samples,
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
-                batch_size=5,
-                max_concurrent=10 if USE_OPENROUTER else 1,
+                batch_size=16,
+                max_concurrent=32 if USE_OPENROUTER else 1,
+                # temperature=0.0,  # Use deterministic generation
+                quantization=QUANTIZATION if USE_OPENROUTER else None,
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")
@@ -1298,6 +1338,12 @@ if __name__ == "__main__":
             print(
                 f"Score range: [{min(results.scores):.3f}, {max(results.scores):.3f}]"
             )
+            # Print hyperparameters
+            print(f"Temperature: {results.hyperparams.temperature}")
+            print(f"Quantization: {results.hyperparams.quantization}")
+            print(f"Max tokens: {results.hyperparams.max_new_tokens}")
+            print(f"Batch size: {results.hyperparams.batch_size}")
+            print(f"Max concurrent: {results.hyperparams.max_concurrent}")
             print("Results saved to file.")
 
         # Analyze existing results (either just created or from previous runs)

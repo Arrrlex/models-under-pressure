@@ -15,7 +15,7 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Callable, Iterator, Self, Sequence, Type
+from typing import Any, Callable, Iterator, Optional, Self, Sequence, Type
 
 import torch
 from jaxtyping import Float
@@ -660,12 +660,14 @@ class OpenRouterModel:
 
     name: str
     batch_size: int = 1  # OpenRouter doesn't support true batching
+    quantization: Optional[str] = None  # Quantization specification (e.g., "q4_k_m")
 
     @classmethod
     def load(
         cls,
         model_name: str,
         batch_size: int = 1,
+        quantization: Optional[str] = None,
         **kwargs: Any,
     ) -> Self:
         """
@@ -674,12 +676,17 @@ class OpenRouterModel:
         Args:
             model_name: OpenRouter model name (e.g., "anthropic/claude-3-5-sonnet")
             batch_size: Batch size (not used for API calls, kept for compatibility)
+            quantization: Quantization specification (e.g., "q4_k_m")
             **kwargs: Additional arguments (ignored)
 
         Returns:
             Initialized OpenRouterModel instance
         """
-        return cls(name=model_name, batch_size=batch_size)
+        return cls(
+            name=model_name,
+            batch_size=batch_size,
+            quantization=quantization,
+        )
 
     def generate(
         self,
@@ -720,6 +727,8 @@ class OpenRouterModel:
             model=self.name,
             temperature=temp,
             max_tokens=max_new_tokens,
+            quantization=self.quantization,
+            **generation_kwargs,
         )
 
         return response
@@ -763,18 +772,17 @@ class OpenRouterModel:
             messages = [msg.model_dump() for msg in dialogue]
             messages_list.append(messages)
 
-        # Set temperature (default to 0.0 for deterministic if not sampling)
-        temp = temperature if temperature is not None else (0.7 if do_sample else 0.0)
-
         # Use async batch processing
         async def run_async_batch():
             return await call_openrouter_batch_async(
                 messages_list=messages_list,
                 model=self.name,
-                temperature=temp,
+                temperature=temperature,
                 max_tokens=max_new_tokens,
                 max_concurrent=max_concurrent,
                 task_timeout=60.0,
+                quantization=self.quantization,
+                **generation_kwargs,
             )
 
         # Run the async batch processing

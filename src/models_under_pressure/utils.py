@@ -22,6 +22,7 @@ from typing import (
     get_type_hints,
 )
 
+import httpx
 import huggingface_hub
 import hydra
 import numpy as np
@@ -107,15 +108,9 @@ def _get_async_client() -> AsyncOpenAI:
 
 def _get_openrouter_async_client() -> AsyncOpenAI:
     """Get async OpenRouter client with proper configuration."""
-    if not hasattr(_get_openrouter_async_client, "_instance"):
-        api_key = os.getenv("OPEN_ROUTER_API_KEY")
-        if not api_key:
-            raise ValueError("OPEN_ROUTER_API_KEY environment variable not set")
-
-        _get_openrouter_async_client._instance = AsyncOpenAI(
-            api_key=api_key, base_url="https://openrouter.ai/api/v1"
-        )
-    return _get_openrouter_async_client._instance
+    raise NotImplementedError(
+        "OpenRouter async client is now handled via httpx, not AsyncOpenAI."
+    )
 
 
 # TODO Change messages type to Dialogue type?
@@ -163,136 +158,142 @@ async def call_openrouter_async(
     json_schema: Optional[Dict[str, Any]] = None,
     temperature: float = 0.0,
     max_tokens: Optional[int] = None,
+    quantization: Optional[str] = None,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Async version of call_llm using OpenRouter API"""
-    client = _get_openrouter_async_client()
-
+    """Async version of call_llm using OpenRouter API (httpx)"""
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPEN_ROUTER_API_KEY environment variable not set")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/Arrrlex/models-under-pressure",
+        "X-Title": "Models Under Pressure",
+    }
+    data = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
     if json_schema is not None:
-        response_format = {
+        data["response_format"] = {
             "type": "json_schema",
             "json_schema": json_schema,
         }
-    else:
-        response_format = {"type": "json_object"}
-
-    # Prepare request parameters
-    request_params = {
-        "model": model,
-        "messages": messages,
-        "response_format": response_format,
-        "temperature": temperature,
-    }
-
     if max_tokens is not None:
-        request_params["max_tokens"] = max_tokens
-
-    response = await client.chat.completions.create(**request_params)
-    content = response.choices[0].message.content
-    if content is None:
-        raise ValueError("No content returned from OpenRouter LLM")
-    return json.loads(content)
+        data["max_tokens"] = max_tokens
+    if quantization is not None:
+        # data["provider"] = {"quantization": quantization}
+        data["provider"] = {"quantizations": [quantization]}
+    data.update(kwargs)
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data,
+        )
+        if resp.status_code != 200:
+            raise ValueError(f"OpenRouter API error: {resp.status_code} - {resp.text}")
+        result = resp.json()
+        content = result["choices"][0]["message"]["content"]
+        if content is None:
+            raise ValueError("No content returned from OpenRouter LLM")
+        return json.loads(content)
 
 
 async def call_openrouter_batch_async(
     messages_list: List[List[Any]],
     model: str,
-    temperature: float = 0.0,
+    temperature: float | None = None,
     max_tokens: Optional[int] = None,
     max_concurrent: int = 10,
     task_timeout: Optional[float] = 60.0,
+    quantization: Optional[str] = None,
+    **kwargs: Any,
 ) -> List[str]:
     """
-    Process multiple OpenRouter API requests concurrently.
-
-    Args:
-        messages_list: List of message lists for each request
-        model: OpenRouter model name
-        temperature: Sampling temperature
-        max_tokens: Maximum tokens to generate
-        max_concurrent: Maximum concurrent requests
-        task_timeout: Timeout per request in seconds
-
-    Returns:
-        List of response strings
+    Process multiple OpenRouter API requests concurrently (httpx).
     """
     import asyncio
 
     async def single_request(messages: List[Any]) -> str:
-        """Make a single OpenRouter API request."""
         return await call_openrouter_single_async(
             messages=messages,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            quantization=quantization,
+            **kwargs,
         )
 
-    # Process with concurrency control using semaphore
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def bounded_request(messages: List[Any]) -> str:
         async with semaphore:
             return await single_request(messages)
 
-    # Execute all requests with bounded concurrency
     bounded_tasks = [bounded_request(messages) for messages in messages_list]
-
     if task_timeout:
-        # Add timeout to each task
         results = await asyncio.gather(
             *[asyncio.wait_for(task, timeout=task_timeout) for task in bounded_tasks],
             return_exceptions=True,
         )
     else:
         results = await asyncio.gather(*bounded_tasks, return_exceptions=True)
-
-    # Handle exceptions and return results
     processed_results = []
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             print(f"Request {i} failed: {result}")
-            processed_results.append("")  # Empty string for failed requests
+            processed_results.append("")
         else:
             processed_results.append(result)
-
     return processed_results
 
 
 async def call_openrouter_single_async(
     messages: List[Any],
     model: str,
-    temperature: float = 0.0,
+    temperature: float | None = None,
     max_tokens: Optional[int] = None,
+    quantization: Optional[str] = None,
+    **kwargs: Any,
 ) -> str:
     """
-    Make a single async OpenRouter API request.
-
-    Args:
-        messages: List of messages for the request
-        model: OpenRouter model name
-        temperature: Sampling temperature
-        max_tokens: Maximum tokens to generate
-
-    Returns:
-        Response string
+    Make a single async OpenRouter API request (httpx).
     """
-    client = _get_openrouter_async_client()
-
-    # Prepare request parameters
-    request_params = {
+    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPEN_ROUTER_API_KEY environment variable not set")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/Arrrlex/models-under-pressure",
+        "X-Title": "Models Under Pressure",
+    }
+    data = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
     }
-
     if max_tokens is not None:
-        request_params["max_tokens"] = max_tokens
-
-    response = await client.chat.completions.create(**request_params)
-    content = response.choices[0].message.content
-    if content is None:
-        raise ValueError("No content returned from OpenRouter LLM")
-
-    return content
+        data["max_tokens"] = max_tokens
+    if quantization is not None:
+        data["provider"] = {"quantizations": [quantization]}
+    data.update(kwargs)
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data,
+        )
+        if resp.status_code != 200:
+            raise ValueError(f"OpenRouter API error: {resp.status_code} - {resp.text}")
+        result = resp.json()
+        content = result["choices"][0]["message"]["content"]
+        if content is None:
+            raise ValueError("No content returned from OpenRouter LLM")
+        return content
 
 
 def call_openrouter_sync(
@@ -300,6 +301,8 @@ def call_openrouter_sync(
     model: str,
     temperature: float = 0.0,
     max_tokens: Optional[int] = None,
+    quantization: Optional[str] = None,
+    **kwargs: Any,
 ) -> str:
     """Synchronous version of OpenRouter API call for text generation (not JSON)"""
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
@@ -321,6 +324,13 @@ def call_openrouter_sync(
 
     if max_tokens is not None:
         data["max_tokens"] = max_tokens
+
+    # Add quantization details if specified
+    if quantization is not None:
+        data["provider"] = {"quantizations": [quantization]}
+
+    # Add any additional kwargs
+    data.update(kwargs)
 
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
