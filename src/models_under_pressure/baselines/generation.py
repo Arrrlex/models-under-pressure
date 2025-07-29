@@ -311,6 +311,7 @@ def evaluate_generation_baseline(
     max_concurrent: int = 10,
     temperature: float | None = None,
     quantization: str | None = None,
+    rerun_empty_responses: bool = False,
 ) -> GenerationBaselineResults:
     """Evaluate the generation baseline on a dataset."""
     if dataset is None:
@@ -319,6 +320,78 @@ def evaluate_generation_baseline(
         if max_samples is not None:
             print(f"Sampling {max_samples} samples")
             dataset = subsample_balanced_subset(dataset, n_per_class=max_samples // 2)
+
+    # Handle re-running empty responses
+    previous_results = None
+    empty_response_indices = []
+
+    if rerun_empty_responses:
+        if output_dir is None:
+            output_dir = RESULTS_DIR / "baselines" / "generation"
+        model_short_name = model.name.split("/")[-1]
+        results_file = (
+            output_dir / f"{model_short_name}_{dataset_name}_generation_baseline.jsonl"
+        )
+
+        if results_file.exists():
+            print(f"Loading previous results from {results_file}")
+            previous_results = load_previous_results(results_file)
+
+            if previous_results is not None:
+                # Find indices of empty responses
+                empty_response_indices = [
+                    i
+                    for i, response in enumerate(previous_results.full_response)
+                    if not response or response.strip() == ""
+                ]
+
+                print(
+                    f"Found {len(empty_response_indices)} empty responses out of {len(previous_results.full_response)} total"
+                )
+
+                if len(empty_response_indices) == 0:
+                    print("No empty responses found. Returning previous results.")
+                    return previous_results
+
+                # Create a subset dataset with only empty response samples
+                empty_response_ids = [dataset.ids[i] for i in empty_response_indices]
+                empty_response_inputs = [
+                    dataset.inputs[i] for i in empty_response_indices
+                ]
+                empty_response_labels = [
+                    dataset.labels[i] for i in empty_response_indices
+                ]
+
+                # Create subset dataset with properly filtered other_fields
+                subset_other_fields = {}
+                for field_name, field_values in dataset.other_fields.items():
+                    if isinstance(field_values, (list, np.ndarray)) and len(
+                        field_values
+                    ) == len(dataset.inputs):
+                        # Filter this field to match the subset
+                        subset_other_fields[field_name] = [
+                            field_values[i] for i in empty_response_indices
+                        ]
+                    else:
+                        # Keep non-list fields as-is (they might be scalars or other types)
+                        subset_other_fields[field_name] = field_values
+
+                # Ensure labels field is properly set
+                subset_other_fields["labels"] = empty_response_labels
+
+                subset_dataset = LabelledDataset(
+                    ids=empty_response_ids,
+                    inputs=empty_response_inputs,
+                    other_fields=subset_other_fields,
+                )
+
+                print(
+                    f"Re-running evaluation on {len(subset_dataset.ids)} samples with empty responses"
+                )
+                dataset = subset_dataset
+        else:
+            print(f"Previous results file not found: {results_file}")
+            print("Proceeding with full dataset evaluation")
 
     classifier = GenerationBaseline(
         model,
@@ -337,18 +410,67 @@ def evaluate_generation_baseline(
 
     results = classifier.score_classify_dataset(dataset)
 
-    labels = [label.to_int() for label in list(results.labels)]
-    ground_truth = dataset.labels_numpy()
-    scores = np.array(results.other_fields["scores"])  # type: ignore
+    # If we're re-running empty responses, merge with previous results
+    if rerun_empty_responses and previous_results is not None:
+        print("Merging new results with previous results")
 
-    # Calculate standard metrics
-    metrics = calculate_metrics(ground_truth, scores, fpr)
-    accuracy = metrics["accuracy"]
+        # Create merged results
+        merged_full_response = previous_results.full_response.copy()
+        merged_valid_response = previous_results.valid_response.copy()
+        merged_scores = previous_results.scores.copy()
+        merged_labels = previous_results.labels.copy()
+
+        # Update only the empty response indices with new results
+        for i, original_idx in enumerate(empty_response_indices):
+            merged_full_response[original_idx] = str(
+                results.other_fields["full_response"][i]
+            )
+            merged_valid_response[original_idx] = bool(
+                results.other_fields["valid_response"][i]
+            )
+            merged_scores[original_idx] = float(results.other_fields["scores"][i])
+            merged_labels[original_idx] = int(results.labels[i].to_int())
+
+        # Use the merged data for final results
+        final_full_response = merged_full_response
+        final_valid_response = merged_valid_response
+        final_scores = merged_scores
+        final_labels = merged_labels
+
+        # Recalculate metrics on the full dataset
+        ground_truth = np.array(previous_results.ground_truth)
+        scores = np.array(final_scores)
+        metrics = calculate_metrics(ground_truth, scores, fpr)
+        accuracy = metrics["accuracy"]
+
+        print(f"Updated {len(empty_response_indices)} responses. New metrics:")
+        print(f"Accuracy: {accuracy:.3f}")
+        print(f"AUROC: {metrics['auroc']:.3f}")
+        print(f"TPR at FPR={metrics['fpr']}: {metrics['tpr_at_fpr']:.3f}")
+
+    else:
+        # Normal evaluation path
+        labels = [label.to_int() for label in list(results.labels)]
+        ground_truth = dataset.labels_numpy()
+        scores = np.array(results.other_fields["scores"])  # type: ignore
+
+        # Calculate standard metrics
+        metrics = calculate_metrics(ground_truth, scores, fpr)
+        accuracy = metrics["accuracy"]
+
+        final_full_response = results.other_fields["full_response"]  # type: ignore
+        final_valid_response = results.other_fields["valid_response"]  # type: ignore
+        final_scores = results.other_fields["scores"]  # type: ignore
+        final_labels = labels
 
     baseline_results = GenerationBaselineResults(
-        ids=list(results.ids),
+        ids=list(dataset.ids)
+        if not rerun_empty_responses
+        else [str(i) for i in range(len(final_full_response))],
         accuracy=accuracy,
-        labels=labels,
+        labels=[
+            int(label) if hasattr(label, "to_int") else label for label in final_labels
+        ],
         ground_truth=ground_truth.tolist(),
         ground_truth_scale_labels=list(dataset.other_fields["scale_labels"])  # type: ignore
         if "scale_labels" in dataset.other_fields
@@ -357,9 +479,9 @@ def evaluate_generation_baseline(
         dataset_path=dataset_path,
         model_name=model.name,
         max_samples=max_samples,
-        full_response=results.other_fields["full_response"],  # type: ignore
-        valid_response=results.other_fields["valid_response"],  # type: ignore
-        scores=results.other_fields["scores"],  # type: ignore
+        full_response=[str(x) for x in final_full_response],
+        valid_response=[bool(x) for x in final_valid_response],
+        scores=[float(x) for x in final_scores],
         prompt_config=prompt_config,
         metrics=metrics,
         hyperparams=GenerationHyperparams(
@@ -387,6 +509,37 @@ def evaluate_generation_baseline(
         baseline_results.save_to(output_file)
 
     return baseline_results
+
+
+def load_previous_results(results_file: Path) -> GenerationBaselineResults | None:
+    """
+    Load the most recent results from a JSONL file.
+
+    Args:
+        results_file: Path to the JSONL file containing results
+
+    Returns:
+        GenerationBaselineResults object or None if file doesn't exist or is empty
+    """
+    import json
+
+    if not results_file.exists():
+        return None
+
+    try:
+        with open(results_file, "r") as f:
+            lines = f.readlines()
+
+        if not lines:
+            return None
+
+        # Parse the last result (most recent)
+        result_data = json.loads(lines[-1])
+        return GenerationBaselineResults(**result_data)
+
+    except Exception as e:
+        print(f"Error loading previous results: {e}")
+        return None
 
 
 def analyze_generation_baseline_results(
@@ -1274,6 +1427,16 @@ if __name__ == "__main__":
     # Toggle between running baseline evaluation or just analyzing existing results
     RUN_EVALUATION = True  # Set to True to run evaluation, False to only show analysis
     USE_LENIENT_REPARSE = False
+    RERUN_EMPTY_RESPONSES = False
+
+    if RERUN_EMPTY_RESPONSES:
+        print(
+            "RERUN_EMPTY_RESPONSES is enabled - will re-run only samples with empty full responses"
+        )
+        print(
+            "This will load previous results, identify empty responses, and re-process only those samples"
+        )
+        print("Non-empty responses from previous runs will be preserved")
 
     # Toggle between local models and OpenRouter API
     USE_OPENROUTER = True  # Set to True to use OpenRouter API, False for local models
@@ -1283,14 +1446,14 @@ if __name__ == "__main__":
     # - "q4_k_m": 4-bit quantization (fastest, least memory)
     # - "q8_0": 8-bit quantization (balanced)
     # - None: Use default quantization
-    QUANTIZATION = "fp16"
+    QUANTIZATION = "bf16"
 
     # Model configuration
     if USE_OPENROUTER:
         # model_name = "meta-llama/llama-3.1-8b-instruct"
-        model_name = "meta-llama/llama-3.3-70b-instruct"
+        # model_name = "meta-llama/llama-3.3-70b-instruct"
         # model_name = "google/gemma-3-12b-it"
-        # model_name = "google/gemma-3-27b-it"
+        model_name = "google/gemma-3-27b-it"
         model = OpenRouterModel.load(
             model_name,
             quantization=QUANTIZATION,  # Use quantization level directly
@@ -1311,11 +1474,11 @@ if __name__ == "__main__":
 
     results_dict = {}
     for dataset_name in [
-        "anthropic",
+        # "anthropic",
         # "mt",
         # "mts",
-        "toolace",
-        "mental_health",
+        # "toolace",
+        # "mental_health",
         "redteaming",
     ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
@@ -1327,9 +1490,10 @@ if __name__ == "__main__":
             # Run the baseline evaluation
             results = evaluate_generation_baseline(
                 model,
-                prompt_config=generation_prompts["revised"],
+                prompt_config=generation_prompts["default"],
                 dataset_name=dataset_name,
                 dataset_path=TEST_DATASETS[dataset_name],
+                # dataset_path=EVAL_DATASETS[dataset_name],
                 max_samples=max_samples,
                 fpr=0.01,
                 save_results=True,
@@ -1338,6 +1502,7 @@ if __name__ == "__main__":
                 max_concurrent=64 if USE_OPENROUTER else 1,
                 temperature=None,
                 quantization=QUANTIZATION if USE_OPENROUTER else None,
+                rerun_empty_responses=RERUN_EMPTY_RESPONSES,  # Set to True to re-run empty responses
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")
