@@ -153,11 +153,13 @@ class GenerationBaseline:
         prompt_config: GenerationPrompt,
         max_new_tokens: int | None = 1024,
         batch_size: int = 8,
+        max_concurrent: int = 10,
     ):
         self.model = model
         self.prompt_config = prompt_config
         self.max_new_tokens = max_new_tokens
         self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
 
     def predict(self, dataset: Dataset) -> list[Label]:
         """Predict labels for a dataset."""
@@ -228,11 +230,21 @@ class GenerationBaseline:
             batch_dialogues.append(dialogue)
 
         # Generate responses for the batch
-        responses = self.model.generate_batch(
-            batch_dialogues,
-            max_new_tokens=self.max_new_tokens,
-            skip_special_tokens=True,
-        )
+        if isinstance(self.model, OpenRouterModel):
+            # Use async batch processing for OpenRouter models
+            responses = self.model.generate_batch(
+                batch_dialogues,
+                max_new_tokens=self.max_new_tokens,
+                skip_special_tokens=True,
+                max_concurrent=self.max_concurrent,
+            )
+        else:
+            # Use regular batch processing for local models
+            responses = self.model.generate_batch(
+                batch_dialogues,
+                max_new_tokens=self.max_new_tokens,
+                skip_special_tokens=True,
+            )
 
         # Parse scores from responses
         scores = []
@@ -276,6 +288,7 @@ def evaluate_generation_baseline(
     save_results: bool = True,
     max_new_tokens: int | None = 1024,
     batch_size: int = 8,
+    max_concurrent: int = 10,
 ) -> GenerationBaselineResults:
     """Evaluate the generation baseline on a dataset."""
     if dataset is None:
@@ -286,8 +299,16 @@ def evaluate_generation_baseline(
             dataset = subsample_balanced_subset(dataset, n_per_class=max_samples // 2)
 
     classifier = GenerationBaseline(
-        model, prompt_config, max_new_tokens=max_new_tokens, batch_size=batch_size
+        model,
+        prompt_config,
+        max_new_tokens=max_new_tokens,
+        batch_size=batch_size,
+        max_concurrent=max_concurrent,
     )
+
+    # For OpenRouter models, we'll use the async batch processing automatically
+    # The max_concurrent parameter is already handled in the OpenRouterModel.generate_batch method
+
     results = classifier.score_classify_dataset(dataset)
 
     labels = [label.to_int() for label in list(results.labels)]
@@ -1226,7 +1247,7 @@ if __name__ == "__main__":
         model_name = LOCAL_MODELS["gemma-12b"]
         model = LLMModel.load(model_name)
 
-    max_samples = 5
+    max_samples = 10
     num_invalid_examples = 1
 
     model_short_name = model_name.split("/")[-1]
@@ -1260,7 +1281,8 @@ if __name__ == "__main__":
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
-                batch_size=4 if not USE_OPENROUTER else 1,
+                batch_size=5,
+                max_concurrent=10 if USE_OPENROUTER else 1,
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")

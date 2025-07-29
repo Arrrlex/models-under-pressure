@@ -193,6 +193,108 @@ async def call_openrouter_async(
     return json.loads(content)
 
 
+async def call_openrouter_batch_async(
+    messages_list: List[List[Any]],
+    model: str,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
+    max_concurrent: int = 10,
+    task_timeout: Optional[float] = 60.0,
+) -> List[str]:
+    """
+    Process multiple OpenRouter API requests concurrently.
+
+    Args:
+        messages_list: List of message lists for each request
+        model: OpenRouter model name
+        temperature: Sampling temperature
+        max_tokens: Maximum tokens to generate
+        max_concurrent: Maximum concurrent requests
+        task_timeout: Timeout per request in seconds
+
+    Returns:
+        List of response strings
+    """
+    import asyncio
+
+    async def single_request(messages: List[Any]) -> str:
+        """Make a single OpenRouter API request."""
+        return await call_openrouter_single_async(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    # Process with concurrency control using semaphore
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def bounded_request(messages: List[Any]) -> str:
+        async with semaphore:
+            return await single_request(messages)
+
+    # Execute all requests with bounded concurrency
+    bounded_tasks = [bounded_request(messages) for messages in messages_list]
+
+    if task_timeout:
+        # Add timeout to each task
+        results = await asyncio.gather(
+            *[asyncio.wait_for(task, timeout=task_timeout) for task in bounded_tasks],
+            return_exceptions=True,
+        )
+    else:
+        results = await asyncio.gather(*bounded_tasks, return_exceptions=True)
+
+    # Handle exceptions and return results
+    processed_results = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            print(f"Request {i} failed: {result}")
+            processed_results.append("")  # Empty string for failed requests
+        else:
+            processed_results.append(result)
+
+    return processed_results
+
+
+async def call_openrouter_single_async(
+    messages: List[Any],
+    model: str,
+    temperature: float = 0.0,
+    max_tokens: Optional[int] = None,
+) -> str:
+    """
+    Make a single async OpenRouter API request.
+
+    Args:
+        messages: List of messages for the request
+        model: OpenRouter model name
+        temperature: Sampling temperature
+        max_tokens: Maximum tokens to generate
+
+    Returns:
+        Response string
+    """
+    client = _get_openrouter_async_client()
+
+    # Prepare request parameters
+    request_params = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+
+    if max_tokens is not None:
+        request_params["max_tokens"] = max_tokens
+
+    response = await client.chat.completions.create(**request_params)
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError("No content returned from OpenRouter LLM")
+
+    return content
+
+
 def call_openrouter_sync(
     messages: List[Any],
     model: str,

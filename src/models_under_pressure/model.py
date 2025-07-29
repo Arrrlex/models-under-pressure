@@ -32,6 +32,7 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import (
     batched_range,
+    call_openrouter_batch_async,
     call_openrouter_sync,
     hf_login,
 )
@@ -534,9 +535,9 @@ class LLMModel:
                 # Only get the newly generated tokens by slicing from the input length
                 out_tokens = outputs[0][inputs["input_ids"].shape[1] :]
 
-                return self.tokenizer.decode(
-                    out_tokens, skip_special_tokens=skip_special_tokens
-                )
+            return self.tokenizer.decode(
+                out_tokens, skip_special_tokens=skip_special_tokens
+            )
         finally:
             # Restore original padding side
             self.tokenizer.padding_side = original_padding_side
@@ -732,13 +733,13 @@ class OpenRouterModel:
         top_p: float = 1.0,
         skip_special_tokens: bool = False,
         return_full_output: bool = False,
+        max_concurrent: int = 10,
         **generation_kwargs: Any,
     ) -> list[str]:
         """
-        Generate text continuations for multiple dialogues using OpenRouter API.
+        Generate text continuations for multiple dialogues using OpenRouter API with async batch processing.
 
-        Note: This processes dialogues sequentially since OpenRouter doesn't support
-        true batch processing. For better performance, consider using async methods.
+        This method processes multiple requests concurrently for much better performance.
 
         Args:
             dialogues: List of input dialogues
@@ -748,24 +749,35 @@ class OpenRouterModel:
             top_p: Top-p sampling parameter
             skip_special_tokens: Skip special tokens in output (not applicable for API)
             return_full_output: Return full dialogue or just continuation
+            max_concurrent: Maximum concurrent API requests
             **generation_kwargs: Additional generation parameters
 
         Returns:
             List of generated texts
         """
-        results = []
+        import asyncio
 
-        for dialogue in tqdm(dialogues, desc="Generating with OpenRouter"):
-            result = self.generate(
-                dialogue=dialogue,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                do_sample=do_sample,
-                top_p=top_p,
-                skip_special_tokens=skip_special_tokens,
-                return_full_output=return_full_output,
-                **generation_kwargs,
+        # Convert dialogues to messages format
+        messages_list = []
+        for dialogue in dialogues:
+            messages = [msg.model_dump() for msg in dialogue]
+            messages_list.append(messages)
+
+        # Set temperature (default to 0.0 for deterministic if not sampling)
+        temp = temperature if temperature is not None else (0.7 if do_sample else 0.0)
+
+        # Use async batch processing
+        async def run_async_batch():
+            return await call_openrouter_batch_async(
+                messages_list=messages_list,
+                model=self.name,
+                temperature=temp,
+                max_tokens=max_new_tokens,
+                max_concurrent=max_concurrent,
+                task_timeout=60.0,
             )
-            results.append(result)
+
+        # Run the async batch processing
+        results = asyncio.run(run_async_batch())
 
         return results
