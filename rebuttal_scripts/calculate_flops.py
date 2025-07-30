@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Script to calculate mean FLOPs per sample for Gemma-27B on test datasets
-using the attention probe calculation (2 * activation_dim * token_count).
+Script to calculate mean FLOPs per sample for models on test datasets
+using different probe calculations.
 """
 
 # Import from the main project
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 import yaml
@@ -38,7 +38,7 @@ def get_activation_dim(full_model_name: str) -> int:
     return int(activation_dim)
 
 
-def tokenize_input(tokenizer: AutoTokenizer, input_data) -> int:
+def tokenize_input(tokenizer: AutoTokenizer, input_data: Any) -> int:
     """Tokenize a single input and return the token count."""
     dialogue = to_dialogue(input_data)
     input_dicts = [[d.model_dump() for d in dialogue]]
@@ -58,7 +58,7 @@ def tokenize_input(tokenizer: AutoTokenizer, input_data) -> int:
 def calculate_probe_flops(
     probe_type: str, token_count: int, activation_dim: int
 ) -> int:
-    """Calculate FLOPs for attention probe: 2 * activation_dim * token_count."""
+    """Calculate FLOPs based on probe type."""
     if probe_type == "attention":
         return 2 * activation_dim * token_count
     else:
@@ -75,14 +75,17 @@ def load_test_datasets() -> Dict[str, Path]:
     return {name: PROJECT_ROOT / path for name, path in datasets.items()}
 
 
-def main(probe_type: str, model_name: str):
-    # Model configuration for Gemma-27B
+def main(dataset_config_path: Path, probe_type: str, model_name: str):
+    # Model configuration
     model_name = LOCAL_MODELS[model_name]
     activation_dim = get_activation_dim(model_name)
 
     print(f"Model: {model_name}")
     print(f"Activation dimension: {activation_dim}")
-    print(f"FLOP calculation: 2 * {activation_dim} * token_count")
+    if probe_type == "attention":
+        print(f"FLOP calculation: 2 * {activation_dim} * token_count")
+    else:
+        print(f"FLOP calculation: {activation_dim} * token_count")
     print()
 
     # Load tokenizer
@@ -101,6 +104,7 @@ def main(probe_type: str, model_name: str):
     all_token_counts = []
     all_flops = []
     results_by_dataset = {}
+    dataset_mean_flops = []  # Store mean FLOPs for each dataset
 
     # Process each dataset
     for dataset_name, dataset_path in test_datasets.items():
@@ -129,6 +133,9 @@ def main(probe_type: str, model_name: str):
         mean_tokens = np.mean(token_counts)
         mean_flops = np.mean(flops_per_sample)
 
+        # Store the mean FLOPs for this dataset
+        dataset_mean_flops.append(mean_flops)
+
         results_by_dataset[dataset_name] = {
             "num_samples": len(dataset),
             "mean_tokens": mean_tokens,
@@ -139,7 +146,7 @@ def main(probe_type: str, model_name: str):
             "max_flops": np.max(flops_per_sample),
         }
 
-        # Add to overall statistics
+        # Add to overall statistics (for reporting total samples)
         all_token_counts.extend(token_counts)
         all_flops.extend(flops_per_sample)
 
@@ -147,7 +154,10 @@ def main(probe_type: str, model_name: str):
         print(f"  Mean FLOPs per sample: {mean_flops:.0f}")
         print()
 
-    # Overall statistics
+    # Calculate mean over dataset means (equal weight per dataset)
+    mean_of_dataset_means = np.mean(dataset_mean_flops)
+
+    # Also calculate overall mean for comparison (sample-weighted)
     overall_mean_tokens = np.mean(all_token_counts)
     overall_mean_flops = np.mean(all_flops)
 
@@ -169,16 +179,20 @@ def main(probe_type: str, model_name: str):
 
     print("-" * 60)
     print(
-        f"{'OVERALL':15} | {len(all_token_counts):4d} samples | "
+        f"{'Sample-weighted':15} | {len(all_token_counts):4d} samples | "
         f"{overall_mean_tokens:6.1f} tokens | "
         f"{overall_mean_flops:10.0f} FLOPs"
     )
+    print(
+        f"{'Dataset-weighted':15} | {len(test_datasets):4d} datasets | "
+        f"{'':6} {'':6} | "
+        f"{mean_of_dataset_means:10.0f} FLOPs"
+    )
     print("=" * 60)
 
-    print(
-        f"\nMean FLOPs per sample for Gemma-27B attention probe: {overall_mean_flops:.0f}"
-    )
+    print(f"\nMean FLOPs per sample (dataset-weighted): {mean_of_dataset_means:.0f}")
+    print(f"Mean FLOPs per sample (sample-weighted): {overall_mean_flops:.0f}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3])
