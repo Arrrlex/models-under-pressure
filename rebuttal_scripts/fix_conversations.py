@@ -5,6 +5,7 @@ Script to fix conversation turn violations in evaluation datasets.
 Fixes applied:
 1. Toolace dataset: Convert 'tool' roles to 'assistant' roles
 2. Anthropic/MTS datasets: Merge consecutive assistant turns
+3. MTS dataset: Fix consecutive user messages by merging context into system message
 """
 
 import json
@@ -121,6 +122,30 @@ def merge_consecutive_assistants(conversation: List[Dict[str, Any]]) -> List[Dic
     
     return merged
 
+def fix_consecutive_users(conversation: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Fix consecutive user messages by merging context into system message."""
+    if len(conversation) < 3:
+        return conversation
+    
+    # Check if we have the problematic pattern: system, user (context), user (actual dialogue)
+    if (conversation[0].get('role') == 'system' and 
+        conversation[1].get('role') == 'user' and 
+        conversation[2].get('role') == 'user' and
+        conversation[1].get('content', '').startswith('## Context')):
+        
+        # Merge the context into the system message
+        system_content = conversation[0].get('content', '')
+        context_content = conversation[1].get('content', '')
+        
+        # Create new system message with context included
+        new_system_message = conversation[0].copy()
+        new_system_message['content'] = f"{system_content}\n{context_content}"
+        
+        # Return fixed messages (skip the context user message)
+        return [new_system_message] + conversation[2:]
+    
+    return conversation
+
 def fix_conversation(conversation: List[Dict[str, Any]], dataset_name: str) -> List[Dict[str, Any]]:
     """Apply appropriate fixes based on dataset type."""
     if dataset_name == 'toolace':
@@ -128,9 +153,10 @@ def fix_conversation(conversation: List[Dict[str, Any]], dataset_name: str) -> L
         fixed_conversation = fix_toolace_conversation(conversation)
         return merge_consecutive_assistants(fixed_conversation)
     elif dataset_name == 'mts':
-        # First split at "## Context", then merge consecutive assistants
+        # First split at "## Context", then fix consecutive users, then merge consecutive assistants
         split_conversation = split_mts_context(conversation)
-        return merge_consecutive_assistants(split_conversation)
+        fixed_users = fix_consecutive_users(split_conversation)
+        return merge_consecutive_assistants(fixed_users)
     elif dataset_name == 'anthropic':
         return merge_consecutive_assistants(conversation)
     else:
