@@ -650,8 +650,6 @@ def evaluate_single_probe_cascade(
     assert evaluation_results.output_scores is not None
     assert evaluation_results.ground_truth_labels is not None
     assert evaluation_results.ground_truth_scale_labels is not None
-    if evaluation_results.token_counts is None:  # TODO Remove again!
-        evaluation_results.token_counts = [1] * len(evaluation_results.output_scores)
     assert evaluation_results.token_counts is not None
 
     # Get activation dimension for model
