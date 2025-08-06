@@ -618,7 +618,8 @@ async def async_map(
     if pbar is not None:
         pbar.close()
 
-    return [r for r in results if r is not None]
+    # Preserve order and length, replace failed results with None to maintain consistency
+    return results
 
 
 @contextmanager

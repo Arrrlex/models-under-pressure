@@ -186,10 +186,6 @@ class GenerationBaseline:
             "model": [],
         }
 
-        dataset = dataset[:10]
-
-        print(f"DEBUG: Dataset has {len(dataset.ids)} samples")
-
         # Process in batches
         for i in tqdm(range(0, len(dataset.ids), self.hyperparams.batch_size)):
             batch_ids = dataset.ids[i : i + self.hyperparams.batch_size]
@@ -272,15 +268,26 @@ class GenerationBaseline:
         scores = []
         valid_responses = []
         labels = []
+        clean_responses = []
 
         for response in responses:
-            score, valid_response = parse_score_from_response(response)
+            if response is None:
+                # Handle failed API calls
+                score, valid_response = (
+                    0.5,
+                    False,
+                )  # Default ambiguous score for failed calls
+                clean_response = ""  # Empty response for failed calls
+            else:
+                score, valid_response = parse_score_from_response(response)
+                clean_response = response
             scores.append(score)
             valid_responses.append(valid_response)
             labels.append("high-stakes" if score >= 0.5 else "low-stakes")
+            clean_responses.append(clean_response)
 
         return {
-            "responses": responses,
+            "responses": clean_responses,
             "scores": scores,
             "labels": labels,
             "valid_responses": valid_responses,
@@ -314,6 +321,7 @@ def evaluate_generation_baseline(
     temperature: float | None = None,
     quantization: str | None = None,
     rerun_empty_responses: bool = False,
+    limit_samples: int | None = None,
 ) -> GenerationBaselineResults:
     """Evaluate the generation baseline on a dataset."""
     if dataset is None:
@@ -322,6 +330,10 @@ def evaluate_generation_baseline(
         if max_samples is not None:
             print(f"Sampling {max_samples} samples")
             dataset = subsample_balanced_subset(dataset, n_per_class=max_samples // 2)
+
+    if limit_samples is not None:
+        print(f"DEBUG: Limiting to {limit_samples} samples")
+        dataset = dataset[:limit_samples]
 
     # Handle re-running empty responses
     previous_results = None
@@ -1462,6 +1474,7 @@ if __name__ == "__main__":
         )
     elif MODEL_SOURCE == "anthropic":
         # Anthropic model names
+        # model_name = "claude-3-5-haiku-20241022"  # Cheaper for testing
         model_name = "claude-sonnet-4-20250514"
         model = AnthropicModel.load(model_name)
     elif MODEL_SOURCE == "local":
@@ -1511,6 +1524,7 @@ if __name__ == "__main__":
                 temperature=None,
                 quantization=QUANTIZATION if MODEL_SOURCE == "openrouter" else None,
                 rerun_empty_responses=RERUN_EMPTY_RESPONSES,  # Set to True to re-run empty responses
+                limit_samples=100,
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")
