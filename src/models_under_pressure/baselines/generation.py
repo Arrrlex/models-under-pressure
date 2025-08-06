@@ -14,7 +14,7 @@ os.environ["TORCHDYNAMO_DISABLE"] = "1"
 
 import torch._dynamo
 
-torch._dynamo.config.suppress_errors = True
+torch._dynamo.config.suppress_errors = True  # type: ignore
 torch._dynamo.reset()
 
 # Also disable torch.compile globally
@@ -466,7 +466,9 @@ def evaluate_generation_baseline(
     baseline_results = GenerationBaselineResults(
         ids=list(dataset.ids)
         if not rerun_empty_responses
-        else [str(i) for i in range(len(final_full_response))],
+        else list(
+            previous_results.ids if previous_results is not None else dataset.ids
+        ),
         accuracy=accuracy,
         labels=[
             int(label) if hasattr(label, "to_int") else label for label in final_labels
@@ -1454,6 +1456,9 @@ if __name__ == "__main__":
         # model_name = "meta-llama/llama-3.3-70b-instruct"
         # model_name = "google/gemma-3-12b-it"
         model_name = "google/gemma-3-27b-it"
+        # model_name = "anthropic/claude-sonnet-4"
+        # model_name = "openai/gpt-oss-120b"
+        # model_name = "deepseek/deepseek-chat-v3-0324"
         model = OpenRouterModel.load(
             model_name,
             quantization=QUANTIZATION,  # Use quantization level directly
@@ -1474,12 +1479,12 @@ if __name__ == "__main__":
 
     results_dict = {}
     for dataset_name in [
-        # "anthropic",
-        # "mt",
-        # "mts",
-        # "toolace",
-        # "mental_health",
+        "mt",
+        "mts",
+        "toolace",
+        "mental_health",
         "redteaming",
+        "anthropic",
     ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
         results_file = (

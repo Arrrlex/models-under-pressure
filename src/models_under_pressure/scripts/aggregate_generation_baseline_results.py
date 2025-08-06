@@ -225,6 +225,10 @@ def convert_generation_result_to_aggregated_format(
         # Get the actual conversation for this sample
         conversation = id_to_conversation.get(sample_id, "")
 
+        if conversation == "":
+            # print(f"  Warning: No conversation found for sample {sample_id}")
+            raise ValueError(f"No conversation found for sample {sample_id}")
+
         # For input tokens, we construct the prompt from prompt_config with actual conversation
         input_messages = create_messages_from_prompt_config_and_conversation(
             user_prompt=prompt_config["user_prompt"],

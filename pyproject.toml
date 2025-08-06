@@ -51,7 +51,7 @@ dependencies = [
     "wandb>=0.19.6",
     "wordcloud>=1.9.4",
     "zstandard>=0.23.0",
-    "bitsandbytes>=0.46.0",
+    # "bitsandbytes>=0.46.0",
 ]
 
 [build-system]
