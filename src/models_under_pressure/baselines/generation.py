@@ -37,7 +37,7 @@ from models_under_pressure.interfaces.dataset import (
     subsample_balanced_subset,
 )
 from models_under_pressure.interfaces.results import BaselineResults
-from models_under_pressure.model import LLMModel, OpenRouterModel
+from models_under_pressure.model import AnthropicModel, LLMModel, OpenRouterModel
 
 
 def format_conversation(input_: Input) -> str:
@@ -160,7 +160,7 @@ class GenerationBaseline:
 
     def __init__(
         self,
-        model: Union[LLMModel, OpenRouterModel],
+        model: Union[LLMModel, OpenRouterModel, AnthropicModel],
         prompt_config: GenerationPrompt,
         hyperparams: GenerationHyperparams,
     ):
@@ -185,6 +185,8 @@ class GenerationBaseline:
             "valid_response": [],
             "model": [],
         }
+
+        dataset = dataset[:10]
 
         print(f"DEBUG: Dataset has {len(dataset.ids)} samples")
 
@@ -248,8 +250,8 @@ class GenerationBaseline:
             batch_dialogues.append(dialogue)
 
         # Generate responses for the batch
-        if isinstance(self.model, OpenRouterModel):
-            # Use async batch processing for OpenRouter models
+        if isinstance(self.model, (OpenRouterModel, AnthropicModel)):
+            # Use async batch processing for API models (OpenRouter and Anthropic)
             responses = self.model.generate_batch(
                 batch_dialogues,
                 max_new_tokens=self.hyperparams.max_new_tokens,
@@ -297,7 +299,7 @@ class GenerationBaseline:
 
 
 def evaluate_generation_baseline(
-    model: Union[LLMModel, OpenRouterModel],
+    model: Union[LLMModel, OpenRouterModel, AnthropicModel],
     prompt_config: GenerationPrompt,
     dataset_name: str,
     dataset_path: Path,
@@ -405,8 +407,8 @@ def evaluate_generation_baseline(
         ),
     )
 
-    # For OpenRouter models, we'll use the async batch processing automatically
-    # The max_concurrent parameter is already handled in the OpenRouterModel.generate_batch method
+    # For API models (OpenRouter and Anthropic), we'll use the async batch processing automatically
+    # The max_concurrent parameter is already handled in the respective model's generate_batch method
 
     results = classifier.score_classify_dataset(dataset)
 
@@ -1438,8 +1440,8 @@ if __name__ == "__main__":
         )
         print("Non-empty responses from previous runs will be preserved")
 
-    # Toggle between local models and OpenRouter API
-    USE_OPENROUTER = True  # Set to True to use OpenRouter API, False for local models
+    # Toggle between local models, OpenRouter API, and Anthropic API
+    MODEL_SOURCE = "anthropic"  # Options: "local", "openrouter", "anthropic"
 
     # Quantization options for OpenRouter:
     # - "fp16": 16-bit floating point (faster, less memory)
@@ -1449,7 +1451,7 @@ if __name__ == "__main__":
     QUANTIZATION = "bf16"
 
     # Model configuration
-    if USE_OPENROUTER:
+    if MODEL_SOURCE == "openrouter":
         # model_name = "meta-llama/llama-3.1-8b-instruct"
         # model_name = "meta-llama/llama-3.3-70b-instruct"
         # model_name = "google/gemma-3-12b-it"
@@ -1458,19 +1460,25 @@ if __name__ == "__main__":
             model_name,
             quantization=QUANTIZATION,  # Use quantization level directly
         )
-    else:
+    elif MODEL_SOURCE == "anthropic":
+        # Anthropic model names
+        model_name = "claude-sonnet-4-20250514"
+        model = AnthropicModel.load(model_name)
+    elif MODEL_SOURCE == "local":
         # Local model names
         model_name = LOCAL_MODELS["gemma-12b"]
         model = LLMModel.load(model_name)
+    else:
+        raise ValueError(
+            f"Unknown MODEL_SOURCE: {MODEL_SOURCE}. Must be 'local', 'openrouter', or 'anthropic'"
+        )
 
     max_samples = None
     num_invalid_examples = 1
 
     model_short_name = model_name.split("/")[-1]
     if RUN_EVALUATION:
-        print(
-            f"Using {'OpenRouter API' if USE_OPENROUTER else 'local model'}: {model_name}"
-        )
+        print(f"Using {MODEL_SOURCE} model: {model_name}")
 
     results_dict = {}
     for dataset_name in [
@@ -1499,9 +1507,9 @@ if __name__ == "__main__":
                 save_results=True,
                 max_new_tokens=2048,
                 batch_size=32,
-                max_concurrent=64 if USE_OPENROUTER else 1,
+                max_concurrent=1 if MODEL_SOURCE == "local" else 64,
                 temperature=None,
-                quantization=QUANTIZATION if USE_OPENROUTER else None,
+                quantization=QUANTIZATION if MODEL_SOURCE == "openrouter" else None,
                 rerun_empty_responses=RERUN_EMPTY_RESPONSES,  # Set to True to re-run empty responses
             )
             results_dict[dataset_name] = results

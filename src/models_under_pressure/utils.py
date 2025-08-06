@@ -22,6 +22,7 @@ from typing import (
     get_type_hints,
 )
 
+import anthropic
 import httpx
 import huggingface_hub
 import hydra
@@ -350,6 +351,137 @@ def call_openrouter_sync(
         raise ValueError("No content returned from OpenRouter LLM")
 
     return content
+
+
+def _get_anthropic_client() -> anthropic.Anthropic:
+    """Get a cached synchronous Anthropic client."""
+    if not hasattr(_get_anthropic_client, "_instance"):
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+        _get_anthropic_client._instance = anthropic.Anthropic(api_key=api_key)
+    return _get_anthropic_client._instance
+
+
+def _get_anthropic_async_client() -> anthropic.AsyncAnthropic:
+    """Get a cached asynchronous Anthropic client."""
+    if not hasattr(_get_anthropic_async_client, "_instance"):
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+        _get_anthropic_async_client._instance = anthropic.AsyncAnthropic(
+            api_key=api_key
+        )
+    return _get_anthropic_async_client._instance
+
+
+def call_anthropic_sync(
+    messages: List[Any],
+    model: str,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    **kwargs: Any,
+) -> str:
+    """Synchronous Anthropic API call for text generation."""
+    client = _get_anthropic_client()
+
+    # Convert messages format if needed (from OpenAI format to Anthropic format)
+    anthropic_messages = []
+    system_message = None
+
+    for msg in messages:
+        if msg["role"] == "system":
+            system_message = msg["content"]
+        else:
+            anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # Make the API call
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system_message,
+        messages=anthropic_messages,
+        **kwargs,
+    )
+
+    return response.content[0].text
+
+
+async def call_anthropic_async(
+    messages: List[Any],
+    model: str,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    **kwargs: Any,
+) -> str:
+    """Asynchronous Anthropic API call for text generation."""
+    client = _get_anthropic_async_client()
+
+    # Convert messages format if needed (from OpenAI format to Anthropic format)
+    anthropic_messages = []
+    system_message = None
+
+    for msg in messages:
+        if msg["role"] == "system":
+            system_message = msg["content"]
+        else:
+            anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # Make the API call
+    response = await client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system_message,
+        messages=anthropic_messages,
+        **kwargs,
+    )
+
+    return response.content[0].text
+
+
+async def call_anthropic_batch_async(
+    messages_list: List[List[Any]],
+    model: str,
+    max_tokens: int = 1024,
+    temperature: float = 0.0,
+    max_concurrent: int = 10,
+    task_timeout: Optional[float] = 60.0,
+    **kwargs: Any,
+) -> List[str]:
+    """
+    Make concurrent Anthropic API calls for a batch of message lists.
+
+    Args:
+        messages_list: List of message lists to process
+        model: Anthropic model name
+        max_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        max_concurrent: Maximum concurrent API calls
+        task_timeout: Timeout per API call in seconds
+        **kwargs: Additional API parameters
+
+    Returns:
+        List of response strings in the same order as input
+    """
+    tasks = []
+    for messages in messages_list:
+        task = {
+            "messages": messages,
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            **kwargs,
+        }
+        tasks.append(task)
+
+    return await async_map(
+        call_anthropic_async,
+        tasks,
+        max_concurrent=max_concurrent,
+        task_timeout=task_timeout,
+    )
 
 
 def generate_completions(

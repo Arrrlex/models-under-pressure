@@ -32,6 +32,8 @@ from models_under_pressure.interfaces.dataset import (
 )
 from models_under_pressure.utils import (
     batched_range,
+    call_anthropic_batch_async,
+    call_anthropic_sync,
     call_openrouter_batch_async,
     call_openrouter_sync,
     hf_login,
@@ -782,6 +784,146 @@ class OpenRouterModel:
                 max_concurrent=max_concurrent,
                 task_timeout=60.0,
                 quantization=self.quantization,
+                **generation_kwargs,
+            )
+
+        # Run the async batch processing
+        results = asyncio.run(run_async_batch())
+
+        return results
+
+
+@dataclass
+class AnthropicModel:
+    """
+    High-level interface for working with Anthropic API models.
+
+    Provides unified access to:
+    - Text generation via Anthropic API
+    - Compatible interface with LLMModel and OpenRouterModel for generation tasks
+
+    Note: This is a simplified version that only supports generation,
+    not activation extraction or other LLMModel features.
+    """
+
+    name: str
+    batch_size: int = 1  # API models don't support true batching
+
+    @classmethod
+    def load(
+        cls,
+        model_name: str,
+        batch_size: int = 1,
+        **kwargs: Any,
+    ) -> Self:
+        """
+        Create an Anthropic model instance.
+
+        Args:
+            model_name: Anthropic model name (e.g., "claude-3-5-sonnet-20241022")
+            batch_size: Batch size (not used for API calls, kept for compatibility)
+            **kwargs: Additional arguments (ignored)
+
+        Returns:
+            Initialized AnthropicModel instance
+        """
+        return cls(
+            name=model_name,
+            batch_size=batch_size,
+        )
+
+    def generate(
+        self,
+        dialogue: Dialogue,
+        max_new_tokens: int | None = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        **generation_kwargs: Any,
+    ) -> str:
+        """
+        Generate text continuation for a dialogue using Anthropic API.
+
+        Args:
+            dialogue: Input dialogue
+            max_new_tokens: Max tokens to generate
+            temperature: Sampling temperature (None for greedy)
+            do_sample: Use sampling instead of greedy
+            top_p: Top-p sampling parameter
+            skip_special_tokens: Skip special tokens in output (not applicable for API)
+            return_full_output: Return full dialogue or just continuation
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            Generated text
+        """
+        # Convert dialogue to messages format
+        messages = [msg.model_dump() for msg in dialogue]
+
+        # Set temperature (default to 0.0 for deterministic if not sampling)
+        temp = temperature if temperature is not None else (0.7 if do_sample else 0.0)
+
+        # Call Anthropic API
+        response = call_anthropic_sync(
+            messages=messages,
+            model=self.name,
+            temperature=temp,
+            max_tokens=max_new_tokens or 1024,
+            **generation_kwargs,
+        )
+
+        return response
+
+    def generate_batch(
+        self,
+        dialogues: list[Dialogue],
+        max_new_tokens: int | None = 10,
+        temperature: float | None = None,
+        do_sample: bool = False,
+        top_p: float = 1.0,
+        skip_special_tokens: bool = False,
+        return_full_output: bool = False,
+        max_concurrent: int = 10,
+        **generation_kwargs: Any,
+    ) -> list[str]:
+        """
+        Generate text continuations for multiple dialogues using Anthropic API with async batch processing.
+
+        This method processes multiple requests concurrently for much better performance.
+
+        Args:
+            dialogues: List of input dialogues
+            max_new_tokens: Max tokens to generate
+            temperature: Sampling temperature (None for greedy)
+            do_sample: Use sampling instead of greedy
+            top_p: Top-p sampling parameter
+            skip_special_tokens: Skip special tokens in output (not applicable for API)
+            return_full_output: Return full dialogue or just continuation
+            max_concurrent: Maximum concurrent API requests
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            List of generated texts
+        """
+        import asyncio
+
+        # Convert dialogues to messages format
+        messages_list = []
+        for dialogue in dialogues:
+            messages = [msg.model_dump() for msg in dialogue]
+            messages_list.append(messages)
+
+        # Use async batch processing
+        async def run_async_batch():
+            return await call_anthropic_batch_async(
+                messages_list=messages_list,
+                model=self.name,
+                temperature=temperature if temperature is not None else 0.0,
+                max_tokens=max_new_tokens or 1024,
+                max_concurrent=max_concurrent,
+                task_timeout=60.0,
                 **generation_kwargs,
             )
 

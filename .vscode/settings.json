@@ -9,7 +9,7 @@
     "editor.formatOnSaveMode": "file"
   },
   "python.analysis.typeCheckingMode": "basic",
-  "python.languageServer": "Default",
+  "python.languageServer": "None",
   "editor.rulers": [
     88
   ],

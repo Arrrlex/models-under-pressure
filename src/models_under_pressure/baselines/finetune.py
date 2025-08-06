@@ -120,17 +120,17 @@ class BaselineResults(BaseModel):
 
     def accuracy(self) -> float:
         """Compute the accuracy of the model."""
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing accuracy"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing accuracy"
+        )
         return ((self.probits > 0.5) == self._labels.cpu().numpy()).mean()  # type: ignore
 
     def auroc(self) -> float:
         """Compute the Area Under the Receiver Operating Characteristic Curve."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing AUROC"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing AUROC"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -144,9 +144,9 @@ class BaselineResults(BaseModel):
     def tpr_at_fixed_fpr(self, fpr: float) -> Tuple[float, float]:
         """Compute the True Positive Rate at a given False Positive Rate."""
 
-        assert (
-            self._labels is not None and self._logits is not None
-        ), "Labels and logits must be set before computing TPR at FPR"
+        assert self._labels is not None and self._logits is not None, (
+            "Labels and logits must be set before computing TPR at FPR"
+        )
 
         sigmoid = torch.nn.Sigmoid()
 
@@ -254,9 +254,9 @@ class ClassifierModule(pl.LightningModule):
         """Training step."""
 
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -299,9 +299,9 @@ class ClassifierModule(pl.LightningModule):
         """Validation step."""
 
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -343,9 +343,9 @@ class ClassifierModule(pl.LightningModule):
     ) -> Dict[str, torch.Tensor]:
         """Test step."""
         expected_keys = {"input_ids", "attention_mask", "labels"}
-        assert expected_keys.issubset(
-            batch.keys()
-        ), f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        assert expected_keys.issubset(batch.keys()), (
+            f"batch must contain at least keys {expected_keys}, got {batch.keys()}"
+        )
 
         input_ids, attention_mask, y = (
             batch["input_ids"],
@@ -414,13 +414,19 @@ class ClassifierModule(pl.LightningModule):
                     weight_decay=self.weight_decay,
                 )
             elif self.optimizer.lower() == "adamw8bit":
-                import bitsandbytes as bnb
+                try:
+                    import bitsandbytes as bnb
 
-                optimizer = bnb.optim.AdamW8bit(
-                    self.parameters(),
-                    lr=self.learning_rate,
-                    weight_decay=self.weight_decay,
-                )
+                    optimizer = bnb.optim.AdamW8bit(
+                        self.parameters(),
+                        lr=self.learning_rate,
+                        weight_decay=self.weight_decay,
+                    )
+                except ImportError:
+                    raise ImportError(
+                        "bitsandbytes is required for adamw8bit optimizer but is not available on this platform. "
+                        "Please use 'adamw' or 'adam' optimizer instead."
+                    )
             else:
                 raise ValueError(f"Optimizer {self.optimizer} not supported")
 
@@ -653,23 +659,23 @@ class FinetunedClassifier:
 
     @property
     def tokenizer(self) -> PreTrainedTokenizer | PreTrainedTokenizerFast:
-        assert (
-            self._tokenizer is not None
-        ), "Tokenizer must be trained before it can be accessed"
+        assert self._tokenizer is not None, (
+            "Tokenizer must be trained before it can be accessed"
+        )
         return self._tokenizer
 
     @property
     def classifier(self) -> ClassifierModule:
-        assert (
-            self._classifier is not None
-        ), "Classifier must be trained before it can be accessed"
+        assert self._classifier is not None, (
+            "Classifier must be trained before it can be accessed"
+        )
         return self._classifier
 
     @property
     def model(self) -> LLMModel:
-        assert (
-            self._model is not None
-        ), "Model must be trained before it can be accessed"
+        assert self._model is not None, (
+            "Model must be trained before it can be accessed"
+        )
         return self._model
 
     def process_model_configs(self):
@@ -968,9 +974,9 @@ class FinetunedClassifier:
         print(f"Getting full results for {dataset_name} ...")
 
         # Make sure that the dataset doesn't contain duplicate IDs, as this causes issues
-        assert len(eval_dataset.ids) == len(
-            set(eval_dataset.ids)
-        ), "Dataset contains duplicate IDs!"
+        assert len(eval_dataset.ids) == len(set(eval_dataset.ids)), (
+            "Dataset contains duplicate IDs!"
+        )
 
         # Get the results (only rank 0 will have them)
         results = self.get_results(eval_dataset)
@@ -1000,18 +1006,18 @@ class FinetunedClassifier:
             scores = [scores[i] for i in sort_indices]
             sorted_ids = [result_ids[i] for i in sort_indices]
 
-            assert (
-                sorted_ids == eval_ids
-            ), f"Sorted ids: {sorted_ids}, eval_ids: {eval_ids}"
+            assert sorted_ids == eval_ids, (
+                f"Sorted ids: {sorted_ids}, eval_ids: {eval_ids}"
+            )
         else:
             raise ValueError(
                 f"Mismatch between result IDs and eval_dataset IDs.\nResult IDs: {result_ids}\nEval IDs: {eval_ids}"
             )
 
         ground_truth = eval_dataset.labels_numpy().tolist()
-        assert (
-            labels == ground_truth
-        ), f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
+        assert labels == ground_truth, (
+            f"Labels and ground truth are not aligned, so something is wrong here! (labels: {labels}, ground_truth: {ground_truth})"
+        )
 
         # Get the token counts using StakesDataset
         stakes_dataset = StakesDataset(eval_dataset)
@@ -1110,9 +1116,9 @@ def get_finetuned_baseline_results(
     compute_activations: bool = True,
     use_validation_set: bool = True,
 ) -> List[FinetunedBaselineResults]:
-    assert (
-        train_dataset_path is not None or checkpoint_path is not None
-    ), "Must provide either train_dataset_path or checkpoint_path"
+    assert train_dataset_path is not None or checkpoint_path is not None, (
+        "Must provide either train_dataset_path or checkpoint_path"
+    )
 
     finetune_baseline = FinetunedClassifier(finetune_config)
 
