@@ -1453,7 +1453,7 @@ if __name__ == "__main__":
         print("Non-empty responses from previous runs will be preserved")
 
     # Toggle between local models, OpenRouter API, and Anthropic API
-    MODEL_SOURCE = "anthropic"  # Options: "local", "openrouter", "anthropic"
+    MODEL_PROVIDER = "anthropic"  # Options: "local", "openrouter", "anthropic"
 
     # Quantization options for OpenRouter:
     # - "fp16": 16-bit floating point (faster, less memory)
@@ -1463,7 +1463,7 @@ if __name__ == "__main__":
     QUANTIZATION = "bf16"
 
     # Model configuration
-    if MODEL_SOURCE == "openrouter":
+    if MODEL_PROVIDER == "openrouter":
         # model_name = "meta-llama/llama-3.1-8b-instruct"
         # model_name = "meta-llama/llama-3.3-70b-instruct"
         # model_name = "google/gemma-3-12b-it"
@@ -1472,18 +1472,18 @@ if __name__ == "__main__":
             model_name,
             quantization=QUANTIZATION,  # Use quantization level directly
         )
-    elif MODEL_SOURCE == "anthropic":
+    elif MODEL_PROVIDER == "anthropic":
         # Anthropic model names
         # model_name = "claude-3-5-haiku-20241022"  # Cheaper for testing
         model_name = "claude-sonnet-4-20250514"
         model = AnthropicModel.load(model_name)
-    elif MODEL_SOURCE == "local":
+    elif MODEL_PROVIDER == "local":
         # Local model names
         model_name = LOCAL_MODELS["gemma-12b"]
         model = LLMModel.load(model_name)
     else:
         raise ValueError(
-            f"Unknown MODEL_SOURCE: {MODEL_SOURCE}. Must be 'local', 'openrouter', or 'anthropic'"
+            f"Unknown MODEL_PROVIDER: {MODEL_PROVIDER}. Must be 'local', 'openrouter', or 'anthropic'"
         )
 
     max_samples = None
@@ -1491,15 +1491,15 @@ if __name__ == "__main__":
 
     model_short_name = model_name.split("/")[-1]
     if RUN_EVALUATION:
-        print(f"Using {MODEL_SOURCE} model: {model_name}")
+        print(f"Using {MODEL_PROVIDER} model: {model_name}")
 
     results_dict = {}
     for dataset_name in [
-        # "anthropic",
-        # "mt",
-        # "mts",
-        # "toolace",
-        # "mental_health",
+        "anthropic",
+        "mt",
+        "mts",
+        "toolace",
+        "mental_health",
         "redteaming",
     ]:
         output_dir = RESULTS_DIR / "baselines" / "generation"
@@ -1519,12 +1519,12 @@ if __name__ == "__main__":
                 fpr=0.01,
                 save_results=True,
                 max_new_tokens=2048,
-                batch_size=32,
-                max_concurrent=1 if MODEL_SOURCE == "local" else 64,
+                batch_size=64,
+                max_concurrent=1 if MODEL_PROVIDER == "local" else 64,
                 temperature=None,
-                quantization=QUANTIZATION if MODEL_SOURCE == "openrouter" else None,
+                quantization=QUANTIZATION if MODEL_PROVIDER == "openrouter" else None,
                 rerun_empty_responses=RERUN_EMPTY_RESPONSES,  # Set to True to re-run empty responses
-                limit_samples=100,
+                limit_samples=None,
             )
             results_dict[dataset_name] = results
             print(f"\n=== Results for {dataset_name} ===")

@@ -29,6 +29,7 @@ import hydra
 import numpy as np
 import openai
 import requests
+import tenacity
 import torch
 import yaml
 from dotenv import load_dotenv
@@ -375,6 +376,18 @@ def _get_anthropic_async_client() -> anthropic.AsyncAnthropic:
     return _get_anthropic_async_client._instance
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        )
+    ),
+    stop=tenacity.stop_after_attempt(3),
+    wait=tenacity.wait_exponential(multiplier=1, min=1, max=10),
+)
 def call_anthropic_sync(
     messages: List[Any],
     model: str,
@@ -382,7 +395,7 @@ def call_anthropic_sync(
     temperature: float = 0.0,
     **kwargs: Any,
 ) -> str:
-    """Synchronous Anthropic API call for text generation."""
+    """Synchronous Anthropic API call for text generation with retry logic."""
     client = _get_anthropic_client()
 
     # Convert messages format if needed (from OpenAI format to Anthropic format)
@@ -408,6 +421,18 @@ def call_anthropic_sync(
     return response.content[0].text
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        )
+    ),
+    stop=tenacity.stop_after_attempt(3),
+    wait=tenacity.wait_exponential(multiplier=1, min=1, max=10),
+)
 async def call_anthropic_async(
     messages: List[Any],
     model: str,
@@ -415,7 +440,7 @@ async def call_anthropic_async(
     temperature: float = 0.0,
     **kwargs: Any,
 ) -> str:
-    """Asynchronous Anthropic API call for text generation."""
+    """Asynchronous Anthropic API call for text generation with retry logic."""
     client = _get_anthropic_async_client()
 
     # Convert messages format if needed (from OpenAI format to Anthropic format)

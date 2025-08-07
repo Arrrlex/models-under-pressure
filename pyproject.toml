@@ -34,6 +34,7 @@ dependencies = [
     "pandas>=2.2.3",
     "pandas-stubs>=2.2.3.241126",
     "peft>=0.15.2",
+    "tenacity>=9.0.0",
     "plotly>=6.0.0",
     "pytorch-lightning>=2.5.1",
     "pydantic-settings>=2.8.1",
