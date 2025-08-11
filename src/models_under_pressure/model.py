@@ -917,10 +917,17 @@ class AnthropicModel:
 
         # Use async batch processing
         async def run_async_batch():
+            if generation_kwargs.get("thinking", {}).get("type") == "enabled":
+                t = 1.0
+            elif temperature is None:
+                t = 0.0
+            else:
+                t = temperature
+
             return await call_anthropic_batch_async(
                 messages_list=messages_list,
                 model=self.name,
-                temperature=temperature if temperature is not None else 0.0,
+                temperature=t,
                 max_tokens=max_new_tokens or 1024,
                 max_concurrent=max_concurrent,
                 task_timeout=60.0,

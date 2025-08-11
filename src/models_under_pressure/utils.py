@@ -413,7 +413,7 @@ def call_anthropic_sync(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
-        system=system_message,
+        system=system_message if system_message is not None else anthropic.NOT_GIVEN,
         messages=anthropic_messages,
         **kwargs,
     )
@@ -458,12 +458,12 @@ async def call_anthropic_async(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
-        system=system_message,
+        **({"system": system_message} if system_message is not None else {}),
         messages=anthropic_messages,
         **kwargs,
-    )
+    )  # type: ignore
 
-    return response.content[0].text
+    return next(block.text for block in response.content if block.type == "text")
 
 
 async def call_anthropic_batch_async(
