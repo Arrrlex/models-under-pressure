@@ -1,6 +1,6 @@
 # Detecting High-Stakes Interactions using Activation Probes
 
-This repo contains the code for all the experiments in the paper "Detecting High-Stakes Interactions using Activation Probes" ([arxiv](https://arxiv.org/abs/2506.10805)), presented at the ICML 2025 Workshop on Actionable Interpretability, submitted to NeurIPS 2025.
+This repo contains the code for all the experiments in the paper "Detecting High-Stakes Interactions using Activation Probes" ([arxiv](https://arxiv.org/abs/2506.10805)), presented at the ICML 2025 Workshop on Actionable Interpretability, accepted to NeurIPS 2025.
 
 There's a lot of good stuff in here but it's in a bit of a rough state. For a cleaner codebase that's easier to use, check out [TuberLens](https://github.com/blandfort/tuberlens).
 
