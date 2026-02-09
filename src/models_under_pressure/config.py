@@ -19,6 +19,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
 
+HF_DATASET_REPO = "Arrrlex/models-under-pressure"
+
 
 class GlobalSettings(BaseSettings):
     LLM_DEVICE: str = "auto"  # Device for the LLM model

@@ -1,6 +1,6 @@
 #manual: data/evals/dev/manual_upsampled.csv
-anthropic: data/evals/dev/anthropic_raw_apr_23.jsonl
-toolace: data/evals/dev/toolace_raw_apr_22.jsonl
-mt: data/evals/dev/mt_raw_apr_30.jsonl
-mts: data/evals/dev/mts_raw_apr_22.jsonl
+anthropic: data/evals/dev/anthropic_hh_raw.jsonl
+toolace: data/evals/dev/toolace_raw.jsonl
+mt: data/evals/dev/mt_raw.jsonl
+mts: data/evals/dev/mts_raw.jsonl
 #mask: data/evals/dev/mask_samples_raw.jsonl

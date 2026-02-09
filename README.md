@@ -9,15 +9,15 @@ There's a lot of good stuff in here but it's in a bit of a rough state. For a cl
 In order to run this code:
 
 1. Install uv and run `uv sync`
-2. Create a cloudflare account and create an R2 bucket to store datasets & activations
-3. Add a `.env` file to the project root with the following environment variables:
+2. Download datasets: `uv run mup datasets download`
+3. (Optional) To store activations on R2, create a Cloudflare account and R2 bucket
+4. Add a `.env` file to the project root with the following environment variables:
   ```
   OPENAI_API_KEY=
   OPEN_ROUTER_API_KEY=
   HF_TOKEN=
   R2_ACCESS_KEY_ID=
   R2_SECRET_ACCESS_KEY=
-  R2_DATASETS_BUCKET=
   R2_ACTIVATIONS_BUCKET=
   R2_ACCOUNT_ID=
   ACTIVATIONS_DIR=
@@ -39,20 +39,15 @@ This will compute activations, save them locally to `ACTIVATIONS_DIR`, and uploa
 
 We contribute a new synthetic dataset we use for training, as well as slightly modified external datasets labelled for stakes we use for evaluation.
 
-Our datasets can be found here:
+Our datasets are hosted on HuggingFace: [Arrrlex/models-under-pressure](https://huggingface.co/datasets/Arrrlex/models-under-pressure)
 
-| Dataset Name | Balanced | Raw |
-|--------------|----------|-----|
-| Training | [train](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/train.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/training/prompts_4x/test.jsonl) | - |
-| Anthropic HH | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_balanced_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_balanced_apr_23.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/anthropic_raw_apr_23.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/anthropic_test_raw_apr_23.jsonl) |
-| MT | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_balanced_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_balanced_apr_30.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mt_raw_apr_30.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mt_test_raw_apr_30.jsonl) |
-| MTS | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/mts_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mts_test_raw_apr_22.jsonl) |
-| Toolace | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_balanced_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_balanced_apr_22.jsonl) | [dev](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/dev/toolace_raw_apr_22.jsonl); [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/toolace_test_raw_apr_22.jsonl) |
-| Mental Health | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_balanced_apr_22.jsonl) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/mental_health_test_raw_apr_22.jsonl) |
-| Aya Redteaming | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming_balanced.csv) | [test](https://pub-fd16e959a4f14ca48765b437c9425ba6.r2.dev/evals/test/aya_redteaming.jsonl) |
+To download all datasets to the expected local paths, run:
 
-Before running any experiments, make sure to download the datasets. Put eval datasets into `data/evals/dev/` and `data/evals/test/` respectively, and training data into `data/training/prompts_4x/`.
-(You can also use other paths if you adjust the configuration in `config/eval_datasets/` and `SYNTHETIC_DATASET_PATH` in `src/models_under_pressure/config.py`.)
+```bash
+uv run mup datasets download
+```
+
+This will place eval datasets into `data/evals/dev/` and `data/evals/test/`, and training data into `data/training/prompts_4x/`.
 
 Below you can also find information on how these datasets were generated.
 

@@ -1,104 +1,64 @@
-import hashlib
-from dataclasses import dataclass
-from pathlib import PosixPath
-from typing import Self
+import shutil
+from pathlib import Path
 
-from pydantic import BaseModel
+from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-from models_under_pressure.config import PROJECT_ROOT
-from models_under_pressure.r2 import (
-    DATASETS_BUCKET,
-    download_file,
-    file_exists_in_bucket,
-    upload_file,
-)
+from models_under_pressure.config import DATA_DIR, HF_DATASET_REPO
+
+# Maps HF repo file path → local path relative to DATA_DIR
+HF_TO_LOCAL: dict[str, str] = {
+    # Training
+    "training/train.jsonl": "training/prompts_4x/train.jsonl",
+    "training/test.jsonl": "training/prompts_4x/test.jsonl",
+    # Anthropic HH
+    "anthropic_hh_balanced/validation.jsonl": "evals/dev/anthropic_hh_balanced.jsonl",
+    "anthropic_hh_balanced/test.jsonl": "evals/test/anthropic_hh_balanced.jsonl",
+    "anthropic_hh_raw/validation.jsonl": "evals/dev/anthropic_hh_raw.jsonl",
+    "anthropic_hh_raw/test.jsonl": "evals/test/anthropic_hh_raw.jsonl",
+    # MT
+    "mt_balanced/validation.jsonl": "evals/dev/mt_balanced.jsonl",
+    "mt_balanced/test.jsonl": "evals/test/mt_balanced.jsonl",
+    "mt_raw/validation.jsonl": "evals/dev/mt_raw.jsonl",
+    "mt_raw/test.jsonl": "evals/test/mt_raw.jsonl",
+    # MTS
+    "mts_balanced/validation.jsonl": "evals/dev/mts_balanced.jsonl",
+    "mts_balanced/test.jsonl": "evals/test/mts_balanced.jsonl",
+    "mts_raw/validation.jsonl": "evals/dev/mts_raw.jsonl",
+    "mts_raw/test.jsonl": "evals/test/mts_raw.jsonl",
+    # Toolace
+    "toolace_balanced/validation.jsonl": "evals/dev/toolace_balanced.jsonl",
+    "toolace_balanced/test.jsonl": "evals/test/toolace_balanced.jsonl",
+    "toolace_raw/validation.jsonl": "evals/dev/toolace_raw.jsonl",
+    "toolace_raw/test.jsonl": "evals/test/toolace_raw.jsonl",
+    # Mental Health (test only)
+    "mental_health_balanced/test.jsonl": "evals/test/mental_health_balanced.jsonl",
+    "mental_health_raw/test.jsonl": "evals/test/mental_health_raw.jsonl",
+    # Aya Redteaming (test only)
+    "aya_redteaming_balanced/test.jsonl": "evals/test/aya_redteaming_balanced.jsonl",
+    "aya_redteaming_raw/test.jsonl": "evals/test/aya_redteaming_raw.jsonl",
+}
 
 
-class DatasetManifest(BaseModel):
-    path: PosixPath
-    md5: str
+def download_all_datasets() -> None:
+    """Download all datasets from HuggingFace to the expected local paths."""
+    to_download: list[tuple[str, Path]] = []
 
-    @classmethod
-    def from_path(cls, path: PosixPath) -> Self:
-        return cls(path=path, md5=md5(path))
+    for hf_path, local_rel in HF_TO_LOCAL.items():
+        local_path = DATA_DIR / local_rel
+        if local_path.exists():
+            continue
+        to_download.append((hf_path, local_path))
 
+    if not to_download:
+        print("All datasets are already downloaded")
+        return
 
-class DatasetRegistry(BaseModel):
-    datasets: list[DatasetManifest]
-
-    @property
-    def paths(self) -> list[PosixPath]:
-        return [dataset.path for dataset in self.datasets]
-
-
-@dataclass
-class DatasetStore:
-    bucket: str = DATASETS_BUCKET  # type: ignore
-
-    def load_registry(self) -> DatasetRegistry:
-        download_file(self.bucket, "registry.json", self.registry_path)
-        with open(self.registry_path, "r") as f:
-            return DatasetRegistry.model_validate_json(f.read())
-
-    @property
-    def registry_path(self) -> PosixPath:
-        if not isinstance(PROJECT_ROOT, PosixPath):
-            raise RuntimeError("PROJECT_ROOT must be a PosixPath")
-        return PROJECT_ROOT / "data/registry.json"
-
-    def save_registry(self, registry: DatasetRegistry):
-        with open(self.registry_path, "w") as f:
-            f.write(registry.model_dump_json(indent=2))
-
-        upload_file(self.bucket, "registry.json", self.registry_path)
-
-    def upload(self, paths: list[PosixPath]):
-        for path in tqdm(paths, desc="Uploading datasets"):
-            path = path.resolve().relative_to(PROJECT_ROOT)
-            registry = self.load_registry()
-            if path not in registry.paths:
-                if file_exists_in_bucket(self.bucket, str(path)):
-                    print(f"Dataset {path} already exists in bucket")
-                else:
-                    upload_file(self.bucket, str(path), PROJECT_ROOT / path)
-                registry.datasets.append(DatasetManifest.from_path(path))
-            else:
-                print(f"Dataset {path} already exists")
-        self.save_registry(registry)
-
-    def download_all(self):
-        registry = self.load_registry()
-        if not isinstance(PROJECT_ROOT, PosixPath):
-            raise RuntimeError("PROJECT_ROOT must be a PosixPath")
-        to_download = []
-        for dataset in registry.datasets:
-            if (PROJECT_ROOT / dataset.path).exists():
-                if md5(PROJECT_ROOT / dataset.path) != dataset.md5:
-                    print(f"Warning: Dataset {dataset.path} has changed")
-            else:
-                to_download.append(dataset)
-        if not to_download:
-            print("All datasets are already downloaded")
-            return
-        for dataset in tqdm(to_download, desc="Downloading datasets"):
-            download_file(
-                bucket_name=self.bucket,
-                key=str(dataset.path),
-                local_path=PROJECT_ROOT / dataset.path,
-            )
-
-    def delete(self, path: PosixPath):
-        path = path.resolve().relative_to(PROJECT_ROOT)
-        registry = self.load_registry()
-        if path not in registry.paths:
-            print(f"Dataset {path} not found")
-        else:
-            registry.datasets = [
-                dataset for dataset in registry.datasets if dataset.path != path
-            ]
-            self.save_registry(registry)
-
-
-def md5(path: PosixPath) -> str:
-    return hashlib.md5(path.read_bytes()).hexdigest()
+    for hf_path, local_path in tqdm(to_download, desc="Downloading datasets"):
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        downloaded = hf_hub_download(
+            repo_id=HF_DATASET_REPO,
+            filename=hf_path,
+            repo_type="dataset",
+        )
+        shutil.copy2(downloaded, local_path)

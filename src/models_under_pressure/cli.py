@@ -6,7 +6,7 @@ import typer
 
 from models_under_pressure.activation_store import ActivationsSpec, ActivationStore
 from models_under_pressure.config import LOCAL_MODELS
-from models_under_pressure.dataset_store import DatasetStore
+from models_under_pressure.dataset_store import download_all_datasets
 from models_under_pressure.interfaces.dataset import LabelledDataset
 from models_under_pressure.model import LLMModel
 
@@ -168,34 +168,9 @@ class DatasetStoreCLI:
 
     def _register_commands(self):
         @self.app.command()
-        def upload(
-            dataset_paths: Path = typer.Argument(
-                ...,
-                help="Path to the dataset or datasets (can include wildcards)",
-            ),
-        ):
-            """Upload a dataset or datasets."""
-            paths = self._parse_dataset_path(dataset_paths)
-            store = DatasetStore()
-            store.upload(paths)
-
-        @self.app.command()
         def download():
-            """Download all datasets from the store."""
-            store = DatasetStore()
-            store.download_all()
-
-    def _parse_dataset_path(self, dataset_path: Path) -> list[Path]:
-        """Parse a path to a dataset or datasets.
-
-        Supports both direct paths and wildcard patterns (e.g. data/**/*.csv).
-        Can handle both absolute and relative paths.
-        """
-        if "*" in str(dataset_path):
-            return list(Path.cwd().glob(str(dataset_path)))
-        else:
-            # Handle direct path
-            return [dataset_path]
+            """Download all datasets from HuggingFace."""
+            download_all_datasets()
 
 
 # Create the main app
